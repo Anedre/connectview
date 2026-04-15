@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(npx --yes create-vite@latest connectview-temp --template react-ts)",
+      "Bash(cp -r connectview-temp/* connectview-temp/.* .)",
+      "Bash(rm -rf connectview-temp)",
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest init -y -d)"
+    ]
+  }
+}
