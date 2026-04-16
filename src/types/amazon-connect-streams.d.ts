@@ -35,6 +35,7 @@ declare namespace connect {
     getState(): AgentStateDefinition;
     getName(): string;
     getConfiguration(): AgentConfiguration;
+    getContacts(contactTypeFilter?: string): Contact[];
     getRoutingProfile(): any;
     onStateChange(callback: (state: AgentStateChange) => void): void;
     onRefresh(callback: (agent: Agent) => void): void;
