@@ -95,11 +95,16 @@ export function RecordingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Recordings</h2>
-        <p className="text-muted-foreground">
-          Search and playback call recordings with transcription
-        </p>
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-md">
+          <Headphones className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Recordings</h2>
+          <p className="text-sm text-muted-foreground">
+            Search and playback call recordings with AI transcription
+          </p>
+        </div>
       </div>
 
       {/* Search */}
