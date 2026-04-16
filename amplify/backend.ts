@@ -18,6 +18,7 @@ import { getContactHistory } from "./functions/get-contact-history/resource";
 import { saveAgentNotes } from "./functions/save-agent-notes/resource";
 import { generateCallSummary } from "./functions/generate-call-summary/resource";
 import { getQSuggestions } from "./functions/get-q-suggestions/resource";
+import { getAgentActiveContact } from "./functions/get-agent-active-contact/resource";
 
 const CONNECT_INSTANCE_ID = "2345d564-4bd4-4318-9cf0-75649bad5197";
 const CONNECT_INSTANCE_ARN = `arn:aws:connect:us-east-1:731736972577:instance/${CONNECT_INSTANCE_ID}`;
@@ -42,6 +43,7 @@ const backend = defineBackend({
   saveAgentNotes,
   generateCallSummary,
   getQSuggestions,
+  getAgentActiveContact,
 });
 
 // Helper to cast IFunction to Function for addEnvironment
@@ -276,6 +278,22 @@ asFunction(qLambda).addEnvironment(
   "f5a5f6cf-9bd5-429a-88bb-70ba7c132f4d"
 );
 
+// ---- get-agent-active-contact (GetCurrentUserData - bypasses Streams stale IPC) ----
+const activeContactLambda = backend.getAgentActiveContact.resources.lambda;
+activeContactLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: [
+      "connect:GetCurrentUserData",
+      "connect:ListUsers",
+    ],
+    resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
+  })
+);
+asFunction(activeContactLambda).addEnvironment(
+  "CONNECT_INSTANCE_ID",
+  CONNECT_INSTANCE_ID
+);
+
 // ---- Function URLs for frontend API access (NONE auth for simplicity, app behind Cognito) ----
 const metricsUrl = asFunction(realtimeMetricsLambda).addFunctionUrl({
   authType: lambda.FunctionUrlAuthType.NONE,
@@ -367,6 +385,15 @@ const qUrl = asFunction(qLambda).addFunctionUrl({
   },
 });
 
+const activeContactUrl = asFunction(activeContactLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.GET],
+    allowedHeaders: ["*"],
+  },
+});
+
 
 // ---- Export Function URLs to amplify_outputs.json ----
 backend.addOutput({
@@ -382,6 +409,7 @@ backend.addOutput({
       saveAgentNotes: notesUrl.url,
       generateCallSummary: summaryUrl.url,
       getQSuggestions: qUrl.url,
+      getAgentActiveContact: activeContactUrl.url,
     }),
   },
 });

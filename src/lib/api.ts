@@ -11,6 +11,7 @@ interface ApiEndpoints {
   saveAgentNotes: string;
   generateCallSummary: string;
   getQSuggestions: string;
+  getAgentActiveContact: string;
 }
 
 let endpoints: ApiEndpoints | null = null;
