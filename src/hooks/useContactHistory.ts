@@ -15,7 +15,8 @@ export interface HistoricalContact {
   hasRecording: boolean;
 }
 
-export function useContactHistory(phone: string | null, days = 90) {
+// Connect SearchContacts API limits time range to 1345 hours (~56 days)
+export function useContactHistory(phone: string | null, days = 30) {
   const [contacts, setContacts] = useState<HistoricalContact[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
