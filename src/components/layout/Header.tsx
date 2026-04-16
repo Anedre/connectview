@@ -10,6 +10,7 @@ import {
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/useAuth";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 
 const ROLE_COLORS: Record<string, string> = {
   Admins:
@@ -46,6 +47,7 @@ export function Header() {
       </div>
 
       <div className="ml-auto flex items-center gap-3">
+        <ThemeToggle />
         {/* Notifications */}
         <button
           className="group relative flex h-9 w-9 items-center justify-center rounded-lg border bg-background/50 text-muted-foreground transition-all hover:border-primary/50 hover:text-foreground"

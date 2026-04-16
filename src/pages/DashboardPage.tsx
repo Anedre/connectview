@@ -22,6 +22,9 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useRealtimeMetrics } from "@/hooks/useRealtimeMetrics";
+import { GamificationCard } from "@/components/dashboard/GamificationCard";
+import { WellnessCard } from "@/components/dashboard/WellnessCard";
+import { ChurnRiskCard } from "@/components/dashboard/ChurnRiskCard";
 
 interface QuickActionProps {
   title: string;
@@ -192,6 +195,23 @@ export function DashboardPage() {
             gradient="from-rose-500 to-pink-600"
             delay={240}
           />
+        </div>
+      </RoleGate>
+
+      {/* Premium insights cards */}
+      <RoleGate minRole="Agents">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="animate-fade-in-up" style={{ animationDelay: "280ms" }}>
+            <GamificationCard />
+          </div>
+          <div className="animate-fade-in-up" style={{ animationDelay: "360ms" }}>
+            <WellnessCard />
+          </div>
+          <RoleGate minRole="Supervisors">
+            <div className="animate-fade-in-up" style={{ animationDelay: "440ms" }}>
+              <ChurnRiskCard />
+            </div>
+          </RoleGate>
         </div>
       </RoleGate>
 

@@ -15,6 +15,7 @@ import { LiveTranscriptPanel } from "@/components/workspace/LiveTranscriptPanel"
 import { ContactHistoryPanel } from "@/components/workspace/ContactHistoryPanel";
 import { AgentNotesPanel } from "@/components/workspace/AgentNotesPanel";
 import { AIAssistPanel } from "@/components/workspace/AIAssistPanel";
+import { AICoachPanel } from "@/components/workspace/AICoachPanel";
 import { CasesPanel } from "@/components/workspace/CasesPanel";
 
 const STATE_STYLES: Record<string, string> = {
@@ -50,7 +51,7 @@ export function AgentDesktopPage() {
       panel.appendChild(ccp);
       ccp.setAttribute(
         "style",
-        "width: 320px; height: 465px; border: 1px solid #e5e7eb; border-radius: 8px;"
+        "width: 380px; height: 720px; border: 1px solid oklch(0.92 0.008 260); border-radius: 12px; box-shadow: 0 4px 12px -2px rgba(0,0,0,0.08); overflow: hidden;"
       );
     }
 
@@ -102,9 +103,15 @@ export function AgentDesktopPage() {
 
       {/* Main workspace: CCP on left, tabs on right */}
       <div className="flex gap-4">
-        {/* Left column: CCP + Agent Notes */}
-        <div className="shrink-0 space-y-3" style={{ width: 340 }}>
+        {/* Left column: CCP + AI Coach + Agent Notes */}
+        <div className="shrink-0 space-y-3" style={{ width: 400 }}>
           <div id="ccp-visible-slot" />
+          <AICoachPanel
+            contactId={activeContact?.contactId || null}
+            transcriptSegmentCount={liveData?.totalSegments || 0}
+            isActive={!!activeContact}
+            sentiment={liveData?.overallSentiment}
+          />
           <AgentNotesPanel
             contactId={activeContact?.contactId || null}
             agentUsername={user?.username || ""}
