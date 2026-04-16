@@ -5,6 +5,7 @@ interface ApiEndpoints {
   queryContacts: string;
   getRecording: string;
   listUsers: string;
+  lookupCustomerProfile: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

@@ -12,6 +12,7 @@ import { enrichContactLens } from "./functions/enrich-contact-lens/resource";
 import { queryContacts } from "./functions/query-contacts/resource";
 import { getRecording } from "./functions/get-recording/resource";
 import { listUsers } from "./functions/list-users/resource";
+import { lookupCustomerProfile } from "./functions/lookup-customer-profile/resource";
 
 const CONNECT_INSTANCE_ID = "2345d564-4bd4-4318-9cf0-75649bad5197";
 const CONNECT_INSTANCE_ARN = `arn:aws:connect:us-east-1:731736972577:instance/${CONNECT_INSTANCE_ID}`;
@@ -20,6 +21,7 @@ const REGION = "us-east-1";
 
 // Fixed table name to avoid circular cross-stack references
 const CONTACTS_TABLE_NAME = "connectview-contacts";
+const CUSTOMER_PROFILES_DOMAIN = "amazon-connect-novasys";
 
 const backend = defineBackend({
   auth,
@@ -29,6 +31,7 @@ const backend = defineBackend({
   queryContacts,
   getRecording,
   listUsers,
+  lookupCustomerProfile,
 });
 
 // Helper to cast IFunction to Function for addEnvironment
@@ -163,6 +166,26 @@ listUsersLambda.addToRolePolicy(
 );
 asFunction(listUsersLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
 
+// ---- lookup-customer-profile (uses Amazon Connect Customer Profiles) ----
+const profileLambda = backend.lookupCustomerProfile.resources.lambda;
+profileLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: [
+      "profile:SearchProfiles",
+      "profile:ListProfileObjects",
+      "profile:GetProfileObjectType",
+    ],
+    resources: [
+      `arn:aws:profile:${REGION}:${ACCOUNT_ID}:domains/${CUSTOMER_PROFILES_DOMAIN}`,
+      `arn:aws:profile:${REGION}:${ACCOUNT_ID}:domains/${CUSTOMER_PROFILES_DOMAIN}/*`,
+    ],
+  })
+);
+asFunction(profileLambda).addEnvironment(
+  "CUSTOMER_PROFILES_DOMAIN",
+  CUSTOMER_PROFILES_DOMAIN
+);
+
 // ---- Function URLs for frontend API access (NONE auth for simplicity, app behind Cognito) ----
 const metricsUrl = asFunction(realtimeMetricsLambda).addFunctionUrl({
   authType: lambda.FunctionUrlAuthType.NONE,
@@ -200,6 +223,15 @@ const usersUrl = asFunction(listUsersLambda).addFunctionUrl({
   },
 });
 
+const profileUrl = asFunction(profileLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.GET],
+    allowedHeaders: ["*"],
+  },
+});
+
 
 // ---- Export Function URLs to amplify_outputs.json ----
 backend.addOutput({
@@ -209,6 +241,7 @@ backend.addOutput({
       queryContacts: queryUrl.url,
       getRecording: recordingUrl.url,
       listUsers: usersUrl.url,
+      lookupCustomerProfile: profileUrl.url,
     }),
   },
 });

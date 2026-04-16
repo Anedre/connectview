@@ -78,12 +78,25 @@ declare namespace connect {
     getType(): string;
     getState(): ContactStateDefinition;
     getQueue(): any;
+    getInitialConnection(): Connection | null;
+    getAttributes(): Record<string, { name: string; value: string }>;
     onConnecting(callback: (contact: Contact) => void): void;
     onConnected(callback: (contact: Contact) => void): void;
     onEnded(callback: (contact: Contact) => void): void;
     onDestroy(callback: (contact: Contact) => void): void;
     onACW(callback: (contact: Contact) => void): void;
     onError(callback: (contact: Contact) => void): void;
+  }
+
+  interface Connection {
+    getEndpoint(): Endpoint;
+    getContactId(): string;
+  }
+
+  interface Endpoint {
+    phoneNumber?: string;
+    type?: string;
+    name?: string;
   }
 
   interface ContactStateDefinition {
