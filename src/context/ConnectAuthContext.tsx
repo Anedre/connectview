@@ -2,8 +2,12 @@ import { createContext, useContext, useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { initCCP, terminateCCP } from "@/lib/connect";
 import { CONNECT_INSTANCE_URL } from "@/lib/constants";
-import { SECURITY_PROFILE_TO_ROLE, ROLE_HIERARCHY } from "@/types/auth";
+import {
+  SECURITY_PROFILE_TO_ROLE,
+  ROLE_HIERARCHY,
+} from "@/types/auth";
 import type { AuthUser, UserRole } from "@/types/auth";
+import { getApiEndpoints } from "@/lib/api";
 
 interface ConnectAuthContextValue {
   user: AuthUser | null;
@@ -16,13 +20,11 @@ interface ConnectAuthContextValue {
 const ConnectAuthContext = createContext<ConnectAuthContextValue | null>(null);
 
 function mapSecurityProfilesToRoles(profiles: string[]): UserRole[] {
-  const roles = new Set<UserRole>();
+  const roles = new Set<UserRole>(["Agents"]); // Everyone is at least an Agent
   for (const profile of profiles) {
     const role = SECURITY_PROFILE_TO_ROLE[profile];
     if (role) roles.add(role);
   }
-  // Every authenticated Connect user is at least an Agent
-  if (roles.size === 0) roles.add("Agents");
   return Array.from(roles);
 }
 
@@ -33,6 +35,22 @@ function getHighestRole(groups: UserRole[]): UserRole {
     }
     return highest;
   }, "Agents");
+}
+
+async function fetchSecurityProfiles(username: string): Promise<string[]> {
+  try {
+    const endpoints = getApiEndpoints();
+    if (!endpoints?.listUsers) return [];
+    const response = await fetch(endpoints.listUsers);
+    if (!response.ok) return [];
+    const data = await response.json();
+    const user = (data.users || []).find(
+      (u: { username: string }) => u.username === username
+    );
+    return user?.groups || [];
+  } catch {
+    return [];
+  }
 }
 
 export function ConnectAuthProvider({ children }: { children: ReactNode }) {
@@ -56,17 +74,19 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
     try {
       initCCP(container, CONNECT_INSTANCE_URL);
 
-      connect.agent((agent) => {
+      connect.agent(async (agent) => {
         try {
           const config = agent.getConfiguration();
-          // permissions contains security profile names
-          const securityProfiles = config.permissions || [];
+          const username = config.username;
+
+          // Fetch the REAL security profiles from the Connect API via our Lambda
+          const securityProfiles = await fetchSecurityProfiles(username);
           const groups = mapSecurityProfilesToRoles(securityProfiles);
 
           setUser({
-            email: config.username + "@novasys.connect",
+            email: username + "@novasys.connect",
             userId: config.agentARN.split("/").pop() || "",
-            username: config.username,
+            username,
             groups,
             highestRole: getHighestRole(groups),
             securityProfiles,
@@ -100,7 +120,6 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = () => {
-    // Connect doesn't have a programmatic signout - redirect to logout URL
     window.location.href = `${CONNECT_INSTANCE_URL}/connect/logout`;
   };
 
