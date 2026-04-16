@@ -14,4 +14,7 @@ export default defineConfig({
   define: {
     global: "globalThis", // Required for amazon-connect-streams
   },
+  build: {
+    chunkSizeWarningLimit: 1000,
+  },
 });
