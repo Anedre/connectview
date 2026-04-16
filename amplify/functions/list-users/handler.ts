@@ -51,7 +51,7 @@ export const handler: Handler = async (event: any) => {
 
       return {
         statusCode: 200,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ users }),
       };
     }
@@ -64,7 +64,7 @@ export const handler: Handler = async (event: any) => {
       if (!username) {
         return {
           statusCode: 400,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ error: "username is required" }),
         };
       }
@@ -91,21 +91,21 @@ export const handler: Handler = async (event: any) => {
 
       return {
         statusCode: 200,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ success: true }),
       };
     }
 
     return {
       statusCode: 405,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ error: "Method not allowed" }),
     };
   } catch (error) {
     console.error("Error managing users:", error);
     return {
       statusCode: 500,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         error: "Failed to manage users",
         message: error instanceof Error ? error.message : "Unknown error",

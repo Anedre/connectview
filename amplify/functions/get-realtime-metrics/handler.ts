@@ -154,8 +154,7 @@ export const handler: APIGatewayProxyHandler = async () => {
       statusCode: 200,
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
+              },
       body: JSON.stringify({
         timestamp: new Date().toISOString(),
         summary: {
@@ -174,8 +173,7 @@ export const handler: APIGatewayProxyHandler = async () => {
       statusCode: 500,
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
+              },
       body: JSON.stringify({
         error: "Failed to fetch realtime metrics",
         message: error instanceof Error ? error.message : "Unknown error",

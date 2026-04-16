@@ -118,8 +118,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       statusCode: 200,
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
+              },
       body: JSON.stringify({
         contacts,
         count: contacts.length,
@@ -131,8 +130,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       statusCode: 500,
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
+              },
       body: JSON.stringify({
         error: "Failed to query contacts",
         message: error instanceof Error ? error.message : "Unknown error",

@@ -15,7 +15,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   if (!contactId) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ error: "contactId is required" }),
     };
   }
@@ -50,7 +50,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contactId,
         recordingUrl,
@@ -69,7 +69,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     console.error("Error getting recording:", error);
     return {
       statusCode: 500,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         error: "Failed to get recording",
         message: error instanceof Error ? error.message : "Unknown error",
