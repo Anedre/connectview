@@ -29,3 +29,4 @@ amplify_outputs.d.ts
 *.njsproj
 *.sln
 *.sw?
+deploy.zip
