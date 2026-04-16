@@ -13,6 +13,11 @@ import { queryContacts } from "./functions/query-contacts/resource";
 import { getRecording } from "./functions/get-recording/resource";
 import { listUsers } from "./functions/list-users/resource";
 import { lookupCustomerProfile } from "./functions/lookup-customer-profile/resource";
+import { getLiveTranscript } from "./functions/get-live-transcript/resource";
+import { getContactHistory } from "./functions/get-contact-history/resource";
+import { saveAgentNotes } from "./functions/save-agent-notes/resource";
+import { generateCallSummary } from "./functions/generate-call-summary/resource";
+import { getQSuggestions } from "./functions/get-q-suggestions/resource";
 
 const CONNECT_INSTANCE_ID = "2345d564-4bd4-4318-9cf0-75649bad5197";
 const CONNECT_INSTANCE_ARN = `arn:aws:connect:us-east-1:731736972577:instance/${CONNECT_INSTANCE_ID}`;
@@ -32,6 +37,11 @@ const backend = defineBackend({
   getRecording,
   listUsers,
   lookupCustomerProfile,
+  getLiveTranscript,
+  getContactHistory,
+  saveAgentNotes,
+  generateCallSummary,
+  getQSuggestions,
 });
 
 // Helper to cast IFunction to Function for addEnvironment
@@ -186,6 +196,86 @@ asFunction(profileLambda).addEnvironment(
   CUSTOMER_PROFILES_DOMAIN
 );
 
+// ---- get-live-transcript (Contact Lens real-time) ----
+const liveTranscriptLambda = backend.getLiveTranscript.resources.lambda;
+liveTranscriptLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: ["connect:ListRealtimeContactAnalysisSegments"],
+    resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
+  })
+);
+asFunction(liveTranscriptLambda).addEnvironment(
+  "CONNECT_INSTANCE_ID",
+  CONNECT_INSTANCE_ID
+);
+
+// ---- get-contact-history (SearchContacts + DescribeContact) ----
+const historyLambda = backend.getContactHistory.resources.lambda;
+historyLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: ["connect:SearchContacts", "connect:DescribeContact"],
+    resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
+  })
+);
+asFunction(historyLambda).addEnvironment(
+  "CONNECT_INSTANCE_ID",
+  CONNECT_INSTANCE_ID
+);
+
+// ---- save-agent-notes (DynamoDB) ----
+const notesLambda = backend.saveAgentNotes.resources.lambda;
+notesLambda.addToRolePolicy(dynamoWritePolicy);
+notesLambda.addToRolePolicy(dynamoReadPolicy);
+asFunction(notesLambda).addEnvironment(
+  "CONTACTS_TABLE_NAME",
+  CONTACTS_TABLE_NAME
+);
+
+// ---- generate-call-summary (Bedrock + Contact Lens) ----
+const summaryLambda = backend.generateCallSummary.resources.lambda;
+summaryLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: ["bedrock:InvokeModel"],
+    resources: [
+      `arn:aws:bedrock:${REGION}::foundation-model/anthropic.claude-3-5-haiku-*`,
+      `arn:aws:bedrock:${REGION}::foundation-model/anthropic.claude-3-haiku-*`,
+      `arn:aws:bedrock:${REGION}::foundation-model/anthropic.claude-*`,
+    ],
+  })
+);
+summaryLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: ["connect:ListRealtimeContactAnalysisSegments"],
+    resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
+  })
+);
+asFunction(summaryLambda).addEnvironment(
+  "CONNECT_INSTANCE_ID",
+  CONNECT_INSTANCE_ID
+);
+asFunction(summaryLambda).addEnvironment(
+  "BEDROCK_MODEL_ID",
+  "anthropic.claude-3-5-haiku-20241022-v1:0"
+);
+
+// ---- get-q-suggestions (Amazon Q in Connect / Wisdom) ----
+const qLambda = backend.getQSuggestions.resources.lambda;
+qLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: [
+      "wisdom:QueryAssistant",
+      "wisdom:GetRecommendations",
+      "wisdom:SearchContent",
+    ],
+    resources: ["*"],
+  })
+);
+// Q Assistant ID comes from the Wisdom integration we saw in the instance
+asFunction(qLambda).addEnvironment(
+  "Q_ASSISTANT_ID",
+  "f5a5f6cf-9bd5-429a-88bb-70ba7c132f4d"
+);
+
 // ---- Function URLs for frontend API access (NONE auth for simplicity, app behind Cognito) ----
 const metricsUrl = asFunction(realtimeMetricsLambda).addFunctionUrl({
   authType: lambda.FunctionUrlAuthType.NONE,
@@ -232,6 +322,51 @@ const profileUrl = asFunction(profileLambda).addFunctionUrl({
   },
 });
 
+const liveTranscriptUrl = asFunction(liveTranscriptLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.GET],
+    allowedHeaders: ["*"],
+  },
+});
+
+const historyUrl = asFunction(historyLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.GET],
+    allowedHeaders: ["*"],
+  },
+});
+
+const notesUrl = asFunction(notesLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.GET, lambda.HttpMethod.POST],
+    allowedHeaders: ["*"],
+  },
+});
+
+const summaryUrl = asFunction(summaryLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.POST],
+    allowedHeaders: ["*"],
+  },
+});
+
+const qUrl = asFunction(qLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.GET],
+    allowedHeaders: ["*"],
+  },
+});
+
 
 // ---- Export Function URLs to amplify_outputs.json ----
 backend.addOutput({
@@ -242,6 +377,11 @@ backend.addOutput({
       getRecording: recordingUrl.url,
       listUsers: usersUrl.url,
       lookupCustomerProfile: profileUrl.url,
+      getLiveTranscript: liveTranscriptUrl.url,
+      getContactHistory: historyUrl.url,
+      saveAgentNotes: notesUrl.url,
+      generateCallSummary: summaryUrl.url,
+      getQSuggestions: qUrl.url,
     }),
   },
 });

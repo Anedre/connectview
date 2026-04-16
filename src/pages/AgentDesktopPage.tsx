@@ -9,9 +9,13 @@ import {
 import { useCCP } from "@/hooks/useCCP";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useActiveContact } from "@/hooks/useActiveContact";
+import { useLiveTranscript } from "@/hooks/useLiveTranscript";
 import { CustomerProfilePanel } from "@/components/workspace/CustomerProfilePanel";
+import { LiveTranscriptPanel } from "@/components/workspace/LiveTranscriptPanel";
+import { ContactHistoryPanel } from "@/components/workspace/ContactHistoryPanel";
+import { AgentNotesPanel } from "@/components/workspace/AgentNotesPanel";
+import { AIAssistPanel } from "@/components/workspace/AIAssistPanel";
 import { CasesPanel } from "@/components/workspace/CasesPanel";
-import { WisdomPanel } from "@/components/workspace/WisdomPanel";
 
 const STATE_STYLES: Record<string, string> = {
   Init: "bg-gray-100 text-gray-800",
@@ -27,6 +31,14 @@ export function AgentDesktopPage() {
   const { agentState, agentName } = useCCP();
   const { user } = useConnectAuth();
   const activeContact = useActiveContact();
+
+  // Also subscribe to live transcript to feed AI assist with latest customer utterances
+  const { data: liveData } = useLiveTranscript(
+    activeContact ? activeContact.contactId : null
+  );
+  const latestCustomerUtterance = liveData?.segments
+    .filter((s) => s.participant === "CUSTOMER")
+    .slice(-1)[0]?.content;
 
   // Move the global CCP container into the visible slot on mount
   useEffect(() => {
@@ -73,6 +85,11 @@ export function AgentDesktopPage() {
               {activeContact.channel} · {activeContact.state}
             </Badge>
           )}
+          {activeContact?.customerPhone && (
+            <Badge variant="outline" className="font-mono">
+              {activeContact.customerPhone}
+            </Badge>
+          )}
         </div>
         <div className="flex flex-wrap gap-1">
           {user?.securityProfiles.map((p) => (
@@ -85,19 +102,39 @@ export function AgentDesktopPage() {
 
       {/* Main workspace: CCP on left, tabs on right */}
       <div className="flex gap-4">
-        {/* Left: CCP */}
-        <div className="shrink-0">
+        {/* Left column: CCP + Agent Notes */}
+        <div className="shrink-0 space-y-3" style={{ width: 340 }}>
           <div id="ccp-visible-slot" />
+          <AgentNotesPanel
+            contactId={activeContact?.contactId || null}
+            agentUsername={user?.username || ""}
+          />
         </div>
 
-        {/* Right: Tabbed workspace */}
+        {/* Right column: Tabbed workspace */}
         <div className="flex-1">
-          <Tabs defaultValue="customer" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="customer">Customer Profile</TabsTrigger>
+          <Tabs defaultValue="transcript" className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="transcript">
+                Live Transcript
+                {activeContact && liveData && liveData.totalSegments > 0 && (
+                  <span className="ml-1 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">
+                    {liveData.totalSegments}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="customer">Customer</TabsTrigger>
+              <TabsTrigger value="history">History</TabsTrigger>
+              <TabsTrigger value="ai">AI Assist</TabsTrigger>
               <TabsTrigger value="cases">Cases</TabsTrigger>
-              <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="transcript" className="mt-4">
+              <LiveTranscriptPanel
+                contactId={activeContact?.contactId || null}
+                isActive={!!activeContact}
+              />
+            </TabsContent>
 
             <TabsContent value="customer" className="mt-4">
               <CustomerProfilePanel
@@ -106,15 +143,25 @@ export function AgentDesktopPage() {
               />
             </TabsContent>
 
+            <TabsContent value="history" className="mt-4">
+              <ContactHistoryPanel
+                phone={activeContact?.customerPhone || null}
+              />
+            </TabsContent>
+
+            <TabsContent value="ai" className="mt-4">
+              <AIAssistPanel
+                contactId={activeContact?.contactId || null}
+                customerPhone={activeContact?.customerPhone || null}
+                latestCustomerUtterance={latestCustomerUtterance}
+              />
+            </TabsContent>
+
             <TabsContent value="cases" className="mt-4">
               <CasesPanel
                 contactId={activeContact?.contactId || null}
                 customerPhone={activeContact?.customerPhone || null}
               />
-            </TabsContent>
-
-            <TabsContent value="knowledge" className="mt-4">
-              <WisdomPanel />
             </TabsContent>
           </Tabs>
         </div>

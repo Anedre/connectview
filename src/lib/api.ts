@@ -6,6 +6,11 @@ interface ApiEndpoints {
   getRecording: string;
   listUsers: string;
   lookupCustomerProfile: string;
+  getLiveTranscript: string;
+  getContactHistory: string;
+  saveAgentNotes: string;
+  generateCallSummary: string;
+  getQSuggestions: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

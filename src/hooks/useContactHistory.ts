@@ -1,0 +1,51 @@
+import { useState, useEffect } from "react";
+import { getApiEndpoints } from "@/lib/api";
+
+export interface HistoricalContact {
+  contactId: string;
+  channel: string;
+  initiationTimestamp: string;
+  disconnectTimestamp: string;
+  duration: number;
+  agentUsername: string;
+  queueName: string;
+  initiationMethod?: string;
+  disconnectReason?: string;
+  customerEndpoint?: string;
+  hasRecording: boolean;
+}
+
+export function useContactHistory(phone: string | null, days = 90) {
+  const [contacts, setContacts] = useState<HistoricalContact[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!phone) {
+      setContacts([]);
+      return;
+    }
+
+    const endpoints = getApiEndpoints();
+    if (!endpoints?.getContactHistory) return;
+
+    setLoading(true);
+    setError(null);
+
+    fetch(
+      `${endpoints.getContactHistory}?phone=${encodeURIComponent(phone)}&days=${days}`
+    )
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data) => setContacts(data.contacts || []))
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Failed");
+        setContacts([]);
+      })
+      .finally(() => setLoading(false));
+  }, [phone, days]);
+
+  return { contacts, loading, error };
+}
