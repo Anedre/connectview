@@ -1,0 +1,94 @@
+{
+  "Version": "2019-10-30",
+  "StartAction": "welcome",
+  "Actions": [
+    {
+      "Identifier": "welcome",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "Bienvenido a Novasys Connectview. Gracias por llamar, le estamos conectando con un agente."
+      },
+      "Transitions": {
+        "NextAction": "enable-recording",
+        "Errors": [],
+        "Conditions": []
+      }
+    },
+    {
+      "Identifier": "enable-recording",
+      "Type": "UpdateContactRecordingBehavior",
+      "Parameters": {
+        "RecordingBehavior": {
+          "RecordedParticipants": ["Agent", "Customer"]
+        }
+      },
+      "Transitions": {
+        "NextAction": "enable-analytics"
+      }
+    },
+    {
+      "Identifier": "enable-analytics",
+      "Type": "UpdateContactRecordingBehavior",
+      "Parameters": {
+        "AnalyticsBehavior": {
+          "Language": "es-ES",
+          "Enabled": "True",
+          "AnalyticsModes": ["RealTime", "PostCall"],
+          "ChannelConfiguration": {
+            "Voice": {
+              "RedactionTypes": []
+            }
+          }
+        }
+      },
+      "Transitions": {
+        "NextAction": "set-attributes"
+      }
+    },
+    {
+      "Identifier": "set-attributes",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": {
+          "flow": "connectview-test",
+          "source": "connectview-app"
+        },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "set-queue"
+      }
+    },
+    {
+      "Identifier": "set-queue",
+      "Type": "UpdateContactTargetQueue",
+      "Parameters": {
+        "QueueId": "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/queue/5a9d6f89-4b07-4862-ae3b-c2bc813f449d"
+      },
+      "Transitions": {
+        "NextAction": "transfer",
+        "Errors": [
+          { "NextAction": "disconnect", "ErrorType": "NoMatchingError" }
+        ]
+      }
+    },
+    {
+      "Identifier": "transfer",
+      "Type": "TransferContactToQueue",
+      "Parameters": {},
+      "Transitions": {
+        "NextAction": "disconnect",
+        "Errors": [
+          { "NextAction": "disconnect", "ErrorType": "QueueAtCapacity" },
+          { "NextAction": "disconnect", "ErrorType": "NoMatchingError" }
+        ]
+      }
+    },
+    {
+      "Identifier": "disconnect",
+      "Type": "DisconnectParticipant",
+      "Parameters": {},
+      "Transitions": {}
+    }
+  ]
+}
