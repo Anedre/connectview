@@ -20,29 +20,26 @@
       "Parameters": {
         "RecordingBehavior": {
           "RecordedParticipants": ["Agent", "Customer"]
-        }
-      },
-      "Transitions": {
-        "NextAction": "enable-analytics"
-      }
-    },
-    {
-      "Identifier": "enable-analytics",
-      "Type": "UpdateContactRecordingBehavior",
-      "Parameters": {
+        },
         "AnalyticsBehavior": {
-          "Language": "es-ES",
           "Enabled": "True",
-          "AnalyticsModes": ["RealTime", "PostCall"],
+          "AnalyticsLanguage": "es-US",
+          "AnalyticsRedactionBehavior": "Disabled",
           "ChannelConfiguration": {
             "Voice": {
-              "RedactionTypes": []
+              "AnalyticsModes": ["RealTimeAndPostCall"]
+            },
+            "Chat": {
+              "AnalyticsModes": ["PostContact"]
             }
           }
         }
       },
       "Transitions": {
-        "NextAction": "set-attributes"
+        "NextAction": "set-attributes",
+        "Errors": [
+          { "NextAction": "set-attributes", "ErrorType": "NoMatchingError" }
+        ]
       }
     },
     {
@@ -56,7 +53,10 @@
         "TargetContact": "Current"
       },
       "Transitions": {
-        "NextAction": "set-queue"
+        "NextAction": "set-queue",
+        "Errors": [
+          { "NextAction": "set-queue", "ErrorType": "NoMatchingError" }
+        ]
       }
     },
     {
