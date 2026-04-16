@@ -62,19 +62,54 @@ export function AgentDesktopPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Session</CardTitle>
+            <CardTitle className="text-lg">Session Info</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-1 text-sm">
-            <div>
-              <span className="text-muted-foreground">Agent: </span>
+          <CardContent className="space-y-2 text-sm">
+            <div className="grid grid-cols-2 gap-1">
+              <span className="text-muted-foreground">Username</span>
               <span className="font-medium">{user?.username}</span>
+              <span className="text-muted-foreground">Display Name</span>
+              <span>{agentName || "—"}</span>
+              <span className="text-muted-foreground">Role</span>
+              <span>
+                <Badge variant="secondary">{user?.highestRole}</Badge>
+              </span>
+              <span className="text-muted-foreground">Agent State</span>
+              <span>
+                <Badge className={STATE_STYLES[agentState] || ""}>
+                  {agentState}
+                </Badge>
+              </span>
             </div>
-            <div>
-              <span className="text-muted-foreground">Role: </span>
-              <Badge variant="secondary">{user?.highestRole}</Badge>
+            <div className="pt-2 border-t">
+              <div className="text-xs text-muted-foreground mb-1">
+                Security Profiles
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {user?.securityProfiles.length ? (
+                  user.securityProfiles.map((p) => (
+                    <Badge key={p} variant="outline" className="text-xs">
+                      {p}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    Loading...
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground">
-              Security profiles: {user?.securityProfiles.join(", ")}
+            <div className="pt-2 border-t">
+              <div className="text-xs text-muted-foreground mb-1">
+                App Roles
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {user?.groups.map((g) => (
+                  <Badge key={g} variant="secondary" className="text-xs">
+                    {g}
+                  </Badge>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
