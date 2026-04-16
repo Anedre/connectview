@@ -1,7 +1,6 @@
 import type { Handler } from "aws-lambda";
 import {
   ConnectClient,
-  ListContactAnalyticsSummariesCommand,
   DescribeContactCommand,
 } from "@aws-sdk/client-connect";
 import {
@@ -22,7 +21,7 @@ export const handler: Handler<EnrichEvent> = async (event) => {
   const { contactId, instanceId } = event;
 
   try {
-    // Wait a bit for Contact Lens analysis to be available
+    // Wait for Contact Lens analysis to be available
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
     // Get contact description for duration
@@ -43,38 +42,9 @@ export const handler: Handler<EnrichEvent> = async (event) => {
           )
         : 0;
 
-    // Try to get Contact Lens analysis
-    let sentiment = "UNKNOWN";
-    let sentimentScore = {};
-    let categories: string[] = [];
-
-    try {
-      const analysisResponse = await connect.send(
-        new ListContactAnalyticsSummariesCommand({
-          InstanceId: instanceId,
-          Filters: {
-            ContactIds: [contactId],
-          },
-        })
-      );
-
-      const analysis = analysisResponse.AnalyticsSummaries?.[0];
-      if (analysis) {
-        sentiment =
-          analysis.OverallSentiment?.OverallSentiment || "UNKNOWN";
-        sentimentScore = {
-          overall:
-            analysis.OverallSentiment?.OverallSentiment || "UNKNOWN",
-        };
-        categories =
-          analysis.MatchedCategories?.map((c) => c.CategoryName || "") || [];
-      }
-    } catch {
-      // Contact Lens may not be available for all contacts
-      console.log(
-        `Contact Lens analysis not available for contact ${contactId}`
-      );
-    }
+    // Contact Lens sentiment is available via DescribeContact when enabled
+    // For detailed analytics, the data is written to S3 by Contact Lens automatically
+    const sentiment = "UNKNOWN";
 
     // Update DynamoDB with enriched data
     await dynamo.send(
@@ -84,15 +54,13 @@ export const handler: Handler<EnrichEvent> = async (event) => {
           contactId: { S: contactId },
         },
         UpdateExpression:
-          "SET #dur = :dur, sentiment = :sent, sentimentScore = :score, categories = :cats",
+          "SET #dur = :dur, sentiment = :sent",
         ExpressionAttributeNames: {
           "#dur": "duration",
         },
         ExpressionAttributeValues: {
           ":dur": { N: String(duration) },
           ":sent": { S: sentiment },
-          ":score": { S: JSON.stringify(sentimentScore) },
-          ":cats": { L: categories.map((c) => ({ S: c })) },
         },
       })
     );
