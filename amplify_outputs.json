@@ -1,0 +1,48 @@
+{
+  "auth": {
+    "user_pool_id": "us-east-1_csLvANyZo",
+    "aws_region": "us-east-1",
+    "user_pool_client_id": "6qfs8onjto75i9cckl1vns80f9",
+    "identity_pool_id": "us-east-1:09d86a7d-801e-455e-99f6-0d9ccfcef3df",
+    "mfa_methods": [],
+    "standard_required_attributes": [
+      "email"
+    ],
+    "username_attributes": [
+      "email"
+    ],
+    "user_verification_types": [
+      "email"
+    ],
+    "groups": [
+      {
+        "Agents": {
+          "precedence": 0
+        }
+      },
+      {
+        "Supervisors": {
+          "precedence": 1
+        }
+      },
+      {
+        "Admins": {
+          "precedence": 2
+        }
+      }
+    ],
+    "mfa_configuration": "NONE",
+    "password_policy": {
+      "min_length": 8,
+      "require_lowercase": true,
+      "require_numbers": true,
+      "require_symbols": true,
+      "require_uppercase": true
+    },
+    "unauthenticated_identities_enabled": true
+  },
+  "version": "1.4",
+  "custom": {
+    "apiEndpoints": "{\"realtimeMetrics\":\"https://ufei6eope3odosf56bqltkbrrm0evrgd.lambda-url.us-east-1.on.aws/\",\"queryContacts\":\"https://h4crup4qvuepimritovh7odywy0yljsn.lambda-url.us-east-1.on.aws/\",\"getRecording\":\"https://mwj3w3gfwhps3ti5fcrkuv3ed40kioco.lambda-url.us-east-1.on.aws/\",\"listUsers\":\"https://rexiopt37vgdfp2xq4jdroahgy0jstvn.lambda-url.us-east-1.on.aws/\"}"
+  }
+}
