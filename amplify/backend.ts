@@ -50,8 +50,6 @@ new dynamodb.Table(dataStack, "ContactsTable", {
   sortKey: { name: "initiationTimestamp", type: dynamodb.AttributeType.STRING },
 });
 
-// Note: second GSI added via a separate call since addGlobalSecondaryIndex returns void
-// We'll create a second table reference for this
 const contactsTableArn = `arn:aws:dynamodb:${REGION}:${ACCOUNT_ID}:table/${CONTACTS_TABLE_NAME}`;
 
 // EventBridge rule in the same data stack (no cross-stack refs needed - target added below)
@@ -201,6 +199,7 @@ const usersUrl = asFunction(listUsersLambda).addFunctionUrl({
     allowedHeaders: ["*"],
   },
 });
+
 
 // ---- Export Function URLs to amplify_outputs.json ----
 backend.addOutput({
