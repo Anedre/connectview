@@ -1,71 +1,56 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { RealtimeMetrics } from "@/types/monitoring";
-import { fetchAuthSession } from "aws-amplify/auth";
+import { getApiEndpoints } from "@/lib/api";
 
 const POLL_INTERVAL = 15000; // 15 seconds
-
-// Mock data for development before backend is deployed
-function generateMockMetrics(): RealtimeMetrics {
-  const queues = ["BasicQueue", "SalesQueue", "SupportQueue"];
-  return {
-    timestamp: new Date().toISOString(),
-    summary: {
-      totalContactsInQueue: Math.floor(Math.random() * 8),
-      totalAgentsAvailable: 3 + Math.floor(Math.random() * 5),
-      totalAgentsOnline: 8 + Math.floor(Math.random() * 4),
-      longestWaitSeconds: Math.floor(Math.random() * 120),
-    },
-    queues: queues.map((name) => ({
-      queueId: name.toLowerCase(),
-      queueName: name,
-      contactsInQueue: Math.floor(Math.random() * 4),
-      oldestContactAge: Math.floor(Math.random() * 60),
-      agentsAvailable: 1 + Math.floor(Math.random() * 3),
-      agentsOnline: 2 + Math.floor(Math.random() * 4),
-      agentsOnCall: Math.floor(Math.random() * 3),
-      agentsACW: Math.floor(Math.random() * 2),
-    })),
-    agents: [
-      { agentId: "1", username: "agent.maria", status: "Available", statusStartTimestamp: new Date().toISOString(), activeContacts: {}, availableSlots: { VOICE: 1 } },
-      { agentId: "2", username: "agent.carlos", status: "On call", statusStartTimestamp: new Date(Date.now() - 180000).toISOString(), activeContacts: { VOICE: 1 }, availableSlots: {} },
-      { agentId: "3", username: "agent.ana", status: "After call work", statusStartTimestamp: new Date(Date.now() - 45000).toISOString(), activeContacts: {}, availableSlots: {} },
-      { agentId: "4", username: "agent.pedro", status: "Available", statusStartTimestamp: new Date().toISOString(), activeContacts: {}, availableSlots: { VOICE: 1 } },
-      { agentId: "5", username: "agent.lucia", status: "On call", statusStartTimestamp: new Date(Date.now() - 300000).toISOString(), activeContacts: { CHAT: 1 }, availableSlots: {} },
-      { agentId: "6", username: "agent.jorge", status: "Offline", statusStartTimestamp: new Date(Date.now() - 600000).toISOString(), activeContacts: {}, availableSlots: {} },
-    ],
-  };
-}
 
 export function useRealtimeMetrics() {
   const [metrics, setMetrics] = useState<RealtimeMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [usingLiveData, setUsingLiveData] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const fetchMetrics = useCallback(async () => {
     try {
-      const session = await fetchAuthSession({});
-      const apiUrl = session.tokens?.idToken?.payload?.["custom:metricsApiUrl"] as string | undefined;
+      const endpoints = getApiEndpoints();
 
-      if (apiUrl) {
-        const response = await fetch(apiUrl);
+      if (endpoints?.realtimeMetrics) {
+        const response = await fetch(endpoints.realtimeMetrics);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         setMetrics(data);
+        setUsingLiveData(true);
       } else {
-        // Use mock data when API URL is not configured
-        setMetrics(generateMockMetrics());
+        throw new Error("API not configured");
       }
       setError(null);
-      setLastRefresh(new Date());
-    } catch {
-      // Fallback to mock data on error
-      setMetrics(generateMockMetrics());
-      setError(null);
-      setLastRefresh(new Date());
+    } catch (err) {
+      // No mock fallback - show the real error so user knows
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch metrics"
+      );
+      // Set empty metrics structure so UI doesn't break
+      if (!metrics) {
+        setMetrics({
+          timestamp: new Date().toISOString(),
+          summary: {
+            totalContactsInQueue: 0,
+            totalAgentsAvailable: 0,
+            totalAgentsOnline: 0,
+            longestWaitSeconds: 0,
+          },
+          queues: [],
+          agents: [],
+        });
+      }
+      setUsingLiveData(false);
     } finally {
       setLoading(false);
+      setLastRefresh(new Date());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -76,5 +61,12 @@ export function useRealtimeMetrics() {
     };
   }, [fetchMetrics]);
 
-  return { metrics, loading, error, lastRefresh, refresh: fetchMetrics };
+  return {
+    metrics,
+    loading,
+    error,
+    lastRefresh,
+    usingLiveData,
+    refresh: fetchMetrics,
+  };
 }

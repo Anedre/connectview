@@ -20,19 +20,7 @@ import {
 import { Shield, Users, RefreshCw } from "lucide-react";
 import type { CognitoUser } from "@/types/admin";
 import { format } from "date-fns";
-
-// Mock users for development
-function generateMockUsers(): CognitoUser[] {
-  return [
-    { username: "admin-001", email: "admin@novasys.com", status: "CONFIRMED", enabled: true, created: "2026-04-15T19:00:00Z", groups: ["Admins", "Agents"] },
-    { username: "sup-001", email: "supervisor1@novasys.com", status: "CONFIRMED", enabled: true, created: "2026-04-15T19:05:00Z", groups: ["Supervisors", "Agents"] },
-    { username: "agent-001", email: "agent.maria@novasys.com", status: "CONFIRMED", enabled: true, created: "2026-04-15T19:10:00Z", groups: ["Agents"] },
-    { username: "agent-002", email: "agent.carlos@novasys.com", status: "CONFIRMED", enabled: true, created: "2026-04-15T19:11:00Z", groups: ["Agents"] },
-    { username: "agent-003", email: "agent.ana@novasys.com", status: "CONFIRMED", enabled: true, created: "2026-04-15T19:12:00Z", groups: ["Agents"] },
-    { username: "agent-004", email: "agent.pedro@novasys.com", status: "FORCE_CHANGE_PASSWORD", enabled: true, created: "2026-04-15T19:13:00Z", groups: ["Agents"] },
-    { username: "agent-005", email: "agent.lucia@novasys.com", status: "CONFIRMED", enabled: false, created: "2026-04-15T19:14:00Z", groups: ["Agents"] },
-  ];
-}
+import { getApiEndpoints } from "@/lib/api";
 
 const ROLE_STYLES: Record<string, string> = {
   Admins: "bg-red-100 text-red-800",
@@ -43,13 +31,27 @@ const ROLE_STYLES: Record<string, string> = {
 export function AdminPage() {
   const [users, setUsers] = useState<CognitoUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
-    // TODO: Replace with real API call
-    await new Promise((r) => setTimeout(r, 500));
-    setUsers(generateMockUsers());
-    setLoading(false);
+    setError(null);
+    try {
+      const endpoints = getApiEndpoints();
+      if (endpoints?.listUsers) {
+        const response = await fetch(endpoints.listUsers);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        setUsers(data.users || []);
+      } else {
+        throw new Error("API not configured");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch users");
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -58,14 +60,28 @@ export function AdminPage() {
 
   const handleRoleChange = async (username: string, newRole: string | null) => {
     if (!newRole) return;
-    // TODO: Call list-users Lambda to change group
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.username === username
-          ? { ...u, groups: [newRole, ...(newRole !== "Agents" ? ["Agents"] : [])] }
-          : u
-      )
+    const endpoints = getApiEndpoints();
+    if (!endpoints?.listUsers) return;
+
+    const currentRole = highestGroup(
+      users.find((u) => u.username === username)?.groups || []
     );
+
+    try {
+      await fetch(endpoints.listUsers, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          removeGroup: currentRole,
+          addGroup: newRole,
+        }),
+      });
+      // Refresh users list
+      await fetchUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update role");
+    }
   };
 
   const highestGroup = (groups: string[]) => {
@@ -95,6 +111,12 @@ export function AdminPage() {
           Refresh
         </Button>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -142,58 +164,66 @@ export function AdminPage() {
           <CardTitle>Users</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Change Role</TableHead>
-                <TableHead>Created</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.username}>
-                  <TableCell className="font-medium">{user.email}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={user.enabled ? "secondary" : "destructive"}
-                    >
-                      {user.enabled
-                        ? user.status === "CONFIRMED"
-                          ? "Active"
-                          : "Pending"
-                        : "Disabled"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={ROLE_STYLES[highestGroup(user.groups)]}>
-                      {highestGroup(user.groups)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={highestGroup(user.groups)}
-                      onValueChange={(v) => handleRoleChange(user.username, v)}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Agents">Agent</SelectItem>
-                        <SelectItem value="Supervisors">Supervisor</SelectItem>
-                        <SelectItem value="Admins">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {format(new Date(user.created), "MMM dd, yyyy")}
-                  </TableCell>
+          {users.length === 0 && !loading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              {error ? "Failed to load users." : "No users found."}
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Change Role</TableHead>
+                  <TableHead>Created</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {users.map((user) => (
+                  <TableRow key={user.username}>
+                    <TableCell className="font-medium">{user.email}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={user.enabled ? "secondary" : "destructive"}
+                      >
+                        {user.enabled
+                          ? user.status === "CONFIRMED"
+                            ? "Active"
+                            : "Pending"
+                          : "Disabled"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={ROLE_STYLES[highestGroup(user.groups)]}>
+                        {highestGroup(user.groups)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={highestGroup(user.groups)}
+                        onValueChange={(v) => handleRoleChange(user.username, v)}
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Agents">Agent</SelectItem>
+                          <SelectItem value="Supervisors">Supervisor</SelectItem>
+                          <SelectItem value="Admins">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {user.created
+                        ? format(new Date(user.created), "MMM dd, yyyy")
+                        : "-"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -6,7 +6,9 @@
       "Bash(cp -r connectview-temp/* connectview-temp/.* .)",
       "Bash(rm -rf connectview-temp)",
       "Bash(npm install:*)",
-      "Bash(npx shadcn@latest init -y -d)"
+      "Bash(npx shadcn@latest init -y -d)",
+      "Bash(npx shadcn@latest add sidebar badge avatar dropdown-menu separator tooltip card -y)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

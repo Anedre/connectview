@@ -13,7 +13,8 @@ function formatWait(seconds: number): string {
 }
 
 export function MonitoringPage() {
-  const { metrics, loading, lastRefresh, refresh } = useRealtimeMetrics();
+  const { metrics, loading, error, lastRefresh, usingLiveData, refresh } =
+    useRealtimeMetrics();
 
   if (loading && !metrics) {
     return (
@@ -36,12 +37,23 @@ export function MonitoringPage() {
             Contact center activity overview
           </p>
         </div>
-        <RefreshIndicator
-          lastRefresh={lastRefresh}
-          onRefresh={refresh}
-          loading={loading}
-        />
+        <div className="flex items-center gap-3">
+          {usingLiveData && (
+            <span className="text-xs font-medium text-green-600">LIVE</span>
+          )}
+          <RefreshIndicator
+            lastRefresh={lastRefresh}
+            onRefresh={refresh}
+            loading={loading}
+          />
+        </div>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+          {error}
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

@@ -70,7 +70,7 @@ export function AudioPlayer({ src, onTimeUpdate }: AudioPlayerProps) {
 
   return (
     <div className="rounded-lg border bg-card p-4">
-      <audio ref={audioRef} src={src} preload="metadata" />
+      {src && <audio ref={audioRef} src={src} preload="metadata" />}
 
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => skip(-10)}>

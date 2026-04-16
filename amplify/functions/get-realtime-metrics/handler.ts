@@ -3,8 +3,8 @@ import {
   ConnectClient,
   GetCurrentMetricDataCommand,
   GetCurrentUserDataCommand,
+  ListQueuesCommand,
   type CurrentMetric,
-  type Filters,
 } from "@aws-sdk/client-connect";
 
 const client = new ConnectClient({});
@@ -17,22 +17,46 @@ const QUEUE_METRICS: CurrentMetric[] = [
   { Name: "AGENTS_ONLINE", Unit: "COUNT" },
   { Name: "AGENTS_ON_CALL", Unit: "COUNT" },
   { Name: "AGENTS_AFTER_CONTACT_WORK", Unit: "COUNT" },
-  { Name: "CONTACTS_SCHEDULED", Unit: "COUNT" },
 ];
+
+// Cache queue IDs for 5 minutes to avoid listing queues on every poll
+let cachedQueueIds: string[] = [];
+let cacheExpiry = 0;
+
+async function getQueueIds(): Promise<string[]> {
+  if (cachedQueueIds.length > 0 && Date.now() < cacheExpiry) {
+    return cachedQueueIds;
+  }
+
+  const response = await client.send(
+    new ListQueuesCommand({
+      InstanceId: INSTANCE_ID,
+      QueueTypes: ["STANDARD"],
+    })
+  );
+
+  cachedQueueIds =
+    response.QueueSummaryList?.map((q) => q.Id!).filter(Boolean) || [];
+  cacheExpiry = Date.now() + 5 * 60 * 1000;
+  return cachedQueueIds;
+}
+
+// Cache queue name mapping
+const queueNameCache = new Map<string, string>();
 
 export const handler: APIGatewayProxyHandler = async () => {
   try {
-    const filters: Filters = {
-      Channels: ["VOICE", "CHAT"],
-      Queues: [], // empty = all queues
-    };
+    const queueIds = await getQueueIds();
 
     const [metricsResponse, usersResponse] = await Promise.all([
       client.send(
         new GetCurrentMetricDataCommand({
           InstanceId: INSTANCE_ID,
           CurrentMetrics: QUEUE_METRICS,
-          Filters: filters,
+          Filters: {
+            Channels: ["VOICE", "CHAT"],
+            Queues: queueIds,
+          },
           Groupings: ["QUEUE"],
         })
       ),
@@ -40,7 +64,7 @@ export const handler: APIGatewayProxyHandler = async () => {
         new GetCurrentUserDataCommand({
           InstanceId: INSTANCE_ID,
           Filters: {
-            Agents: [],
+            Queues: queueIds,
           },
         })
       ),
@@ -54,17 +78,47 @@ export const handler: APIGatewayProxyHandler = async () => {
             metrics[c.Metric.Name] = c.Value ?? 0;
           }
         });
+
+        const queueId = result.Dimensions?.Queue?.Id || "";
+        const queueArn = result.Dimensions?.Queue?.Arn || "";
+
+        // Extract queue name from ARN or use cached name
+        let queueName = queueNameCache.get(queueId) || "";
+        if (!queueName && queueArn) {
+          // ARN format: arn:aws:connect:region:account:instance/id/queue/id
+          // The name is not in the ARN, so we'll use the queue ID as fallback
+          queueName = queueId;
+        }
+
         return {
-          queueId: result.Dimensions?.Queue?.Id || "",
-          queueName: result.Dimensions?.Queue?.Arn?.split("/").pop() || "",
+          queueId,
+          queueName,
           contactsInQueue: metrics["CONTACTS_IN_QUEUE"] || 0,
-          oldestContactAge: metrics["OLDEST_CONTACT_AGE"] || 0,
+          oldestContactAge: Math.round(metrics["OLDEST_CONTACT_AGE"] || 0),
           agentsAvailable: metrics["AGENTS_AVAILABLE"] || 0,
           agentsOnline: metrics["AGENTS_ONLINE"] || 0,
           agentsOnCall: metrics["AGENTS_ON_CALL"] || 0,
           agentsACW: metrics["AGENTS_AFTER_CONTACT_WORK"] || 0,
         };
       }) || [];
+
+    // Enrich queue names from the ListQueues cache
+    if (queueMetrics.some((q) => q.queueName === q.queueId)) {
+      const queuesResponse = await client.send(
+        new ListQueuesCommand({
+          InstanceId: INSTANCE_ID,
+          QueueTypes: ["STANDARD"],
+        })
+      );
+      queuesResponse.QueueSummaryList?.forEach((q) => {
+        if (q.Id && q.Name) {
+          queueNameCache.set(q.Id, q.Name);
+        }
+      });
+      queueMetrics.forEach((q) => {
+        q.queueName = queueNameCache.get(q.queueId) || q.queueId;
+      });
+    }
 
     const agents =
       usersResponse.UserDataList?.map((userData) => ({
@@ -82,14 +136,15 @@ export const handler: APIGatewayProxyHandler = async () => {
       (sum, q) => sum + q.contactsInQueue,
       0
     );
-    const totalAgentsAvailable = queueMetrics.reduce(
-      (sum, q) => sum + q.agentsAvailable,
-      0
-    );
-    const totalAgentsOnline = queueMetrics.reduce(
-      (sum, q) => sum + q.agentsOnline,
-      0
-    );
+    // Deduplicate agent counts (same agent can appear in multiple queues)
+    const uniqueAvailable = new Set<string>();
+    const uniqueOnline = new Set<string>();
+    agents.forEach((a) => {
+      if (a.status === "Available") uniqueAvailable.add(a.agentId);
+      if (a.status !== "Offline" && a.status !== "Unknown")
+        uniqueOnline.add(a.agentId);
+    });
+
     const longestWait = Math.max(
       ...queueMetrics.map((q) => q.oldestContactAge),
       0
@@ -105,8 +160,8 @@ export const handler: APIGatewayProxyHandler = async () => {
         timestamp: new Date().toISOString(),
         summary: {
           totalContactsInQueue,
-          totalAgentsAvailable,
-          totalAgentsOnline,
+          totalAgentsAvailable: uniqueAvailable.size || queueMetrics.reduce((s, q) => s + q.agentsAvailable, 0),
+          totalAgentsOnline: uniqueOnline.size || queueMetrics.reduce((s, q) => s + q.agentsOnline, 0),
           longestWaitSeconds: longestWait,
         },
         queues: queueMetrics,

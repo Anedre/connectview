@@ -8,6 +8,7 @@ import { AudioPlayer } from "@/components/recordings/AudioPlayer";
 import { TranscriptViewer } from "@/components/recordings/TranscriptViewer";
 import type { TranscriptSegment } from "@/types/recordings";
 import type { ContactRecord } from "@/types/monitoring";
+import { getApiEndpoints } from "@/lib/api";
 
 // Mock data
 function generateMockRecording(): {
@@ -50,12 +51,39 @@ export function RecordingsPage() {
 
   const handleSearch = async () => {
     setLoading(true);
-    // Simulate API call
-    await new Promise((r) => setTimeout(r, 500));
-    const mock = generateMockRecording();
-    setSelectedContact(mock.contact);
-    setTranscript(mock.transcript);
-    setLoading(false);
+    try {
+      const endpoints = getApiEndpoints();
+      if (endpoints?.getRecording && searchId && searchId !== "demo") {
+        const response = await fetch(
+          `${endpoints.getRecording}?contactId=${encodeURIComponent(searchId)}`
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        setSelectedContact({
+          contactId: data.contactId,
+          initiationTimestamp: new Date().toISOString(),
+          agentUsername: "—",
+          queueName: "—",
+          channel: "VOICE",
+          duration: data.duration,
+          sentiment: "UNKNOWN",
+          categories: [],
+          status: "COMPLETED",
+        });
+        setTranscript(data.transcript || []);
+      } else {
+        // Demo mode
+        const mock = generateMockRecording();
+        setSelectedContact(mock.contact);
+        setTranscript(mock.transcript);
+      }
+    } catch {
+      const mock = generateMockRecording();
+      setSelectedContact(mock.contact);
+      setTranscript(mock.transcript);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const SENTIMENT_STYLES: Record<string, string> = {

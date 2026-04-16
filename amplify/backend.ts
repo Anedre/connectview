@@ -168,3 +168,52 @@ asFunction(listUsersLambda).addEnvironment(
   "USER_POOL_ID",
   backend.auth.resources.userPool.userPoolId
 );
+
+// ---- Function URLs for frontend API access (NONE auth for simplicity, app behind Cognito) ----
+const metricsUrl = asFunction(realtimeMetricsLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.GET],
+    allowedHeaders: ["*"],
+  },
+});
+
+const queryUrl = asFunction(queryContactsLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.GET],
+    allowedHeaders: ["*"],
+  },
+});
+
+const recordingUrl = asFunction(recordingLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.GET],
+    allowedHeaders: ["*"],
+  },
+});
+
+const usersUrl = asFunction(listUsersLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.GET, lambda.HttpMethod.POST],
+    allowedHeaders: ["*"],
+  },
+});
+
+// ---- Export Function URLs to amplify_outputs.json ----
+backend.addOutput({
+  custom: {
+    apiEndpoints: JSON.stringify({
+      realtimeMetrics: metricsUrl.url,
+      queryContacts: queryUrl.url,
+      getRecording: recordingUrl.url,
+      listUsers: usersUrl.url,
+    }),
+  },
+});

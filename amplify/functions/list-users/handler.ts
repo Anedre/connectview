@@ -1,4 +1,4 @@
-import type { APIGatewayProxyHandler } from "aws-lambda";
+import type { Handler } from "aws-lambda";
 import {
   CognitoIdentityProviderClient,
   ListUsersCommand,
@@ -10,8 +10,10 @@ import {
 const client = new CognitoIdentityProviderClient({});
 const USER_POOL_ID = process.env.USER_POOL_ID || "";
 
-export const handler: APIGatewayProxyHandler = async (event) => {
-  const method = event.httpMethod;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const handler: Handler = async (event: any) => {
+  // Support both API Gateway v1 (httpMethod) and Function URL v2 (requestContext.http.method)
+  const method = event.httpMethod || event.requestContext?.http?.method || "GET";
 
   try {
     if (method === "GET") {
