@@ -238,11 +238,9 @@ const summaryLambda = backend.generateCallSummary.resources.lambda;
 summaryLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["bedrock:InvokeModel"],
-    resources: [
-      `arn:aws:bedrock:${REGION}::foundation-model/anthropic.claude-3-5-haiku-*`,
-      `arn:aws:bedrock:${REGION}::foundation-model/anthropic.claude-3-haiku-*`,
-      `arn:aws:bedrock:${REGION}::foundation-model/anthropic.claude-*`,
-    ],
+    // Wildcard required for cross-region inference profiles (us.* prefix routes to multiple regions).
+    // Claude 3.5+ no longer supports on-demand foundation model invocation directly.
+    resources: ["*"],
   })
 );
 summaryLambda.addToRolePolicy(
@@ -257,7 +255,9 @@ asFunction(summaryLambda).addEnvironment(
 );
 asFunction(summaryLambda).addEnvironment(
   "BEDROCK_MODEL_ID",
-  "anthropic.claude-3-5-haiku-20241022-v1:0"
+  // US cross-region inference profile for Claude Haiku 4.5 — fast and active.
+  // The older 3.5-haiku model is now legacy and blocked unless used in last 30 days.
+  "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 );
 
 // ---- get-q-suggestions (Amazon Q in Connect / Wisdom) ----

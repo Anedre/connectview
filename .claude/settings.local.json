@@ -8,7 +8,9 @@
       "Bash(npm install:*)",
       "Bash(npx shadcn@latest init -y -d)",
       "Bash(npx shadcn@latest add sidebar badge avatar dropdown-menu separator tooltip card -y)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(aws sts:*)",
+      "Bash(aws connect:*)"
     ]
   }
 }

@@ -8,41 +8,55 @@ import {
   ListRealtimeContactAnalysisSegmentsCommand,
 } from "@aws-sdk/client-connect-contact-lens";
 
-const bedrock = new BedrockRuntimeClient({});
-const contactLens = new ConnectContactLensClient({});
+// maxAttempts: 1 → no SDK retries on throttling. The frontend will retry.
+const bedrock = new BedrockRuntimeClient({ maxAttempts: 1 });
+const contactLens = new ConnectContactLensClient({ maxAttempts: 1 });
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+// Use US cross-region inference profile prefix — Claude 3.5+ requires inference profiles,
+// no longer supports on-demand invocation by foundation model ID directly.
 const MODEL_ID =
   process.env.BEDROCK_MODEL_ID ||
-  "anthropic.claude-3-5-haiku-20241022-v1:0";
+  "us.anthropic.claude-3-5-haiku-20241022-v1:0";
 
 interface TranscriptSegment {
   participant: string;
   content: string;
 }
 
+// SINGLE page, no pagination. Pagination + throttling retries was killing the Lambda budget
+// and causing 502s. For AI summaries, the most recent 100 segments are enough context.
 async function getTranscript(contactId: string): Promise<TranscriptSegment[]> {
   const segments: TranscriptSegment[] = [];
-  let nextToken: string | undefined;
-  do {
-    const result = await contactLens.send(
-      new ListRealtimeContactAnalysisSegmentsCommand({
-        InstanceId: INSTANCE_ID,
-        ContactId: contactId,
-        NextToken: nextToken,
-        MaxResults: 100,
-      })
-    );
-    for (const s of result.Segments || []) {
-      if (s.Transcript?.Content) {
-        segments.push({
-          participant: s.Transcript.ParticipantId || "UNKNOWN",
-          content: s.Transcript.Content,
-        });
-      }
+  const result = await contactLens.send(
+    new ListRealtimeContactAnalysisSegmentsCommand({
+      InstanceId: INSTANCE_ID,
+      ContactId: contactId,
+      MaxResults: 100,
+    })
+  );
+  for (const s of result.Segments || []) {
+    if (s.Transcript?.Content) {
+      segments.push({
+        // ParticipantRole is the canonical AGENT/CUSTOMER label.
+        participant: s.Transcript.ParticipantRole || s.Transcript.ParticipantId || "UNKNOWN",
+        content: s.Transcript.Content,
+      });
     }
-    nextToken = result.NextToken;
-  } while (nextToken);
+  }
   return segments;
+}
+
+function isThrottlingError(error: unknown): boolean {
+  const errName =
+    error && typeof error === "object" && "name" in error
+      ? String((error as { name: unknown }).name)
+      : "";
+  const errMsg = error instanceof Error ? error.message : String(error);
+  return (
+    errName === "ThrottlingException" ||
+    errName === "TooManyRequestsException" ||
+    /throttl|too many requests|rate exceeded/i.test(errMsg)
+  );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -129,6 +143,21 @@ Responde SOLO con el codigo, sin explicacion.`,
       }),
     };
   } catch (error) {
+    // Throttling → return 200 with empty result so AICoachPanel keeps its previous suggestions.
+    if (isThrottlingError(error)) {
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactId,
+          mode,
+          throttled: true,
+          result: mode === "next-action" ? "[]" : "",
+          transcriptLength: 0,
+        }),
+      };
+    }
+
     console.error("Error generating summary:", error);
     return {
       statusCode: 500,

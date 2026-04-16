@@ -22,8 +22,24 @@ const SENTIMENT_OVERALL: Record<string, { bg: string; emoji: string }> = {
   NEUTRAL: { bg: "bg-gray-100 text-gray-800", emoji: "😐" },
 };
 
-function formatTime(ms: number): string {
-  const s = Math.floor(ms / 1000);
+// Render the segment's absolute clock time in Lima (Peru) timezone when we know when the call started.
+// Falls back to the relative offset (m:ss) if the backend hasn't sent the start timestamp yet.
+const LIMA_TIME_FMT = new Intl.DateTimeFormat("es-PE", {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+  timeZone: "America/Lima",
+});
+
+function formatTime(beginOffsetMs: number, startIso?: string | null): string {
+  if (startIso) {
+    const startMs = Date.parse(startIso);
+    if (!Number.isNaN(startMs)) {
+      return LIMA_TIME_FMT.format(new Date(startMs + beginOffsetMs));
+    }
+  }
+  const s = Math.floor(beginOffsetMs / 1000);
   const min = Math.floor(s / 60);
   const sec = s % 60;
   return `${min}:${String(sec).padStart(2, "0")}`;
@@ -141,7 +157,7 @@ export function LiveTranscriptPanel({
                     {isAgent ? "Agent" : "Customer"}
                   </Badge>
                   <div className="text-[10px] text-muted-foreground mt-1">
-                    {formatTime(seg.beginOffsetMs)}
+                    {formatTime(seg.beginOffsetMs, data?.transcriptStartTimestamp)}
                   </div>
                 </div>
                 <div className="flex-1">

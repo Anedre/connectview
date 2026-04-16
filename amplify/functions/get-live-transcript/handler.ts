@@ -1,11 +1,41 @@
 import type { Handler } from "aws-lambda";
 import {
+  ConnectClient,
+  DescribeContactCommand,
+} from "@aws-sdk/client-connect";
+import {
   ConnectContactLensClient,
   ListRealtimeContactAnalysisSegmentsCommand,
 } from "@aws-sdk/client-connect-contact-lens";
 
-const client = new ConnectContactLensClient({});
+// maxAttempts: 1 → no retries on throttling. We'd rather return fast and let the
+// frontend's 5s polling pick up next time than waste the 10s Lambda budget on retry backoff.
+const client = new ConnectContactLensClient({ maxAttempts: 1 });
+const connectClient = new ConnectClient({ maxAttempts: 1 });
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+
+// Cache contact start timestamps so we don't DescribeContact on every poll.
+const startTsCache = new Map<string, string>();
+
+async function getContactStartTimestamp(contactId: string): Promise<string | null> {
+  if (startTsCache.has(contactId)) return startTsCache.get(contactId)!;
+  try {
+    const res = await connectClient.send(
+      new DescribeContactCommand({
+        InstanceId: INSTANCE_ID,
+        ContactId: contactId,
+      })
+    );
+    const ts =
+      res.Contact?.ConnectedToSystemTimestamp?.toISOString() ||
+      res.Contact?.InitiationTimestamp?.toISOString() ||
+      null;
+    if (ts) startTsCache.set(contactId, ts);
+    return ts;
+  } catch {
+    return null;
+  }
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
@@ -30,50 +60,52 @@ export const handler: Handler = async (event: any) => {
       issueText?: string;
     }> = [];
 
-    let nextToken: string | undefined;
-    do {
-      const result = await client.send(
-        new ListRealtimeContactAnalysisSegmentsCommand({
-          InstanceId: INSTANCE_ID,
-          ContactId: contactId,
-          NextToken: nextToken,
-          MaxResults: 100,
-        })
-      );
+    // SINGLE page, no pagination. With MaxResults: 100 a live conversation easily fits.
+    // Pagination + throttling retries was killing the 10s Lambda budget and causing 502s.
+    // If a call ever exceeds 100 segments, we just lose the oldest ones — better than nothing.
+    const result = await client.send(
+      new ListRealtimeContactAnalysisSegmentsCommand({
+        InstanceId: INSTANCE_ID,
+        ContactId: contactId,
+        MaxResults: 100,
+      })
+    );
 
-      for (const s of result.Segments || []) {
-        if (s.Transcript) {
+    for (const s of result.Segments || []) {
+      if (s.Transcript) {
+        segments.push({
+          type: "transcript",
+          // ParticipantRole ("AGENT"/"CUSTOMER") is the canonical field; ParticipantId may be a UUID.
+          participant: s.Transcript.ParticipantRole || s.Transcript.ParticipantId || "UNKNOWN",
+          content: s.Transcript.Content || "",
+          sentiment: s.Transcript.Sentiment,
+          beginOffsetMs: s.Transcript.BeginOffsetMillis || 0,
+          endOffsetMs: s.Transcript.EndOffsetMillis || 0,
+          issueText: s.Transcript.IssuesDetected?.[0]
+            ? s.Transcript.Content?.substring(
+                s.Transcript.IssuesDetected[0].CharacterOffsets
+                  ?.BeginOffsetChar || 0,
+                s.Transcript.IssuesDetected[0].CharacterOffsets
+                  ?.EndOffsetChar || 0
+              )
+            : undefined,
+        });
+      }
+      if (s.Categories) {
+        for (const matched of s.Categories.MatchedCategories || []) {
           segments.push({
-            type: "transcript",
-            participant: s.Transcript.ParticipantId || "UNKNOWN",
-            content: s.Transcript.Content || "",
-            sentiment: s.Transcript.Sentiment,
-            beginOffsetMs: s.Transcript.BeginOffsetMillis || 0,
-            endOffsetMs: s.Transcript.EndOffsetMillis || 0,
-            issueText: s.Transcript.IssuesDetected?.[0]
-              ? s.Transcript.Content?.substring(
-                  s.Transcript.IssuesDetected[0].CharacterOffsets
-                    ?.BeginOffsetChar || 0,
-                  s.Transcript.IssuesDetected[0].CharacterOffsets
-                    ?.EndOffsetChar || 0
-                )
-              : undefined,
+            type: "category",
+            categoryName: matched,
+            beginOffsetMs: 0,
+            endOffsetMs: 0,
           });
         }
-        if (s.Categories) {
-          for (const matched of s.Categories.MatchedCategories || []) {
-            segments.push({
-              type: "category",
-              categoryName: matched,
-              beginOffsetMs: 0,
-              endOffsetMs: 0,
-            });
-          }
-        }
       }
+    }
 
-      nextToken = result.NextToken;
-    } while (nextToken);
+    // Get the contact start timestamp so the frontend can render absolute clock times.
+    // Cached after first lookup so this only adds ~150ms once per contactId.
+    const transcriptStartTimestamp = await getContactStartTimestamp(contactId);
 
     // Sort transcript segments by time
     segments.sort((a, b) => a.beginOffsetMs - b.beginOffsetMs);
@@ -107,6 +139,8 @@ export const handler: Handler = async (event: any) => {
         overallSentiment: overall,
         sentimentCounts: { positive, negative, neutral },
         totalSegments: transcripts.length,
+        // ISO 8601 UTC. Frontend adds beginOffsetMs and renders in user's local timezone.
+        transcriptStartTimestamp,
       }),
     };
   } catch (error) {

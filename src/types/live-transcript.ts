@@ -20,4 +20,8 @@ export interface LiveTranscriptData {
     neutral: number;
   };
   totalSegments: number;
+  // ISO 8601 UTC of when the call connected. Used to render absolute clock times.
+  transcriptStartTimestamp?: string | null;
+  // True when Connect Contact Lens is rate-limiting; segments will be empty for this poll.
+  throttled?: boolean;
 }
