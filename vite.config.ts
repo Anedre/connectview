@@ -14,6 +14,14 @@ export default defineConfig({
   define: {
     global: "globalThis", // Required for amazon-connect-streams
   },
+  server: {
+    port: 5173,
+    strictPort: true, // Fail instead of jumping to another port — origin must match Connect Approved Origins
+  },
+  preview: {
+    port: 5173,
+    strictPort: true,
+  },
   build: {
     chunkSizeWarningLimit: 1000,
   },

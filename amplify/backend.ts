@@ -285,6 +285,8 @@ activeContactLambda.addToRolePolicy(
     actions: [
       "connect:GetCurrentUserData",
       "connect:ListUsers",
+      // DescribeContact is used as a fallback when GetCurrentUserData returns null CustomerEndpoint
+      "connect:DescribeContact",
     ],
     resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
   })

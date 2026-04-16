@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { initCCP, terminateCCP } from "@/lib/connect";
+import { initCCP } from "@/lib/connect";
 import { CONNECT_INSTANCE_URL } from "@/lib/constants";
 import {
   SECURITY_PROFILE_TO_ROLE,
@@ -53,23 +53,26 @@ async function fetchSecurityProfiles(username: string): Promise<string[]> {
   }
 }
 
+// Module-level guard so React StrictMode (dev) doesn't double-init the CCP iframe.
+// The CCP iframe must live for the full page lifetime — we never tear it down on cleanup.
+let ccpInitialized = false;
+
 export function ConnectAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const ccpContainerRef = useRef<HTMLDivElement>(null);
-  const initialized = useRef(false);
 
   useEffect(() => {
     const container = ccpContainerRef.current;
-    if (!container || initialized.current) return;
+    if (!container || ccpInitialized) return;
     if (!CONNECT_INSTANCE_URL) {
       setError("Connect instance URL not configured");
       setLoading(false);
       return;
     }
 
-    initialized.current = true;
+    ccpInitialized = true;
 
     try {
       initCCP(container, CONNECT_INSTANCE_URL);
@@ -108,15 +111,10 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to initialize CCP");
       setLoading(false);
-      initialized.current = false;
+      ccpInitialized = false;
     }
-
-    return () => {
-      if (initialized.current) {
-        terminateCCP();
-        initialized.current = false;
-      }
-    };
+    // No cleanup: the CCP iframe is a singleton tied to the page, not the component lifecycle.
+    // Terminating it on StrictMode unmount/remount breaks event listeners (core.initialized stays false).
   }, []);
 
   const signOut = () => {

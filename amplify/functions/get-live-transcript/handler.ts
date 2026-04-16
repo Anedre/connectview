@@ -110,13 +110,41 @@ export const handler: Handler = async (event: any) => {
       }),
     };
   } catch (error) {
+    // ThrottlingException / TooManyRequestsException → return graceful 200 so the UI keeps the
+    // previous transcript instead of flashing an error. Contact Lens has tight rate limits.
+    const errName =
+      error && typeof error === "object" && "name" in error
+        ? String((error as { name: unknown }).name)
+        : "";
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const isThrottled =
+      errName === "ThrottlingException" ||
+      errName === "TooManyRequestsException" ||
+      /throttl|too many requests|rate exceeded/i.test(errMsg);
+
+    if (isThrottled) {
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactId,
+          throttled: true,
+          segments: [],
+          categories: [],
+          overallSentiment: "NEUTRAL",
+          sentimentCounts: { positive: 0, negative: 0, neutral: 0 },
+          totalSegments: 0,
+        }),
+      };
+    }
+
     console.error("Error getting live transcript:", error);
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         error: "Failed to get live transcript",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: errMsg,
       }),
     };
   }

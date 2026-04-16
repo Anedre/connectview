@@ -1,12 +1,37 @@
 import type { Handler } from "aws-lambda";
 import {
   ConnectClient,
+  DescribeContactCommand,
   GetCurrentUserDataCommand,
   ListUsersCommand,
 } from "@aws-sdk/client-connect";
 
 const client = new ConnectClient({});
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+
+// Enrich missing CustomerEndpoint via DescribeContact — GetCurrentUserData doesn't always
+// populate the customer endpoint while the call is still in early CONNECTING state.
+async function describeContactSafe(contactId: string): Promise<{
+  customerPhone: string | null;
+  customerEndpointType: string | null;
+} | null> {
+  try {
+    const res = await client.send(
+      new DescribeContactCommand({
+        InstanceId: INSTANCE_ID,
+        ContactId: contactId,
+      })
+    );
+    const ep = res.Contact?.CustomerEndpoint;
+    return {
+      customerPhone: ep?.Address || null,
+      customerEndpointType: ep?.Type || null,
+    };
+  } catch (err) {
+    console.error("DescribeContact fallback failed:", err);
+    return null;
+  }
+}
 
 // Cache username -> userId lookups
 const userIdCache = new Map<string, string>();
@@ -99,6 +124,19 @@ export const handler: Handler = async (event: any) => {
       )
     ) || contacts[0];
 
+    let customerPhone = active.CustomerEndpoint?.Address || null;
+    let customerEndpointType = active.CustomerEndpoint?.Type || null;
+
+    // Fallback: GetCurrentUserData often returns null CustomerEndpoint —
+    // ask DescribeContact for the real endpoint.
+    if (!customerPhone && active.ContactId) {
+      const enriched = await describeContactSafe(active.ContactId);
+      if (enriched) {
+        customerPhone = enriched.customerPhone;
+        customerEndpointType = enriched.customerEndpointType;
+      }
+    }
+
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
@@ -112,8 +150,8 @@ export const handler: Handler = async (event: any) => {
           connectedToAgentTimestamp: active.ConnectedToAgentTimestamp,
           queueName: active.Queue?.Name || null,
           queueArn: active.Queue?.Arn || null,
-          customerPhone: active.CustomerEndpoint?.Address || null,
-          customerEndpointType: active.CustomerEndpoint?.Type || null,
+          customerPhone,
+          customerEndpointType,
         },
         agentStatus: userData?.Status?.StatusName || null,
       }),

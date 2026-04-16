@@ -247,9 +247,9 @@ export function useActiveContact() {
       }
     };
 
-    // Initial fetch + 3s interval
+    // Initial fetch + 5s interval (Connect APIs are throttled — 3s was too aggressive)
     fetchActive();
-    apiIntervalRef.current = setInterval(fetchActive, 3000);
+    apiIntervalRef.current = setInterval(fetchActive, 5000);
 
     return () => {
       cancelled = true;
