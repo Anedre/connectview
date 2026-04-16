@@ -6,9 +6,19 @@ export const ROLE_HIERARCHY: Record<UserRole, number> = {
   Admins: 2,
 };
 
+// Map Connect security profile names to app roles
+export const SECURITY_PROFILE_TO_ROLE: Record<string, UserRole> = {
+  Admin: "Admins",
+  CallCenterManager: "Supervisors",
+  QualityAnalyst: "Supervisors",
+  Agent: "Agents",
+};
+
 export interface AuthUser {
   email: string;
   userId: string;
+  username: string;
   groups: UserRole[];
   highestRole: UserRole;
+  securityProfiles: string[];
 }

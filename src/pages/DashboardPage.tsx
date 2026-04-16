@@ -12,7 +12,7 @@ export function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold tracking-tight">
-          Welcome, {user?.email.split("@")[0] || "User"}
+          Welcome, {user?.username || "User"}
         </h2>
         <p className="text-muted-foreground">
           Connectview - Amazon Connect Control Panel

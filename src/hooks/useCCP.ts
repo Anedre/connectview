@@ -1,6 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { initCCP, terminateCCP } from "@/lib/connect";
-import { CONNECT_INSTANCE_URL } from "@/lib/constants";
+import { useState, useEffect } from "react";
 import type { AgentState } from "@/types/connect";
 
 export function useCCP() {
@@ -8,20 +6,13 @@ export function useCCP() {
   const [agentName, setAgentName] = useState("");
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hasInitialized = useRef(false);
 
-  const initialize = useCallback((container: HTMLElement) => {
-    if (hasInitialized.current) return;
-    if (!CONNECT_INSTANCE_URL) {
-      setError("Connect instance URL not configured");
-      return;
-    }
-
-    hasInitialized.current = true;
+  useEffect(() => {
+    // The CCP is initialized by ConnectAuthProvider at the app level.
+    // Here we just subscribe to agent events.
+    if (typeof connect === "undefined" || !connect.agent) return;
 
     try {
-      initCCP(container, CONNECT_INSTANCE_URL);
-
       connect.agent((agent) => {
         setAgentName(agent.getName());
         setIsInitialized(true);
@@ -40,20 +31,10 @@ export function useCCP() {
       });
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to initialize CCP"
+        err instanceof Error ? err.message : "Failed to subscribe to agent"
       );
-      hasInitialized.current = false;
     }
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (hasInitialized.current) {
-        terminateCCP();
-        hasInitialized.current = false;
-      }
-    };
-  }, []);
-
-  return { agentState, agentName, isInitialized, error, initialize };
+  return { agentState, agentName, isInitialized, error };
 }

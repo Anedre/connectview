@@ -1,51 +1,88 @@
 import type { Handler } from "aws-lambda";
 import {
-  CognitoIdentityProviderClient,
+  ConnectClient,
   ListUsersCommand,
-  AdminListGroupsForUserCommand,
-  AdminAddUserToGroupCommand,
-  AdminRemoveUserFromGroupCommand,
-} from "@aws-sdk/client-cognito-identity-provider";
+  DescribeUserCommand,
+  DescribeSecurityProfileCommand,
+} from "@aws-sdk/client-connect";
 
-const client = new CognitoIdentityProviderClient({});
-const USER_POOL_ID = process.env.USER_POOL_ID || "";
+const client = new ConnectClient({});
+const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+
+// Cache security profile names to avoid repeated lookups
+const profileNameCache = new Map<string, string>();
+
+async function getProfileName(profileId: string): Promise<string> {
+  if (profileNameCache.has(profileId)) return profileNameCache.get(profileId)!;
+  try {
+    const res = await client.send(
+      new DescribeSecurityProfileCommand({
+        InstanceId: INSTANCE_ID,
+        SecurityProfileId: profileId,
+      })
+    );
+    const name = res.SecurityProfile?.SecurityProfileName || profileId;
+    profileNameCache.set(profileId, name);
+    return name;
+  } catch {
+    return profileId;
+  }
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
-  // Support both API Gateway v1 (httpMethod) and Function URL v2 (requestContext.http.method)
   const method = event.httpMethod || event.requestContext?.http?.method || "GET";
 
   try {
     if (method === "GET") {
-      // List all users with their groups
-      const usersResponse = await client.send(
+      const summariesRes = await client.send(
         new ListUsersCommand({
-          UserPoolId: USER_POOL_ID,
-          Limit: 60,
+          InstanceId: INSTANCE_ID,
+          MaxResults: 100,
         })
       );
 
+      const summaries = summariesRes.UserSummaryList || [];
+
+      // Fetch full details for each user in parallel
       const users = await Promise.all(
-        (usersResponse.Users || []).map(async (user) => {
-          const groupsResponse = await client.send(
-            new AdminListGroupsForUserCommand({
-              UserPoolId: USER_POOL_ID,
-              Username: user.Username!,
-            })
-          );
+        summaries.map(async (summary) => {
+          try {
+            const userRes = await client.send(
+              new DescribeUserCommand({
+                InstanceId: INSTANCE_ID,
+                UserId: summary.Id!,
+              })
+            );
 
-          const email =
-            user.Attributes?.find((a) => a.Name === "email")?.Value || "";
+            const user = userRes.User;
+            const profileIds = user?.SecurityProfileIds || [];
+            const profileNames = await Promise.all(
+              profileIds.map((id) => getProfileName(id))
+            );
 
-          return {
-            username: user.Username,
-            email,
-            status: user.UserStatus,
-            enabled: user.Enabled,
-            created: user.UserCreateDate?.toISOString(),
-            groups:
-              groupsResponse.Groups?.map((g) => g.GroupName || "") || [],
-          };
+            return {
+              username: summary.Username || "",
+              email: user?.IdentityInfo?.Email || "",
+              firstName: user?.IdentityInfo?.FirstName || "",
+              lastName: user?.IdentityInfo?.LastName || "",
+              status: "CONFIRMED",
+              enabled: true,
+              created: "",
+              groups: profileNames,
+            };
+          } catch {
+            return {
+              username: summary.Username || "",
+              email: "",
+              firstName: "",
+              lastName: "",
+              status: "UNKNOWN",
+              enabled: true,
+              created: "",
+              groups: [],
+            };
+          }
         })
       );
 
@@ -56,58 +93,18 @@ export const handler: Handler = async (event: any) => {
       };
     }
 
-    if (method === "POST") {
-      // Change user group
-      const body = JSON.parse(event.body || "{}");
-      const { username, addGroup, removeGroup } = body;
-
-      if (!username) {
-        return {
-          statusCode: 400,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ error: "username is required" }),
-        };
-      }
-
-      if (removeGroup) {
-        await client.send(
-          new AdminRemoveUserFromGroupCommand({
-            UserPoolId: USER_POOL_ID,
-            Username: username,
-            GroupName: removeGroup,
-          })
-        );
-      }
-
-      if (addGroup) {
-        await client.send(
-          new AdminAddUserToGroupCommand({
-            UserPoolId: USER_POOL_ID,
-            Username: username,
-            GroupName: addGroup,
-          })
-        );
-      }
-
-      return {
-        statusCode: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ success: true }),
-      };
-    }
-
     return {
       statusCode: 405,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ error: "Method not allowed" }),
     };
   } catch (error) {
-    console.error("Error managing users:", error);
+    console.error("Error listing Connect users:", error);
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        error: "Failed to manage users",
+        error: "Failed to list users",
         message: error instanceof Error ? error.message : "Unknown error",
       }),
     };

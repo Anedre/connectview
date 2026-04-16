@@ -25,10 +25,7 @@ export function Header() {
 
   if (!user) return null;
 
-  const initials = user.email
-    .split("@")[0]
-    .slice(0, 2)
-    .toUpperCase();
+  const initials = user.username.slice(0, 2).toUpperCase();
 
   return (
     <header className="flex h-14 items-center gap-2 border-b px-4">
@@ -52,7 +49,7 @@ export function Header() {
           <DropdownMenuContent align="end" className="w-56">
             <div className="flex items-center gap-2 p-2">
               <User className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">{user.email}</span>
+              <span className="text-sm">{user.username}</span>
             </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={signOut}>

@@ -34,6 +34,7 @@ declare namespace connect {
   interface Agent {
     getState(): AgentStateDefinition;
     getName(): string;
+    getConfiguration(): AgentConfiguration;
     getRoutingProfile(): any;
     onStateChange(callback: (state: AgentStateChange) => void): void;
     onRefresh(callback: (agent: Agent) => void): void;
@@ -46,6 +47,18 @@ declare namespace connect {
       }
     ): void;
     getAgentStates(): AgentStateDefinition[];
+  }
+
+  interface AgentConfiguration {
+    name: string;
+    username: string;
+    agentARN: string;
+    permissions: string[];
+    extension?: string;
+    routingProfile: {
+      name: string;
+      routingProfileARN: string;
+    };
   }
 
   interface AgentStateDefinition {

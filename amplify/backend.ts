@@ -151,23 +151,19 @@ recordingLambda.addToRolePolicy(
 );
 asFunction(recordingLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
 
-// ---- list-users ----
+// ---- list-users (now uses Connect instead of Cognito) ----
 const listUsersLambda = backend.listUsers.resources.lambda;
 listUsersLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: [
-      "cognito-idp:ListUsers",
-      "cognito-idp:AdminListGroupsForUser",
-      "cognito-idp:AdminAddUserToGroup",
-      "cognito-idp:AdminRemoveUserFromGroup",
+      "connect:ListUsers",
+      "connect:DescribeUser",
+      "connect:DescribeSecurityProfile",
     ],
-    resources: [`arn:aws:cognito-idp:${REGION}:${ACCOUNT_ID}:userpool/*`],
+    resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
   })
 );
-asFunction(listUsersLambda).addEnvironment(
-  "USER_POOL_ID",
-  backend.auth.resources.userPool.userPoolId
-);
+asFunction(listUsersLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
 
 // ---- Function URLs for frontend API access (NONE auth for simplicity, app behind Cognito) ----
 const metricsUrl = asFunction(realtimeMetricsLambda).addFunctionUrl({
