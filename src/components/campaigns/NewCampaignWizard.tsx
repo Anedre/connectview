@@ -31,6 +31,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useContactFlows, useSourcePhones } from "@/hooks/useContactFlows";
+import { useQueues } from "@/hooks/useQueues";
+import { useFlowQueues } from "@/hooks/useFlowQueues";
 import { getApiEndpoints } from "@/lib/api";
 import { parseCsvText, parsePhoneList, type ParsedContact } from "@/lib/csvParser";
 import { useAuth } from "@/hooks/useAuth";
@@ -67,6 +69,7 @@ export function NewCampaignWizard({
   const { user } = useAuth();
   const { flows, loading: flowsLoading } = useContactFlows();
   const { phones, loading: phonesLoading } = useSourcePhones();
+  const { queues, loading: queuesLoading } = useQueues();
 
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
@@ -95,6 +98,8 @@ export function NewCampaignWizard({
   // Step 3 — Dialing config
   const [sourcePhoneNumber, setSourcePhoneNumber] = useState("");
   const [contactFlowId, setContactFlowId] = useState("");
+  const [campaignQueueId, setCampaignQueueId] = useState("");
+  const [queueTouched, setQueueTouched] = useState(false);
   const [dialMode, setDialMode] = useState("progressive");
   const [concurrency, setConcurrency] = useState(5);
   const [timezone, setTimezone] = useState("America/Lima");
@@ -116,9 +121,25 @@ export function NewCampaignWizard({
         setPastedList("");
         setParseError(null);
         setSubmitting(false);
+        setCampaignQueueId("");
+        setQueueTouched(false);
       }, 200);
     }
   }, [open]);
+
+  // Auto-detect primary queue when the user picks a contact flow, unless they
+  // already manually picked a different queue.
+  const { data: flowQueues, loading: flowQueuesLoading } = useFlowQueues(
+    contactFlowId || null
+  );
+  useEffect(() => {
+    if (queueTouched) return;
+    const primary = flowQueues?.primaryQueue;
+    if (primary && !primary.isDynamic) {
+      setCampaignQueueId(primary.queueId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowQueues?.primaryQueue?.queueId]);
 
   // Default selections once flows & phones load
   useEffect(() => {
@@ -182,12 +203,15 @@ export function NewCampaignWizard({
         throw new Error("createCampaign endpoint not configured");
       }
       const flow = flows.find((f) => f.id === contactFlowId);
+      const queue = queues.find((q) => q.id === campaignQueueId);
       const payload = {
         name: name.trim(),
         description: description.trim(),
         sourcePhoneNumber,
         contactFlowId,
         contactFlowName: flow?.name,
+        campaignQueueId: campaignQueueId || undefined,
+        campaignQueueName: queue?.name,
         dialMode,
         concurrency,
         timezone,
@@ -510,6 +534,89 @@ export function NewCampaignWizard({
               </div>
             </div>
 
+            <div className="space-y-2">
+              <Label>Queue destino (para asignar agentes)</Label>
+              <Select
+                value={campaignQueueId}
+                onValueChange={(v) => {
+                  setCampaignQueueId(v || "");
+                  setQueueTouched(true);
+                }}
+                disabled={queuesLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Opcional — elegir queue" />
+                </SelectTrigger>
+                <SelectContent>
+                  {queues.map((q) => (
+                    <SelectItem key={q.id} value={q.id}>
+                      {q.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {flowQueuesLoading && (
+                <p className="text-xs text-muted-foreground">
+                  🔍 Analizando queues del flow...
+                </p>
+              )}
+              {flowQueues?.primaryQueue && !flowQueues.primaryQueue.isDynamic && (
+                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                  ✓ Detectada del flow:{" "}
+                  <strong>{flowQueues.primaryQueue.queueName}</strong>
+                  {flowQueues.literalQueues.length > 1 && (
+                    <span className="ml-1 text-amber-600">
+                      ({flowQueues.literalQueues.length} queues en el flow —
+                      puedes cambiar)
+                    </span>
+                  )}
+                </p>
+              )}
+              {flowQueues &&
+                flowQueues.literalQueues.length === 0 &&
+                flowQueues.dynamicQueues.length > 0 && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    ⚠️ El flow usa queue dinámica — elige manualmente.
+                  </p>
+                )}
+              <p className="text-xs text-muted-foreground">
+                Usada para auto-configurar routing profiles cuando asignes
+                agentes a la campaña.
+              </p>
+            </div>
+
+            {/* AMD (Answer Machine Detection) notice — currently blocked for PE */}
+            <div className="rounded-lg border border-amber-300 bg-gradient-to-br from-amber-50/50 to-orange-50/50 p-3 dark:border-amber-900 dark:from-amber-950/20 dark:to-orange-950/20">
+              <div className="flex items-start gap-2">
+                <Badge className="mt-0.5 bg-amber-100 text-[10px] text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                  PRÓXIMAMENTE
+                </Badge>
+                <div className="flex-1 text-xs">
+                  <div className="font-semibold text-amber-900 dark:text-amber-200">
+                    AMD (Answer Machine Detection) bloqueado por AWS en Perú
+                  </div>
+                  <p className="mt-0.5 text-muted-foreground">
+                    AWS solo ofrece AMD como parte de Outbound Campaigns
+                    v2, que hoy únicamente soporta destinos en US, MX y BR
+                    desde us-east-1. Cuando AWS agregue Perú a la lista
+                    (ver{" "}
+                    <a
+                      href="https://docs.aws.amazon.com/connect/latest/adminguide/regions.html#campaigns_region"
+                      className="underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      regiones soportadas
+                    </a>
+                    ) activamos AMD automáticamente. Mientras tanto el
+                    dialer marca con tráfico GENERAL y el agente recibe
+                    todas las llamadas contestadas, incluidas las que
+                    caen a voicemail.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Dial mode</Label>
@@ -629,6 +736,11 @@ export function NewCampaignWizard({
                 <span className="text-muted-foreground">Contact flow</span>
                 <span className="text-xs">
                   {flows.find((f) => f.id === contactFlowId)?.name || "—"}
+                </span>
+                <span className="text-muted-foreground">Queue destino</span>
+                <span className="text-xs">
+                  {queues.find((q) => q.id === campaignQueueId)?.name ||
+                    "— (no asignable)"}
                 </span>
                 <span className="text-muted-foreground">Dial mode</span>
                 <span>{dialMode}</span>

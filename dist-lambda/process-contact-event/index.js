@@ -50,23 +50,24 @@ async function findCampaignContact(contactId) {
       campaignId: row.campaignId,
       rowId: row.rowId,
       attempts: Number(row.attempts || 0),
-      status: row.status
+      status: row.status,
+      connectedAt: row.connectedAt
     };
   } catch (err) {
     console.warn("findCampaignContact failed:", err);
     return null;
   }
 }
-function classifyDisconnect(reason, previousStatus) {
-  if (previousStatus === "connected") return "done";
+function classifyDisconnect(reason, previousStatus, callDurationSec) {
   const r = (reason || "").toUpperCase();
-  if (r === "CUSTOMER_MISSED_CALL" || r === "TELECOM_PROBLEM" || r === "CALL_ABANDONED" || r.includes("MISSED")) {
+  if (r === "CUSTOMER_MISSED_CALL" || r === "TELECOM_PROBLEM" || r === "CALL_ABANDONED" || r.includes("MISSED") || r.includes("ABANDONED") || r.includes("OUTBOUND_RING_TIME_EXCEEDED")) {
     return "no_answer";
   }
-  if (r === "CUSTOMER_DISCONNECT" || r === "AGENT_DISCONNECT") {
-    return previousStatus === "connected" ? "done" : "no_answer";
+  if (previousStatus === "connected" && callDurationSec !== null && callDurationSec < 10) {
+    return "no_answer";
   }
-  return "failed";
+  if (previousStatus === "connected") return "done";
+  return "no_answer";
 }
 async function updateCampaignContactStatus(link, newStatus, extra = {}) {
   const setParts = ["#st = :new"];
@@ -138,57 +139,67 @@ var handler = async (event) => {
     if (eventType === "INITIATED" || eventType === "CONNECTED_TO_AGENT") {
       const agentName = detail.agentInfo?.agentArn?.split("/").pop() || "";
       const queueName = detail.queueInfo?.queueArn?.split("/").pop() || "";
-      await dynamo.send(
-        new import_client_dynamodb.PutItemCommand({
-          TableName: TABLE_NAME,
-          Item: {
-            contactId: { S: contactId },
-            initiationTimestamp: {
-              S: detail.initiationTimestamp || (/* @__PURE__ */ new Date()).toISOString()
-            },
-            channel: { S: detail.channel || "VOICE" },
-            agentUsername: { S: agentName },
-            queueName: { S: queueName },
-            initiationMethod: { S: detail.initiationMethod || "" },
-            status: { S: "ACTIVE" }
-          },
-          ConditionExpression: "attribute_not_exists(contactId)"
-        })
-      ).catch((err) => {
-        if (err instanceof Error && err.name === "ConditionalCheckFailedException") {
-          return;
-        }
-        throw err;
-      });
-    } else if (eventType === "DISCONNECTED" || eventType === "CONTACT_END") {
-      await dynamo.send(
-        new import_client_dynamodb.UpdateItemCommand({
-          TableName: TABLE_NAME,
-          Key: { contactId: { S: contactId } },
-          UpdateExpression: "SET #status = :status, disconnectTimestamp = :dt, disconnectReason = :dr",
-          ExpressionAttributeNames: { "#status": "status" },
-          ExpressionAttributeValues: {
-            ":status": { S: "COMPLETED" },
-            ":dt": {
-              S: detail.disconnectTimestamp || (/* @__PURE__ */ new Date()).toISOString()
-            },
-            ":dr": { S: detail.disconnectReason || "UNKNOWN" }
+      if (agentName) {
+        try {
+          await dynamo.send(
+            new import_client_dynamodb.PutItemCommand({
+              TableName: TABLE_NAME,
+              Item: {
+                contactId: { S: contactId },
+                initiationTimestamp: {
+                  S: detail.initiationTimestamp || (/* @__PURE__ */ new Date()).toISOString()
+                },
+                channel: { S: detail.channel || "VOICE" },
+                agentUsername: { S: agentName },
+                queueName: { S: queueName || "unknown" },
+                initiationMethod: { S: detail.initiationMethod || "" },
+                status: { S: "ACTIVE" }
+              },
+              ConditionExpression: "attribute_not_exists(contactId)"
+            })
+          );
+        } catch (err) {
+          if (!(err instanceof Error) || err.name !== "ConditionalCheckFailedException") {
+            console.warn("analytics table Put failed, continuing:", err);
           }
-        })
-      );
-      if (ENRICH_FUNCTION_NAME) {
-        await lambda.send(
-          new import_client_lambda.InvokeCommand({
-            FunctionName: ENRICH_FUNCTION_NAME,
-            InvocationType: "Event",
-            Payload: Buffer.from(
-              JSON.stringify({
-                contactId,
-                instanceId: detail.instanceArn?.split("/").pop() || ""
-              })
-            )
+        }
+      }
+    } else if (eventType === "DISCONNECTED" || eventType === "CONTACT_END") {
+      try {
+        await dynamo.send(
+          new import_client_dynamodb.UpdateItemCommand({
+            TableName: TABLE_NAME,
+            Key: { contactId: { S: contactId } },
+            UpdateExpression: "SET #status = :status, disconnectTimestamp = :dt, disconnectReason = :dr",
+            ConditionExpression: "attribute_exists(contactId)",
+            ExpressionAttributeNames: { "#status": "status" },
+            ExpressionAttributeValues: {
+              ":status": { S: "COMPLETED" },
+              ":dt": {
+                S: detail.disconnectTimestamp || (/* @__PURE__ */ new Date()).toISOString()
+              },
+              ":dr": { S: detail.disconnectReason || "UNKNOWN" }
+            }
           })
         );
+        if (ENRICH_FUNCTION_NAME) {
+          await lambda.send(
+            new import_client_lambda.InvokeCommand({
+              FunctionName: ENRICH_FUNCTION_NAME,
+              InvocationType: "Event",
+              Payload: Buffer.from(
+                JSON.stringify({
+                  contactId,
+                  instanceId: detail.instanceArn?.split("/").pop() || ""
+                })
+              )
+            })
+          );
+        }
+      } catch (err) {
+        if (!(err instanceof Error) || err.name !== "ConditionalCheckFailedException") {
+          console.warn("analytics table Update failed, continuing:", err);
+        }
       }
     }
     const link = await findCampaignContact(contactId);
@@ -201,10 +212,23 @@ var handler = async (event) => {
       });
       await updateCampaignCounters(link.campaignId, "connected", link.status);
     } else if (eventType === "DISCONNECTED" || eventType === "CONTACT_END") {
-      const newStatus = classifyDisconnect(detail.disconnectReason, link.status);
+      let callDurationSec = null;
+      if (link.connectedAt) {
+        const disc = detail.disconnectTimestamp ? Date.parse(detail.disconnectTimestamp) : Date.now();
+        const conn = Date.parse(link.connectedAt);
+        if (!isNaN(conn) && !isNaN(disc)) {
+          callDurationSec = Math.max(0, Math.round((disc - conn) / 1e3));
+        }
+      }
+      const newStatus = classifyDisconnect(
+        detail.disconnectReason,
+        link.status,
+        callDurationSec
+      );
       await updateCampaignContactStatus(link, newStatus, {
         disconnectReason: detail.disconnectReason || "UNKNOWN",
-        disconnectedAt: (/* @__PURE__ */ new Date()).toISOString()
+        disconnectedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        callDurationSec: callDurationSec ?? 0
       });
       await updateCampaignCounters(link.campaignId, newStatus, link.status);
     }

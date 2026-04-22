@@ -10,6 +10,7 @@ import {
   ConnectClient,
   StartOutboundVoiceContactCommand,
   GetCurrentUserDataCommand,
+  ListUsersCommand,
 } from "@aws-sdk/client-connect";
 
 const dynamo = new DynamoDBClient({});
@@ -17,7 +18,17 @@ const connect = new ConnectClient({ maxAttempts: 1 });
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+const CAMPAIGN_AGENTS_TABLE =
+  process.env.CAMPAIGN_AGENTS_TABLE || "connectview-campaign-agents";
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+// AMD-aware flow that runs CheckOutboundCallStatus FIRST so voicemails/no-answer
+// are hung up before reaching an agent. When present, every outbound dial uses
+// this flow (AMD is not free — AWS bills per-call — but it is worth it here).
+// If unset or empty, falls back to the admin-selected contact flow per campaign.
+const AMD_FLOW_ID = process.env.AMD_FLOW_ID || "";
+// Turn AMD on or off globally. Defaults to "true" because the whole reason for
+// this dialer is filtering out voicemails before the agent picks up.
+const AMD_ENABLED = (process.env.AMD_ENABLED ?? "true").toLowerCase() !== "false";
 
 interface Campaign {
   campaignId: string;
@@ -120,6 +131,7 @@ async function findPendingContacts(
       ExpressionAttributeValues: {
         ":cid": { S: campaignId },
         ":s": { S: "pending" },
+        ":now": { S: nowIso },
       },
       FilterExpression:
         "attribute_not_exists(nextRetryAt) OR nextRetryAt <= :now",
@@ -133,29 +145,71 @@ async function findPendingContacts(
   return items.filter((c) => !c.nextRetryAt || c.nextRetryAt <= nowIso);
 }
 
-async function countAvailableAgents(): Promise<number> {
-  try {
+// List all users in the instance so we can use them as an `Agents` filter for
+// GetCurrentUserData (which requires one filter). Cached within the warm container.
+let allUserIdsCache: string[] | null = null;
+async function listAllUserIds(): Promise<string[]> {
+  if (allUserIdsCache) return allUserIdsCache;
+  const ids: string[] = [];
+  let nextToken: string | undefined;
+  do {
     const res = await connect.send(
-      new GetCurrentUserDataCommand({
+      new ListUsersCommand({
         InstanceId: INSTANCE_ID,
-        Filters: { ContactFilter: { ContactStates: [] } },
+        MaxResults: 100,
+        NextToken: nextToken,
       })
     );
-    let available = 0;
-    for (const u of res.UserDataList || []) {
-      const contacts = u.Contacts || [];
-      if (
-        u.Status?.StatusName === "Available" &&
-        contacts.length === 0
-      ) {
-        available++;
+    for (const u of res.UserSummaryList || []) {
+      if (u.Id) ids.push(u.Id);
+    }
+    nextToken = res.NextToken;
+  } while (nextToken);
+  allUserIdsCache = ids;
+  return ids;
+}
+
+// Fetch the user IDs assigned to a specific campaign (from connectview-campaign-agents).
+async function getAssignedAgents(campaignId: string): Promise<string[]> {
+  const res = await dynamo.send(
+    new QueryCommand({
+      TableName: CAMPAIGN_AGENTS_TABLE,
+      KeyConditionExpression: "campaignId = :cid",
+      ExpressionAttributeValues: { ":cid": { S: campaignId } },
+    })
+  );
+  return (res.Items || []).map((it) => (it.userId?.S as string) || "").filter(Boolean);
+}
+
+// Count how many users from the given list are Available AND not on an active contact.
+// GetCurrentUserData needs a non-empty filter — pass the userIds in Agents.
+// Batched in chunks of 100 (API limit).
+async function countAvailableFromUsers(userIds: string[]): Promise<number> {
+  if (userIds.length === 0) return 0;
+  let available = 0;
+  try {
+    for (let i = 0; i < userIds.length; i += 100) {
+      const batch = userIds.slice(i, i + 100);
+      const res = await connect.send(
+        new GetCurrentUserDataCommand({
+          InstanceId: INSTANCE_ID,
+          Filters: { Agents: batch },
+        })
+      );
+      for (const u of res.UserDataList || []) {
+        const contacts = u.Contacts || [];
+        if (
+          u.Status?.StatusName === "Available" &&
+          contacts.length === 0
+        ) {
+          available++;
+        }
       }
     }
-    return available;
   } catch (err) {
-    console.warn("countAvailableAgents failed:", err);
-    return 0;
+    console.warn("countAvailableFromUsers failed:", err);
   }
+  return available;
 }
 
 async function markAsDialing(c: CampaignContact): Promise<boolean> {
@@ -258,15 +312,37 @@ async function startOutbound(
       ),
     };
 
+    // If AMD is enabled and we have a dedicated AMD flow, use it in place of
+    // the admin-selected flow. The AMD flow runs CheckOutboundCallStatus first
+    // and only transfers to the queue on CallAnswered. Voicemails and no-answer
+    // are hung up before an agent ever sees the call.
+    //
+    // IMPORTANT (2026): Outbound Campaigns v2 is required for Peru is NOT
+    // supported by AWS (only US, MX, BR from us-east-1). So we keep
+    // TrafficType=GENERAL (default) + AnswerMachineDetectionConfig on the
+    // StartOutboundVoiceContact itself — this DOES work for Peru.
+    const useAmd = AMD_ENABLED && !!AMD_FLOW_ID;
+    const contactFlowId = useAmd ? AMD_FLOW_ID : campaign.contactFlowId;
+
     const res = await connect.send(
       new StartOutboundVoiceContactCommand({
         InstanceId: INSTANCE_ID,
-        ContactFlowId: campaign.contactFlowId,
+        ContactFlowId: contactFlowId,
         DestinationPhoneNumber: contact.phone,
         SourcePhoneNumber: campaign.sourcePhoneNumber,
         Attributes: attributes,
-        // Unique request token helps Connect deduplicate if we retry
-        ClientToken: `${campaign.campaignId}-${contact.rowId}-${contact.attempts}`.slice(0, 500),
+        ClientToken:
+          `${contact.rowId}-${contact.attempts}-${Date.now()}`.slice(0, 500),
+        // AMD config — works on GENERAL traffic. The contact flow (AMD_FLOW_ID)
+        // reads the result via CheckOutboundCallStatus and branches.
+        ...(useAmd
+          ? {
+              AnswerMachineDetectionConfig: {
+                EnableAnswerMachineDetection: true,
+                AwaitAnswerMachinePrompt: false,
+              },
+            }
+          : {}),
       })
     );
     return res.ContactId || null;
@@ -358,15 +434,7 @@ export const handler: Handler = async () => {
       return { ok: true, campaignsProcessed: 0 };
     }
 
-    // Count available agents once per dialer tick — same pool shared across campaigns
-    const agentsAvailable = await countAvailableAgents();
-    console.log(`[dialer] available agents: ${agentsAvailable}`);
-
-    let slotsRemaining = agentsAvailable;
-
     for (const campaign of campaigns) {
-      if (slotsRemaining <= 0 && campaign.dialMode !== "agentless") break;
-
       // Check time window
       if (!isWithinWindow(campaign)) {
         console.log(`[dialer] ${campaign.campaignId} outside calling window`);
@@ -380,9 +448,20 @@ export const handler: Handler = async () => {
 
       const ratio = campaign.dialMode === "power" ? 2 : 1;
       let toDial: number;
+      let slotsRemaining = 0;
+
       if (campaign.dialMode === "agentless") {
         toDial = availableSlots;
       } else {
+        // Count agents specifically assigned to THIS campaign who are Available.
+        // If none assigned, fall back to any Available user in the instance.
+        const assignedIds = await getAssignedAgents(campaign.campaignId);
+        const poolIds =
+          assignedIds.length > 0 ? assignedIds : await listAllUserIds();
+        slotsRemaining = await countAvailableFromUsers(poolIds);
+        console.log(
+          `[dialer] ${campaign.campaignId}: assigned=${assignedIds.length}, pool=${poolIds.length}, available=${slotsRemaining}`
+        );
         // progressive: 1 dial per available agent. power: `ratio` dials per agent.
         toDial = Math.min(availableSlots, slotsRemaining * ratio);
       }
@@ -407,8 +486,7 @@ export const handler: Handler = async () => {
         await linkConnectContact(contact, connectContactId);
 
         if (campaign.dialMode !== "agentless") {
-          // Each dial consumes 1/ratio of an agent slot.
-          // progressive (ratio=1) → 1 dial = 1 agent; power (ratio=2) → 2 dials = 1 agent.
+          // Each dial consumes 1/ratio of an agent slot (per-campaign counter).
           slotsRemaining -= 1 / ratio;
         }
         if (slotsRemaining <= 0 && campaign.dialMode !== "agentless") break;

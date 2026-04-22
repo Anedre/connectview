@@ -1,0 +1,17 @@
+{
+  "id": "040cb5c9-691f-4cce-be6b-b9ce8d69bb69",
+  "outboundRequests": [
+    {
+      "clientToken": "sbs-test-1776880053",
+      "expirationTime": 1776880653,
+      "channelSubtypeParameters": {
+        "telephony": {
+          "destinationPhoneNumber": "+51953730189",
+          "attributes": {
+            "customerName": "SBS_Flow_Test"
+          }
+        }
+      }
+    }
+  ]
+}

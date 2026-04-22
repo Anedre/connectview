@@ -1,0 +1,17 @@
+{
+  "id": "516dd70a-27da-4250-b981-2e9b7117d1fb",
+  "outboundRequests": [
+    {
+      "clientToken": "cli-final-20260422a",
+      "expirationTime": 1776872853,
+      "channelSubtypeParameters": {
+        "telephony": {
+          "destinationPhoneNumber": "+51953730189",
+          "attributes": {
+            "customerName": "CLI_Final"
+          }
+        }
+      }
+    }
+  ]
+}

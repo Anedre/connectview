@@ -30,7 +30,10 @@ var dynamo = new import_client_dynamodb.DynamoDBClient({});
 var connect = new import_client_connect.ConnectClient({ maxAttempts: 1 });
 var CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 var CONTACTS_TABLE = process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+var CAMPAIGN_AGENTS_TABLE = process.env.CAMPAIGN_AGENTS_TABLE || "connectview-campaign-agents";
 var INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+var AMD_FLOW_ID = process.env.AMD_FLOW_ID || "";
+var AMD_ENABLED = (process.env.AMD_ENABLED ?? "true").toLowerCase() !== "false";
 function isWithinWindow(campaign) {
   try {
     const allowedDays = JSON.parse(
@@ -102,7 +105,8 @@ async function findPendingContacts(campaignId, limit) {
       ExpressionAttributeNames: { "#st": "status" },
       ExpressionAttributeValues: {
         ":cid": { S: campaignId },
-        ":s": { S: "pending" }
+        ":s": { S: "pending" },
+        ":now": { S: nowIso }
       },
       FilterExpression: "attribute_not_exists(nextRetryAt) OR nextRetryAt <= :now",
       Limit: limit
@@ -113,26 +117,60 @@ async function findPendingContacts(campaignId, limit) {
   );
   return items.filter((c) => !c.nextRetryAt || c.nextRetryAt <= nowIso);
 }
-async function countAvailableAgents() {
-  try {
+var allUserIdsCache = null;
+async function listAllUserIds() {
+  if (allUserIdsCache) return allUserIdsCache;
+  const ids = [];
+  let nextToken;
+  do {
     const res = await connect.send(
-      new import_client_connect.GetCurrentUserDataCommand({
+      new import_client_connect.ListUsersCommand({
         InstanceId: INSTANCE_ID,
-        Filters: { ContactFilter: { ContactStates: [] } }
+        MaxResults: 100,
+        NextToken: nextToken
       })
     );
-    let available = 0;
-    for (const u of res.UserDataList || []) {
-      const contacts = u.Contacts || [];
-      if (u.Status?.StatusName === "Available" && contacts.length === 0) {
-        available++;
+    for (const u of res.UserSummaryList || []) {
+      if (u.Id) ids.push(u.Id);
+    }
+    nextToken = res.NextToken;
+  } while (nextToken);
+  allUserIdsCache = ids;
+  return ids;
+}
+async function getAssignedAgents(campaignId) {
+  const res = await dynamo.send(
+    new import_client_dynamodb.QueryCommand({
+      TableName: CAMPAIGN_AGENTS_TABLE,
+      KeyConditionExpression: "campaignId = :cid",
+      ExpressionAttributeValues: { ":cid": { S: campaignId } }
+    })
+  );
+  return (res.Items || []).map((it) => it.userId?.S || "").filter(Boolean);
+}
+async function countAvailableFromUsers(userIds) {
+  if (userIds.length === 0) return 0;
+  let available = 0;
+  try {
+    for (let i = 0; i < userIds.length; i += 100) {
+      const batch = userIds.slice(i, i + 100);
+      const res = await connect.send(
+        new import_client_connect.GetCurrentUserDataCommand({
+          InstanceId: INSTANCE_ID,
+          Filters: { Agents: batch }
+        })
+      );
+      for (const u of res.UserDataList || []) {
+        const contacts = u.Contacts || [];
+        if (u.Status?.StatusName === "Available" && contacts.length === 0) {
+          available++;
+        }
       }
     }
-    return available;
   } catch (err) {
-    console.warn("countAvailableAgents failed:", err);
-    return 0;
+    console.warn("countAvailableFromUsers failed:", err);
   }
+  return available;
 }
 async function markAsDialing(c) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -210,15 +248,24 @@ async function startOutbound(campaign, contact) {
         Object.entries(customAttrs).slice(0, 30).map(([k, v]) => [k.slice(0, 127), String(v).slice(0, 256)])
       )
     };
+    const useAmd = AMD_ENABLED && !!AMD_FLOW_ID;
+    const contactFlowId = useAmd ? AMD_FLOW_ID : campaign.contactFlowId;
     const res = await connect.send(
       new import_client_connect.StartOutboundVoiceContactCommand({
         InstanceId: INSTANCE_ID,
-        ContactFlowId: campaign.contactFlowId,
+        ContactFlowId: contactFlowId,
         DestinationPhoneNumber: contact.phone,
         SourcePhoneNumber: campaign.sourcePhoneNumber,
         Attributes: attributes,
-        // Unique request token helps Connect deduplicate if we retry
-        ClientToken: `${campaign.campaignId}-${contact.rowId}-${contact.attempts}`.slice(0, 500)
+        ClientToken: `${contact.rowId}-${contact.attempts}-${Date.now()}`.slice(0, 500),
+        // AMD config — works on GENERAL traffic. The contact flow (AMD_FLOW_ID)
+        // reads the result via CheckOutboundCallStatus and branches.
+        ...useAmd ? {
+          AnswerMachineDetectionConfig: {
+            EnableAnswerMachineDetection: true,
+            AwaitAnswerMachinePrompt: false
+          }
+        } : {}
       })
     );
     return res.ContactId || null;
@@ -298,11 +345,7 @@ var handler = async () => {
     if (campaigns.length === 0) {
       return { ok: true, campaignsProcessed: 0 };
     }
-    const agentsAvailable = await countAvailableAgents();
-    console.log(`[dialer] available agents: ${agentsAvailable}`);
-    let slotsRemaining = agentsAvailable;
     for (const campaign of campaigns) {
-      if (slotsRemaining <= 0 && campaign.dialMode !== "agentless") break;
       if (!isWithinWindow(campaign)) {
         console.log(`[dialer] ${campaign.campaignId} outside calling window`);
         continue;
@@ -312,9 +355,16 @@ var handler = async () => {
       const availableSlots = Math.max(0, maxConcurrency - currentlyDialing);
       const ratio = campaign.dialMode === "power" ? 2 : 1;
       let toDial;
+      let slotsRemaining = 0;
       if (campaign.dialMode === "agentless") {
         toDial = availableSlots;
       } else {
+        const assignedIds = await getAssignedAgents(campaign.campaignId);
+        const poolIds = assignedIds.length > 0 ? assignedIds : await listAllUserIds();
+        slotsRemaining = await countAvailableFromUsers(poolIds);
+        console.log(
+          `[dialer] ${campaign.campaignId}: assigned=${assignedIds.length}, pool=${poolIds.length}, available=${slotsRemaining}`
+        );
         toDial = Math.min(availableSlots, slotsRemaining * ratio);
       }
       if (toDial <= 0) continue;

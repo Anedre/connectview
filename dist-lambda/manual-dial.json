@@ -1,0 +1,17 @@
+{
+  "id": "040cb5c9-691f-4cce-be6b-b9ce8d69bb69",
+  "outboundRequests": [
+    {
+      "clientToken": "manual-dial-1776879945",
+      "expirationTime": 1776880545,
+      "channelSubtypeParameters": {
+        "telephony": {
+          "destinationPhoneNumber": "+51953730189",
+          "attributes": {
+            "customerName": "Manual_Test"
+          }
+        }
+      }
+    }
+  ]
+}

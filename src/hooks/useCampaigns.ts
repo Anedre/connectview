@@ -8,11 +8,16 @@ export interface Campaign {
   sourcePhoneNumber: string;
   contactFlowId: string;
   contactFlowName?: string;
+  campaignQueueId?: string;
+  campaignQueueName?: string;
   dialMode: string;
   concurrency: number;
   timezone: string;
   windowStartHour: number;
   windowEndHour: number;
+  windowDaysOfWeek?: string;
+  retryNoAnswerMinutes?: number;
+  retryMaxAttempts?: number;
   status: "DRAFT" | "RUNNING" | "PAUSED" | "COMPLETED" | "CANCELLED";
   createdAt: string;
   createdBy?: string;

@@ -16,12 +16,23 @@ import {
   Loader2,
   Megaphone,
   Users,
+  Pencil,
+  Copy,
+  RefreshCw,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCampaignStats } from "@/hooks/useCampaignStats";
-import { useCampaignContacts } from "@/hooks/useCampaignContacts";
+import { useCampaignContacts, type CampaignContactRow } from "@/hooks/useCampaignContacts";
+import { useCampaignMutations, type RelaunchScope } from "@/hooks/useCampaignMutations";
+import { useCampaignContactMutations } from "@/hooks/useCampaignContactMutations";
 import { getApiEndpoints } from "@/lib/api";
 import { formatDistanceToNow, format } from "date-fns";
+import { EditCampaignDialog } from "@/components/campaigns/EditCampaignDialog";
+import { AddContactsDialog } from "@/components/campaigns/AddContactsDialog";
+import { EditContactDialog } from "@/components/campaigns/EditContactDialog";
+import { AssignedAgentsPanel } from "@/components/campaigns/AssignedAgentsPanel";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
@@ -43,12 +54,43 @@ const CAMPAIGN_STATUS_COLORS: Record<string, string> = {
 export function CampaignDetailPage() {
   const { campaignId } = useParams<{ campaignId: string }>();
   const navigate = useNavigate();
-  const { data, loading, error } = useCampaignStats(campaignId || null, 3000);
+  const { data, loading, error, refresh } = useCampaignStats(campaignId || null, 3000);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
-  const { contacts } = useCampaignContacts(campaignId || null, filterStatus, 5000);
+  const { contacts, refresh: refreshContacts } = useCampaignContacts(
+    campaignId || null,
+    filterStatus,
+    5000
+  );
   const [controlling, setControlling] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [addContactsOpen, setAddContactsOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<CampaignContactRow | null>(
+    null
+  );
+  const mutations = useCampaignMutations();
+  const contactMutations = useCampaignContactMutations();
 
-  const handleControl = async (action: "pause" | "resume" | "cancel") => {
+  const handleDeleteContact = async (row: CampaignContactRow) => {
+    if (!campaignId) return;
+    if (!confirm(`¿Eliminar ${row.phone} (${row.customerName || "sin nombre"})?`))
+      return;
+    try {
+      const res = await contactMutations.deleteContacts(campaignId, [row.rowId]);
+      if (res.removed > 0) {
+        toast.success("Contacto eliminado");
+      } else if (res.errors?.length) {
+        toast.error(res.errors[0]);
+      }
+      refresh();
+      refreshContacts();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error eliminando");
+    }
+  };
+
+  const handleControl = async (
+    action: "start" | "pause" | "resume" | "cancel"
+  ) => {
     if (!campaignId) return;
     setControlling(true);
     try {
@@ -63,10 +105,40 @@ export function CampaignDetailPage() {
       if (!r.ok)
         throw new Error(body?.error || body?.message || `HTTP ${r.status}`);
       toast.success(`Campaña ${action}d`);
+      refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error");
     } finally {
       setControlling(false);
+    }
+  };
+
+  const handleClone = async () => {
+    if (!campaignId) return;
+    try {
+      const res = await mutations.clone(campaignId);
+      toast.success(`Clonada como "${res.name}". Abriendo la nueva...`);
+      navigate(`/campaigns/${res.campaignId}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error clonando");
+    }
+  };
+
+  const handleRelaunch = async (scope: RelaunchScope = "all") => {
+    if (!campaignId) return;
+    const label =
+      scope === "all"
+        ? "TODOS los contactos (se reenvían)"
+        : "solo los failed / no-answer";
+    if (!confirm(`¿Relanzar ${label}?`)) return;
+    try {
+      const res = await mutations.relaunch(campaignId, scope);
+      toast.success(
+        `Campaña relanzada · ${res.rowsReset} contactos reseteados a pending`
+      );
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error relanzando");
     }
   };
 
@@ -143,11 +215,72 @@ export function CampaignDetailPage() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {/* Edit — only while still editable */}
+          {(c.status === "DRAFT" ||
+            c.status === "RUNNING" ||
+            c.status === "PAUSED") && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditOpen(true)}
+              disabled={controlling}
+            >
+              <Pencil className="mr-1 h-4 w-4" />
+              Editar
+            </Button>
+          )}
+
+          {/* Clone — always available */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClone}
+            disabled={mutations.pending}
+          >
+            <Copy className="mr-1 h-4 w-4" />
+            Clonar
+          </Button>
+
+          {/* Relaunch — only for terminal states */}
+          {(c.status === "COMPLETED" || c.status === "CANCELLED") && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleRelaunch("failed")}
+                disabled={mutations.pending}
+              >
+                <RefreshCw className="mr-1 h-4 w-4" />
+                Relanzar fallidos
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleRelaunch("all")}
+                disabled={mutations.pending}
+              >
+                <RefreshCw className="mr-1 h-4 w-4" />
+                Relanzar todos
+              </Button>
+            </>
+          )}
+
+          {/* DRAFT → Start */}
+          {c.status === "DRAFT" && (
+            <Button
+              size="sm"
+              onClick={() => handleControl("start")}
+              disabled={controlling}
+            >
+              <Play className="mr-1 h-4 w-4" />
+              Iniciar
+            </Button>
+          )}
           {c.status === "RUNNING" && (
             <>
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => handleControl("pause")}
                 disabled={controlling}
               >
@@ -156,6 +289,7 @@ export function CampaignDetailPage() {
               </Button>
               <Button
                 variant="destructive"
+                size="sm"
                 onClick={() => handleControl("cancel")}
                 disabled={controlling}
               >
@@ -166,6 +300,7 @@ export function CampaignDetailPage() {
           )}
           {c.status === "PAUSED" && (
             <Button
+              size="sm"
               onClick={() => handleControl("resume")}
               disabled={controlling}
             >
@@ -274,6 +409,35 @@ export function CampaignDetailPage() {
         </Card>
       )}
 
+      {/* Assigned agents — routing profile auto-configured */}
+      <AssignedAgentsPanel campaign={c} />
+
+      <EditCampaignDialog
+        campaign={c}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => refresh()}
+      />
+      <AddContactsDialog
+        campaignId={campaignId || null}
+        open={addContactsOpen}
+        onClose={() => setAddContactsOpen(false)}
+        onAdded={() => {
+          refresh();
+          refreshContacts();
+        }}
+      />
+      <EditContactDialog
+        campaignId={campaignId || ""}
+        contact={editingContact}
+        open={!!editingContact}
+        onClose={() => setEditingContact(null)}
+        onSaved={() => {
+          refresh();
+          refreshContacts();
+        }}
+      />
+
       {/* Contacts table */}
       <Card>
         <CardHeader className="pb-3">
@@ -292,9 +456,22 @@ export function CampaignDetailPage() {
                 </Badge>
               )}
             </CardTitle>
-            <span className="text-xs text-muted-foreground">
-              {contacts.length} rows
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {contacts.length} rows
+              </span>
+              {c.status !== "COMPLETED" && c.status !== "CANCELLED" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => setAddContactsOpen(true)}
+                >
+                  <Plus className="mr-1 h-3 w-3" />
+                  Agregar contactos
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -308,39 +485,76 @@ export function CampaignDetailPage() {
                   <th className="p-2 text-left text-xs">Attempts</th>
                   <th className="p-2 text-left text-xs">Agent</th>
                   <th className="p-2 text-left text-xs">Last attempt</th>
+                  <th className="p-2 text-right text-xs">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {contacts.length === 0 && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="p-6 text-center text-xs text-muted-foreground"
                     >
                       Sin contactos para este filtro.
                     </td>
                   </tr>
                 )}
-                {contacts.map((row) => (
-                  <tr key={row.rowId} className="border-t">
-                    <td className="p-2 font-mono text-xs">{row.phone}</td>
-                    <td className="p-2">{row.customerName || "—"}</td>
-                    <td className="p-2">
-                      <Badge className={STATUS_COLORS[row.status] || ""}>
-                        {row.status}
-                      </Badge>
-                    </td>
-                    <td className="p-2 text-xs">{row.attempts}</td>
-                    <td className="p-2 text-xs">{row.agentUsername || "—"}</td>
-                    <td className="p-2 text-[11px] text-muted-foreground">
-                      {row.lastAttemptAt
-                        ? formatDistanceToNow(new Date(row.lastAttemptAt), {
-                            addSuffix: true,
-                          })
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
+                {contacts.map((row) => {
+                  const locked =
+                    row.status === "dialing" || row.status === "connected";
+                  return (
+                    <tr key={row.rowId} className="border-t">
+                      <td className="p-2 font-mono text-xs">{row.phone}</td>
+                      <td className="p-2">{row.customerName || "—"}</td>
+                      <td className="p-2">
+                        <Badge className={STATUS_COLORS[row.status] || ""}>
+                          {row.status}
+                        </Badge>
+                      </td>
+                      <td className="p-2 text-xs">{row.attempts}</td>
+                      <td className="p-2 text-xs">{row.agentUsername || "—"}</td>
+                      <td className="p-2 text-[11px] text-muted-foreground">
+                        {row.lastAttemptAt
+                          ? formatDistanceToNow(new Date(row.lastAttemptAt), {
+                              addSuffix: true,
+                            })
+                          : "—"}
+                      </td>
+                      <td className="p-2 text-right">
+                        <div className="inline-flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0"
+                            onClick={() => setEditingContact(row)}
+                            disabled={locked}
+                            title={
+                              locked
+                                ? "No se puede editar llamada activa"
+                                : "Editar"
+                            }
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-rose-600 hover:text-rose-700"
+                            onClick={() => handleDeleteContact(row)}
+                            disabled={locked || contactMutations.pending}
+                            title={
+                              locked
+                                ? "No se puede eliminar llamada activa"
+                                : "Eliminar"
+                            }
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

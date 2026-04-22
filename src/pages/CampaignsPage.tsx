@@ -12,8 +12,12 @@ import {
   Clock,
   XCircle,
   Loader2,
+  Copy,
+  RefreshCw,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useCampaigns, type Campaign } from "@/hooks/useCampaigns";
+import { useCampaignMutations } from "@/hooks/useCampaignMutations";
 import { NewCampaignWizard } from "@/components/campaigns/NewCampaignWizard";
 import { formatDistanceToNow } from "date-fns";
 
@@ -36,6 +40,36 @@ export function CampaignsPage() {
   const navigate = useNavigate();
   const { campaigns, loading, error, refresh } = useCampaigns(5000);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const mutations = useCampaignMutations();
+
+  const handleClone = async (
+    e: React.MouseEvent,
+    campaign: Campaign
+  ) => {
+    e.stopPropagation();
+    try {
+      const res = await mutations.clone(campaign.campaignId);
+      toast.success(`Clonada como "${res.name}"`);
+      navigate(`/campaigns/${res.campaignId}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error clonando");
+    }
+  };
+
+  const handleRelaunch = async (e: React.MouseEvent, campaign: Campaign) => {
+    e.stopPropagation();
+    if (!confirm(`¿Relanzar "${campaign.name}" con TODOS los contactos?`))
+      return;
+    try {
+      const res = await mutations.relaunch(campaign.campaignId, "all");
+      toast.success(
+        `Relanzada · ${res.rowsReset} contactos reseteados a pending`
+      );
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error relanzando");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -170,7 +204,7 @@ export function CampaignsPage() {
                   </div>
                 </div>
 
-                {/* Meta */}
+                {/* Meta + actions */}
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <PhoneOff className="h-3 w-3" />
@@ -183,6 +217,31 @@ export function CampaignsPage() {
                         })
                       : ""}
                   </span>
+                </div>
+
+                <div className="flex gap-1.5 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 flex-1 text-xs"
+                    onClick={(e) => handleClone(e, c)}
+                    disabled={mutations.pending}
+                  >
+                    <Copy className="mr-1 h-3 w-3" />
+                    Clonar
+                  </Button>
+                  {(c.status === "COMPLETED" ||
+                    c.status === "CANCELLED") && (
+                    <Button
+                      size="sm"
+                      className="h-7 flex-1 text-xs"
+                      onClick={(e) => handleRelaunch(e, c)}
+                      disabled={mutations.pending}
+                    >
+                      <RefreshCw className="mr-1 h-3 w-3" />
+                      Relanzar
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

@@ -24,9 +24,111 @@ __export(handler_exports, {
 });
 module.exports = __toCommonJS(handler_exports);
 var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
+var import_util_dynamodb = require("@aws-sdk/util-dynamodb");
+var import_client_connectcampaignsv2 = require("@aws-sdk/client-connectcampaignsv2");
 var dynamo = new import_client_dynamodb.DynamoDBClient({});
+var campaignsV2 = new import_client_connectcampaignsv2.ConnectCampaignsV2Client({ maxAttempts: 2 });
 var CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
+var CONTACTS_TABLE = process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 var ALLOWED_ACTIONS = /* @__PURE__ */ new Set(["start", "pause", "resume", "cancel"]);
+function chunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+async function queryPendingContacts(campaignId) {
+  const items = [];
+  let lastKey;
+  for (let i = 0; i < 20; i++) {
+    const res = await dynamo.send(
+      new import_client_dynamodb.QueryCommand({
+        TableName: CONTACTS_TABLE,
+        IndexName: "campaignId-status-index",
+        KeyConditionExpression: "campaignId = :cid AND #st = :s",
+        ExpressionAttributeNames: { "#st": "status" },
+        ExpressionAttributeValues: {
+          ":cid": { S: campaignId },
+          ":s": { S: "pending" }
+        },
+        ExclusiveStartKey: lastKey
+      })
+    );
+    for (const it of res.Items || []) items.push((0, import_util_dynamodb.unmarshall)(it));
+    lastKey = res.LastEvaluatedKey;
+    if (!lastKey) break;
+  }
+  return items;
+}
+async function pushContactsToAws(awsCampaignId, contacts) {
+  if (contacts.length === 0) return 0;
+  let queued = 0;
+  for (const batch of chunk(contacts, 25)) {
+    try {
+      await campaignsV2.send(
+        new import_client_connectcampaignsv2.PutOutboundRequestBatchCommand({
+          id: awsCampaignId,
+          outboundRequests: batch.map((c) => {
+            let attrs = {};
+            try {
+              attrs = JSON.parse(c.customAttributes || "{}");
+            } catch {
+            }
+            return {
+              clientToken: `${c.rowId}-${Date.now()}`.slice(0, 500),
+              // AWS Campaigns v2 enforces max 15 minutes for expirationTime.
+              // Use 10 minutes to leave a safety margin.
+              expirationTime: new Date(
+                Date.now() + 10 * 60 * 1e3
+              ),
+              channelSubtypeParameters: {
+                telephony: {
+                  destinationPhoneNumber: c.phone,
+                  // Pass our internal rowId + name so the flow can surface them.
+                  // AWS requires keys be alphanumeric, dash, or underscore only.
+                  attributes: {
+                    campaignRowId: c.rowId,
+                    customerName: c.customerName || "",
+                    ...Object.fromEntries(
+                      Object.entries(attrs).slice(0, 25).map(([k, v]) => [
+                        k.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 127),
+                        String(v).slice(0, 256)
+                      ]).filter(([k]) => k.length > 0)
+                    )
+                  }
+                }
+              }
+            };
+          })
+        })
+      );
+      for (const c of batch) {
+        await dynamo.send(
+          new import_client_dynamodb.UpdateItemCommand({
+            TableName: CONTACTS_TABLE,
+            Key: {
+              campaignId: { S: c.campaignId },
+              rowId: { S: c.rowId }
+            },
+            UpdateExpression: "SET #st = :dialing, lastAttemptAt = :now, attempts = if_not_exists(attempts, :zero) + :one",
+            ExpressionAttributeNames: { "#st": "status" },
+            ExpressionAttributeValues: {
+              ":dialing": { S: "dialing" },
+              ":now": { S: (/* @__PURE__ */ new Date()).toISOString() },
+              ":zero": { N: "0" },
+              ":one": { N: "1" }
+            }
+          })
+        ).catch((err) => {
+          console.warn("markDialing failed for", c.rowId, err);
+        });
+        queued++;
+      }
+    } catch (err) {
+      console.error("PutOutboundRequestBatch failed:", err);
+    }
+  }
+  return queued;
+}
 var handler = async (event) => {
   try {
     const body = JSON.parse(event.body || "{}");
@@ -61,7 +163,10 @@ var handler = async (event) => {
         body: JSON.stringify({ error: "Campaign not found" })
       };
     }
-    const currentStatus = current.Item.status?.S;
+    const campaign = (0, import_util_dynamodb.unmarshall)(current.Item);
+    const currentStatus = campaign.status;
+    const awsCampaignId = campaign.awsCampaignId;
+    const useNative = !!awsCampaignId;
     let newStatus;
     const extraSets = {};
     switch (action) {
@@ -118,10 +223,39 @@ var handler = async (event) => {
       default:
         throw new Error("unreachable");
     }
+    let queuedCount = 0;
+    if (useNative && awsCampaignId) {
+      try {
+        if (action === "start" || action === "resume") {
+          await campaignsV2.send(new import_client_connectcampaignsv2.StartCampaignCommand({ id: awsCampaignId })).catch(async (err) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (/already|invalid state/i.test(msg)) {
+              await campaignsV2.send(new import_client_connectcampaignsv2.ResumeCampaignCommand({ id: awsCampaignId })).catch(() => {
+              });
+            } else {
+              throw err;
+            }
+          });
+          const pending = await queryPendingContacts(campaignId);
+          queuedCount = await pushContactsToAws(awsCampaignId, pending);
+        } else if (action === "pause") {
+          await campaignsV2.send(
+            new import_client_connectcampaignsv2.PauseCampaignCommand({ id: awsCampaignId })
+          );
+        } else if (action === "cancel") {
+          await campaignsV2.send(
+            new import_client_connectcampaignsv2.StopCampaignCommand({ id: awsCampaignId })
+          );
+        }
+      } catch (err) {
+        console.error(
+          "AWS campaigns v2 action failed (continuing with DynamoDB update):",
+          err
+        );
+      }
+    }
     const setExpressions = ["#st = :new"];
-    const exprVals = {
-      ":new": { S: newStatus }
-    };
+    const exprVals = { ":new": { S: newStatus } };
     const exprNames = { "#st": "status" };
     for (const [key, val] of Object.entries(extraSets)) {
       setExpressions.push(`${key} = :${key}`);
@@ -142,7 +276,10 @@ var handler = async (event) => {
       body: JSON.stringify({
         campaignId,
         status: newStatus,
-        previousStatus: currentStatus
+        previousStatus: currentStatus,
+        useNative,
+        awsCampaignId: awsCampaignId || null,
+        contactsQueued: queuedCount
       })
     };
   } catch (err) {

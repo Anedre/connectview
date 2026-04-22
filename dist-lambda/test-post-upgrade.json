@@ -1,0 +1,3 @@
+{
+  "body": "{\"name\":\"Post-Upgrade Test\",\"sourcePhoneNumber\":\"+5116433467\",\"contactFlowId\":\"a40dc527-8348-4694-a389-7b675c0ac3ac\",\"campaignQueueId\":\"5a9d6f89-4b07-4862-ae3b-c2bc813f449d\",\"campaignQueueName\":\"BasicQueue\",\"dialMode\":\"progressive\",\"concurrency\":1,\"startNow\":false,\"useNativeCampaign\":true,\"contacts\":[{\"phone\":\"+51953730189\",\"customerName\":\"Andre Post-Upgrade\"}]}"
+}

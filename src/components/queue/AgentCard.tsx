@@ -1,11 +1,17 @@
 import { useDrop } from "react-dnd";
-import { Phone, Headphones, Coffee, UserX } from "lucide-react";
+import { Phone, Headphones, Coffee, UserX, Megaphone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { LiveAgent } from "@/hooks/useLiveQueue";
 import { DND_CONTACT } from "./ContactCard";
 
 export interface AgentCardProps {
   agent: LiveAgent;
+  // Optional map of connectContactId → { campaignId, campaignName } so we can
+  // annotate an agent's active contact with the campaign it belongs to.
+  contactToCampaign?: Map<
+    string,
+    { campaignId: string; campaignName: string }
+  >;
   onClick?: (agent: LiveAgent) => void;
   onContactDropped?: (agent: LiveAgent, payload: { contactId: string; phone: string | null }) => void;
 }
@@ -41,9 +47,18 @@ function formatAgo(iso: string | null): string {
   return `${Math.floor(m / 60)}h`;
 }
 
-export function AgentCard({ agent, onClick, onContactDropped }: AgentCardProps) {
+export function AgentCard({
+  agent,
+  contactToCampaign,
+  onClick,
+  onContactDropped,
+}: AgentCardProps) {
   const canReceive =
     agent.statusName?.toLowerCase() === "available" && !agent.activeContact;
+
+  const campaignInfo = agent.activeContact?.contactId
+    ? contactToCampaign?.get(agent.activeContact.contactId)
+    : undefined;
 
   const [{ isOver, canDrop }, dropRef] = useDrop(
     () => ({
@@ -98,7 +113,13 @@ export function AgentCard({ agent, onClick, onContactDropped }: AgentCardProps) 
       </div>
 
       {agent.activeContact && (
-        <div className="rounded-md bg-muted/50 px-2 py-1.5 text-xs">
+        <div
+          className={`rounded-md px-2 py-1.5 text-xs ${
+            campaignInfo
+              ? "bg-orange-50 dark:bg-orange-950/30"
+              : "bg-muted/50"
+          }`}
+        >
           <div className="flex items-center justify-between gap-2">
             <span className="truncate font-mono">
               {agent.activeContact.phone || agent.activeContact.contactId.slice(0, 8)}
@@ -107,7 +128,15 @@ export function AgentCard({ agent, onClick, onContactDropped }: AgentCardProps) 
               {agent.activeContact.state}
             </Badge>
           </div>
-          {agent.activeContact.queueName && (
+          {campaignInfo && (
+            <div className="mt-1 flex items-center gap-1 text-[10px] text-orange-800 dark:text-orange-300">
+              <Megaphone className="h-2.5 w-2.5" />
+              <span className="truncate font-semibold">
+                {campaignInfo.campaignName}
+              </span>
+            </div>
+          )}
+          {agent.activeContact.queueName && !campaignInfo && (
             <div className="text-[10px] text-muted-foreground">
               {agent.activeContact.queueName}
             </div>

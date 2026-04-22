@@ -1,0 +1,1 @@
+{"statusCode":500,"headers":{"Content-Type":"application/json"},"body":"{\"error\":\"Failed to get live queue\",\"message\":\"username is not defined\"}"}

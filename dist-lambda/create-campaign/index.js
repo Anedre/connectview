@@ -24,21 +24,73 @@ __export(handler_exports, {
 });
 module.exports = __toCommonJS(handler_exports);
 var import_client_dynamodb = require("@aws-sdk/client-dynamodb");
+var import_client_connectcampaignsv2 = require("@aws-sdk/client-connectcampaignsv2");
 var import_node_crypto = require("node:crypto");
 var dynamo = new import_client_dynamodb.DynamoDBClient({});
+var campaignsV2 = new import_client_connectcampaignsv2.ConnectCampaignsV2Client({ maxAttempts: 2 });
 var CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 var CONTACTS_TABLE = process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+var CONNECT_INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+var AMD_FLOW_ID = process.env.AMD_FLOW_ID || "a40dc527-8348-4694-a389-7b675c0ac3ac";
 function chunk(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
-var handler = async (event) => {
+function buildOutboundMode(dialMode, concurrency) {
+  const cap = Math.max(0.1, Math.min(1, concurrency / 2));
+  if (dialMode === "power" || dialMode === "predictive") {
+    return { predictive: { bandwidthAllocation: cap } };
+  }
+  return { progressive: { bandwidthAllocation: 1 } };
+}
+async function createNativeCampaign(params) {
+  try {
+    const res = await campaignsV2.send(
+      new import_client_connectcampaignsv2.CreateCampaignCommand({
+        name: params.name.slice(0, 127),
+        connectInstanceId: CONNECT_INSTANCE_ID,
+        channelSubtypeConfig: {
+          telephony: {
+            capacity: 1,
+            connectQueueId: params.queueId,
+            outboundMode: buildOutboundMode(
+              params.dialMode,
+              params.concurrency
+            ),
+            defaultOutboundConfig: {
+              connectContactFlowId: params.contactFlowId,
+              connectSourcePhoneNumber: params.sourcePhoneNumber,
+              answerMachineDetectionConfig: {
+                enableAnswerMachineDetection: true,
+                awaitAnswerMachinePrompt: false
+              }
+            }
+          }
+        },
+        // Owner tag — this is what the Connect admin UI uses to associate a
+        // campaign with the Connect instance. Without it, the UI shows 403s
+        // and the Campaigns service won't dispatch. Matches AWS console
+        // behavior when you create a campaign via the managed wizard.
+        tags: {
+          owner: `arn:aws:connect:us-east-1:${params.awsAccountId}:instance/${CONNECT_INSTANCE_ID}`
+        }
+      })
+    );
+    return res.id || null;
+  } catch (err) {
+    console.error("createNativeCampaign failed:", err);
+    return null;
+  }
+}
+var handler = async (event, context) => {
   try {
     const body = JSON.parse(event.body || "{}");
+    const awsAccountId = context?.invokedFunctionArn?.split(":")[4] || process.env.AWS_ACCOUNT_ID || "";
     const errors = [];
     if (!body.name?.trim()) errors.push("name is required");
-    if (!body.sourcePhoneNumber?.trim()) errors.push("sourcePhoneNumber is required");
+    if (!body.sourcePhoneNumber?.trim())
+      errors.push("sourcePhoneNumber is required");
     if (!body.contactFlowId?.trim()) errors.push("contactFlowId is required");
     if (!Array.isArray(body.contacts) || body.contacts.length === 0)
       errors.push("contacts must be a non-empty array");
@@ -69,6 +121,23 @@ var handler = async (event) => {
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const startNow = body.startNow !== false;
     const status = startNow ? "RUNNING" : "DRAFT";
+    const useNative = body.useNativeCampaign === true;
+    let awsCampaignId = null;
+    if (useNative && body.campaignQueueId) {
+      awsCampaignId = await createNativeCampaign({
+        // Prefix with our id so we can find it later if needed
+        name: `cv-${campaignId.slice(0, 8)}-${body.name.trim()}`,
+        queueId: body.campaignQueueId,
+        // Use the AMD-aware flow, not the one the admin picked (SBS etc).
+        // The admin's chosen flow is stored in DynamoDB for reference but we
+        // swap it for the AMD flow at the AWS level.
+        contactFlowId: AMD_FLOW_ID,
+        sourcePhoneNumber: body.sourcePhoneNumber,
+        dialMode: body.dialMode || "progressive",
+        concurrency: body.concurrency || 1,
+        awsAccountId
+      });
+    }
     await dynamo.send(
       new import_client_dynamodb.PutItemCommand({
         TableName: CAMPAIGNS_TABLE,
@@ -79,6 +148,8 @@ var handler = async (event) => {
           sourcePhoneNumber: { S: body.sourcePhoneNumber },
           contactFlowId: { S: body.contactFlowId },
           contactFlowName: { S: body.contactFlowName || "" },
+          campaignQueueId: body.campaignQueueId ? { S: body.campaignQueueId } : { NULL: true },
+          campaignQueueName: { S: body.campaignQueueName || "" },
           dialMode: { S: body.dialMode || "progressive" },
           concurrency: { N: String(body.concurrency || 1) },
           timezone: { S: body.timezone || "America/Lima" },
@@ -101,7 +172,10 @@ var handler = async (event) => {
           doneCount: { N: "0" },
           failedCount: { N: "0" },
           noAnswerCount: { N: "0" },
-          skippedCount: { N: String(skippedCount) }
+          skippedCount: { N: String(skippedCount) },
+          // Native campaign link (null if creation failed or legacy mode)
+          awsCampaignId: awsCampaignId ? { S: awsCampaignId } : { NULL: true },
+          useNativeCampaign: { BOOL: !!awsCampaignId }
         }
       })
     );
@@ -124,7 +198,6 @@ var handler = async (event) => {
                     attempts: { N: "0" },
                     createdAt: { S: now },
                     nextRetryAt: { S: now }
-                    // eligible immediately
                   }
                 }
               };
@@ -140,7 +213,9 @@ var handler = async (event) => {
         campaignId,
         status,
         totalContacts: validContacts.length,
-        skipped: skippedCount
+        skipped: skippedCount,
+        awsCampaignId,
+        useNativeCampaign: !!awsCampaignId
       })
     };
   } catch (err) {

@@ -1,0 +1,23 @@
+{
+  "name": "Connectview-Dialer-AMD",
+  "connectInstanceId": "2345d564-4bd4-4318-9cf0-75649bad5197",
+  "channelSubtypeConfig": {
+    "telephony": {
+      "capacity": 1.0,
+      "connectQueueId": "5a9d6f89-4b07-4862-ae3b-c2bc813f449d",
+      "outboundMode": {
+        "progressive": {
+          "bandwidthAllocation": 1.0
+        }
+      },
+      "defaultOutboundConfig": {
+        "connectContactFlowId": "82a34ded-1b7e-46d3-ad1a-ab40ef9b39b9",
+        "connectSourcePhoneNumber": "+5116433467",
+        "answerMachineDetectionConfig": {
+          "enableAnswerMachineDetection": true,
+          "awaitAnswerMachinePrompt": false
+        }
+      }
+    }
+  }
+}

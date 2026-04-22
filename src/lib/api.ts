@@ -31,6 +31,15 @@ interface ApiEndpoints {
   adminMonitorContact?: string;
   adminUpdateContactAttrs?: string;
   adminListAudit?: string;
+  // Campaign edit/clone/relaunch
+  updateCampaign?: string;
+  relaunchCampaign?: string;
+  cloneCampaign?: string;
+  editCampaignContacts?: string;
+  listQueues?: string;
+  assignCampaignAgents?: string;
+  getCampaignAgents?: string;
+  getFlowQueues?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

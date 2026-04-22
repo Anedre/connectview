@@ -1,0 +1,10 @@
+{
+  "Variables": {
+    "CONNECT_INSTANCE_ID": "2345d564-4bd4-4318-9cf0-75649bad5197",
+    "CAMPAIGNS_TABLE": "connectview-campaigns",
+    "CAMPAIGN_CONTACTS_TABLE": "connectview-campaign-contacts",
+    "CAMPAIGN_AGENTS_TABLE": "connectview-campaign-agents",
+    "CUSTOMER_PROFILES_DOMAIN": "amazon-connect-novasys",
+    "AWS_CAMPAIGN_ID": "5e25a60e-2992-4dfe-809a-cf1bb16779e1"
+  }
+}

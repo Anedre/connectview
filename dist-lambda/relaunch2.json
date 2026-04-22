@@ -1,0 +1,1 @@
+{"statusCode":200,"headers":{"Content-Type":"application/json"},"body":"{\"campaignId\":\"2c7881c4-ab41-444d-ac5d-d2754c305513\",\"status\":\"RUNNING\",\"rowsReset\":2,\"pushedToAws\":0,\"awsCampaignId\":null,\"counts\":{\"pending\":2,\"dialing\":0,\"connected\":0,\"done\":0,\"no_answer\":0,\"failed\":0}}"}

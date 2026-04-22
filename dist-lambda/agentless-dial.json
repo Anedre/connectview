@@ -1,0 +1,17 @@
+{
+  "id": "c0daaa62-aca9-4020-be85-9816bb976478",
+  "outboundRequests": [
+    {
+      "clientToken": "agentless-test-1776880115",
+      "expirationTime": 1776880715,
+      "channelSubtypeParameters": {
+        "telephony": {
+          "destinationPhoneNumber": "+51953730189",
+          "attributes": {
+            "customerName": "Agentless_Test"
+          }
+        }
+      }
+    }
+  ]
+}

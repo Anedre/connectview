@@ -15,6 +15,7 @@
     "@aws-sdk/client-cognito-identity-provider": "^3.1030.0",
     "@aws-sdk/client-connect": "^3.1030.0",
     "@aws-sdk/client-connect-contact-lens": "^3.1030.0",
+    "@aws-sdk/client-connectcampaignsv2": "^3.1034.0",
     "@aws-sdk/client-customer-profiles": "^3.1030.0",
     "@aws-sdk/client-dynamodb": "^3.1030.0",
     "@aws-sdk/client-lambda": "^3.1030.0",

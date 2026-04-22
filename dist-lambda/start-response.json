@@ -1,0 +1,1 @@
+{"statusCode":200,"headers":{"Content-Type":"application/json"},"body":"{\"campaignId\":\"986dc9de-48a4-4d8e-a947-b3ad708365c2\",\"status\":\"RUNNING\",\"previousStatus\":\"DRAFT\",\"useNative\":true,\"awsCampaignId\":\"516dd70a-27da-4250-b981-2e9b7117d1fb\",\"contactsQueued\":1}"}

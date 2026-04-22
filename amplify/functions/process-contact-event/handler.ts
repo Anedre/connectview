@@ -43,6 +43,7 @@ async function findCampaignContact(contactId: string): Promise<
       rowId: string;
       attempts: number;
       status: string;
+      connectedAt?: string;
     }
   | null
 > {
@@ -64,6 +65,7 @@ async function findCampaignContact(contactId: string): Promise<
       rowId: row.rowId as string,
       attempts: Number(row.attempts || 0),
       status: row.status as string,
+      connectedAt: row.connectedAt as string | undefined,
     };
   } catch (err) {
     console.warn("findCampaignContact failed:", err);
@@ -72,26 +74,45 @@ async function findCampaignContact(contactId: string): Promise<
 }
 
 // Classify the disconnect into our campaign contact status.
+// `callDurationSec` is the gap between agent connection and disconnect.
+// If the agent connected but the customer hung up within a few seconds
+// (voicemail, rejection, no answer), we classify as no_answer even though
+// technically the agent "got" the contact.
 function classifyDisconnect(
   reason: string | undefined,
-  previousStatus: string
+  previousStatus: string,
+  callDurationSec: number | null
 ): "done" | "no_answer" | "failed" {
-  // Keep terminal-success if we got here after CONNECTED_TO_AGENT
-  if (previousStatus === "connected") return "done";
   const r = (reason || "").toUpperCase();
+
+  // Explicit no-answer reasons — always no_answer.
   if (
     r === "CUSTOMER_MISSED_CALL" ||
     r === "TELECOM_PROBLEM" ||
     r === "CALL_ABANDONED" ||
-    r.includes("MISSED")
+    r.includes("MISSED") ||
+    r.includes("ABANDONED") ||
+    r.includes("OUTBOUND_RING_TIME_EXCEEDED")
   ) {
     return "no_answer";
   }
-  if (r === "CUSTOMER_DISCONNECT" || r === "AGENT_DISCONNECT") {
-    // If we disconnected before CONNECTED_TO_AGENT, count as no_answer
-    return previousStatus === "connected" ? "done" : "no_answer";
+
+  // Connected-to-agent, but very short call: likely voicemail or customer rejected.
+  if (
+    previousStatus === "connected" &&
+    callDurationSec !== null &&
+    callDurationSec < 10
+  ) {
+    return "no_answer";
   }
-  return "failed";
+
+  if (previousStatus === "connected") return "done";
+
+  // At this point: the agent never actually picked up.
+  // For campaigns, that's almost always "customer didn't answer" regardless of
+  // the specific reason (CUSTOMER_DISCONNECT, AGENT_DISCONNECT, UNKNOWN, etc).
+  // Only explicit errors caught earlier in the dial path should mark "failed".
+  return "no_answer";
 }
 
 async function updateCampaignContactStatus(
@@ -186,66 +207,84 @@ export const handler: EventBridgeHandler<
 
   try {
     // ── 1. Main contacts table (analytics) ─────────────────────────────
+    // Skip the Put entirely if we don't have an agent yet — the GSI
+    // (agentUsername-initiationTimestamp) rejects empty-string keys, and an
+    // analytics row without an agent isn't useful. We'll get a CONNECTED_TO_AGENT
+    // event later when the agent picks up, at which point we insert the row.
     if (eventType === "INITIATED" || eventType === "CONNECTED_TO_AGENT") {
       const agentName = detail.agentInfo?.agentArn?.split("/").pop() || "";
       const queueName = detail.queueInfo?.queueArn?.split("/").pop() || "";
-      await dynamo
-        .send(
-          new PutItemCommand({
-            TableName: TABLE_NAME,
-            Item: {
-              contactId: { S: contactId },
-              initiationTimestamp: {
-                S: detail.initiationTimestamp || new Date().toISOString(),
+      if (agentName) {
+        try {
+          await dynamo.send(
+            new PutItemCommand({
+              TableName: TABLE_NAME,
+              Item: {
+                contactId: { S: contactId },
+                initiationTimestamp: {
+                  S: detail.initiationTimestamp || new Date().toISOString(),
+                },
+                channel: { S: detail.channel || "VOICE" },
+                agentUsername: { S: agentName },
+                queueName: { S: queueName || "unknown" },
+                initiationMethod: { S: detail.initiationMethod || "" },
+                status: { S: "ACTIVE" },
               },
-              channel: { S: detail.channel || "VOICE" },
-              agentUsername: { S: agentName },
-              queueName: { S: queueName },
-              initiationMethod: { S: detail.initiationMethod || "" },
-              status: { S: "ACTIVE" },
-            },
-            ConditionExpression: "attribute_not_exists(contactId)",
-          })
-        )
-        .catch((err) => {
+              ConditionExpression: "attribute_not_exists(contactId)",
+            })
+          );
+        } catch (err) {
           if (
-            err instanceof Error &&
-            err.name === "ConditionalCheckFailedException"
+            !(err instanceof Error) ||
+            err.name !== "ConditionalCheckFailedException"
           ) {
-            return;
+            // Don't rethrow — failing analytics shouldn't block campaign updates (step 2)
+            console.warn("analytics table Put failed, continuing:", err);
           }
-          throw err;
-        });
+        }
+      }
     } else if (eventType === "DISCONNECTED" || eventType === "CONTACT_END") {
-      await dynamo.send(
-        new UpdateItemCommand({
-          TableName: TABLE_NAME,
-          Key: { contactId: { S: contactId } },
-          UpdateExpression:
-            "SET #status = :status, disconnectTimestamp = :dt, disconnectReason = :dr",
-          ExpressionAttributeNames: { "#status": "status" },
-          ExpressionAttributeValues: {
-            ":status": { S: "COMPLETED" },
-            ":dt": {
-              S: detail.disconnectTimestamp || new Date().toISOString(),
+      // Only update analytics row if it exists — avoids failures for contacts
+      // we never inserted (e.g. outbound before CONNECTED_TO_AGENT).
+      try {
+        await dynamo.send(
+          new UpdateItemCommand({
+            TableName: TABLE_NAME,
+            Key: { contactId: { S: contactId } },
+            UpdateExpression:
+              "SET #status = :status, disconnectTimestamp = :dt, disconnectReason = :dr",
+            ConditionExpression: "attribute_exists(contactId)",
+            ExpressionAttributeNames: { "#status": "status" },
+            ExpressionAttributeValues: {
+              ":status": { S: "COMPLETED" },
+              ":dt": {
+                S: detail.disconnectTimestamp || new Date().toISOString(),
+              },
+              ":dr": { S: detail.disconnectReason || "UNKNOWN" },
             },
-            ":dr": { S: detail.disconnectReason || "UNKNOWN" },
-          },
-        })
-      );
-      if (ENRICH_FUNCTION_NAME) {
-        await lambda.send(
-          new InvokeCommand({
-            FunctionName: ENRICH_FUNCTION_NAME,
-            InvocationType: "Event",
-            Payload: Buffer.from(
-              JSON.stringify({
-                contactId,
-                instanceId: detail.instanceArn?.split("/").pop() || "",
-              })
-            ),
           })
         );
+        if (ENRICH_FUNCTION_NAME) {
+          await lambda.send(
+            new InvokeCommand({
+              FunctionName: ENRICH_FUNCTION_NAME,
+              InvocationType: "Event",
+              Payload: Buffer.from(
+                JSON.stringify({
+                  contactId,
+                  instanceId: detail.instanceArn?.split("/").pop() || "",
+                })
+              ),
+            })
+          );
+        }
+      } catch (err) {
+        if (
+          !(err instanceof Error) ||
+          err.name !== "ConditionalCheckFailedException"
+        ) {
+          console.warn("analytics table Update failed, continuing:", err);
+        }
       }
     }
 
@@ -264,10 +303,28 @@ export const handler: EventBridgeHandler<
       eventType === "DISCONNECTED" ||
       eventType === "CONTACT_END"
     ) {
-      const newStatus = classifyDisconnect(detail.disconnectReason, link.status);
+      // Compute call duration (seconds between agent-connected and now) so we
+      // can distinguish a real conversation from a quick voicemail / rejection.
+      let callDurationSec: number | null = null;
+      if (link.connectedAt) {
+        const disc = detail.disconnectTimestamp
+          ? Date.parse(detail.disconnectTimestamp)
+          : Date.now();
+        const conn = Date.parse(link.connectedAt);
+        if (!isNaN(conn) && !isNaN(disc)) {
+          callDurationSec = Math.max(0, Math.round((disc - conn) / 1000));
+        }
+      }
+
+      const newStatus = classifyDisconnect(
+        detail.disconnectReason,
+        link.status,
+        callDurationSec
+      );
       await updateCampaignContactStatus(link, newStatus, {
         disconnectReason: detail.disconnectReason || "UNKNOWN",
         disconnectedAt: new Date().toISOString(),
+        callDurationSec: callDurationSec ?? 0,
       });
       await updateCampaignCounters(link.campaignId, newStatus, link.status);
     }
