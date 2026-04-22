@@ -205,7 +205,7 @@ export function DashboardPage() {
             <GamificationCard />
           </div>
           <div className="animate-fade-in-up" style={{ animationDelay: "360ms" }}>
-            <WellnessCard />
+            <WellnessCard userId={user?.userId} />
           </div>
           <RoleGate minRole="Supervisors">
             <div className="animate-fade-in-up" style={{ animationDelay: "440ms" }}>

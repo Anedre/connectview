@@ -89,10 +89,18 @@ export function ContactHistoryPanel({ phone }: ContactHistoryPanelProps) {
                 <Icon className={`h-5 w-5 shrink-0 mt-1 ${colorClass}`} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant="outline" className="text-xs">
                         {contact.channel}
                       </Badge>
+                      {contact.subChannel && (
+                        <Badge
+                          variant="secondary"
+                          className="text-xs bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                        >
+                          {contact.subChannel}
+                        </Badge>
+                      )}
                       <span className="text-sm font-medium">
                         {formatDistanceToNow(
                           new Date(contact.initiationTimestamp),

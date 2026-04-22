@@ -1,21 +1,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Trophy, Award, TrendingUp, Flame } from "lucide-react";
+import { Trophy, Award, TrendingUp, Flame, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useAgentLeaderboard } from "@/hooks/useAgentLeaderboard";
 
-const badges = [
-  { icon: Flame, label: "On Fire", count: 12, color: "from-orange-400 to-red-500" },
-  { icon: Award, label: "Top CSAT", count: 8, color: "from-amber-400 to-yellow-500" },
-  { icon: TrendingUp, label: "Rising Star", count: 3, color: "from-emerald-400 to-teal-500" },
-];
-
-const leaderboard = [
-  { rank: 1, name: "Patricia Fernandez", score: 2450, change: "+12%" },
-  { rank: 2, name: "Andre-Alata", score: 2180, change: "+8%" },
-  { rank: 3, name: "Willy Luyo", score: 1920, change: "+5%" },
-  { rank: 4, name: "Miguel Vega", score: 1750, change: "-2%" },
+// Badges derived from live leaderboard badge counts (real aggregations, not hard-coded).
+const BADGE_META = [
+  { key: "onFire" as const, icon: Flame, label: "On Fire", color: "from-orange-400 to-red-500" },
+  { key: "topCsat" as const, icon: Award, label: "Top CSAT", color: "from-amber-400 to-yellow-500" },
+  { key: "risingStar" as const, icon: TrendingUp, label: "Rising Star", color: "from-emerald-400 to-teal-500" },
 ];
 
 export function GamificationCard() {
+  const { data, loading, error } = useAgentLeaderboard(7, 4);
+
   return (
     <Card className="relative overflow-hidden">
       <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-amber-400/20 to-orange-500/20 blur-2xl" />
@@ -31,9 +28,9 @@ export function GamificationCard() {
         </div>
       </CardHeader>
       <CardContent className="relative space-y-3">
-        {/* Badges row */}
+        {/* Badges row — real counts */}
         <div className="flex gap-2">
-          {badges.map((badge, i) => (
+          {BADGE_META.map((badge, i) => (
             <motion.div
               key={badge.label}
               initial={{ scale: 0, opacity: 0 }}
@@ -51,7 +48,7 @@ export function GamificationCard() {
                   {badge.label}
                 </div>
                 <div className="text-[10px] text-muted-foreground">
-                  {badge.count} earned
+                  {data?.badges?.[badge.key] ?? 0} earned
                 </div>
               </div>
             </motion.div>
@@ -59,12 +56,32 @@ export function GamificationCard() {
         </div>
 
         {/* Leaderboard */}
-        <div className="space-y-1">
-          {leaderboard.map((agent, i) => {
-            const isUp = agent.change.startsWith("+");
+        <div className="space-y-1 min-h-[88px]">
+          {loading && !data && (
+            <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
+              <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+              Loading leaderboard...
+            </div>
+          )}
+          {error && !data && (
+            <p className="py-4 text-center text-xs text-rose-600">
+              {error}
+            </p>
+          )}
+          {data && data.leaderboard.length === 0 && (
+            <p className="py-4 text-center text-xs text-muted-foreground">
+              No contacts in the last {data.rangeDays} days yet.
+            </p>
+          )}
+          {data?.leaderboard.map((agent, i) => {
+            const isUp = agent.changePct >= 0;
+            const changeLabel =
+              agent.changePct === 0
+                ? "—"
+                : `${agent.changePct >= 0 ? "+" : ""}${agent.changePct}%`;
             return (
               <motion.div
-                key={agent.name}
+                key={agent.agentId}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 + i * 0.05 }}
@@ -87,18 +104,25 @@ export function GamificationCard() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">
-                    {agent.name}
+                    {agent.username}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {agent.contactCount} contacts · {agent.totalMinutes}m
                   </div>
                 </div>
                 <div className="text-xs font-semibold tabular-nums">
-                  {agent.score.toLocaleString()}
+                  {agent.contactCount.toLocaleString()}
                 </div>
                 <div
                   className={`text-[10px] font-medium ${
-                    isUp ? "text-emerald-600" : "text-rose-600"
+                    agent.changePct === 0
+                      ? "text-muted-foreground"
+                      : isUp
+                      ? "text-emerald-600"
+                      : "text-rose-600"
                   }`}
                 >
-                  {agent.change}
+                  {changeLabel}
                 </div>
               </motion.div>
             );

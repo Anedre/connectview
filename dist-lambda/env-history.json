@@ -1,0 +1,7 @@
+{
+  "Variables": {
+    "CONNECT_INSTANCE_ID": "2345d564-4bd4-4318-9cf0-75649bad5197",
+    "CUSTOMER_PROFILES_DOMAIN": "amazon-connect-novasys",
+    "AMPLIFY_SSM_ENV_CONFIG": "{}"
+  }
+}

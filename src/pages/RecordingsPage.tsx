@@ -3,44 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, Headphones } from "lucide-react";
+import { Search, Headphones, AlertTriangle } from "lucide-react";
 import { AudioPlayer } from "@/components/recordings/AudioPlayer";
 import { TranscriptViewer } from "@/components/recordings/TranscriptViewer";
 import type { TranscriptSegment } from "@/types/recordings";
 import type { ContactRecord } from "@/types/monitoring";
 import { getApiEndpoints } from "@/lib/api";
-
-// Mock data
-function generateMockRecording(): {
-  contact: ContactRecord;
-  transcript: TranscriptSegment[];
-} {
-  return {
-    contact: {
-      contactId: "mock-001",
-      initiationTimestamp: new Date(Date.now() - 3600000).toISOString(),
-      disconnectTimestamp: new Date(Date.now() - 3300000).toISOString(),
-      agentUsername: "agent.maria",
-      queueName: "SupportQueue",
-      channel: "VOICE",
-      duration: 300,
-      sentiment: "POSITIVE",
-      categories: ["Technical Support", "Billing"],
-      disconnectReason: "AGENT_DISCONNECT",
-      status: "COMPLETED",
-    },
-    transcript: [
-      { content: "Thank you for calling Novasys support, my name is Maria. How can I help you today?", participant: "AGENT", beginOffsetMillis: 0, endOffsetMillis: 5000, sentiment: "POSITIVE" },
-      { content: "Hi Maria, I'm having trouble with my account billing. I was charged twice this month.", participant: "CUSTOMER", beginOffsetMillis: 5500, endOffsetMillis: 12000, sentiment: "NEGATIVE" },
-      { content: "I'm sorry to hear that. Let me look into your account right away. Can you please provide me with your account number?", participant: "AGENT", beginOffsetMillis: 12500, endOffsetMillis: 19000, sentiment: "POSITIVE" },
-      { content: "Sure, it's AC-12345.", participant: "CUSTOMER", beginOffsetMillis: 19500, endOffsetMillis: 22000, sentiment: "NEUTRAL" },
-      { content: "Thank you. I can see the duplicate charge here. I'll process a refund for you right now. It should appear in 3-5 business days.", participant: "AGENT", beginOffsetMillis: 22500, endOffsetMillis: 32000, sentiment: "POSITIVE" },
-      { content: "Oh that's great! Thank you so much for resolving this so quickly.", participant: "CUSTOMER", beginOffsetMillis: 32500, endOffsetMillis: 37000, sentiment: "POSITIVE" },
-      { content: "You're welcome! Is there anything else I can help you with today?", participant: "AGENT", beginOffsetMillis: 37500, endOffsetMillis: 41000, sentiment: "POSITIVE" },
-      { content: "No, that's all. Thanks again, Maria!", participant: "CUSTOMER", beginOffsetMillis: 41500, endOffsetMillis: 44000, sentiment: "POSITIVE" },
-    ],
-  };
-}
 
 export function RecordingsPage() {
   const [searchId, setSearchId] = useState("");
@@ -48,39 +16,47 @@ export function RecordingsPage() {
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const handleSearch = async () => {
+    if (!searchId.trim()) {
+      setSearchError("Enter a Contact ID to search.");
+      return;
+    }
     setLoading(true);
+    setSearchError(null);
     try {
       const endpoints = getApiEndpoints();
-      if (endpoints?.getRecording && searchId && searchId !== "demo") {
-        const response = await fetch(
-          `${endpoints.getRecording}?contactId=${encodeURIComponent(searchId)}`
-        );
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-        setSelectedContact({
-          contactId: data.contactId,
-          initiationTimestamp: new Date().toISOString(),
-          agentUsername: "—",
-          queueName: "—",
-          channel: "VOICE",
-          duration: data.duration,
-          sentiment: "UNKNOWN",
-          categories: [],
-          status: "COMPLETED",
-        });
-        setTranscript(data.transcript || []);
-      } else {
-        // Demo mode
-        const mock = generateMockRecording();
-        setSelectedContact(mock.contact);
-        setTranscript(mock.transcript);
+      if (!endpoints?.getRecording) {
+        throw new Error("Recordings API endpoint is not configured.");
       }
-    } catch {
-      const mock = generateMockRecording();
-      setSelectedContact(mock.contact);
-      setTranscript(mock.transcript);
+      const response = await fetch(
+        `${endpoints.getRecording}?contactId=${encodeURIComponent(searchId)}`
+      );
+      if (!response.ok) {
+        throw new Error(
+          response.status === 404
+            ? "No recording found for this Contact ID."
+            : `HTTP ${response.status}`
+        );
+      }
+      const data = await response.json();
+      setSelectedContact({
+        contactId: data.contactId,
+        initiationTimestamp: data.initiationTimestamp || new Date().toISOString(),
+        agentUsername: data.agentUsername || "—",
+        queueName: data.queueName || "—",
+        channel: data.channel || "VOICE",
+        duration: data.duration || 0,
+        sentiment: data.sentiment || "UNKNOWN",
+        categories: data.categories || [],
+        status: "COMPLETED",
+      });
+      setTranscript(data.transcript || []);
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : "Failed to load recording.");
+      setSelectedContact(null);
+      setTranscript([]);
     } finally {
       setLoading(false);
     }
@@ -108,27 +84,28 @@ export function RecordingsPage() {
       </div>
 
       {/* Search */}
-      <div className="flex gap-3">
-        <Input
-          placeholder="Enter Contact ID to search..."
-          value={searchId}
-          onChange={(e) => setSearchId(e.target.value)}
-          className="max-w-md"
-        />
-        <Button onClick={handleSearch} disabled={loading}>
-          <Search className="mr-2 h-4 w-4" />
-          Search
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => {
-            setSearchId("demo");
-            handleSearch();
-          }}
-        >
-          <Headphones className="mr-2 h-4 w-4" />
-          Load Demo
-        </Button>
+      <div className="space-y-2">
+        <div className="flex gap-3">
+          <Input
+            placeholder="Enter Contact ID to search..."
+            value={searchId}
+            onChange={(e) => setSearchId(e.target.value)}
+            className="max-w-md"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSearch();
+            }}
+          />
+          <Button onClick={handleSearch} disabled={loading}>
+            <Search className="mr-2 h-4 w-4" />
+            {loading ? "Searching..." : "Search"}
+          </Button>
+        </div>
+        {searchError && (
+          <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
+            <AlertTriangle className="h-4 w-4" />
+            {searchError}
+          </div>
+        )}
       </div>
 
       {selectedContact && (

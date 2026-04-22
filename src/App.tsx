@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,12 +10,17 @@ import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
 import { ConnectAuthProvider, useConnectAuth } from "@/context/ConnectAuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { CONNECT_INSTANCE_URL } from "@/lib/constants";
+import { ExternalLink, LogIn } from "lucide-react";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { AgentDesktopPage } from "@/pages/AgentDesktopPage";
 import { MonitoringPage } from "@/pages/MonitoringPage";
 import { ReportsPage } from "@/pages/ReportsPage";
 import { RecordingsPage } from "@/pages/RecordingsPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { CampaignsPage } from "@/pages/CampaignsPage";
+import { CampaignDetailPage } from "@/pages/CampaignDetailPage";
+import { QueueManagerPage } from "@/pages/QueueManagerPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { Sparkles, Loader2 } from "lucide-react";
 
@@ -55,6 +61,72 @@ function LoadingScreen() {
           A login popup may appear. Please allow popups for this site to
           authenticate.
         </p>
+      </motion.div>
+    </div>
+  );
+}
+
+function LoginScreen() {
+  // When the user returns from the Connect login tab, auto-reload so the CCP
+  // iframe picks up the fresh session cookies.
+  useEffect(() => {
+    const onFocus = () => {
+      // Only reload if the user has been away for at least a couple of seconds
+      // (i.e. they actually left the tab to log in).
+      window.location.reload();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  const openLogin = () => {
+    // Opening in response to a user click — Chrome allows it. The popup variant
+    // tends to get blocked by SSO IdPs, so we use a plain new tab.
+    window.open(`${CONNECT_INSTANCE_URL}/ccp-v2`, "_blank", "noopener");
+  };
+
+  return (
+    <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-gradient-to-br from-indigo-50 via-background to-purple-50 p-8 dark:from-indigo-950/20 dark:to-purple-950/20">
+      <div className="absolute left-1/4 top-1/4 h-72 w-72 rounded-full bg-indigo-300/30 blur-3xl" />
+      <div className="absolute bottom-1/4 right-1/4 h-72 w-72 rounded-full bg-purple-300/30 blur-3xl" />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="relative w-full max-w-md rounded-2xl border bg-card p-8 shadow-xl"
+      >
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow">
+          <LogIn className="h-6 w-6" />
+        </div>
+        <h2 className="mt-4 text-xl font-semibold">
+          Inicia sesión en Amazon Connect
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Para usar Connectview necesitas tener una sesión activa en tu
+          instancia de Amazon Connect. Haz clic abajo, inicia sesión en la
+          pestaña que se abre, y regresa aquí — esta página se recargará
+          automáticamente.
+        </p>
+
+        <button
+          onClick={openLogin}
+          className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg"
+        >
+          <ExternalLink className="h-4 w-4" />
+          Iniciar sesión en Connect
+        </button>
+
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <strong>Tip:</strong> mantén esa pestaña abierta mientras usas
+          Connectview — la sesión se comparte automáticamente.
+        </div>
+
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-3 w-full text-center text-xs text-muted-foreground hover:text-foreground"
+        >
+          Ya inicié sesión · reintentar
+        </button>
       </motion.div>
     </div>
   );
@@ -108,6 +180,9 @@ function AnimatedRoutes() {
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/recordings" element={<RecordingsPage />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/campaigns" element={<CampaignsPage />} />
+            <Route path="/campaigns/:campaignId" element={<CampaignDetailPage />} />
+            <Route path="/queue" element={<QueueManagerPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </motion.div>
@@ -117,7 +192,7 @@ function AnimatedRoutes() {
 }
 
 function AppContent() {
-  const { user, loading, error, ccpContainerRef } = useConnectAuth();
+  const { user, loading, error, needsLogin, ccpContainerRef } = useConnectAuth();
 
   return (
     <>
@@ -136,8 +211,9 @@ function AppContent() {
         <div ref={ccpContainerRef} id="ccp-container" />
       </div>
 
-      {!user && loading && <LoadingScreen />}
-      {!user && !loading && error && <ErrorScreen error={error} />}
+      {!user && needsLogin && <LoginScreen />}
+      {!user && !needsLogin && loading && <LoadingScreen />}
+      {!user && !needsLogin && !loading && error && <ErrorScreen error={error} />}
 
       {user && (
         <BrowserRouter>

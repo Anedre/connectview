@@ -4,6 +4,9 @@ import { getApiEndpoints } from "@/lib/api";
 export interface HistoricalContact {
   contactId: string;
   channel: string;
+  // e.g. "WhatsApp/SMS", "Messaging API", "Outbound" — derived from Connect's
+  // initiationMethod + customerEndpoint.type for CHAT contacts.
+  subChannel?: string;
   initiationTimestamp: string;
   disconnectTimestamp: string;
   duration: number;

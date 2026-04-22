@@ -1,0 +1,54 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudWatchLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:us-east-1:731736972577:*"
+    },
+    {
+      "Sid": "DynamoDbReadContacts",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:Scan",
+        "dynamodb:Query",
+        "dynamodb:GetItem"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:731736972577:table/connectview-contacts",
+        "arn:aws:dynamodb:us-east-1:731736972577:table/connectview-contacts/index/*"
+      ]
+    },
+    {
+      "Sid": "ConnectMetadataLookup",
+      "Effect": "Allow",
+      "Action": [
+        "connect:DescribeUser",
+        "connect:DescribeQueue",
+        "connect:ListUsers"
+      ],
+      "Resource": [
+        "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197",
+        "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/*"
+      ]
+    },
+    {
+      "Sid": "CustomerProfilesReadonly",
+      "Effect": "Allow",
+      "Action": [
+        "profile:SearchProfiles",
+        "profile:GetProfileObjectType",
+        "profile:ListProfileObjects"
+      ],
+      "Resource": [
+        "arn:aws:profile:us-east-1:731736972577:domains/amazon-connect-novasys",
+        "arn:aws:profile:us-east-1:731736972577:domains/amazon-connect-novasys/*"
+      ]
+    }
+  ]
+}

@@ -35,6 +35,18 @@ export const NAV_ITEMS = [
     minRole: "Supervisors" as const,
   },
   {
+    label: "Campañas",
+    path: "/campaigns",
+    icon: "Megaphone" as const,
+    minRole: "Admins" as const,
+  },
+  {
+    label: "Queue Manager",
+    path: "/queue",
+    icon: "Headphones" as const,
+    minRole: "Admins" as const,
+  },
+  {
     label: "Admin",
     path: "/admin",
     icon: "Settings" as const,

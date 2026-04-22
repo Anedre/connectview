@@ -1,0 +1,9 @@
+{
+  "Variables": {
+    "CONTACTS_TABLE_NAME": "connectview-contacts",
+    "ENRICH_FUNCTION_NAME": "amplify-connectview-andre-enrichcontactlenslambda3-ea0RftlK0MXk",
+    "CAMPAIGNS_TABLE": "connectview-campaigns",
+    "CAMPAIGN_CONTACTS_TABLE": "connectview-campaign-contacts",
+    "AMPLIFY_SSM_ENV_CONFIG": "{}"
+  }
+}

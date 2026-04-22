@@ -13,6 +13,7 @@ interface ConnectAuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   error: string | null;
+  needsLogin: boolean;
   ccpContainerRef: React.RefObject<HTMLDivElement | null>;
   signOut: () => void;
 }
@@ -57,11 +58,17 @@ async function fetchSecurityProfiles(username: string): Promise<string[]> {
 // The CCP iframe must live for the full page lifetime — we never tear it down on cleanup.
 let ccpInitialized = false;
 
+// How long we wait for the CCP iframe to authenticate before assuming the user
+// has no active Connect session and prompting them to log in.
+const LOGIN_TIMEOUT_MS = 15000;
+
 export function ConnectAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
   const ccpContainerRef = useRef<HTMLDivElement>(null);
+  const loginTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     const container = ccpContainerRef.current;
@@ -74,10 +81,28 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
 
     ccpInitialized = true;
 
+    // If the CCP doesn't authenticate within LOGIN_TIMEOUT_MS, assume there's no
+    // active Connect session and prompt the user to log in. The iframe's login
+    // redirect has `frame-ancestors 'none'` so it can't render inline — we have
+    // to send the user to Connect in a new tab.
+    // The connect.agent() callback (below) clears this timer when auth succeeds.
+    // If it never fires within LOGIN_TIMEOUT_MS, the user has no Connect session.
+    loginTimerRef.current = setTimeout(() => {
+      setNeedsLogin(true);
+      setLoading(false);
+    }, LOGIN_TIMEOUT_MS);
+
     try {
       initCCP(container, CONNECT_INSTANCE_URL);
 
       connect.agent(async (agent) => {
+        // Auth succeeded — cancel the login-needed timer.
+        if (loginTimerRef.current) {
+          clearTimeout(loginTimerRef.current);
+          loginTimerRef.current = undefined;
+        }
+        setNeedsLogin(false);
+
         try {
           const config = agent.getConfiguration();
           const username = config.username;
@@ -123,7 +148,7 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <ConnectAuthContext.Provider
-      value={{ user, loading, error, ccpContainerRef, signOut }}
+      value={{ user, loading, error, needsLogin, ccpContainerRef, signOut }}
     >
       {children}
     </ConnectAuthContext.Provider>

@@ -1,0 +1,75 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudWatchLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:us-east-1:731736972577:*"
+    },
+    {
+      "Sid": "DynamoDbCampaigns",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:BatchGetItem"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:731736972577:table/connectview-campaigns",
+        "arn:aws:dynamodb:us-east-1:731736972577:table/connectview-campaigns/index/*",
+        "arn:aws:dynamodb:us-east-1:731736972577:table/connectview-campaign-contacts",
+        "arn:aws:dynamodb:us-east-1:731736972577:table/connectview-campaign-contacts/index/*",
+        "arn:aws:dynamodb:us-east-1:731736972577:table/connectview-contacts",
+        "arn:aws:dynamodb:us-east-1:731736972577:table/connectview-contacts/index/*"
+      ]
+    },
+    {
+      "Sid": "ConnectOutboundCalls",
+      "Effect": "Allow",
+      "Action": [
+        "connect:StartOutboundVoiceContact",
+        "connect:StopContact",
+        "connect:DescribeContact",
+        "connect:DescribeContactFlow",
+        "connect:ListContactFlows",
+        "connect:ListPhoneNumbersV2",
+        "connect:ListPhoneNumbers",
+        "connect:DescribePhoneNumber",
+        "connect:ListQueues",
+        "connect:DescribeQueue",
+        "connect:DescribeUser",
+        "connect:ListUsers",
+        "connect:GetCurrentUserData",
+        "connect:GetCurrentMetricData"
+      ],
+      "Resource": [
+        "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197",
+        "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/*"
+      ]
+    },
+    {
+      "Sid": "CustomerProfiles",
+      "Effect": "Allow",
+      "Action": [
+        "profile:SearchProfiles",
+        "profile:CreateProfile",
+        "profile:UpdateProfile",
+        "profile:GetProfile"
+      ],
+      "Resource": [
+        "arn:aws:profile:us-east-1:731736972577:domains/amazon-connect-novasys",
+        "arn:aws:profile:us-east-1:731736972577:domains/amazon-connect-novasys/*"
+      ]
+    }
+  ]
+}

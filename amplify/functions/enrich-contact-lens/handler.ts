@@ -4,11 +4,18 @@ import {
   DescribeContactCommand,
 } from "@aws-sdk/client-connect";
 import {
+  ConnectContactLensClient,
+  ListRealtimeContactAnalysisSegmentsCommand,
+} from "@aws-sdk/client-connect-contact-lens";
+import {
   DynamoDBClient,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 
-const connect = new ConnectClient({});
+// maxAttempts: 1 — no retries on throttling. The 5s delay below gives Contact Lens enough time
+// to finalize analysis; if it's still not ready we'll just record sentiment=UNKNOWN and move on.
+const connect = new ConnectClient({ maxAttempts: 1 });
+const contactLens = new ConnectContactLensClient({ maxAttempts: 1 });
 const dynamo = new DynamoDBClient({});
 const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "";
 
@@ -17,14 +24,69 @@ interface EnrichEvent {
   instanceId: string;
 }
 
+type Sentiment = "POSITIVE" | "NEGATIVE" | "NEUTRAL" | "MIXED" | "UNKNOWN";
+
+interface SentimentStats {
+  overall: Sentiment;
+  positive: number;
+  negative: number;
+  neutral: number;
+  total: number;
+}
+
+async function computeSentiment(
+  contactId: string,
+  instanceId: string
+): Promise<SentimentStats> {
+  try {
+    const result = await contactLens.send(
+      new ListRealtimeContactAnalysisSegmentsCommand({
+        InstanceId: instanceId,
+        ContactId: contactId,
+        MaxResults: 100,
+      })
+    );
+
+    let positive = 0;
+    let negative = 0;
+    let neutral = 0;
+    for (const s of result.Segments || []) {
+      if (!s.Transcript?.Sentiment) continue;
+      // Only count CUSTOMER sentiment — the agent's sentiment doesn't represent
+      // customer satisfaction.
+      if (s.Transcript.ParticipantRole !== "CUSTOMER") continue;
+      if (s.Transcript.Sentiment === "POSITIVE") positive++;
+      else if (s.Transcript.Sentiment === "NEGATIVE") negative++;
+      else if (s.Transcript.Sentiment === "NEUTRAL") neutral++;
+    }
+    const total = positive + negative + neutral;
+    if (total === 0) {
+      return { overall: "UNKNOWN", positive: 0, negative: 0, neutral: 0, total: 0 };
+    }
+    // If both positive AND negative segments exist in meaningful amounts → MIXED.
+    const positiveRatio = positive / total;
+    const negativeRatio = negative / total;
+    let overall: Sentiment;
+    if (positiveRatio >= 0.3 && negativeRatio >= 0.3) overall = "MIXED";
+    else if (negative > positive && negativeRatio > 0.3) overall = "NEGATIVE";
+    else if (positive > negative && positiveRatio > 0.3) overall = "POSITIVE";
+    else overall = "NEUTRAL";
+
+    return { overall, positive, negative, neutral, total };
+  } catch (err) {
+    console.warn("Contact Lens sentiment lookup failed:", err);
+    return { overall: "UNKNOWN", positive: 0, negative: 0, neutral: 0, total: 0 };
+  }
+}
+
 export const handler: Handler<EnrichEvent> = async (event) => {
   const { contactId, instanceId } = event;
 
   try {
-    // Wait for Contact Lens analysis to be available
+    // Wait for Contact Lens analysis to finalize post-disconnect.
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    // Get contact description for duration
+    // Get contact description for duration + customer endpoint
     const contactDesc = await connect.send(
       new DescribeContactCommand({
         InstanceId: instanceId,
@@ -42,11 +104,14 @@ export const handler: Handler<EnrichEvent> = async (event) => {
           )
         : 0;
 
-    // Contact Lens sentiment is available via DescribeContact when enabled
-    // For detailed analytics, the data is written to S3 by Contact Lens automatically
-    const sentiment = "UNKNOWN";
+    const customerPhone = contact?.CustomerEndpoint?.Address || "";
+    const customerEndpointType = contact?.CustomerEndpoint?.Type || "";
 
-    // Update DynamoDB with enriched data
+    // Compute real sentiment from Contact Lens segments.
+    const sentimentStats = await computeSentiment(contactId, instanceId);
+
+    // Update DynamoDB with enriched data. Conditional on contact existing so we don't
+    // create stub rows for contacts we never processed on INITIATED.
     await dynamo.send(
       new UpdateItemCommand({
         TableName: TABLE_NAME,
@@ -54,17 +119,32 @@ export const handler: Handler<EnrichEvent> = async (event) => {
           contactId: { S: contactId },
         },
         UpdateExpression:
-          "SET #dur = :dur, sentiment = :sent",
+          "SET #dur = :dur, sentiment = :sent, customerPhone = :phone, customerEndpointType = :etype, sentimentPositive = :pos, sentimentNegative = :neg, sentimentNeutral = :neu, sentimentTotal = :tot",
         ExpressionAttributeNames: {
           "#dur": "duration",
         },
         ExpressionAttributeValues: {
           ":dur": { N: String(duration) },
-          ":sent": { S: sentiment },
+          ":sent": { S: sentimentStats.overall },
+          ":phone": { S: customerPhone },
+          ":etype": { S: customerEndpointType },
+          ":pos": { N: String(sentimentStats.positive) },
+          ":neg": { N: String(sentimentStats.negative) },
+          ":neu": { N: String(sentimentStats.neutral) },
+          ":tot": { N: String(sentimentStats.total) },
         },
+        ConditionExpression: "attribute_exists(contactId)",
       })
     );
   } catch (error) {
+    // If the item doesn't exist yet (race with INITIATED event) just swallow it
+    if (
+      error instanceof Error &&
+      error.name === "ConditionalCheckFailedException"
+    ) {
+      console.warn("Contact row missing on enrich, skipping:", contactId);
+      return;
+    }
     console.error("Error enriching contact:", error);
     throw error;
   }

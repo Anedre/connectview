@@ -1,0 +1,71 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudWatchLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:us-east-1:731736972577:*"
+    },
+    {
+      "Sid": "DynamoDbAudit",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem",
+        "dynamodb:GetItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:731736972577:table/connectview-admin-audit",
+        "arn:aws:dynamodb:us-east-1:731736972577:table/connectview-admin-audit/index/*"
+      ]
+    },
+    {
+      "Sid": "ConnectReadOperations",
+      "Effect": "Allow",
+      "Action": [
+        "connect:GetCurrentUserData",
+        "connect:GetCurrentMetricData",
+        "connect:DescribeContact",
+        "connect:SearchContacts",
+        "connect:DescribeUser",
+        "connect:ListUsers",
+        "connect:DescribeQueue",
+        "connect:ListQueues",
+        "connect:DescribeRoutingProfile",
+        "connect:ListAgentStatuses",
+        "connect:DescribeAgentStatus"
+      ],
+      "Resource": [
+        "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197",
+        "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/*"
+      ]
+    },
+    {
+      "Sid": "ConnectAdminOperations",
+      "Effect": "Allow",
+      "Action": [
+        "connect:TransferContact",
+        "connect:StopContact",
+        "connect:StopContactRecording",
+        "connect:ResumeContactRecording",
+        "connect:SuspendContactRecording",
+        "connect:PauseContact",
+        "connect:ResumeContact",
+        "connect:HoldContact",
+        "connect:PutUserStatus",
+        "connect:MonitorContact",
+        "connect:UpdateContactAttributes"
+      ],
+      "Resource": [
+        "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197",
+        "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/*"
+      ]
+    }
+  ]
+}

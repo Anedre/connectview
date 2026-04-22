@@ -7,6 +7,8 @@ import {
   Disc,
   Settings,
   Sparkles,
+  Megaphone,
+  Headphones,
 } from "lucide-react";
 import {
   Sidebar,
@@ -30,6 +32,8 @@ const ICON_MAP = {
   BarChart3,
   Disc,
   Settings,
+  Megaphone,
+  Headphones,
 } as const;
 
 // Accent colors for each icon
@@ -40,6 +44,8 @@ const ICON_COLORS: Record<string, string> = {
   BarChart3: "text-purple-400",
   Disc: "text-pink-400",
   Settings: "text-rose-400",
+  Megaphone: "text-orange-400",
+  Headphones: "text-cyan-400",
 };
 
 export function AppSidebar() {
