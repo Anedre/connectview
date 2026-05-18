@@ -1,14 +1,18 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Search, Headphones, AlertTriangle } from "lucide-react";
 import { AudioPlayer } from "@/components/recordings/AudioPlayer";
 import { TranscriptViewer } from "@/components/recordings/TranscriptViewer";
 import type { TranscriptSegment } from "@/types/recordings";
 import type { ContactRecord } from "@/types/monitoring";
 import { getApiEndpoints } from "@/lib/api";
+import * as Icon from "@/components/vox/primitives";
+import { Card, CardBody, CardHead } from "@/components/vox/primitives";
+
+const SENTIMENT_CHIP: Record<string, string> = {
+  POSITIVE: "chip--green",
+  NEGATIVE: "chip--red",
+  NEUTRAL: "",
+  MIXED: "chip--amber",
+};
 
 export function RecordingsPage() {
   const [searchId, setSearchId] = useState("");
@@ -20,7 +24,7 @@ export function RecordingsPage() {
 
   const handleSearch = async () => {
     if (!searchId.trim()) {
-      setSearchError("Enter a Contact ID to search.");
+      setSearchError("Ingresa un Contact ID para buscar.");
       return;
     }
     setLoading(true);
@@ -28,7 +32,7 @@ export function RecordingsPage() {
     try {
       const endpoints = getApiEndpoints();
       if (!endpoints?.getRecording) {
-        throw new Error("Recordings API endpoint is not configured.");
+        throw new Error("La API de grabaciones no está configurada.");
       }
       const response = await fetch(
         `${endpoints.getRecording}?contactId=${encodeURIComponent(searchId)}`
@@ -36,7 +40,7 @@ export function RecordingsPage() {
       if (!response.ok) {
         throw new Error(
           response.status === 404
-            ? "No recording found for this Contact ID."
+            ? "No se encontró ninguna grabación para este Contact ID."
             : `HTTP ${response.status}`
         );
       }
@@ -54,7 +58,7 @@ export function RecordingsPage() {
       });
       setTranscript(data.transcript || []);
     } catch (err) {
-      setSearchError(err instanceof Error ? err.message : "Failed to load recording.");
+      setSearchError(err instanceof Error ? err.message : "Error al cargar la grabación.");
       setSelectedContact(null);
       setTranscript([]);
     } finally {
@@ -62,115 +66,157 @@ export function RecordingsPage() {
     }
   };
 
-  const SENTIMENT_STYLES: Record<string, string> = {
-    POSITIVE: "bg-green-100 text-green-800",
-    NEGATIVE: "bg-red-100 text-red-800",
-    NEUTRAL: "bg-gray-100 text-gray-800",
-    MIXED: "bg-yellow-100 text-yellow-800",
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-md">
-          <Headphones className="h-5 w-5" />
-        </div>
+    <div className="view">
+      <div className="view__head">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Recordings</h2>
-          <p className="text-sm text-muted-foreground">
-            Search and playback call recordings with AI transcription
-          </p>
+          <div className="view__crumb">
+            <span>Crecimiento</span>
+          </div>
+          <h1 className="view__title">Grabaciones</h1>
+          <div className="view__sub">
+            Búsqueda y reproducción de llamadas con transcripción Contact Lens
+          </div>
+        </div>
+        <div className="view__actions">
+          <button className="btn">
+            <Icon.Filter size={14} /> Filtros avanzados
+          </button>
         </div>
       </div>
 
-      {/* Search */}
-      <div className="space-y-2">
-        <div className="flex gap-3">
-          <Input
-            placeholder="Enter Contact ID to search..."
-            value={searchId}
-            onChange={(e) => setSearchId(e.target.value)}
-            className="max-w-md"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSearch();
-            }}
-          />
-          <Button onClick={handleSearch} disabled={loading}>
-            <Search className="mr-2 h-4 w-4" />
-            {loading ? "Searching..." : "Search"}
-          </Button>
-        </div>
-        {searchError && (
-          <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
-            <AlertTriangle className="h-4 w-4" />
-            {searchError}
+      <Card style={{ marginBottom: 16 }}>
+        <CardHead title="Buscar por Contact ID" />
+        <CardBody>
+          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            <div className="tb__search" style={{ maxWidth: 480, height: 36 }}>
+              <Icon.Search size={14} />
+              <input
+                placeholder="Contact ID…"
+                value={searchId}
+                onChange={(e) => setSearchId(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSearch();
+                }}
+              />
+            </div>
+            <button
+              className="btn btn--primary"
+              onClick={handleSearch}
+              disabled={loading}
+            >
+              <Icon.Search size={14} />
+              {loading ? "Buscando…" : "Buscar"}
+            </button>
           </div>
-        )}
-      </div>
+          {searchError && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: 10,
+                borderRadius: 8,
+                background: "var(--accent-red-soft)",
+                color: "var(--accent-red)",
+                fontSize: 12.5,
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <Icon.Close size={14} /> {searchError}
+            </div>
+          )}
+        </CardBody>
+      </Card>
 
       {selectedContact && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Left: Recording + Info */}
-          <div className="space-y-4">
+        <div className="grid-2">
+          <div className="col" style={{ gap: 16 }}>
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Contact Info</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <span className="text-muted-foreground">Contact ID</span>
-                  <span className="font-mono text-xs">{selectedContact.contactId}</span>
-                  <span className="text-muted-foreground">Agent</span>
+              <CardHead title="Info del contacto" />
+              <CardBody>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "120px 1fr",
+                    gap: "10px 14px",
+                    fontSize: 12.5,
+                  }}
+                >
+                  <span className="muted">Contact ID</span>
+                  <span className="mono" style={{ fontSize: 11.5 }}>
+                    {selectedContact.contactId}
+                  </span>
+                  <span className="muted">Agente</span>
                   <span>{selectedContact.agentUsername}</span>
-                  <span className="text-muted-foreground">Queue</span>
+                  <span className="muted">Cola</span>
                   <span>{selectedContact.queueName}</span>
-                  <span className="text-muted-foreground">Channel</span>
-                  <Badge variant="secondary">{selectedContact.channel}</Badge>
-                  <span className="text-muted-foreground">Duration</span>
-                  <span>{Math.floor((selectedContact.duration || 0) / 60)}m {(selectedContact.duration || 0) % 60}s</span>
-                  <span className="text-muted-foreground">Sentiment</span>
-                  <Badge className={SENTIMENT_STYLES[selectedContact.sentiment || "NEUTRAL"]}>
-                    {selectedContact.sentiment}
-                  </Badge>
-                  <span className="text-muted-foreground">Categories</span>
-                  <div className="flex flex-wrap gap-1">
+                  <span className="muted">Canal</span>
+                  <span>
+                    <span className="chip">{selectedContact.channel}</span>
+                  </span>
+                  <span className="muted">Duración</span>
+                  <span className="mono">
+                    {Math.floor((selectedContact.duration || 0) / 60)}m{" "}
+                    {(selectedContact.duration || 0) % 60}s
+                  </span>
+                  <span className="muted">Sentiment</span>
+                  <span>
+                    <span
+                      className={`chip ${
+                        SENTIMENT_CHIP[selectedContact.sentiment || "NEUTRAL"] ?? ""
+                      }`}
+                    >
+                      <span className="dot" />
+                      {selectedContact.sentiment}
+                    </span>
+                  </span>
+                  <span className="muted">Categorías</span>
+                  <span className="row" style={{ flexWrap: "wrap", gap: 4 }}>
                     {selectedContact.categories?.map((cat, i) => (
-                      <Badge key={i} variant="outline" className="text-xs">{cat}</Badge>
+                      <span key={i} className="chip">
+                        {cat}
+                      </span>
                     ))}
-                  </div>
+                  </span>
                 </div>
-              </CardContent>
+              </CardBody>
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Audio Playback</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AudioPlayer
-                  src=""
-                  onTimeUpdate={setCurrentTimeMs}
-                />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Audio playback available when connected to live recordings in S3
+              <CardHead title="Reproducción de audio" />
+              <CardBody>
+                <AudioPlayer src="" onTimeUpdate={setCurrentTimeMs} />
+                <p
+                  className="muted"
+                  style={{ marginTop: 8, fontSize: 11.5 }}
+                >
+                  La reproducción está disponible cuando hay grabaciones en S3.
                 </p>
-              </CardContent>
+              </CardBody>
             </Card>
           </div>
 
-          {/* Right: Transcript */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Transcript</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TranscriptViewer
-                segments={transcript}
-                currentTimeMs={currentTimeMs}
-              />
-            </CardContent>
+            <CardHead title="Transcripción" />
+            <CardBody>
+              <TranscriptViewer segments={transcript} currentTimeMs={currentTimeMs} />
+            </CardBody>
           </Card>
         </div>
+      )}
+
+      {!selectedContact && !searchError && (
+        <Card>
+          <CardBody
+            style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}
+          >
+            <Icon.Disc size={32} style={{ opacity: 0.4 }} />
+            <div style={{ marginTop: 12, fontSize: 13 }}>
+              Busca un Contact ID para revisar audio, transcripción y sentiment.
+            </div>
+          </CardBody>
+        </Card>
       )}
     </div>
   );

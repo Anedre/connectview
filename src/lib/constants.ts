@@ -17,12 +17,6 @@ export const NAV_ITEMS = [
     minRole: "Agents" as const,
   },
   {
-    label: "Monitoring",
-    path: "/monitoring",
-    icon: "Activity" as const,
-    minRole: "Supervisors" as const,
-  },
-  {
     label: "Reports",
     path: "/reports",
     icon: "BarChart3" as const,

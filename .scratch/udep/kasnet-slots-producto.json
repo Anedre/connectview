@@ -1,0 +1,145 @@
+{
+    "botId": "V5NU2G8LMH",
+    "botVersion": "DRAFT",
+    "localeId": "es_US",
+    "intentId": "WFBUQ0VN24",
+    "slotSummaries": [
+        {
+            "slotId": "L5W0B95OLX",
+            "slotName": "productok",
+            "slotConstraint": "Required",
+            "slotTypeId": "TJZ8THUGO2",
+            "valueElicitationPromptSpecification": {
+                "messageGroups": [
+                    {
+                        "message": {
+                            "plainTextMessage": {
+                                "value": "Entonces dime sobre cuál producto necesitas ayuda: Multibanco, Digital, Corporativo o Wallet?"
+                            }
+                        }
+                    }
+                ],
+                "maxRetries": 4,
+                "allowInterrupt": true,
+                "messageSelectionStrategy": "Random",
+                "promptAttemptsSpecification": {
+                    "Initial": {
+                        "allowInterrupt": true,
+                        "allowedInputTypes": {
+                            "allowAudioInput": true,
+                            "allowDTMFInput": true
+                        },
+                        "audioAndDTMFInputSpecification": {
+                            "startTimeoutMs": 4000,
+                            "audioSpecification": {
+                                "maxLengthMs": 15000,
+                                "endTimeoutMs": 640
+                            },
+                            "dtmfSpecification": {
+                                "maxLength": 513,
+                                "endTimeoutMs": 5000,
+                                "deletionCharacter": "*",
+                                "endCharacter": "#"
+                            }
+                        },
+                        "textInputSpecification": {
+                            "startTimeoutMs": 30000
+                        }
+                    },
+                    "Retry1": {
+                        "allowInterrupt": true,
+                        "allowedInputTypes": {
+                            "allowAudioInput": true,
+                            "allowDTMFInput": true
+                        },
+                        "audioAndDTMFInputSpecification": {
+                            "startTimeoutMs": 4000,
+                            "audioSpecification": {
+                                "maxLengthMs": 15000,
+                                "endTimeoutMs": 640
+                            },
+                            "dtmfSpecification": {
+                                "maxLength": 513,
+                                "endTimeoutMs": 5000,
+                                "deletionCharacter": "*",
+                                "endCharacter": "#"
+                            }
+                        },
+                        "textInputSpecification": {
+                            "startTimeoutMs": 30000
+                        }
+                    },
+                    "Retry2": {
+                        "allowInterrupt": true,
+                        "allowedInputTypes": {
+                            "allowAudioInput": true,
+                            "allowDTMFInput": true
+                        },
+                        "audioAndDTMFInputSpecification": {
+                            "startTimeoutMs": 4000,
+                            "audioSpecification": {
+                                "maxLengthMs": 15000,
+                                "endTimeoutMs": 640
+                            },
+                            "dtmfSpecification": {
+                                "maxLength": 513,
+                                "endTimeoutMs": 5000,
+                                "deletionCharacter": "*",
+                                "endCharacter": "#"
+                            }
+                        },
+                        "textInputSpecification": {
+                            "startTimeoutMs": 30000
+                        }
+                    },
+                    "Retry3": {
+                        "allowInterrupt": true,
+                        "allowedInputTypes": {
+                            "allowAudioInput": true,
+                            "allowDTMFInput": true
+                        },
+                        "audioAndDTMFInputSpecification": {
+                            "startTimeoutMs": 4000,
+                            "audioSpecification": {
+                                "maxLengthMs": 15000,
+                                "endTimeoutMs": 640
+                            },
+                            "dtmfSpecification": {
+                                "maxLength": 513,
+                                "endTimeoutMs": 5000,
+                                "deletionCharacter": "*",
+                                "endCharacter": "#"
+                            }
+                        },
+                        "textInputSpecification": {
+                            "startTimeoutMs": 30000
+                        }
+                    },
+                    "Retry4": {
+                        "allowInterrupt": true,
+                        "allowedInputTypes": {
+                            "allowAudioInput": true,
+                            "allowDTMFInput": true
+                        },
+                        "audioAndDTMFInputSpecification": {
+                            "startTimeoutMs": 4000,
+                            "audioSpecification": {
+                                "maxLengthMs": 15000,
+                                "endTimeoutMs": 640
+                            },
+                            "dtmfSpecification": {
+                                "maxLength": 513,
+                                "endTimeoutMs": 5000,
+                                "deletionCharacter": "*",
+                                "endCharacter": "#"
+                            }
+                        },
+                        "textInputSpecification": {
+                            "startTimeoutMs": 30000
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

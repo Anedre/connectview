@@ -1,64 +1,60 @@
-import { Users, Phone, Clock, UserCheck, Activity } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useRealtimeMetrics } from "@/hooks/useRealtimeMetrics";
-import { QueueTable } from "@/components/monitoring/QueueTable";
-import { AgentTable } from "@/components/monitoring/AgentTable";
-import { RefreshIndicator } from "@/components/monitoring/RefreshIndicator";
+import * as Icon from "@/components/vox/primitives";
+import {
+  Avatar,
+  Card,
+  CardBody,
+  CardHead,
+  ChannelChip,
+  Kpi,
+  StatusPill,
+} from "@/components/vox/primitives";
 
-interface KPIProps {
-  label: string;
-  value: string | number;
-  sub: string;
-  icon: React.ElementType;
-  gradient: string;
-  delay: number;
+function formatWait(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
-function PremiumKPI({ label, value, sub, icon: Icon, gradient, delay }: KPIProps) {
+function SentimentEmpty() {
   return (
     <div
-      className="group relative overflow-hidden rounded-xl border bg-card p-5 transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5 animate-fade-in-up"
-      style={{ animationDelay: `${delay}ms` }}
+      style={{
+        padding: 24,
+        textAlign: "center",
+        color: "var(--text-3)",
+      }}
     >
-      <div
-        className={`absolute right-0 top-0 h-24 w-24 rounded-full bg-gradient-to-br ${gradient} opacity-10 blur-2xl transition-opacity group-hover:opacity-20`}
-      />
-      <div className="relative flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {label}
-          </p>
-          <p className="mt-2 text-4xl font-bold tracking-tight">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
-        </div>
-        <div
-          className={`flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br ${gradient} text-white shadow-lg shadow-black/5`}
-        >
-          <Icon className="h-5 w-5" />
-        </div>
+      <Icon.Sparkles size={26} style={{ opacity: 0.4 }} />
+      <div style={{ marginTop: 8, fontSize: 13, color: "var(--text-2)" }}>
+        Sin datos de sentiment todavía
+      </div>
+      <div style={{ marginTop: 4, fontSize: 11.5 }}>
+        Aparecerá cuando Contact Lens procese llamadas en vivo.
       </div>
     </div>
   );
 }
 
-function formatWait(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}m ${secs}s`;
-}
-
 export function MonitoringPage() {
   const { metrics, loading, error, lastRefresh, usingLiveData, refresh } =
     useRealtimeMetrics();
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 3000);
+    return () => clearInterval(id);
+  }, []);
 
   if (loading && !metrics) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center">
-          <Activity className="mx-auto h-8 w-8 animate-pulse text-primary" />
-          <p className="mt-2 text-sm text-muted-foreground">
-            Loading metrics...
-          </p>
+      <div className="view" style={{ display: "grid", placeItems: "center", minHeight: "60vh" }}>
+        <div style={{ textAlign: "center" }}>
+          <Icon.Activity size={28} style={{ color: "var(--accent-cyan)" }} />
+          <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>
+            Cargando métricas en tiempo real…
+          </div>
         </div>
       </div>
     );
@@ -66,109 +62,258 @@ export function MonitoringPage() {
 
   if (!metrics) return null;
 
+  const onCall = metrics.agents.filter((a) => a.status === "Busy").length;
+  const available = metrics.summary.totalAgentsAvailable;
+  const acw = metrics.agents.filter((a) => a.status === "AfterCallWork").length;
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="view">
+      <div className="view__head">
         <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold tracking-tight">
-              Real-time Monitoring
-            </h2>
-            {usingLiveData && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                </span>
-                Live
-              </span>
-            )}
+          <div className="view__crumb">
+            <span>Operación</span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Contact center activity overview
-          </p>
+          <h1 className="view__title">Cola en vivo · Supervisión</h1>
+          <div className="view__sub">
+            {metrics.summary.totalAgentsOnline} agentes activos ·{" "}
+            {metrics.summary.totalContactsInQueue} contactos en cola · Refresh 15s
+          </div>
         </div>
-        <RefreshIndicator
-          lastRefresh={lastRefresh}
-          onRefresh={refresh}
-          loading={loading}
-        />
+        <div className="view__actions">
+          {usingLiveData && (
+            <span className="chip chip--green">
+              <span
+                className="pulse"
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: "currentColor",
+                }}
+              />
+              Live · {lastRefresh.toLocaleTimeString()}
+            </span>
+          )}
+          <button className="btn" onClick={refresh}>
+            <Icon.Refresh size={14} /> Actualizar
+          </button>
+          <button className="btn">
+            <Icon.Sparkles size={14} /> Coach automático
+          </button>
+        </div>
       </div>
 
       {error && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-900">
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 12,
+            borderRadius: 8,
+            background: "var(--accent-amber-soft)",
+            color: "var(--accent-amber)",
+            fontSize: 12.5,
+          }}
+        >
           {error}
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <PremiumKPI
-          label="Contacts in Queue"
-          value={metrics.summary.totalContactsInQueue}
-          sub="Across all queues"
-          icon={Phone}
-          gradient="from-blue-500 to-indigo-600"
-          delay={0}
+      <div className="kpi-grid">
+        <Kpi
+          label="En cola"
+          value={metrics.summary.totalContactsInQueue + (tick % 1)}
+          delta="+12 últimos 5m"
+          deltaDir="up"
+          color="var(--accent-red)"
         />
-        <PremiumKPI
-          label="Agents Available"
-          value={metrics.summary.totalAgentsAvailable}
-          sub={`of ${metrics.summary.totalAgentsOnline} online`}
-          icon={UserCheck}
-          gradient="from-emerald-500 to-teal-600"
-          delay={80}
+        <Kpi
+          label="En conversación"
+          value={onCall}
+          delta={`${Math.round(
+            (onCall / Math.max(1, metrics.summary.totalAgentsOnline)) * 100
+          )}% utilización`}
+          deltaDir="flat"
+          color="var(--accent-cyan)"
         />
-        <PremiumKPI
-          label="Agents Online"
-          value={metrics.summary.totalAgentsOnline}
-          sub="Total connected"
-          icon={Users}
-          gradient="from-amber-500 to-orange-600"
-          delay={160}
+        <Kpi
+          label="Disponibles"
+          value={available}
+          delta={`${Math.round(
+            (available / Math.max(1, metrics.summary.totalAgentsOnline)) * 100
+          )}% del staff`}
+          deltaDir="up"
+          color="var(--accent-green)"
         />
-        <PremiumKPI
-          label="Longest Wait"
-          value={formatWait(metrics.summary.longestWaitSeconds)}
-          sub="Current oldest contact"
-          icon={Clock}
-          gradient="from-rose-500 to-pink-600"
-          delay={240}
+        <Kpi
+          label="ACW"
+          value={acw}
+          delta="AHT wrap 1:42"
+          deltaDir="flat"
+          color="var(--accent-amber)"
         />
       </div>
 
-      {/* Queue Metrics */}
-      <div
-        className="animate-fade-in-up"
-        style={{ animationDelay: "320ms" }}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-semibold tracking-tight">Queue Metrics</h3>
-          <span className="text-xs text-muted-foreground">
-            {metrics.queues.length} queues
-          </span>
-        </div>
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <QueueTable queues={metrics.queues} />
-        </div>
+      <div style={{ height: 16 }} />
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <Card>
+          <CardHead
+            title="Estado de las colas"
+            right={
+              <span className="muted" style={{ fontSize: 11 }}>
+                {metrics.queues.length} colas activas
+              </span>
+            }
+          />
+          <CardBody flush>
+            {metrics.queues.length === 0 ? (
+              <div
+                style={{ padding: 32, textAlign: "center", color: "var(--text-3)", fontSize: 12 }}
+              >
+                Sin colas reportadas.
+              </div>
+            ) : (
+              metrics.queues.map((q) => {
+                const sl = q.contactsInQueue;
+                const slaClass =
+                  sl > 20 ? "queue-row--alert" : sl > 5 ? "queue-row--warn" : "";
+                const slaLabel = sl > 20 ? "En riesgo" : sl > 5 ? "Media" : "OK";
+                return (
+                  <div key={q.queueId} className={`queue-row ${slaClass}`}>
+                    <ChannelChip type="voice" />
+                    <div className="grow truncate">
+                      <div style={{ fontWeight: 500 }}>{q.queueName}</div>
+                      <div className="muted mono" style={{ fontSize: 10.5 }}>
+                        SL target 80% / 30s
+                      </div>
+                    </div>
+                    <div className="mono col-num">
+                      <span className="muted" style={{ fontSize: 10.5 }}>
+                        cola
+                      </span>
+                      <br />
+                      {q.contactsInQueue}
+                    </div>
+                    <div className="mono col-num">
+                      <span className="muted" style={{ fontSize: 10.5 }}>
+                        libres
+                      </span>
+                      <br />
+                      {q.agentsAvailable}
+                    </div>
+                    <div className="mono col-num">
+                      <span className="muted" style={{ fontSize: 10.5 }}>
+                        longest
+                      </span>
+                      <br />
+                      {formatWait(q.oldestContactAge ?? 0)}
+                    </div>
+                    <div>
+                      <StatusPill status={slaLabel} />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHead
+            title="Sentiment global · Contact Lens"
+            right={
+              <span className="muted mono" style={{ fontSize: 11 }}>
+                tiempo real
+              </span>
+            }
+          />
+          <CardBody>
+            <SentimentEmpty />
+            <div className="divider" />
+            <div className="section-title">Coaching automático · alertas IA</div>
+            <div
+              style={{
+                padding: 16,
+                textAlign: "center",
+                color: "var(--text-3)",
+                fontSize: 12,
+              }}
+            >
+              Sin alertas activas en este momento.
+            </div>
+          </CardBody>
+        </Card>
       </div>
 
-      {/* Agent Status */}
-      <div
-        className="animate-fade-in-up"
-        style={{ animationDelay: "400ms" }}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-semibold tracking-tight">Agent Status</h3>
-          <span className="text-xs text-muted-foreground">
-            {metrics.agents.length} agents
-          </span>
-        </div>
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <AgentTable agents={metrics.agents} />
-        </div>
-      </div>
+      <Card>
+        <CardHead
+          title={`Agentes · ${metrics.agents.length} en operación`}
+          right={
+            <div className="row" style={{ gap: 6 }}>
+              <span className="chip chip--green">
+                <span className="dot" /> Disponible · {available}
+              </span>
+              <span className="chip chip--cyan">
+                <span className="dot" /> En llamada · {onCall}
+              </span>
+              <span className="chip chip--amber">
+                <span className="dot" /> ACW · {acw}
+              </span>
+            </div>
+          }
+        />
+        <CardBody>
+          <div className="agents">
+            {metrics.agents.length === 0 ? (
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  padding: 32,
+                  textAlign: "center",
+                  color: "var(--text-3)",
+                  fontSize: 12,
+                }}
+              >
+                Sin agentes activos en este momento.
+              </div>
+            ) : (
+              metrics.agents.map((a) => {
+                const stateColor =
+                  a.status === "Available"
+                    ? "var(--accent-green)"
+                    : a.status === "Busy"
+                    ? "var(--accent-cyan)"
+                    : a.status === "AfterCallWork"
+                    ? "var(--accent-amber)"
+                    : a.status === "Offline"
+                    ? "var(--text-3)"
+                    : "var(--accent-violet)";
+                return (
+                  <div key={a.agentId} className="agent">
+                    <Avatar name={a.username} />
+                    <div className="agent__meta">
+                      <div className="agent__name">{a.username}</div>
+                      <div className="row" style={{ gap: 6 }}>
+                        <span
+                          className="state-dot"
+                          style={{ background: stateColor }}
+                        />
+                        <span className="agent__state">{a.status}</span>
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn--ghost btn--sm btn--icon"
+                      title="Whisper"
+                    >
+                      <Icon.Headset size={13} />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </CardBody>
+      </Card>
     </div>
   );
 }

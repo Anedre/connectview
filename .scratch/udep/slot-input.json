@@ -1,0 +1,11 @@
+{
+  "slotName": "sede",
+  "slotTypeId": "958SGMF76D",
+  "valueElicitationSetting": {
+    "slotConstraint": "Optional",
+    "promptSpecification": {
+      "messageGroups": [{"message":{"plainTextMessage":{"value":"¿Cual sede?"}}}],
+      "maxRetries": 0
+    }
+  }
+}

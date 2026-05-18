@@ -1,9 +1,6 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Sparkles, BookOpen, ExternalLink } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
+import * as Icon from "@/components/vox/primitives";
 
 interface QSuggestion {
   id: string;
@@ -19,9 +16,7 @@ interface AIAssistPanelProps {
   latestCustomerUtterance?: string;
 }
 
-export function AIAssistPanel({
-  latestCustomerUtterance,
-}: AIAssistPanelProps) {
+export function AIAssistPanel({ latestCustomerUtterance }: AIAssistPanelProps) {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<QSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,7 +38,6 @@ export function AIAssistPanel({
     }
   };
 
-  // Auto-search when customer says something new (debounced)
   useEffect(() => {
     if (!latestCustomerUtterance) return;
     const t = setTimeout(() => {
@@ -54,73 +48,111 @@ export function AIAssistPanel({
   }, [latestCustomerUtterance]);
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Sparkles className="h-5 w-5" />
-          AI Assist
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex gap-2">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && search(query)}
-            placeholder="Ask Q in Connect or search knowledge base..."
-            className="text-sm"
-          />
-          <Button
-            size="sm"
-            onClick={() => search(query)}
-            disabled={loading || !query}
-          >
-            {loading ? "..." : "Search"}
-          </Button>
+    <div className="col" style={{ gap: 12 }}>
+      <div
+        className="row"
+        style={{
+          background: "var(--bg-2)",
+          border: "1px solid var(--border-1)",
+          borderRadius: 8,
+          padding: "8px 10px",
+        }}
+      >
+        <Icon.Sparkles size={14} style={{ color: "var(--accent-violet)" }} />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && search(query)}
+          placeholder="Pregúntale a Q o busca en la base de conocimiento…"
+          style={{
+            flex: 1,
+            background: "transparent",
+            border: 0,
+            outline: "none",
+            fontSize: 13,
+            color: "var(--text-1)",
+          }}
+        />
+        <button
+          className="btn btn--primary btn--sm"
+          onClick={() => search(query)}
+          disabled={loading || !query}
+        >
+          <Icon.Send size={12} />
+          {loading ? "…" : "Buscar"}
+        </button>
+      </div>
+
+      {suggestions.length === 0 && !loading && (
+        <div
+          style={{
+            padding: 32,
+            textAlign: "center",
+            color: "var(--text-3)",
+            fontSize: 12.5,
+          }}
+        >
+          Busca información o deja que Q sugiera durante la llamada.
         </div>
+      )}
 
-        {suggestions.length === 0 && !loading && (
-          <p className="text-xs text-muted-foreground py-4 text-center">
-            Search for information or get AI suggestions during the call.
-          </p>
-        )}
-
-        <div className="space-y-2 max-h-[350px] overflow-y-auto">
-          {suggestions.map((s) => (
+      <div className="col" style={{ gap: 8 }}>
+        {suggestions.map((s) => (
+          <div
+            key={s.id}
+            style={{
+              padding: 12,
+              background: "var(--bg-2)",
+              border: "1px solid var(--border-1)",
+              borderRadius: 8,
+              display: "flex",
+              gap: 10,
+            }}
+          >
             <div
-              key={s.id}
-              className="rounded-lg border bg-card p-3 text-sm"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                background: "var(--accent-violet-soft)",
+                color: "var(--accent-violet)",
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+              }}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1">
-                    <BookOpen className="h-3 w-3 text-muted-foreground shrink-0" />
-                    <span className="font-medium truncate">{s.title}</span>
-                  </div>
-                  {s.excerpts.slice(0, 2).map((excerpt, i) => (
-                    <p
-                      key={i}
-                      className="mt-1 text-xs text-muted-foreground line-clamp-2"
-                    >
-                      {excerpt}
-                    </p>
-                  ))}
-                </div>
+              <Icon.Knowledge size={14} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="row" style={{ gap: 6 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text-1)" }}>
+                  {s.title}
+                </span>
                 {s.url && (
                   <a
                     href={s.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-muted-foreground hover:text-foreground"
+                    className="muted"
+                    style={{ marginLeft: "auto" }}
                   >
-                    <ExternalLink className="h-3 w-3" />
+                    <Icon.Send size={11} />
                   </a>
                 )}
               </div>
+              {s.excerpts.slice(0, 2).map((excerpt, i) => (
+                <div
+                  key={i}
+                  className="muted"
+                  style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.5 }}
+                >
+                  {excerpt}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

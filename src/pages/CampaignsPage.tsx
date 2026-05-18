@@ -1,33 +1,42 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Megaphone,
-  Plus,
-  Phone,
-  PhoneOff,
-  CheckCircle2,
-  Clock,
-  XCircle,
-  Loader2,
-  Copy,
-  RefreshCw,
-} from "lucide-react";
 import { toast } from "sonner";
 import { useCampaigns, type Campaign } from "@/hooks/useCampaigns";
 import { useCampaignMutations } from "@/hooks/useCampaignMutations";
 import { NewCampaignWizard } from "@/components/campaigns/NewCampaignWizard";
 import { formatDistanceToNow } from "date-fns";
+import * as Icon from "@/components/vox/primitives";
+import {
+  Avatar,
+  Card,
+  CardBody,
+  Kpi,
+} from "@/components/vox/primitives";
 
-const STATUS_STYLES: Record<string, string> = {
-  DRAFT: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
-  RUNNING: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
-  PAUSED: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
-  COMPLETED: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200",
-  CANCELLED: "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200",
+const STATUS_CHIP: Record<string, string> = {
+  DRAFT: "",
+  RUNNING: "chip--green",
+  PAUSED: "chip--amber",
+  COMPLETED: "chip--cyan",
+  CANCELLED: "chip--red",
 };
+
+const STATUS_LABEL: Record<string, string> = {
+  DRAFT: "Borrador",
+  RUNNING: "En curso",
+  PAUSED: "Pausada",
+  COMPLETED: "Terminada",
+  CANCELLED: "Cancelada",
+};
+
+type TabId = "active" | "drafts" | "finished" | "all";
+
+const TABS: Array<{ id: TabId; label: string; statuses: string[] }> = [
+  { id: "active", label: "Activas", statuses: ["RUNNING", "PAUSED"] },
+  { id: "drafts", label: "Borradores", statuses: ["DRAFT"] },
+  { id: "finished", label: "Terminadas", statuses: ["COMPLETED", "CANCELLED"] },
+  { id: "all", label: "Todas", statuses: [] },
+];
 
 function progressPct(c: Campaign): number {
   const total = Number(c.totalContacts || 0);
@@ -40,12 +49,44 @@ export function CampaignsPage() {
   const navigate = useNavigate();
   const { campaigns, loading, error, refresh } = useCampaigns(5000);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabId>("active");
+  const [query, setQuery] = useState("");
   const mutations = useCampaignMutations();
 
-  const handleClone = async (
-    e: React.MouseEvent,
-    campaign: Campaign
-  ) => {
+  const tabCounts = useMemo(() => {
+    const acc: Record<TabId, number> = {
+      active: 0,
+      drafts: 0,
+      finished: 0,
+      all: campaigns.length,
+    };
+    for (const c of campaigns) {
+      if (c.status === "RUNNING" || c.status === "PAUSED") acc.active += 1;
+      else if (c.status === "DRAFT") acc.drafts += 1;
+      else acc.finished += 1;
+    }
+    return acc;
+  }, [campaigns]);
+
+  const visibleCampaigns = useMemo(() => {
+    const tab = TABS.find((t) => t.id === activeTab);
+    let list = campaigns;
+    if (tab && tab.statuses.length > 0) {
+      list = list.filter((c) => tab.statuses.includes(c.status));
+    }
+    const q = query.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (c) =>
+          (c.name || "").toLowerCase().includes(q) ||
+          (c.description || "").toLowerCase().includes(q) ||
+          (c.sourcePhoneNumber || "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [campaigns, activeTab, query]);
+
+  const handleClone = async (e: React.MouseEvent, campaign: Campaign) => {
     e.stopPropagation();
     try {
       const res = await mutations.clone(campaign.campaignId);
@@ -58,196 +99,299 @@ export function CampaignsPage() {
 
   const handleRelaunch = async (e: React.MouseEvent, campaign: Campaign) => {
     e.stopPropagation();
-    if (!confirm(`¿Relanzar "${campaign.name}" con TODOS los contactos?`))
-      return;
+    if (!confirm(`¿Relanzar "${campaign.name}" con TODOS los contactos?`)) return;
     try {
       const res = await mutations.relaunch(campaign.campaignId, "all");
-      toast.success(
-        `Relanzada · ${res.rowsReset} contactos reseteados a pending`
-      );
+      toast.success(`Relanzada · ${res.rowsReset} contactos reseteados`);
       refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error relanzando");
     }
   };
 
+  const totalReached = campaigns.reduce(
+    (acc, c) => acc + (c.doneCount || 0) + (c.failedCount || 0),
+    0
+  );
+  const totalContacts = campaigns.reduce(
+    (acc, c) => acc + (c.totalContacts || 0),
+    0
+  );
+  const live = campaigns.reduce(
+    (acc, c) => acc + (c.dialingCount || 0) + (c.connectedCount || 0),
+    0
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-pink-600 text-white shadow-md">
-            <Megaphone className="h-5 w-5" />
+    <div className="view">
+      <div className="view__head">
+        <div>
+          <div className="view__crumb">
+            <span>Crecimiento</span>
           </div>
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Campañas</h2>
-            <p className="text-sm text-muted-foreground">
-              Outbound voice campaigns · dial lists · live progress
-            </p>
+          <h1 className="view__title">Campañas outbound</h1>
+          <div className="view__sub">
+            {tabCounts.active} activas · {totalReached.toLocaleString()} contactos alcanzados
           </div>
         </div>
-        <Button onClick={() => setWizardOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nueva campaña
-        </Button>
+        <div className="view__actions">
+          <button className="btn">
+            <Icon.Megaphone size={14} /> Plantillas
+          </button>
+          <button className="btn btn--primary" onClick={() => setWizardOpen(true)}>
+            <Icon.Plus size={14} /> Nueva campaña
+          </button>
+        </div>
       </div>
 
-      {loading && campaigns.length === 0 && (
-        <div className="flex items-center justify-center rounded-lg border bg-card py-10 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Loading campaigns...
-        </div>
-      )}
+      <div className="kpi-grid">
+        <Kpi
+          label="Total campañas"
+          value={String(tabCounts.all)}
+          delta={`${tabCounts.active} activas`}
+          deltaDir="up"
+        />
+        <Kpi
+          label="Alcance acumulado"
+          value={totalReached.toLocaleString()}
+          delta={`de ${totalContacts.toLocaleString()} contactos`}
+          deltaDir="flat"
+        />
+        <Kpi
+          label="En vivo ahora"
+          value={String(live)}
+          delta="conectados/marcando"
+          deltaDir="up"
+          color="var(--accent-green)"
+        />
+        <Kpi
+          label="Tasa de progreso"
+          value={`${
+            totalContacts ? Math.round((totalReached / totalContacts) * 100) : 0
+          }%`}
+          delta="acumulado"
+          deltaDir="flat"
+        />
+      </div>
 
-      {error && campaigns.length === 0 && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
-          {error}
-        </div>
-      )}
+      <div style={{ height: 16 }} />
 
-      {!loading && !error && campaigns.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-14 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-100 to-pink-100 text-orange-600 dark:from-orange-950/30 dark:to-pink-950/30">
-              <Megaphone className="h-7 w-7" />
+      <Card>
+        <div className="card__head" style={{ flexWrap: "wrap" }}>
+          <div className="row" style={{ gap: 6 }}>
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                className={`btn btn--sm ${activeTab === t.id ? "" : "btn--ghost"}`}
+                onClick={() => setActiveTab(t.id)}
+              >
+                {t.label}
+                <span className="mono" style={{ fontSize: 10.5, marginLeft: 4, opacity: 0.7 }}>
+                  {tabCounts[t.id]}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="tb__search" style={{ maxWidth: 280, height: 30, marginLeft: "auto" }}>
+            <Icon.Search size={13} />
+            <input
+              placeholder="Buscar campañas…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <CardBody flush>
+          {loading && campaigns.length === 0 && (
+            <div
+              style={{
+                padding: 32,
+                textAlign: "center",
+                color: "var(--text-3)",
+                fontSize: 12.5,
+              }}
+            >
+              Cargando campañas…
             </div>
-            <h3 className="mt-4 text-lg font-semibold">No hay campañas aún</h3>
-            <p className="mt-1 max-w-md text-sm text-muted-foreground">
-              Crea tu primera campaña outbound: sube un listado de contactos,
-              elige un contact flow, y Connectview se encarga del dialing
-              respetando la disponibilidad de agentes.
-            </p>
-            <Button
-              className="mt-4"
-              onClick={() => setWizardOpen(true)}
+          )}
+
+          {error && campaigns.length === 0 && (
+            <div
+              style={{
+                padding: 16,
+                background: "var(--accent-red-soft)",
+                color: "var(--accent-red)",
+                fontSize: 12.5,
+              }}
             >
-              <Plus className="mr-2 h-4 w-4" />
-              Crear primera campaña
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+              {error}
+            </div>
+          )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {campaigns.map((c) => {
-          const pct = progressPct(c);
-          return (
-            <Card
-              key={c.campaignId}
-              className="cursor-pointer transition-all hover:border-primary/50 hover:shadow-md"
-              onClick={() => navigate(`/campaigns/${c.campaignId}`)}
+          {!loading && !error && visibleCampaigns.length === 0 && (
+            <div
+              style={{
+                padding: 48,
+                textAlign: "center",
+                color: "var(--text-3)",
+              }}
             >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <CardTitle className="truncate text-base">
-                      {c.name}
-                    </CardTitle>
-                    {c.description && (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {c.description}
-                      </p>
-                    )}
-                  </div>
-                  <Badge className={STATUS_STYLES[c.status] || ""}>
-                    {c.status}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {/* Progress bar */}
-                <div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-medium">
-                      {Number(c.doneCount || 0) +
-                        Number(c.failedCount || 0)}{" "}
-                      / {c.totalContacts}
-                    </span>
-                    <span className="text-muted-foreground">{pct}%</span>
-                  </div>
-                  <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full bg-gradient-to-r from-orange-500 to-pink-600 transition-all"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
+              <Icon.Megaphone size={32} style={{ opacity: 0.4 }} />
+              <div style={{ marginTop: 12, fontSize: 13 }}>
+                {query
+                  ? `No hay campañas que coincidan con "${query}".`
+                  : campaigns.length === 0
+                  ? "Sin campañas todavía. Crea la primera para empezar."
+                  : "No hay campañas en este tab."}
+              </div>
+              {campaigns.length === 0 && (
+                <button
+                  className="btn btn--primary"
+                  style={{ marginTop: 16 }}
+                  onClick={() => setWizardOpen(true)}
+                >
+                  <Icon.Plus size={14} /> Crear primera campaña
+                </button>
+              )}
+            </div>
+          )}
 
-                {/* Mini stats */}
-                <div className="grid grid-cols-4 gap-1 text-center text-[11px]">
-                  <div className="rounded-md bg-muted/40 py-1.5">
-                    <Clock className="mx-auto h-3 w-3 text-slate-500" />
-                    <div className="mt-0.5 font-semibold tabular-nums">
-                      {c.pendingCount || 0}
-                    </div>
-                    <div className="text-muted-foreground">Pending</div>
-                  </div>
-                  <div className="rounded-md bg-blue-50 py-1.5 dark:bg-blue-950/30">
-                    <Phone className="mx-auto h-3 w-3 text-blue-600" />
-                    <div className="mt-0.5 font-semibold tabular-nums">
-                      {(c.dialingCount || 0) + (c.connectedCount || 0)}
-                    </div>
-                    <div className="text-muted-foreground">Live</div>
-                  </div>
-                  <div className="rounded-md bg-emerald-50 py-1.5 dark:bg-emerald-950/30">
-                    <CheckCircle2 className="mx-auto h-3 w-3 text-emerald-600" />
-                    <div className="mt-0.5 font-semibold tabular-nums">
-                      {c.doneCount || 0}
-                    </div>
-                    <div className="text-muted-foreground">Done</div>
-                  </div>
-                  <div className="rounded-md bg-rose-50 py-1.5 dark:bg-rose-950/30">
-                    <XCircle className="mx-auto h-3 w-3 text-rose-600" />
-                    <div className="mt-0.5 font-semibold tabular-nums">
-                      {(c.failedCount || 0) + (c.noAnswerCount || 0)}
-                    </div>
-                    <div className="text-muted-foreground">Retry/Fail</div>
-                  </div>
-                </div>
-
-                {/* Meta + actions */}
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <PhoneOff className="h-3 w-3" />
-                    {c.sourcePhoneNumber}
-                  </span>
-                  <span>
-                    {c.createdAt
-                      ? formatDistanceToNow(new Date(c.createdAt), {
-                          addSuffix: true,
-                        })
-                      : ""}
-                  </span>
-                </div>
-
-                <div className="flex gap-1.5 pt-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 flex-1 text-xs"
-                    onClick={(e) => handleClone(e, c)}
-                    disabled={mutations.pending}
-                  >
-                    <Copy className="mr-1 h-3 w-3" />
-                    Clonar
-                  </Button>
-                  {(c.status === "COMPLETED" ||
-                    c.status === "CANCELLED") && (
-                    <Button
-                      size="sm"
-                      className="h-7 flex-1 text-xs"
-                      onClick={(e) => handleRelaunch(e, c)}
-                      disabled={mutations.pending}
+          {visibleCampaigns.map((c) => {
+            const pct = progressPct(c);
+            const liveCount = (c.dialingCount || 0) + (c.connectedCount || 0);
+            const completed = c.doneCount || 0;
+            const failed = (c.failedCount || 0) + (c.noAnswerCount || 0);
+            return (
+              <div
+                key={c.campaignId}
+                style={{
+                  padding: "14px 18px",
+                  borderBottom: "1px solid var(--border-1)",
+                  cursor: "pointer",
+                }}
+                onClick={() => navigate(`/campaigns/${c.campaignId}`)}
+              >
+                <div className="spread" style={{ marginBottom: 8 }}>
+                  <div className="row" style={{ gap: 10, minWidth: 0, flex: 1 }}>
+                    <span
+                      className={`chip ${STATUS_CHIP[c.status] || ""}`}
+                      style={{ minWidth: 84, justifyContent: "center" }}
                     >
-                      <RefreshCw className="mr-1 h-3 w-3" />
-                      Relanzar
-                    </Button>
-                  )}
+                      <span className="dot" />
+                      {STATUS_LABEL[c.status] || c.status}
+                    </span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        className="truncate"
+                        style={{ fontSize: 13.5, fontWeight: 500, color: "var(--text-1)" }}
+                      >
+                        {c.name}
+                      </div>
+                      <div
+                        className="muted mono"
+                        style={{ fontSize: 11, display: "flex", gap: 10 }}
+                      >
+                        <span>
+                          {completed + failed} / {c.totalContacts}
+                        </span>
+                        {c.sourcePhoneNumber && <span>{c.sourcePhoneNumber}</span>}
+                        {c.createdAt && (
+                          <span>
+                            {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row" style={{ gap: 12 }}>
+                    {liveCount > 0 && (
+                      <span className="chip chip--green">
+                        <span
+                          className="pulse"
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            background: "currentColor",
+                          }}
+                        />
+                        {liveCount} en vivo
+                      </span>
+                    )}
+                    <button
+                      className="btn btn--ghost btn--sm btn--icon"
+                      onClick={(e) => handleClone(e, c)}
+                      disabled={mutations.pending}
+                      title="Clonar"
+                    >
+                      <Icon.Plus size={14} />
+                    </button>
+                    {(c.status === "COMPLETED" || c.status === "CANCELLED") && (
+                      <button
+                        className="btn btn--ghost btn--sm btn--icon"
+                        onClick={(e) => handleRelaunch(e, c)}
+                        disabled={mutations.pending}
+                        title="Relanzar"
+                      >
+                        <Icon.Refresh size={14} />
+                      </button>
+                    )}
+                    <button
+                      className="btn btn--ghost btn--sm btn--icon"
+                      title="Más"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Icon.More size={14} />
+                    </button>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                <div className="bar">
+                  <div
+                    style={{
+                      width: `${pct}%`,
+                      background:
+                        c.status === "PAUSED"
+                          ? "var(--accent-amber)"
+                          : "var(--accent-cyan)",
+                    }}
+                  />
+                </div>
+                <div
+                  className="row"
+                  style={{ justifyContent: "space-between", marginTop: 8, fontSize: 11 }}
+                >
+                  <span className="muted">
+                    Avance{" "}
+                    <span className="mono" style={{ color: "var(--text-1)" }}>
+                      {pct}%
+                    </span>
+                  </span>
+                  <span className="muted">
+                    Completados{" "}
+                    <span className="mono" style={{ color: "var(--accent-green)" }}>
+                      {completed}
+                    </span>
+                  </span>
+                  <span className="muted">
+                    Fallidos{" "}
+                    <span className="mono" style={{ color: "var(--accent-red)" }}>
+                      {failed}
+                    </span>
+                  </span>
+                  <span className="muted">
+                    Pendientes{" "}
+                    <span className="mono" style={{ color: "var(--text-1)" }}>
+                      {Math.max(0, (c.totalContacts || 0) - completed - failed)}
+                    </span>
+                  </span>
+                  <Avatar name={c.createdBy ?? "—"} size="sm" />
+                </div>
+              </div>
+            );
+          })}
+        </CardBody>
+      </Card>
 
       <NewCampaignWizard
         open={wizardOpen}

@@ -1,0 +1,24 @@
+{
+  "intentName": "SolicitarCostos",
+  "description": "Usuario pregunta por costos / pensiones / precios",
+  "sampleUtterances": [
+    {"utterance":"cuanto cuesta"},
+    {"utterance":"cual es el precio"},
+    {"utterance":"costo de la {nivel}"},
+    {"utterance":"costo de pregrado"},
+    {"utterance":"pensiones"},
+    {"utterance":"pension mensual"},
+    {"utterance":"cuanto pago por mes"},
+    {"utterance":"valor de la {nivel}"},
+    {"utterance":"matricula"},
+    {"utterance":"cuanto vale la matricula"},
+    {"utterance":"precio de {facultad}"},
+    {"utterance":"me das los precios"},
+    {"utterance":"informacion de costos"},
+    {"utterance":"becas disponibles"},
+    {"utterance":"hay becas"},
+    {"utterance":"financiamiento"},
+    {"utterance":"como puedo financiar mis estudios"},
+    {"utterance":"que descuentos tienen"}
+  ]
+}

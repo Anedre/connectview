@@ -2,16 +2,15 @@ import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
 import { ConnectAuthProvider, useConnectAuth } from "@/context/ConnectAuthContext";
+import { CCPProvider } from "@/context/CCPContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { CONNECT_INSTANCE_URL } from "@/lib/constants";
-import { ExternalLink, LogIn } from "lucide-react";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { AgentDesktopPage } from "@/pages/AgentDesktopPage";
 import { MonitoringPage } from "@/pages/MonitoringPage";
@@ -20,46 +19,123 @@ import { RecordingsPage } from "@/pages/RecordingsPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { CampaignsPage } from "@/pages/CampaignsPage";
 import { CampaignDetailPage } from "@/pages/CampaignDetailPage";
-import { QueueManagerPage } from "@/pages/QueueManagerPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
-import { Sparkles, Loader2 } from "lucide-react";
+
+function VoxLogo({ size = 32 }: { size?: number }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 4,
+        background:
+          "linear-gradient(135deg, var(--accent-amber), var(--accent-pink) 70%)",
+        display: "grid",
+        placeItems: "center",
+        boxShadow: "0 0 0 1px rgba(255,255,255,0.08) inset",
+      }}
+    >
+      <div
+        style={{
+          width: size * 0.38,
+          height: size * 0.38,
+          borderRadius: "50%",
+          background: "var(--bg-1)",
+        }}
+      />
+    </div>
+  );
+}
 
 function LoadingScreen() {
   return (
-    <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-gradient-to-br from-indigo-50 via-background to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20">
-      <div className="absolute left-1/4 top-1/4 h-72 w-72 rounded-full bg-indigo-300/30 blur-3xl animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 h-72 w-72 rounded-full bg-purple-300/30 blur-3xl animate-pulse" />
-
+    <div
+      style={{
+        position: "relative",
+        display: "flex",
+        height: "100vh",
+        width: "100%",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--bg-0)",
+        overflow: "hidden",
+      }}
+    >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="relative flex flex-col items-center gap-6"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 18,
+        }}
       >
         <motion.div
           animate={{ scale: [1, 1.05, 1] }}
           transition={{ duration: 2, repeat: Infinity }}
-          className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-xl shadow-indigo-500/30"
         >
-          <Sparkles className="h-8 w-8 text-white" />
+          <VoxLogo size={48} />
         </motion.div>
-        <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight">
-            <span className="gradient-text">Connectview</span>
+        <div style={{ textAlign: "center" }}>
+          <h1
+            style={{
+              fontSize: 28,
+              fontWeight: 600,
+              letterSpacing: "-0.02em",
+              margin: 0,
+              color: "var(--text-1)",
+            }}
+          >
+            Vox<span style={{ color: "var(--text-3)", fontWeight: 400, marginLeft: 6, fontSize: 14 }}>CRM</span>
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Your intelligent contact center workspace
+          <p
+            style={{
+              marginTop: 6,
+              fontSize: 13,
+              color: "var(--text-2)",
+            }}
+          >
+            Plataforma de contact center
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border bg-card px-4 py-2 shadow-sm">
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-          <span className="text-xs font-medium text-muted-foreground">
-            Connecting to Amazon Connect...
-          </span>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 14px",
+            borderRadius: 999,
+            border: "1px solid var(--border-1)",
+            background: "var(--bg-1)",
+            fontSize: 12,
+            color: "var(--text-2)",
+          }}
+        >
+          <span
+            className="pulse"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: "var(--accent-amber)",
+              color: "var(--accent-amber)",
+            }}
+          />
+          Conectando a Amazon Connect…
         </div>
-        <p className="max-w-xs text-center text-xs text-muted-foreground">
-          A login popup may appear. Please allow popups for this site to
-          authenticate.
+        <p
+          style={{
+            maxWidth: 320,
+            textAlign: "center",
+            fontSize: 11,
+            color: "var(--text-3)",
+            margin: 0,
+          }}
+        >
+          Es posible que se abra una ventana de inicio de sesión. Permite las
+          ventanas emergentes para esta página.
         </p>
       </motion.div>
     </div>
@@ -67,12 +143,8 @@ function LoadingScreen() {
 }
 
 function LoginScreen() {
-  // When the user returns from the Connect login tab, auto-reload so the CCP
-  // iframe picks up the fresh session cookies.
   useEffect(() => {
     const onFocus = () => {
-      // Only reload if the user has been away for at least a couple of seconds
-      // (i.e. they actually left the tab to log in).
       window.location.reload();
     };
     window.addEventListener("focus", onFocus);
@@ -80,50 +152,86 @@ function LoginScreen() {
   }, []);
 
   const openLogin = () => {
-    // Opening in response to a user click — Chrome allows it. The popup variant
-    // tends to get blocked by SSO IdPs, so we use a plain new tab.
     window.open(`${CONNECT_INSTANCE_URL}/ccp-v2`, "_blank", "noopener");
   };
 
   return (
-    <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-gradient-to-br from-indigo-50 via-background to-purple-50 p-8 dark:from-indigo-950/20 dark:to-purple-950/20">
-      <div className="absolute left-1/4 top-1/4 h-72 w-72 rounded-full bg-indigo-300/30 blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 h-72 w-72 rounded-full bg-purple-300/30 blur-3xl" />
-
+    <div
+      style={{
+        display: "flex",
+        height: "100vh",
+        width: "100%",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--bg-0)",
+        padding: 32,
+      }}
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="relative w-full max-w-md rounded-2xl border bg-card p-8 shadow-xl"
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          background: "var(--bg-1)",
+          border: "1px solid var(--border-1)",
+          borderRadius: 12,
+          padding: 32,
+          boxShadow: "var(--shadow-pop)",
+        }}
       >
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow">
-          <LogIn className="h-6 w-6" />
-        </div>
-        <h2 className="mt-4 text-xl font-semibold">
+        <VoxLogo size={44} />
+        <h2
+          style={{
+            marginTop: 18,
+            fontSize: 20,
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
+            color: "var(--text-1)",
+          }}
+        >
           Inicia sesión en Amazon Connect
         </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Para usar Connectview necesitas tener una sesión activa en tu
-          instancia de Amazon Connect. Haz clic abajo, inicia sesión en la
-          pestaña que se abre, y regresa aquí — esta página se recargará
-          automáticamente.
+        <p
+          style={{
+            marginTop: 8,
+            fontSize: 13,
+            lineHeight: 1.55,
+            color: "var(--text-2)",
+          }}
+        >
+          Para usar Vox CRM necesitas una sesión activa en tu instancia de
+          Amazon Connect. Haz clic abajo, inicia sesión en la pestaña que se
+          abre, y regresa aquí — esta página se recargará automáticamente.
         </p>
 
         <button
           onClick={openLogin}
-          className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg"
+          className="btn btn--primary"
+          style={{ marginTop: 20, width: "100%", height: 40, justifyContent: "center" }}
         >
-          <ExternalLink className="h-4 w-4" />
           Iniciar sesión en Connect
         </button>
 
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-          <strong>Tip:</strong> mantén esa pestaña abierta mientras usas
-          Connectview — la sesión se comparte automáticamente.
+        <div
+          style={{
+            marginTop: 16,
+            padding: 12,
+            borderRadius: 8,
+            background: "var(--accent-amber-soft)",
+            color: "var(--accent-amber)",
+            fontSize: 11.5,
+            lineHeight: 1.55,
+          }}
+        >
+          <strong>Tip:</strong> mantén esa pestaña abierta mientras usas Vox —
+          la sesión se comparte automáticamente.
         </div>
 
         <button
           onClick={() => window.location.reload()}
-          className="mt-3 w-full text-center text-xs text-muted-foreground hover:text-foreground"
+          className="btn btn--ghost"
+          style={{ marginTop: 12, width: "100%", justifyContent: "center" }}
         >
           Ya inicié sesión · reintentar
         </button>
@@ -134,29 +242,61 @@ function LoginScreen() {
 
 function ErrorScreen({ error }: { error: string }) {
   return (
-    <div className="flex h-screen w-full items-center justify-center p-8">
+    <div
+      style={{
+        display: "flex",
+        height: "100vh",
+        width: "100%",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--bg-0)",
+        padding: 32,
+      }}
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md rounded-2xl border bg-card p-8 shadow-xl"
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          background: "var(--bg-1)",
+          border: "1px solid var(--border-1)",
+          borderRadius: 12,
+          padding: 32,
+          boxShadow: "var(--shadow-pop)",
+        }}
       >
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-950/50">
-          <Sparkles className="h-6 w-6" />
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            background: "var(--accent-red-soft)",
+            color: "var(--accent-red)",
+            display: "grid",
+            placeItems: "center",
+            fontSize: 22,
+            fontWeight: 700,
+          }}
+        >
+          !
         </div>
-        <h2 className="mt-4 text-xl font-semibold">Connection Error</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+        <h2 style={{ marginTop: 18, fontSize: 18, fontWeight: 600, color: "var(--text-1)" }}>
+          Error de conexión
+        </h2>
+        <p style={{ marginTop: 8, fontSize: 13, color: "var(--text-2)" }}>{error}</p>
         <button
           onClick={() => window.location.reload()}
-          className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          className="btn btn--primary"
+          style={{ marginTop: 16 }}
         >
-          Retry Connection
+          Reintentar conexión
         </button>
       </motion.div>
     </div>
   );
 }
 
-// Animated page wrapper
 function AnimatedRoutes() {
   const location = useLocation();
   const { showHelp, setShowHelp } = useKeyboardShortcuts();
@@ -176,13 +316,12 @@ function AnimatedRoutes() {
           <Routes location={location}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/agent" element={<AgentDesktopPage />} />
-            <Route path="/monitoring" element={<MonitoringPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/recordings" element={<RecordingsPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/campaigns/:campaignId" element={<CampaignDetailPage />} />
-            <Route path="/queue" element={<QueueManagerPage />} />
+            <Route path="/queue" element={<MonitoringPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </motion.div>
@@ -216,15 +355,15 @@ function AppContent() {
       {!user && !needsLogin && !loading && error && <ErrorScreen error={error} />}
 
       {user && (
-        <BrowserRouter>
-          <TooltipProvider>
-            <SidebarProvider>
+        <CCPProvider>
+          <BrowserRouter>
+            <TooltipProvider>
               <AppLayout>
                 <AnimatedRoutes />
               </AppLayout>
-            </SidebarProvider>
-          </TooltipProvider>
-        </BrowserRouter>
+            </TooltipProvider>
+          </BrowserRouter>
+        </CCPProvider>
       )}
 
       <Toaster position="top-right" richColors closeButton />

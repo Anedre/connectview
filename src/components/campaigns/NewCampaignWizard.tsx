@@ -107,6 +107,11 @@ export function NewCampaignWizard({
   const [windowEndHour, setWindowEndHour] = useState(18);
   const [retryNoAnswerMinutes, setRetryNoAnswerMinutes] = useState(30);
   const [retryMaxAttempts, setRetryMaxAttempts] = useState(3);
+  /** How many contacts the dialer pre-assigns to each Available agent.
+   *  Each agent ends up with their own ordered bucket — the dialer takes
+   *  the next one when the agent is free, and refills the bucket from the
+   *  general pool when it empties. */
+  const [maxContactsPerAgent, setMaxContactsPerAgent] = useState(5);
 
   // Reset when modal closes
   useEffect(() => {
@@ -220,6 +225,7 @@ export function NewCampaignWizard({
         windowDaysOfWeek: [1, 2, 3, 4, 5],
         retryNoAnswerMinutes,
         retryMaxAttempts,
+        maxContactsPerAgent,
         contacts: contacts.map((c) => ({
           phone: c.phone,
           customerName: c.customerName,
@@ -702,6 +708,9 @@ export function NewCampaignWizard({
                     setRetryNoAnswerMinutes(parseInt(e.target.value) || 30)
                   }
                 />
+                <p className="text-[10px] text-muted-foreground">
+                  Cuánto esperar antes de reintentar un contacto que no atendió
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Máx. intentos</Label>
@@ -714,7 +723,30 @@ export function NewCampaignWizard({
                     setRetryMaxAttempts(parseInt(e.target.value) || 3)
                   }
                 />
+                <p className="text-[10px] text-muted-foreground">
+                  Cuántas veces se reintenta cada contacto antes de marcarlo
+                  como definitivamente fallido
+                </p>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Capacidad de cola por agente</Label>
+              <Input
+                type="number"
+                min={1}
+                max={50}
+                value={maxContactsPerAgent}
+                onChange={(e) =>
+                  setMaxContactsPerAgent(parseInt(e.target.value) || 5)
+                }
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Cuántos contactos se le pre-asignan a cada agente. Los ve en
+                su cola en orden de llegada y atiende uno a uno; cuando termina
+                uno, toma el siguiente automáticamente. Si su cola se vacía, el
+                dialer le rellena desde el pool general.
+              </p>
             </div>
           </div>
         )}
@@ -757,6 +789,10 @@ export function NewCampaignWizard({
                   cada {retryNoAnswerMinutes} min · max {retryMaxAttempts}{" "}
                   intentos
                 </span>
+                <span className="text-muted-foreground">
+                  Capacidad por agente
+                </span>
+                <span>{maxContactsPerAgent} contactos en su cola</span>
               </div>
             </div>
             <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">

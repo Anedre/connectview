@@ -45,7 +45,7 @@ export function useKeyboardShortcuts() {
         const routes: Record<string, string> = {
           d: "/",
           a: "/agent",
-          m: "/monitoring",
+          q: "/queue",
           r: "/reports",
           c: "/recordings",
           s: "/admin",

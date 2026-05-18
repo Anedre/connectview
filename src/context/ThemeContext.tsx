@@ -11,27 +11,32 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-const STORAGE_KEY = "connectview-theme";
+const STORAGE_KEY = "vox-theme";
 
 function getSystemTheme(): "light" | "dark" {
-  if (typeof window === "undefined") return "light";
+  if (typeof window === "undefined") return "dark";
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
 }
 
+function applyTheme(resolved: "light" | "dark") {
+  document.documentElement.setAttribute("data-theme", resolved);
+  document.documentElement.classList.toggle("dark", resolved === "dark");
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "system";
-    return (localStorage.getItem(STORAGE_KEY) as Theme) || "system";
+    if (typeof window === "undefined") return "dark";
+    return (localStorage.getItem(STORAGE_KEY) as Theme) || "dark";
   });
 
-  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("dark");
 
   useEffect(() => {
     const resolved = theme === "system" ? getSystemTheme() : theme;
     setResolvedTheme(resolved);
-    document.documentElement.classList.toggle("dark", resolved === "dark");
+    applyTheme(resolved);
     localStorage.setItem(STORAGE_KEY, theme);
   }, [theme]);
 
@@ -41,7 +46,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const handler = () => {
       const resolved = media.matches ? "dark" : "light";
       setResolvedTheme(resolved);
-      document.documentElement.classList.toggle("dark", resolved === "dark");
+      applyTheme(resolved);
     };
     media.addEventListener("change", handler);
     return () => media.removeEventListener("change", handler);

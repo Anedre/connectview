@@ -91,9 +91,27 @@ function secondsIn(c: PipelineContact): number {
 
 function formatTime(sec: number): string {
   if (sec < 60) return `${sec}s`;
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
+  if (sec < 3600) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+  // Long durations — show hours + minutes so "2342:32" doesn't happen on
+  // zombie data. `Xh Ym` matches the KPI-bar formatter.
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h < 24) return `${h}h ${m}m`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
+}
+
+function formatFinishedAt(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export function ContactBubble({
@@ -132,13 +150,50 @@ export function ContactBubble({
             ? selectionIds
             : undefined,
       }),
-      canDrag: contact.state !== "FINISHED",
+      canDrag:
+        contact.state === "IN_QUEUE" || contact.state === "WITH_AGENT",
       collect: (monitor) => ({ isDragging: monitor.isDragging() }),
     }),
     [contact.contactId, contact.state, contact.agentUserId, selected, selectionIds]
   );
 
+  // Amazon Connect's TransferContact API only accepts contacts in IN_QUEUE or
+  // WITH_AGENT state. ARRIVED (pre-queue) and IN_IVR (dialer / flow-execution)
+  // contacts are handled by the contact flow itself — attempting to transfer
+  // them returns 500 from Connect. Disable drag on those so the UI matches
+  // what the backend can actually do.
+  const canDrag =
+    contact.state === "IN_QUEUE" || contact.state === "WITH_AGENT";
+
+  // Wrap the animated bubble in a plain draggable <div> so react-dnd's
+  // HTML5 backend can reliably set draggable="true" and capture native
+  // dragstart. Letting motion.div hold the dragRef has shown to race with
+  // framer-motion's layout/whileTap pointer capture in some browsers and
+  // silently break drag initiation.
   return (
+    <div
+      ref={dragRef as unknown as React.Ref<HTMLDivElement>}
+      className={`inline-block ${canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-default"}`}
+      onClick={(e) => onClick?.(contact, e)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onTogglePin?.(contact.contactId);
+      }}
+      onMouseEnter={() => onHoverChange?.(contact.contactId)}
+      onMouseLeave={() => onHoverChange?.(null)}
+      title={
+        (contact.customerName || contact.phone || "") +
+        (contact.queueName ? ` · ${contact.queueName}` : "") +
+        (contact.agentUsername ? ` · ${contact.agentUsername}` : "") +
+        "\nClick: detalles · Click derecho: " +
+        (pinned ? "desfijar" : "fijar") +
+        (canDrag
+          ? " · Ctrl/⌘-click: multi-selección · Arrastrar: transferir"
+          : contact.state === "FINISHED"
+            ? ""
+            : " · No transferible (Connect maneja esta etapa automáticamente)")
+      }
+    >
     <motion.div
       // Layout animation: when a bubble moves from one Stage column to another
       // framer-motion will interpolate its position between renders.
@@ -157,28 +212,9 @@ export function ContactBubble({
         mass: 0.8,
       }}
       whileHover={{ scale: 1.04 }}
-      whileTap={{ scale: 0.96 }}
-      ref={dragRef as unknown as React.Ref<HTMLDivElement>}
-      onClick={(e) => onClick?.(contact, e)}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        onTogglePin?.(contact.contactId);
-      }}
-      onMouseEnter={() => onHoverChange?.(contact.contactId)}
-      onMouseLeave={() => onHoverChange?.(null)}
-      title={
-        (contact.customerName || contact.phone || "") +
-        (contact.queueName ? ` · ${contact.queueName}` : "") +
-        (contact.agentUsername ? ` · ${contact.agentUsername}` : "") +
-        "\nClick: detalles · Click derecho: " +
-        (pinned ? "desfijar" : "fijar") +
-        (contact.state !== "FINISHED"
-          ? " · Ctrl/⌘-click: multi-selección · Arrastrar: transferir"
-          : "")
-      }
-      className={`group relative inline-flex cursor-grab select-none items-center gap-1.5 rounded-full ${palette.bg} ${palette.text} ring-2 ${palette.ring} ${palette.glow} px-2.5 ${
+      className={`group relative inline-flex select-none items-center gap-1.5 rounded-full ${palette.bg} ${palette.text} ring-2 ${palette.ring} ${palette.glow} px-2.5 ${
         compact ? "py-0.5 text-[10px]" : "py-1 text-[11px]"
-      } font-medium shadow-sm transition active:cursor-grabbing ${
+      } font-medium shadow-sm transition ${
         selected
           ? "ring-4 ring-indigo-400 shadow-[0_0_0_6px_rgba(99,102,241,0.3)]"
           : urgent
@@ -205,7 +241,11 @@ export function ContactBubble({
         </span>
       )}
       <Icon className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} />
-      <span className="tabular-nums">{formatTime(sec)}</span>
+      <span className="tabular-nums">
+        {contact.state === "FINISHED"
+          ? formatFinishedAt(contact.stageEnteredAt)
+          : formatTime(sec)}
+      </span>
       {!compact && campaignInfo && (
         <Megaphone className="h-3 w-3 opacity-90" />
       )}
@@ -225,5 +265,6 @@ export function ContactBubble({
         </span>
       )}
     </motion.div>
+    </div>
   );
 }

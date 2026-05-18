@@ -18,6 +18,12 @@ export interface Campaign {
   windowDaysOfWeek?: string;
   retryNoAnswerMinutes?: number;
   retryMaxAttempts?: number;
+  /** Per-agent contact bucket capacity. The dialer pre-assigns up to N
+   *  pending contacts to each assigned agent and only dials from their
+   *  bucket — making the agent's queue visible and predictable. When the
+   *  agent's bucket has room, more contacts are claimed from the general
+   *  pool. */
+  maxContactsPerAgent?: number;
   status: "DRAFT" | "RUNNING" | "PAUSED" | "COMPLETED" | "CANCELLED";
   createdAt: string;
   createdBy?: string;

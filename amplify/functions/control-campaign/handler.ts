@@ -248,6 +248,38 @@ export const handler: Handler = async (event: any) => {
         }
         newStatus = "CANCELLED";
         extraSets.completedAt = { S: now };
+        // Best-effort: flip every still-pending contact row to "cancelled"
+        // so they stop appearing in the live queue. Without this, the
+        // get-live-queue scan keeps surfacing them as "Pendientes" bubbles
+        // forever (the campaign meta status is decoupled from the row
+        // status).
+        try {
+          const pendingRows = await queryPendingContacts(campaignId);
+          for (const row of pendingRows) {
+            await dynamo
+              .send(
+                new UpdateItemCommand({
+                  TableName: CONTACTS_TABLE,
+                  Key: {
+                    campaignId: { S: row.campaignId },
+                    rowId: { S: row.rowId },
+                  },
+                  UpdateExpression: "SET #st = :cancelled",
+                  ConditionExpression: "#st = :pending",
+                  ExpressionAttributeNames: { "#st": "status" },
+                  ExpressionAttributeValues: {
+                    ":cancelled": { S: "cancelled" },
+                    ":pending": { S: "pending" },
+                  },
+                })
+              )
+              .catch(() => {
+                /* race with dialer is fine — leave it as-is */
+              });
+          }
+        } catch (err) {
+          console.warn("cancel: failed to flip pending rows:", err);
+        }
         break;
       default:
         throw new Error("unreachable");

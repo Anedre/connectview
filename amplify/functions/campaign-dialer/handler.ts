@@ -44,6 +44,11 @@ interface Campaign {
   windowDaysOfWeek: string; // JSON string of number[]
   retryNoAnswerMinutes: number;
   retryMaxAttempts: number;
+  /** How many contacts each Available agent gets in their pre-assigned
+   *  bucket. The dialer fills these buckets in advance so the agent has a
+   *  predictable queue, and only dials one at a time per agent (the next
+   *  pending in their bucket). Defaults to 5. */
+  maxContactsPerAgent?: number;
 }
 
 interface CampaignContact {
@@ -55,6 +60,11 @@ interface CampaignContact {
   status: string;
   attempts: number;
   nextRetryAt?: string;
+  createdAt?: string;
+  /** When non-empty, the contact has been pre-assigned to that agent's
+   *  bucket. The dialer will only route this contact to that specific
+   *  agent — never to anyone else. */
+  assignedAgentUserId?: string;
 }
 
 // Check whether we're inside the allowed calling window for the campaign timezone.
@@ -80,7 +90,10 @@ function isWithinWindow(campaign: Campaign): boolean {
     const weekday = weekdayMap[weekdayStr] ?? -1;
     if (weekday < 0) return true; // if we can't determine, be permissive
     if (!allowedDays.includes(weekday)) return false;
-    return hour >= campaign.windowStartHour && hour < campaign.windowEndHour;
+    return (
+      hour >= Number(campaign.windowStartHour) &&
+      hour < Number(campaign.windowEndHour)
+    );
   } catch {
     return true;
   }
@@ -143,6 +156,108 @@ async function findPendingContacts(
   );
   // Extra filter client-side because FilterExpression after Query limit may over-filter
   return items.filter((c) => !c.nextRetryAt || c.nextRetryAt <= nowIso);
+}
+
+/**
+ * Fetch every pending contact for the campaign (paginated). Used by the
+ * per-agent-bucket logic to compute buckets and unassigned pool client-side.
+ * Capped at 10 pages (~10k contacts) to bound the Lambda run time.
+ */
+async function listAllPendingForCampaign(
+  campaignId: string
+): Promise<CampaignContact[]> {
+  const nowIso = new Date().toISOString();
+  const out: CampaignContact[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+  for (let i = 0; i < 10; i++) {
+    const res = await dynamo.send(
+      new QueryCommand({
+        TableName: CONTACTS_TABLE,
+        IndexName: "campaignId-status-index",
+        KeyConditionExpression: "campaignId = :cid AND #st = :s",
+        ExpressionAttributeNames: { "#st": "status" },
+        ExpressionAttributeValues: {
+          ":cid": { S: campaignId },
+          ":s": { S: "pending" },
+          ":now": { S: nowIso },
+        },
+        FilterExpression:
+          "attribute_not_exists(nextRetryAt) OR nextRetryAt <= :now",
+        ExclusiveStartKey: lastKey as never,
+      })
+    );
+    for (const it of res.Items || [])
+      out.push(unmarshall(it) as CampaignContact);
+    lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+    if (!lastKey) break;
+  }
+  return out;
+}
+
+/**
+ * Count contacts that are currently "in-flight" for a given agent — dialing
+ * or connected. They occupy a slot in the agent's bucket so the bucket
+ * refill calculation needs to include them.
+ */
+async function countAgentInFlight(
+  campaignId: string,
+  userId: string
+): Promise<number> {
+  let total = 0;
+  for (const status of ["dialing", "connected"]) {
+    try {
+      const res = await dynamo.send(
+        new QueryCommand({
+          TableName: CONTACTS_TABLE,
+          IndexName: "campaignId-status-index",
+          KeyConditionExpression: "campaignId = :cid AND #st = :s",
+          ExpressionAttributeNames: { "#st": "status" },
+          ExpressionAttributeValues: {
+            ":cid": { S: campaignId },
+            ":s": { S: status },
+            ":uid": { S: userId },
+          },
+          FilterExpression: "assignedAgentUserId = :uid",
+          Select: "COUNT",
+        })
+      );
+      total += res.Count || 0;
+    } catch (err) {
+      console.warn("countAgentInFlight:", err);
+    }
+  }
+  return total;
+}
+
+/**
+ * Atomically mark an unassigned pending row as belonging to a specific agent.
+ * Uses ConditionExpression to avoid races between concurrent dialer ticks.
+ */
+async function assignContactToAgent(
+  contact: CampaignContact,
+  userId: string
+): Promise<boolean> {
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: CONTACTS_TABLE,
+        Key: {
+          campaignId: { S: contact.campaignId },
+          rowId: { S: contact.rowId },
+        },
+        UpdateExpression: "SET assignedAgentUserId = :uid",
+        ConditionExpression:
+          "attribute_not_exists(assignedAgentUserId) OR assignedAgentUserId = :empty",
+        ExpressionAttributeValues: {
+          ":uid": { S: userId },
+          ":empty": { S: "" },
+        },
+      })
+    );
+    return true;
+  } catch {
+    return false; // Already claimed by another dialer tick
+  }
 }
 
 // List all users in the instance so we can use them as an `Agents` filter for
@@ -212,6 +327,43 @@ async function countAvailableFromUsers(userIds: string[]): Promise<number> {
   return available;
 }
 
+/**
+ * Returns the subset of userIds whose current status is Available AND who
+ * have no active contact. Used by the per-agent-bucket dialer to decide
+ * which buckets are ready to fire their next call.
+ */
+async function listIdleAvailableUsers(
+  userIds: string[]
+): Promise<Set<string>> {
+  const idle = new Set<string>();
+  if (userIds.length === 0) return idle;
+  try {
+    for (let i = 0; i < userIds.length; i += 100) {
+      const batch = userIds.slice(i, i + 100);
+      const res = await connect.send(
+        new GetCurrentUserDataCommand({
+          InstanceId: INSTANCE_ID,
+          Filters: { Agents: batch },
+        })
+      );
+      for (const u of res.UserDataList || []) {
+        const id = u.User?.Id;
+        const contacts = u.Contacts || [];
+        if (
+          id &&
+          u.Status?.StatusName === "Available" &&
+          contacts.length === 0
+        ) {
+          idle.add(id);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("listIdleAvailableUsers failed:", err);
+  }
+  return idle;
+}
+
 async function markAsDialing(c: CampaignContact): Promise<boolean> {
   const now = new Date().toISOString();
   try {
@@ -234,6 +386,26 @@ async function markAsDialing(c: CampaignContact): Promise<boolean> {
         },
       })
     );
+    // Mirror the transition into the campaign meta counters so the list
+    // page doesn't show stale or negative values. Without this, when
+    // process-contact-event later sees status=dialing → terminal it will
+    // decrement dialingCount that was never incremented, taking it
+    // negative.
+    await dynamo
+      .send(
+        new UpdateItemCommand({
+          TableName: CAMPAIGNS_TABLE,
+          Key: { campaignId: { S: c.campaignId } },
+          UpdateExpression: "ADD dialingCount :one, pendingCount :neg",
+          ExpressionAttributeValues: {
+            ":one": { N: "1" },
+            ":neg": { N: "-1" },
+          },
+        })
+      )
+      .catch(() => {
+        /* counter drift is acceptable — real source of truth is the rows */
+      });
     return true;
   } catch (err) {
     // ConditionalCheckFailedException → another dialer grabbed it
@@ -269,14 +441,18 @@ async function markAsFailed(
       },
     })
   );
-  // Bump failed counter on campaign
+  // markAsFailed only runs when StartOutboundVoiceContact rejected the
+  // dial — at that point markAsDialing already moved the contact OUT of
+  // pending and INTO dialing (and updated the campaign counters
+  // accordingly). So failing it should decrement DIALING (not pending)
+  // and increment FAILED.
   await dynamo
     .send(
       new UpdateItemCommand({
         TableName: CAMPAIGNS_TABLE,
         Key: { campaignId: { S: c.campaignId } },
         UpdateExpression:
-          "ADD failedCount :one, pendingCount :neg",
+          "ADD failedCount :one, dialingCount :neg",
         ExpressionAttributeValues: {
           ":one": { N: "1" },
           ":neg": { N: "-1" },
@@ -425,6 +601,167 @@ async function maybeCompleteCampaign(campaign: Campaign): Promise<void> {
   }
 }
 
+/**
+ * Process a single campaign with the per-agent-bucket dialing strategy.
+ * Each assigned agent gets a pre-allocated bucket of `maxContactsPerAgent`
+ * pending contacts (FIFO by createdAt). On every tick, idle agents pop the
+ * next contact from THEIR bucket. When a bucket runs low it's refilled
+ * from the unassigned pool. This makes the agent's queue predictable and
+ * visible in the UI instead of a single global "pendientes" pile.
+ */
+async function processCampaignWithBuckets(
+  campaign: Campaign,
+  assignedAgentIds: string[]
+): Promise<void> {
+  const maxPerAgent = Math.max(
+    1,
+    Math.min(50, Number(campaign.maxContactsPerAgent) || 5)
+  );
+
+  // 1. Load every pending contact for this campaign in one query.
+  const allPending = await listAllPendingForCampaign(campaign.campaignId);
+
+  // 2. Split into per-agent buckets + unassigned pool.
+  const buckets = new Map<string, CampaignContact[]>();
+  const unassigned: CampaignContact[] = [];
+  for (const c of allPending) {
+    const uid = c.assignedAgentUserId || "";
+    if (uid && assignedAgentIds.includes(uid)) {
+      if (!buckets.has(uid)) buckets.set(uid, []);
+      buckets.get(uid)!.push(c);
+    } else {
+      // Either the contact has no assignment OR it's assigned to an agent
+      // that's no longer assigned to the campaign — treat as unassigned.
+      unassigned.push(c);
+    }
+  }
+  // FIFO: oldest contact first within each bucket and the pool.
+  const byCreatedAt = (a: CampaignContact, b: CampaignContact) =>
+    (a.createdAt || "").localeCompare(b.createdAt || "");
+  for (const list of buckets.values()) list.sort(byCreatedAt);
+  unassigned.sort(byCreatedAt);
+
+  // 3. Refill each agent's bucket up to maxPerAgent + remember the in-flight
+  //    count so the dial step can reuse it without re-querying.
+  const inFlightByAgent = new Map<string, number>();
+  for (const userId of assignedAgentIds) {
+    const inFlight = await countAgentInFlight(campaign.campaignId, userId);
+    inFlightByAgent.set(userId, inFlight);
+    const bucketSize = buckets.get(userId)?.length || 0;
+    const need = Math.max(0, maxPerAgent - bucketSize - inFlight);
+    if (need <= 0 || unassigned.length === 0) continue;
+    const toClaim = unassigned.splice(0, need);
+    for (const c of toClaim) {
+      const ok = await assignContactToAgent(c, userId);
+      if (ok) {
+        c.assignedAgentUserId = userId;
+        if (!buckets.has(userId)) buckets.set(userId, []);
+        buckets.get(userId)!.push(c);
+      }
+    }
+  }
+
+  // 4. For each idle Available agent, dial the head of their bucket.
+  //    "Idle" here is the conjunction of:
+  //      a) Connect reports them as Available with no active contact
+  //         (GetCurrentUserData), AND
+  //      b) Our DB has zero dialing/connected rows for them
+  //    The DB check matters because Connect can briefly report an agent as
+  //    Available between StartOutboundVoiceContact and the moment the
+  //    contact flow transfers the call to them — the welcome TTS and AMD
+  //    blocks run BEFORE the agent is occupied. Without (b) the dialer
+  //    fires a second call in that gap, which manifests as spurious
+  //    no_answer rows and double-rings on the customer.
+  const idleSet = await listIdleAvailableUsers(assignedAgentIds);
+  console.log(
+    `[dialer] ${campaign.campaignId}: bucket-mode · agents=${assignedAgentIds.length}, idle=${idleSet.size}, unassignedLeft=${unassigned.length}`
+  );
+
+  // Concurrency cap still applies (campaign-level safety).
+  const currentlyDialing = await countDialingForCampaign(campaign.campaignId);
+  const maxConcurrency = Number(campaign.concurrency) || 1;
+  let slotsLeft = Math.max(0, maxConcurrency - currentlyDialing);
+
+  let dialedAny = false;
+  for (const userId of assignedAgentIds) {
+    if (slotsLeft <= 0) break;
+    if (!idleSet.has(userId)) continue;
+    // DB-side busy check: if there's already a dialing/connected row for
+    // this agent, do NOT dial another — Connect just hasn't transferred
+    // the previous call yet.
+    if ((inFlightByAgent.get(userId) || 0) > 0) continue;
+    const bucket = buckets.get(userId);
+    if (!bucket || bucket.length === 0) continue;
+    const next = bucket.shift()!;
+    const claimed = await markAsDialing(next);
+    if (!claimed) continue;
+    const connectContactId = await startOutbound(campaign, next);
+    if (!connectContactId) {
+      await markAsFailed(next, "StartOutboundVoiceContact returned null");
+      continue;
+    }
+    await linkConnectContact(next, connectContactId);
+    dialedAny = true;
+    slotsLeft -= 1;
+    // Bump our local counter so a subsequent iteration in this same tick
+    // doesn't try to dial again for the same agent.
+    inFlightByAgent.set(userId, (inFlightByAgent.get(userId) || 0) + 1);
+  }
+
+  // 5. If nothing got dialed and there's nothing left to do, maybe complete.
+  if (!dialedAny && allPending.length === 0) {
+    await maybeCompleteCampaign(campaign);
+  }
+}
+
+/**
+ * Legacy single-pool dialing — used for `agentless` mode or campaigns
+ * that don't have any assigned agents (no bucket targets to fill).
+ */
+async function processCampaignLegacy(campaign: Campaign): Promise<void> {
+  const currentlyDialing = await countDialingForCampaign(campaign.campaignId);
+  const maxConcurrency = Number(campaign.concurrency) || 1;
+  const availableSlots = Math.max(0, maxConcurrency - currentlyDialing);
+
+  const ratio = campaign.dialMode === "power" ? 2 : 1;
+  let toDial: number;
+  let slotsRemaining = 0;
+
+  if (campaign.dialMode === "agentless") {
+    toDial = availableSlots;
+  } else {
+    const poolIds = await listAllUserIds();
+    slotsRemaining = await countAvailableFromUsers(poolIds);
+    console.log(
+      `[dialer] ${campaign.campaignId}: legacy · pool=${poolIds.length}, available=${slotsRemaining}`
+    );
+    toDial = Math.min(availableSlots, slotsRemaining * ratio);
+  }
+  if (toDial <= 0) return;
+
+  const candidates = await findPendingContacts(campaign.campaignId, toDial);
+  if (candidates.length === 0) {
+    await maybeCompleteCampaign(campaign);
+    return;
+  }
+
+  for (const contact of candidates) {
+    const claimed = await markAsDialing(contact);
+    if (!claimed) continue;
+    const connectContactId = await startOutbound(campaign, contact);
+    if (!connectContactId) {
+      await markAsFailed(contact, "StartOutboundVoiceContact returned null");
+      continue;
+    }
+    await linkConnectContact(contact, connectContactId);
+    if (campaign.dialMode !== "agentless") {
+      slotsRemaining -= 1 / ratio;
+    }
+    if (slotsRemaining <= 0 && campaign.dialMode !== "agentless") break;
+  }
+  void rollbackToPending;
+}
+
 export const handler: Handler = async () => {
   try {
     const campaigns = await listRunningCampaigns();
@@ -441,59 +778,16 @@ export const handler: Handler = async () => {
         continue;
       }
 
-      // Concurrency cap for this campaign
-      const currentlyDialing = await countDialingForCampaign(campaign.campaignId);
-      const maxConcurrency = Number(campaign.concurrency) || 1;
-      const availableSlots = Math.max(0, maxConcurrency - currentlyDialing);
+      const assignedAgentIds = await getAssignedAgents(campaign.campaignId);
+      const useBuckets =
+        campaign.dialMode !== "agentless" && assignedAgentIds.length > 0;
 
-      const ratio = campaign.dialMode === "power" ? 2 : 1;
-      let toDial: number;
-      let slotsRemaining = 0;
-
-      if (campaign.dialMode === "agentless") {
-        toDial = availableSlots;
+      if (useBuckets) {
+        await processCampaignWithBuckets(campaign, assignedAgentIds);
       } else {
-        // Count agents specifically assigned to THIS campaign who are Available.
-        // If none assigned, fall back to any Available user in the instance.
-        const assignedIds = await getAssignedAgents(campaign.campaignId);
-        const poolIds =
-          assignedIds.length > 0 ? assignedIds : await listAllUserIds();
-        slotsRemaining = await countAvailableFromUsers(poolIds);
-        console.log(
-          `[dialer] ${campaign.campaignId}: assigned=${assignedIds.length}, pool=${poolIds.length}, available=${slotsRemaining}`
-        );
-        // progressive: 1 dial per available agent. power: `ratio` dials per agent.
-        toDial = Math.min(availableSlots, slotsRemaining * ratio);
+        // No assigned agents or agentless mode → original behavior.
+        await processCampaignLegacy(campaign);
       }
-      if (toDial <= 0) continue;
-
-      const candidates = await findPendingContacts(campaign.campaignId, toDial);
-      if (candidates.length === 0) {
-        // No eligible pending contacts → maybe all done
-        await maybeCompleteCampaign(campaign);
-        continue;
-      }
-
-      for (const contact of candidates) {
-        const claimed = await markAsDialing(contact);
-        if (!claimed) continue;
-
-        const connectContactId = await startOutbound(campaign, contact);
-        if (!connectContactId) {
-          await markAsFailed(contact, "StartOutboundVoiceContact returned null");
-          continue;
-        }
-        await linkConnectContact(contact, connectContactId);
-
-        if (campaign.dialMode !== "agentless") {
-          // Each dial consumes 1/ratio of an agent slot (per-campaign counter).
-          slotsRemaining -= 1 / ratio;
-        }
-        if (slotsRemaining <= 0 && campaign.dialMode !== "agentless") break;
-      }
-      // Best-effort rollback of any remaining over-claimed is skipped; the concurrency
-      // cap + agent counter make over-dialing impossible in progressive mode.
-      void rollbackToPending;
     }
 
     return { ok: true, campaignsProcessed: campaigns.length };

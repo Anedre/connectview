@@ -1,10 +1,17 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
+import { Pin, PinOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { FlowView } from "./FlowView";
+import { BoardView } from "./BoardView";
+import { CampaignProgressPanel } from "./CampaignProgressPanel";
+import { CampaignLiveFeed } from "./CampaignLiveFeed";
 import { useCampaignAgents } from "@/hooks/useCampaignAgents";
 import { useAgentQueueMap } from "@/hooks/useAgentQueueMap";
 import { useFinishedBuckets } from "@/hooks/useFinishedBuckets";
 import { usePipelineStages } from "@/hooks/usePipelineStages";
+import { useCampaignStats } from "@/hooks/useCampaignStats";
+import { useCampaignActivity } from "@/hooks/useCampaignActivity";
 import type { LiveAgent, LiveQueueData } from "@/hooks/useLiveQueue";
 import type { PipelineContact } from "@/hooks/usePipelineStages";
 import type { PipelineConfig } from "@/hooks/usePipelineConfig";
@@ -27,7 +34,16 @@ interface Props {
     agent: LiveAgent,
     payload: BubbleDragPayload
   ) => void;
+  /** Board-only: drop a WITH_AGENT bubble back onto "En cola". */
+  onContactDroppedOnQueue?: (payload: BubbleDragPayload) => void;
+  /** Board-only: drop onto "Finalizados" → stopContact. */
+  onContactDroppedOnFinished?: (payload: BubbleDragPayload) => void;
   onAgentClick: (a: LiveAgent) => void;
+  /** When true, the pin button is shown as "pinned" — clicking unpins. */
+  isCampaignPinned?: boolean;
+  onTogglePinCampaign?: (campaignId: string) => void;
+  /** Toggle the soft chime that plays when a new event lands in the feed. */
+  onToggleFeedSound?: () => void;
 }
 
 /**
@@ -45,11 +61,60 @@ export function CampaignFlowCard({
   onBubbleClick,
   onTogglePin,
   onContactDroppedOnAgent,
+  onContactDroppedOnQueue,
+  onContactDroppedOnFinished,
   onAgentClick,
+  isCampaignPinned,
+  onTogglePinCampaign,
+  onToggleFeedSound,
 }: Props) {
   const { agents: assignedAgents, assign } = useCampaignAgents(
     campaign.campaignId
   );
+
+  // Stats + activity power the progress panel and live feed.
+  const { data: campaignStats } = useCampaignStats(
+    campaign.campaignId,
+    3000
+  );
+  const { events, journeys, kpis } = useCampaignActivity(
+    campaign.campaignId,
+    campaignStats
+  );
+
+  // Soft chime each time the events list grows. We compare against the
+  // previous length so we only beep on additions, not on filter or page-load.
+  const prevEventCountRef = useRef(events.length);
+  useEffect(() => {
+    if (!config.feedSoundEnabled) {
+      prevEventCountRef.current = events.length;
+      return;
+    }
+    if (events.length > prevEventCountRef.current) {
+      try {
+        const Ctor =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext })
+            .webkitAudioContext;
+        const ac = new Ctor();
+        const o = ac.createOscillator();
+        const g = ac.createGain();
+        o.type = "sine";
+        o.frequency.value = 880;
+        g.gain.value = 0.035;
+        o.connect(g);
+        g.connect(ac.destination);
+        o.start();
+        setTimeout(() => {
+          o.stop();
+          ac.close();
+        }, 120);
+      } catch {
+        /* audio not available — silently ignore */
+      }
+    }
+    prevEventCountRef.current = events.length;
+  }, [events.length, config.feedSoundEnabled]);
   const assignedUserIds = useMemo(
     () => new Set(assignedAgents.map((a) => a.userId)),
     [assignedAgents]
@@ -95,7 +160,11 @@ export function CampaignFlowCard({
   const finishedContacts =
     stages.find((s) => s.id === "FINISHED")?.contacts || [];
 
-  const agentQueueMap = useAgentQueueMap(flowAgents, inQueueForCampaign);
+  const agentQueueMap = useAgentQueueMap(
+    flowAgents,
+    inQueueForCampaign,
+    ivrContacts
+  );
 
   // Retry-scheduled rows (campaign-specific filter via campaignId).
   const retryScheduled = ((liveData.retryScheduled || []) as PipelineContact[])
@@ -120,25 +189,103 @@ export function CampaignFlowCard({
     }
   };
 
+  // Pin/unpin toolbar rendered above the Flow/Board so the admin can mark
+  // the campaign as "keep visible after completion".
+  const pinToolbar = onTogglePinCampaign ? (
+    <div className="mb-2 flex items-center justify-end">
+      <Button
+        variant={isCampaignPinned ? "secondary" : "ghost"}
+        size="sm"
+        onClick={() => onTogglePinCampaign(campaign.campaignId)}
+        title={
+          isCampaignPinned
+            ? "Esta campaña quedará visible como histórico cuando termine. Click para despinnear."
+            : "Fijar esta campaña — al terminar se mantendrá visible como histórico hasta despinnear."
+        }
+        className={isCampaignPinned ? "gap-1.5" : "gap-1.5 text-muted-foreground"}
+      >
+        {isCampaignPinned ? (
+          <>
+            <Pin className="h-3.5 w-3.5 fill-current text-amber-600 dark:text-amber-400" />
+            Fijada
+          </>
+        ) : (
+          <>
+            <PinOff className="h-3.5 w-3.5" />
+            Fijar
+          </>
+        )}
+      </Button>
+    </div>
+  ) : null;
+
+  // Single full-width column. Progress hero metrics at the top take the
+  // whole row (no more cramped 360px sidebar), then the agent flow takes
+  // the full width, and the live activity feed sits at the bottom.
+  const mainView =
+    config.viewMode === "board" ? (
+      <BoardView
+        agents={flowAgents}
+        activeLabel={`${campaign.name} · ${campaign.status}`}
+        arrived={arrivedContacts}
+        inIvr={ivrContacts}
+        inQueue={inQueueForCampaign}
+        finishedBuckets={finishedBuckets}
+        config={config}
+        contactToCampaign={contactToCampaign}
+        selectedIds={selectedIds}
+        isPinned={isPinned}
+        onBubbleClick={onBubbleClick}
+        onTogglePin={onTogglePin}
+        onContactDroppedOnAgent={onContactDroppedOnAgent}
+        onContactDroppedOnQueue={onContactDroppedOnQueue}
+        onContactDroppedOnFinished={onContactDroppedOnFinished}
+        onAgentClick={onAgentClick}
+      />
+    ) : (
+      <FlowView
+        agents={flowAgents}
+        unassignedAgents={poolAgents}
+        activeLabel={`${campaign.name} · ${campaign.status}`}
+        arrived={arrivedContacts}
+        inIvr={ivrContacts}
+        inQueueByAgent={agentQueueMap.inQueueByAgent}
+        pendingBucketByAgent={agentQueueMap.pendingBucketByAgent}
+        unassignedPending={agentQueueMap.unassignedPending}
+        maxContactsPerAgent={campaign.maxContactsPerAgent}
+        finishedBuckets={finishedBuckets}
+        config={config}
+        contactToCampaign={contactToCampaign}
+        selectedIds={selectedIds}
+        isPinned={isPinned}
+        onBubbleClick={onBubbleClick}
+        onTogglePin={onTogglePin}
+        onContactDroppedOnAgent={onContactDroppedOnAgent}
+        onAssignAgent={onAssignAgent}
+        onUnassignAgent={onUnassignAgent}
+        onAgentClick={onAgentClick}
+      />
+    );
+
   return (
-    <FlowView
-      agents={flowAgents}
-      unassignedAgents={poolAgents}
-      activeLabel={`${campaign.name} · ${campaign.status}`}
-      arrived={arrivedContacts}
-      inIvr={ivrContacts}
-      inQueueByAgent={agentQueueMap.inQueueByAgent}
-      finishedBuckets={finishedBuckets}
-      config={config}
-      contactToCampaign={contactToCampaign}
-      selectedIds={selectedIds}
-      isPinned={isPinned}
-      onBubbleClick={onBubbleClick}
-      onTogglePin={onTogglePin}
-      onContactDroppedOnAgent={onContactDroppedOnAgent}
-      onAssignAgent={onAssignAgent}
-      onUnassignAgent={onUnassignAgent}
-      onAgentClick={onAgentClick}
-    />
+    <div className="space-y-12">
+      {pinToolbar}
+      {config.showCampaignProgress && (
+        <CampaignProgressPanel
+          campaign={campaign}
+          stats={campaignStats}
+          kpis={kpis}
+        />
+      )}
+      {mainView}
+      {config.showCampaignFeed && (
+        <CampaignLiveFeed
+          events={events}
+          journeys={journeys}
+          soundEnabled={config.feedSoundEnabled}
+          onToggleSound={onToggleFeedSound}
+        />
+      )}
+    </div>
   );
 }

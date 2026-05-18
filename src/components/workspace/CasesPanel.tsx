@@ -1,8 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Ticket, Plus, ExternalLink } from "lucide-react";
 import { CONNECT_INSTANCE_URL } from "@/lib/constants";
+import * as Icon from "@/components/vox/primitives";
 
 interface CasesPanelProps {
   contactId: string | null;
@@ -14,45 +11,79 @@ export function CasesPanel({ contactId, customerPhone }: CasesPanelProps) {
     window.open(`${CONNECT_INSTANCE_URL}/connect/cases/case`, "_blank");
   };
 
+  if (!customerPhone) {
+    return (
+      <div
+        style={{
+          display: "grid",
+          placeItems: "center",
+          minHeight: 220,
+          color: "var(--text-3)",
+          textAlign: "center",
+          padding: 24,
+        }}
+      >
+        <div>
+          <Icon.Ticket size={28} style={{ opacity: 0.45 }} />
+          <div style={{ marginTop: 10, fontSize: 13 }}>
+            Los casos estarán disponibles cuando haya un contacto activo.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Ticket className="h-5 w-5" />
-          Cases
-          {contactId && (
-            <Badge variant="secondary" className="ml-auto text-xs">
-              Active contact
-            </Badge>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {customerPhone ? (
-          <>
-            <p className="text-sm text-muted-foreground">
-              Customer: <span className="font-mono">{customerPhone}</span>
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={openCasesInConnect}>
-                <Plus className="mr-2 h-4 w-4" />
-                New Case
-              </Button>
-              <Button variant="ghost" size="sm" onClick={openCasesInConnect}>
-                <ExternalLink className="mr-2 h-4 w-4" />
-                Open in Connect
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Case creation and history management via Amazon Connect Cases.
-            </p>
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Cases will be available when a contact is active.
-          </p>
+    <div className="col" style={{ gap: 14 }}>
+      <div className="spread">
+        <span className="section-title" style={{ margin: 0 }}>
+          Casos del cliente
+        </span>
+        {contactId && (
+          <span className="chip chip--green">
+            <span className="dot" /> Contacto activo
+          </span>
         )}
-      </CardContent>
-    </Card>
+      </div>
+
+      <div
+        className="row"
+        style={{
+          padding: "10px 12px",
+          background: "var(--bg-2)",
+          borderRadius: 8,
+          border: "1px solid var(--border-1)",
+        }}
+      >
+        <Icon.Phone size={13} style={{ color: "var(--text-3)" }} />
+        <span className="mono" style={{ fontSize: 12 }}>
+          {customerPhone}
+        </span>
+      </div>
+
+      <div className="row" style={{ gap: 8 }}>
+        <button className="btn btn--primary btn--sm" onClick={openCasesInConnect}>
+          <Icon.Plus size={12} /> Nuevo caso
+        </button>
+        <button className="btn btn--ghost btn--sm" onClick={openCasesInConnect}>
+          <Icon.Send size={12} /> Abrir en Connect
+        </button>
+      </div>
+
+      <div
+        className="muted"
+        style={{
+          fontSize: 11.5,
+          padding: 12,
+          background: "var(--accent-violet-soft)",
+          borderRadius: 8,
+          color: "var(--accent-violet)",
+          lineHeight: 1.5,
+        }}
+      >
+        <strong>Amazon Connect Cases</strong> — La creación y gestión del
+        historial de casos se sincroniza desde Connect.
+      </div>
+    </div>
   );
 }

@@ -1,0 +1,93 @@
+{
+    "intentId": "WFBUQ0VN24",
+    "intentName": "SeleccionarProducto",
+    "description": "detectar el producto (Multibanco / Digital / Corporativo / Wallet) y guardarlo.",
+    "sampleUtterances": [
+        {
+            "utterance": "Llamo por multibanco"
+        },
+        {
+            "utterance": "Es por digital"
+        },
+        {
+            "utterance": "Necesito ayuda con corporativo"
+        },
+        {
+            "utterance": "Tengo un problema con wallet"
+        },
+        {
+            "utterance": "Es por mi billetera"
+        },
+        {
+            "utterance": "Agente multibanco"
+        },
+        {
+            "utterance": "Quiero hablar con un asesor"
+        },
+        {
+            "utterance": "Comunícame con un agente"
+        },
+        {
+            "utterance": "No sé, necesito un humano"
+        },
+        {
+            "utterance": "{productok}"
+        },
+        {
+            "utterance": "Quiero {productok}"
+        },
+        {
+            "utterance": "Quiero el producto {productok}"
+        },
+        {
+            "utterance": "Llamo por POS Multibanco"
+        },
+        {
+            "utterance": "Llamo por Agente Digital"
+        }
+    ],
+    "slotPriorities": [
+        {
+            "priority": 1,
+            "slotId": "L5W0B95OLX"
+        }
+    ],
+    "botId": "V5NU2G8LMH",
+    "botVersion": "DRAFT",
+    "localeId": "es_US",
+    "creationDateTime": "2025-12-16T08:47:24.478000-05:00",
+    "lastUpdatedDateTime": "2025-12-17T19:38:24.895000-05:00",
+    "initialResponseSetting": {
+        "nextStep": {
+            "dialogAction": {
+                "type": "InvokeDialogCodeHook"
+            },
+            "intent": {}
+        },
+        "codeHook": {
+            "enableCodeHookInvocation": true,
+            "active": true,
+            "postCodeHookSpecification": {
+                "successNextStep": {
+                    "dialogAction": {
+                        "type": "ElicitSlot",
+                        "slotToElicit": "productok"
+                    },
+                    "intent": {}
+                },
+                "failureNextStep": {
+                    "dialogAction": {
+                        "type": "EndConversation"
+                    },
+                    "intent": {}
+                },
+                "timeoutNextStep": {
+                    "dialogAction": {
+                        "type": "EndConversation"
+                    },
+                    "intent": {}
+                }
+            }
+        }
+    }
+}

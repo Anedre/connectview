@@ -1,0 +1,37 @@
+{
+  "intentName": "ConsultarPrograma",
+  "description": "Usuario quiere informacion sobre un programa academico",
+  "sampleUtterances": [
+    {"utterance":"quiero info de pregrado"},
+    {"utterance":"informacion sobre la maestria en {nivel}"},
+    {"utterance":"que carreras tienen"},
+    {"utterance":"que programas ofrecen"},
+    {"utterance":"info de {nivel}"},
+    {"utterance":"informacion {nivel}"},
+    {"utterance":"quiero estudiar {facultad}"},
+    {"utterance":"me interesa la facultad de {facultad}"},
+    {"utterance":"quiero ver los cursos de {facultad}"},
+    {"utterance":"que oferta academica tienen"},
+    {"utterance":"informacion del campus de {sede}"},
+    {"utterance":"como postular a la universidad"},
+    {"utterance":"quiero postular"},
+    {"utterance":"admision"},
+    {"utterance":"proceso de admision"},
+    {"utterance":"que titulos profesionales tienen"},
+    {"utterance":"me gustaria informacion sobre {nivel} en {facultad}"},
+    {"utterance":"hola quiero saber sobre {nivel}"},
+    {"utterance":"el {nivel} de {facultad}"},
+    {"utterance":"cuento con info de la {nivel}"},
+    {"utterance":"deseo conocer la oferta"},
+    {"utterance":"me interesa estudiar en udep"},
+    {"utterance":"udep {facultad}"},
+    {"utterance":"{nivel}"},
+    {"utterance":"{facultad}"},
+    {"utterance":"sede {sede}"}
+  ],
+  "slotPriorities": [
+    {"priority":1,"slotId":"ZWIDPYWDPJ"},
+    {"priority":2,"slotId":"ROSITCZEIC"},
+    {"priority":3,"slotId":"FRWTHHHVPO"}
+  ]
+}

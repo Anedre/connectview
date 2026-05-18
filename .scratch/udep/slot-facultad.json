@@ -1,0 +1,14 @@
+{
+  "slotTypeName": "UDEP_Facultad",
+  "description": "Facultad / area de interes UDEP",
+  "slotTypeValues": [
+    {"sampleValue":{"value":"derecho"},      "synonyms":[{"value":"abogacia"},{"value":"legal"},{"value":"leyes"}]},
+    {"sampleValue":{"value":"ingenieria"},   "synonyms":[{"value":"ingenierias"},{"value":"ing"},{"value":"sistemas"},{"value":"industrial"},{"value":"civil"},{"value":"mecatronica"}]},
+    {"sampleValue":{"value":"comunicacion"}, "synonyms":[{"value":"comunicaciones"},{"value":"periodismo"},{"value":"audiovisual"}]},
+    {"sampleValue":{"value":"economia"},     "synonyms":[{"value":"administracion"},{"value":"contabilidad"},{"value":"negocios"},{"value":"economicas"}]},
+    {"sampleValue":{"value":"educacion"},    "synonyms":[{"value":"pedagogia"},{"value":"docencia"}]},
+    {"sampleValue":{"value":"humanidades"},  "synonyms":[{"value":"historia"},{"value":"filosofia"},{"value":"literatura"}]},
+    {"sampleValue":{"value":"medicina"},     "synonyms":[{"value":"salud"},{"value":"medico"}]}
+  ],
+  "valueSelectionSetting": {"resolutionStrategy": "TopResolution"}
+}

@@ -44,6 +44,11 @@ interface CreateCampaignBody {
   windowDaysOfWeek?: number[];
   retryNoAnswerMinutes?: number;
   retryMaxAttempts?: number;
+  /** Per-agent contact bucket capacity. Default 5. The dialer pre-assigns
+   *  contacts to each Available agent up to this number so the agent has a
+   *  predictable queue. When the bucket runs low, more contacts are
+   *  claimed from the general pool and assigned to that agent. */
+  maxContactsPerAgent?: number;
   contacts: Contact[];
   createdBy?: string;
   startNow?: boolean;
@@ -221,6 +226,11 @@ export const handler: Handler = async (event: any, context: any) => {
           },
           retryNoAnswerMinutes: { N: String(body.retryNoAnswerMinutes ?? 30) },
           retryMaxAttempts: { N: String(body.retryMaxAttempts ?? 3) },
+          maxContactsPerAgent: {
+            N: String(
+              Math.max(1, Math.min(50, body.maxContactsPerAgent ?? 5))
+            ),
+          },
           status: { S: status },
           createdAt: { S: now },
           createdBy: { S: body.createdBy || "system" },

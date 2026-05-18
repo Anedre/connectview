@@ -19,6 +19,7 @@ export interface UpdateCampaignInput {
   windowDaysOfWeek?: number[];
   retryNoAnswerMinutes?: number;
   retryMaxAttempts?: number;
+  maxContactsPerAgent?: number;
 }
 
 export type RelaunchScope = "all" | "failed" | "specific";

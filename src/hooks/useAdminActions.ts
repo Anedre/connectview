@@ -11,8 +11,14 @@ async function postJson(url: string, body: unknown) {
     body: JSON.stringify(body),
   });
   const json = await r.json().catch(() => ({}));
-  if (!r.ok)
-    throw new Error((json && (json.error || json.message)) || `HTTP ${r.status}`);
+  if (!r.ok) {
+    // Backend handlers return { error: "generic label", message: "actual AWS/Connect error" }.
+    // Prefer the concrete `message` so the toast explains WHY (e.g. "ResourceNotFoundException:
+    // The contact has ended") instead of the generic "Failed to transfer".
+    const detail = json?.message || json?.error;
+    const label = json?.error && json?.message ? `${json.error}: ${json.message}` : detail;
+    throw new Error(label || `HTTP ${r.status}`);
+  }
   return json;
 }
 

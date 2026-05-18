@@ -87,10 +87,10 @@ export function CommandPalette() {
             Agent Desktop
             <CommandShortcut>G then A</CommandShortcut>
           </CommandItem>
-          <CommandItem onSelect={run(() => navigate("/monitoring"))}>
+          <CommandItem onSelect={run(() => navigate("/queue"))}>
             <Activity className="mr-2 h-4 w-4 text-amber-500" />
-            Real-time Monitoring
-            <CommandShortcut>G then M</CommandShortcut>
+            Cola en vivo
+            <CommandShortcut>G then Q</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/reports"))}>
             <BarChart3 className="mr-2 h-4 w-4 text-purple-500" />

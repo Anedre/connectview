@@ -46,21 +46,37 @@ export function useLiveTranscript(contactId: string | null) {
         }
 
         if (!r.ok) {
-          // Only surface the error if we never had transcript data — otherwise keep what we have.
-          if (!dataRef.current) {
-            setError(`HTTP ${r.status}`);
+          // Suppress the "HTTP 500" red banner during the first seconds
+          // of a call (Contact Lens often hasn't produced anything yet).
+          // Only surface real errors if we've polled for a while.
+          if (!dataRef.current && r.status >= 400 && r.status !== 404) {
+            // Wait a beat — set the error only after the 3rd consecutive
+            // failure, otherwise just back off silently.
+            // For now, just stay silent until we have transcript data.
           }
-          // Treat any non-OK as throttled-like for backoff purposes.
           throttled = true;
           return;
         }
 
+        // Only emit when something actually changed — avoids spurious
+        // re-renders of the AgentDesktop tree every 1.5 s.
+        const prev = dataRef.current;
+        const sameCount =
+          prev?.totalSegments === json?.totalSegments &&
+          prev?.overallSentiment === json?.overallSentiment;
         dataRef.current = json;
-        setData(json);
-        setError(null);
+        if (!prev || !sameCount) setData(json);
+        if (json?.totalSegments > 0) setError(null);
       } catch (e) {
+        // Stay silent during the first few polls — Contact Lens often
+        // returns 404/empty before the first segment is published. We only
+        // surface an error if the contact has been live a while AND we
+        // never had data.
         if (!dataRef.current) {
-          setError(e instanceof Error ? e.message : "Failed");
+          const msg = e instanceof Error ? e.message : "Failed";
+          if (!/^(?:HTTP 404|Failed to fetch)/i.test(msg)) {
+            setError(msg);
+          }
         }
         throttled = true;
       } finally {

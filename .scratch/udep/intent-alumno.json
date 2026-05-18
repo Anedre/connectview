@@ -1,0 +1,21 @@
+{
+  "intentName": "EstadoMatricula",
+  "description": "Usuario ya es alumno y necesita soporte",
+  "sampleUtterances": [
+    {"utterance":"soy alumno"},
+    {"utterance":"ya estudio en udep"},
+    {"utterance":"estoy matriculado"},
+    {"utterance":"soy estudiante"},
+    {"utterance":"problema con mi matricula"},
+    {"utterance":"no puedo entrar al siga"},
+    {"utterance":"problema con plataforma"},
+    {"utterance":"olvide mi clave del campus"},
+    {"utterance":"soporte academico"},
+    {"utterance":"consulta de notas"},
+    {"utterance":"horario de clases"},
+    {"utterance":"mi pension"},
+    {"utterance":"trauma con mi inscripcion"},
+    {"utterance":"reincorporacion"},
+    {"utterance":"reserva de matricula"}
+  ]
+}

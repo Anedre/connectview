@@ -1,17 +1,26 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { StickyNote, Sparkles, Check } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useAgentNotes } from "@/hooks/useAgentNotes";
 import { getApiEndpoints } from "@/lib/api";
+import * as Icon from "@/components/vox/primitives";
 
 interface AgentNotesPanelProps {
   contactId: string | null;
   agentUsername: string;
 }
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  background: "var(--bg-2)",
+  border: "1px solid var(--border-1)",
+  borderRadius: 6,
+  padding: "10px 12px",
+  color: "var(--text-1)",
+  outline: "none",
+  fontFamily: "var(--font-ui)",
+  fontSize: 13,
+  resize: "vertical",
+};
 
 export function AgentNotesPanel({
   contactId,
@@ -69,115 +78,108 @@ export function AgentNotesPanel({
 
   if (!contactId) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <StickyNote className="h-5 w-5" />
-            Agent Notes
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Notes, AI summary, and wrap-up code will appear when a contact is
-            active.
-          </p>
-        </CardContent>
-      </Card>
+      <div
+        style={{
+          display: "grid",
+          placeItems: "center",
+          minHeight: 220,
+          color: "var(--text-3)",
+          textAlign: "center",
+          padding: 24,
+        }}
+      >
+        <div>
+          <Icon.Note size={28} style={{ opacity: 0.45 }} />
+          <div style={{ marginTop: 10, fontSize: 13 }}>
+            Notas, resumen y disposición aparecerán cuando haya un contacto
+            activo.
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <StickyNote className="h-5 w-5" />
-            Agent Notes
-          </CardTitle>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {saving && <span>Saving...</span>}
-            {!saving && lastSaved && (
-              <span className="flex items-center gap-1">
-                <Check className="h-3 w-3" />
-                Saved {formatDistanceToNow(lastSaved, { addSuffix: true })}
-              </span>
-            )}
-          </div>
+    <div className="col" style={{ gap: 16 }}>
+      <div className="spread">
+        <div className="section-title" style={{ margin: 0 }}>
+          Notas del agente
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Notes textarea */}
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">
-            Notes (auto-saves)
-          </label>
-          <textarea
-            value={notes}
-            onChange={(e) => updateNotes(e.target.value)}
-            placeholder="Type notes during the call..."
-            rows={6}
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-          />
+        <div className="muted" style={{ fontSize: 11 }}>
+          {saving && "Guardando…"}
+          {!saving && lastSaved && (
+            <span className="row" style={{ gap: 4, display: "inline-flex" }}>
+              <Icon.Check size={11} /> Guardado{" "}
+              {formatDistanceToNow(lastSaved, { addSuffix: true })}
+            </span>
+          )}
         </div>
+      </div>
 
-        {/* AI Summary */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-xs font-medium text-muted-foreground">
-              Call Summary
-            </label>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={generateSummary}
-              disabled={generatingSummary}
-              className="h-7 text-xs"
-            >
-              <Sparkles className="mr-1 h-3 w-3" />
-              {generatingSummary ? "Generating..." : "Generate with AI"}
-            </Button>
-          </div>
-          <textarea
-            value={summary}
-            onChange={(e) => updateSummary(e.target.value)}
-            placeholder="AI-generated summary will appear here after clicking Generate..."
-            rows={3}
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-          />
+      <div>
+        <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
+          Notas (auto-guardado)
         </div>
+        <textarea
+          value={notes}
+          onChange={(e) => updateNotes(e.target.value)}
+          placeholder="Escribe notas durante la llamada…"
+          rows={6}
+          style={inputStyle}
+        />
+      </div>
 
-        {/* Wrap-up code */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-xs font-medium text-muted-foreground">
-              Wrap-up Code / Disposition
-            </label>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={suggestWrapUp}
-              disabled={generatingCode}
-              className="h-7 text-xs"
-            >
-              <Sparkles className="mr-1 h-3 w-3" />
-              {generatingCode ? "Thinking..." : "Suggest"}
-            </Button>
-          </div>
-          <div className="flex gap-2">
-            <Input
-              value={wrapUpCode}
-              onChange={(e) => updateWrapUpCode(e.target.value)}
-              placeholder="e.g. Billing resolved, Transferred..."
-              className="text-sm"
-            />
-            {wrapUpCode && (
-              <Badge variant="secondary" className="self-center whitespace-nowrap">
-                {wrapUpCode}
-              </Badge>
-            )}
-          </div>
+      <div>
+        <div className="spread" style={{ marginBottom: 4 }}>
+          <span className="muted" style={{ fontSize: 11 }}>
+            Resumen de la llamada
+          </span>
+          <button
+            className="btn btn--sm"
+            onClick={generateSummary}
+            disabled={generatingSummary}
+          >
+            <Icon.Sparkles size={12} />
+            {generatingSummary ? "Generando…" : "Generar con IA"}
+          </button>
         </div>
-      </CardContent>
-    </Card>
+        <textarea
+          value={summary}
+          onChange={(e) => updateSummary(e.target.value)}
+          placeholder="El resumen generado por Q aparecerá aquí…"
+          rows={3}
+          style={inputStyle}
+        />
+      </div>
+
+      <div>
+        <div className="spread" style={{ marginBottom: 4 }}>
+          <span className="muted" style={{ fontSize: 11 }}>
+            Wrap-up · Disposición
+          </span>
+          <button
+            className="btn btn--sm"
+            onClick={suggestWrapUp}
+            disabled={generatingCode}
+          >
+            <Icon.Sparkles size={12} />
+            {generatingCode ? "Pensando…" : "Sugerir"}
+          </button>
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          <input
+            value={wrapUpCode}
+            onChange={(e) => updateWrapUpCode(e.target.value)}
+            placeholder="ej. Facturación resuelta, Transferido…"
+            style={{ ...inputStyle, height: 34, padding: "0 12px" }}
+          />
+          {wrapUpCode && (
+            <span className="chip chip--violet" style={{ whiteSpace: "nowrap" }}>
+              {wrapUpCode}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

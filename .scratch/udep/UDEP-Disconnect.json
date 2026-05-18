@@ -1,0 +1,70 @@
+{
+  "Version": "2019-10-30",
+  "StartAction": "840d7a14-3b78-40db-bdba-f37b14673b5e",
+  "Metadata": {
+    "entryPointPosition": {
+      "x": 40,
+      "y": 40
+    },
+    "ActionMetadata": {
+      "840d7a14-3b78-40db-bdba-f37b14673b5e": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "2df83794-cd20-4b33-a18b-22e81e2869ff": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "a3fad8b8-3e72-4cdb-bc85-7e86878f9e21": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      }
+    },
+    "Annotations": [],
+    "name": "UDEP-Disconnect",
+    "description": "UDEP — chat closure with thank-you message",
+    "type": "contactFlow",
+    "status": "PUBLISHED",
+    "hash": {}
+  },
+  "Actions": [
+    {
+      "Identifier": "840d7a14-3b78-40db-bdba-f37b14673b5e",
+      "Type": "UpdateFlowLoggingBehavior",
+      "Parameters": {
+        "FlowLoggingBehavior": "Enabled"
+      },
+      "Transitions": {
+        "NextAction": "2df83794-cd20-4b33-a18b-22e81e2869ff"
+      }
+    },
+    {
+      "Identifier": "2df83794-cd20-4b33-a18b-22e81e2869ff",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "Gracias por contactar a la Universidad de Piura. Si necesitas algo mas, escribenos de nuevo. ¡Que tengas un excelente dia! 🎓"
+      },
+      "Transitions": {
+        "NextAction": "a3fad8b8-3e72-4cdb-bc85-7e86878f9e21",
+        "Errors": [
+          {
+            "NextAction": "a3fad8b8-3e72-4cdb-bc85-7e86878f9e21",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "a3fad8b8-3e72-4cdb-bc85-7e86878f9e21",
+      "Type": "DisconnectParticipant",
+      "Parameters": {},
+      "Transitions": {}
+    }
+  ]
+}

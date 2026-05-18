@@ -1,0 +1,9 @@
+{
+  "slotTypeName": "UDEP_Sede",
+  "description": "Sede UDEP",
+  "slotTypeValues": [
+    {"sampleValue":{"value":"lima"},  "synonyms":[{"value":"miraflores"},{"value":"capital"}]},
+    {"sampleValue":{"value":"piura"}, "synonyms":[{"value":"norte"},{"value":"sede principal"}]}
+  ],
+  "valueSelectionSetting": {"resolutionStrategy": "TopResolution"}
+}

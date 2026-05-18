@@ -10,7 +10,8 @@
       "Bash(npx shadcn@latest add sidebar badge avatar dropdown-menu separator tooltip card -y)",
       "Bash(npx tsc:*)",
       "Bash(aws sts:*)",
-      "Bash(aws connect:*)"
+      "Bash(aws connect:*)",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }

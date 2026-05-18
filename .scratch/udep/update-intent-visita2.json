@@ -1,0 +1,24 @@
+{
+  "intentName": "AgendarVisita",
+  "description": "Usuario quiere visitar el campus o agendar un tour",
+  "sampleUtterances": [
+    {"utterance":"quiero visitar el campus"},
+    {"utterance":"agendar una visita"},
+    {"utterance":"puedo ir a conocer la universidad"},
+    {"utterance":"hacer un tour"},
+    {"utterance":"open day"},
+    {"utterance":"puerta abierta"},
+    {"utterance":"visitar la sede de {sede}"},
+    {"utterance":"quiero ir a {sede}"},
+    {"utterance":"conocer las instalaciones"},
+    {"utterance":"tour por el campus de {sede}"},
+    {"utterance":"agendar cita para visitar"},
+    {"utterance":"como hago para visitar"},
+    {"utterance":"visitar campus"},
+    {"utterance":"visita al campus"},
+    {"utterance":"visita"}
+  ],
+  "slotPriorities": [
+    {"priority":1,"slotId":"EHFF78Y6OV"}
+  ]
+}

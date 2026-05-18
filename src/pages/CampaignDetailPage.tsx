@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,12 +27,20 @@ import { useCampaignStats } from "@/hooks/useCampaignStats";
 import { useCampaignContacts, type CampaignContactRow } from "@/hooks/useCampaignContacts";
 import { useCampaignMutations, type RelaunchScope } from "@/hooks/useCampaignMutations";
 import { useCampaignContactMutations } from "@/hooks/useCampaignContactMutations";
+import { useCampaignAgents } from "@/hooks/useCampaignAgents";
 import { getApiEndpoints } from "@/lib/api";
 import { formatDistanceToNow, format } from "date-fns";
 import { EditCampaignDialog } from "@/components/campaigns/EditCampaignDialog";
 import { AddContactsDialog } from "@/components/campaigns/AddContactsDialog";
 import { EditContactDialog } from "@/components/campaigns/EditContactDialog";
 import { AssignedAgentsPanel } from "@/components/campaigns/AssignedAgentsPanel";
+
+// UUID heuristic — matches the v4 ARN-suffix form Connect emits. Used in
+// the contacts table to detect legacy rows where agentUsername was written
+// as a user-id instead of an actual username (the bug was fixed in
+// process-contact-event but old rows may still have UUIDs).
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
@@ -69,6 +77,25 @@ export function CampaignDetailPage() {
   );
   const mutations = useCampaignMutations();
   const contactMutations = useCampaignContactMutations();
+  // Pull assigned agents so we can resolve user-ids (assignedAgentUserId on
+  // the contact row, and any UUID that snuck into agentUsername on legacy
+  // rows) into human-readable usernames in the table.
+  const { agents: assignedAgents } = useCampaignAgents(campaignId || null);
+  const agentNameByUserId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of assignedAgents) map.set(a.userId, a.username);
+    return map;
+  }, [assignedAgents]);
+
+  const resolveAgentLabel = (raw: string | undefined | null): string => {
+    if (!raw) return "—";
+    // If it looks like a Connect UUID, try to swap it for a username.
+    if (UUID_RE.test(raw)) {
+      const username = agentNameByUserId.get(raw);
+      return username || "—";
+    }
+    return raw;
+  };
 
   const handleDeleteContact = async (row: CampaignContactRow) => {
     if (!campaignId) return;
@@ -343,26 +370,35 @@ export function CampaignDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Status tiles */}
-      <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
-        {statusCards.map((s) => {
-          const active = filterStatus === s.key;
-          return (
-            <button
-              key={s.key}
-              onClick={() => setFilterStatus(active ? null : s.key)}
-              className={`rounded-lg border p-3 text-left transition-all hover:border-primary/50 ${
-                active ? "border-primary ring-2 ring-primary/20" : ""
-              }`}
-            >
-              <s.icon className={`h-4 w-4 ${s.color}`} />
-              <div className="mt-1 text-2xl font-bold tabular-nums">
-                {counts[s.key]}
-              </div>
-              <div className="text-xs text-muted-foreground">{s.label}</div>
-            </button>
-          );
-        })}
+      {/* Status tiles. For a finished campaign (COMPLETED/CANCELLED) we
+          hide tiles whose value is 0 — there's no signal in seeing "0
+          Dialing" forever, and it just adds noise. For active campaigns
+          all six remain visible so the admin can watch them tick. */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+        {statusCards
+          .filter((s) => {
+            const isFinishedCampaign =
+              c.status === "COMPLETED" || c.status === "CANCELLED";
+            return !isFinishedCampaign || (counts[s.key] || 0) > 0;
+          })
+          .map((s) => {
+            const active = filterStatus === s.key;
+            return (
+              <button
+                key={s.key}
+                onClick={() => setFilterStatus(active ? null : s.key)}
+                className={`rounded-lg border p-3 text-left transition-all hover:border-primary/50 ${
+                  active ? "border-primary ring-2 ring-primary/20" : ""
+                }`}
+              >
+                <s.icon className={`h-4 w-4 ${s.color}`} />
+                <div className="mt-1 text-2xl font-bold tabular-nums">
+                  {counts[s.key]}
+                </div>
+                <div className="text-xs text-muted-foreground">{s.label}</div>
+              </button>
+            );
+          })}
       </div>
 
       {/* Live agents on calls */}
@@ -482,9 +518,10 @@ export function CampaignDetailPage() {
                   <th className="p-2 text-left text-xs">Phone</th>
                   <th className="p-2 text-left text-xs">Nombre</th>
                   <th className="p-2 text-left text-xs">Status</th>
-                  <th className="p-2 text-left text-xs">Attempts</th>
-                  <th className="p-2 text-left text-xs">Agent</th>
-                  <th className="p-2 text-left text-xs">Last attempt</th>
+                  <th className="p-2 text-left text-xs">Intentos</th>
+                  <th className="p-2 text-left text-xs">Asignado a</th>
+                  <th className="p-2 text-left text-xs">Atendido por</th>
+                  <th className="p-2 text-left text-xs">Último intento</th>
                   <th className="p-2 text-right text-xs">Acciones</th>
                 </tr>
               </thead>
@@ -492,7 +529,7 @@ export function CampaignDetailPage() {
                 {contacts.length === 0 && (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="p-6 text-center text-xs text-muted-foreground"
                     >
                       Sin contactos para este filtro.
@@ -502,6 +539,10 @@ export function CampaignDetailPage() {
                 {contacts.map((row) => {
                   const locked =
                     row.status === "dialing" || row.status === "connected";
+                  const assignedLabel = resolveAgentLabel(
+                    row.assignedAgentUserId
+                  );
+                  const handlerLabel = resolveAgentLabel(row.agentUsername);
                   return (
                     <tr key={row.rowId} className="border-t">
                       <td className="p-2 font-mono text-xs">{row.phone}</td>
@@ -512,7 +553,22 @@ export function CampaignDetailPage() {
                         </Badge>
                       </td>
                       <td className="p-2 text-xs">{row.attempts}</td>
-                      <td className="p-2 text-xs">{row.agentUsername || "—"}</td>
+                      <td className="p-2 text-xs">
+                        {assignedLabel === "—" ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                            {assignedLabel}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2 text-xs">
+                        {handlerLabel === "—" ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          handlerLabel
+                        )}
+                      </td>
                       <td className="p-2 text-[11px] text-muted-foreground">
                         {row.lastAttemptAt
                           ? formatDistanceToNow(new Date(row.lastAttemptAt), {

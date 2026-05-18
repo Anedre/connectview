@@ -13,7 +13,14 @@ export interface CampaignContactRow {
   lastAttemptAt?: string;
   nextRetryAt?: string;
   connectContactId?: string;
+  /** Username of the agent who took the call (set when status=connected/done).
+   *  Legacy rows may have a UUID here instead — the table render handles
+   *  that gracefully. */
   agentUsername?: string;
+  /** When the campaign uses the per-agent-bucket dialing strategy, this is
+   *  the user ID the row was pre-assigned to (still a UUID, not a name —
+   *  it's the Connect user identifier from the agent assignment table). */
+  assignedAgentUserId?: string;
   disconnectReason?: string;
   lastError?: string;
 }

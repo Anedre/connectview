@@ -1,0 +1,14 @@
+{
+  "slotTypeName": "UDEP_Nivel",
+  "description": "Nivel academico (pregrado, maestria, diplomado, etc)",
+  "slotTypeValues": [
+    {"sampleValue":{"value":"pregrado"},     "synonyms":[{"value":"carrera"},{"value":"licenciatura"},{"value":"bachillerato"},{"value":"universidad"}]},
+    {"sampleValue":{"value":"maestria"},     "synonyms":[{"value":"posgrado"},{"value":"master"},{"value":"maestrias"}]},
+    {"sampleValue":{"value":"doctorado"},    "synonyms":[{"value":"phd"},{"value":"doctorados"}]},
+    {"sampleValue":{"value":"diplomado"},    "synonyms":[{"value":"diplomados"},{"value":"educacion ejecutiva"},{"value":"curso ejecutivo"}]},
+    {"sampleValue":{"value":"pad"},          "synonyms":[{"value":"escuela de direccion"},{"value":"escuela de negocios"},{"value":"mba"}]}
+  ],
+  "valueSelectionSetting": {
+    "resolutionStrategy": "TopResolution"
+  }
+}

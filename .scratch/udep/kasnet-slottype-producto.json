@@ -1,0 +1,114 @@
+{
+    "slotTypeId": "TJZ8THUGO2",
+    "slotTypeName": "ProductoKasnet",
+    "slotTypeValues": [
+        {
+            "sampleValue": {
+                "value": "multibanco"
+            },
+            "synonyms": [
+                {
+                    "value": "multi banco"
+                },
+                {
+                    "value": "agente multibanco"
+                },
+                {
+                    "value": "multi"
+                },
+                {
+                    "value": "multibanco kasnet"
+                },
+                {
+                    "value": "Pos Multibanco"
+                },
+                {
+                    "value": "POS"
+                }
+            ]
+        },
+        {
+            "sampleValue": {
+                "value": "digital"
+            },
+            "synonyms": [
+                {
+                    "value": "agente digital"
+                },
+                {
+                    "value": "digital kasnet"
+                },
+                {
+                    "value": "Kasnet digital"
+                },
+                {
+                    "value": "Agente"
+                },
+                {
+                    "value": "digi"
+                },
+                {
+                    "value": "agen"
+                },
+                {
+                    "value": "age"
+                },
+                {
+                    "value": "agent"
+                }
+            ]
+        },
+        {
+            "sampleValue": {
+                "value": "corporativo"
+            },
+            "synonyms": [
+                {
+                    "value": "empresa"
+                },
+                {
+                    "value": "corporate"
+                },
+                {
+                    "value": "corporativo kasnet"
+                },
+                {
+                    "value": "corp"
+                },
+                {
+                    "value": "cor"
+                }
+            ]
+        },
+        {
+            "sampleValue": {
+                "value": "wallet"
+            },
+            "synonyms": [
+                {
+                    "value": "billetera"
+                },
+                {
+                    "value": "monedero"
+                },
+                {
+                    "value": "kasnet wallet"
+                },
+                {
+                    "value": "wall"
+                },
+                {
+                    "value": "wal"
+                }
+            ]
+        }
+    ],
+    "valueSelectionSetting": {
+        "resolutionStrategy": "TopResolution"
+    },
+    "botId": "V5NU2G8LMH",
+    "botVersion": "DRAFT",
+    "localeId": "es_US",
+    "creationDateTime": "2025-12-16T08:55:19.114000-05:00",
+    "lastUpdatedDateTime": "2025-12-25T20:02:49.600000-05:00"
+}

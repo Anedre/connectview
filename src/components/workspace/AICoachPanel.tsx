@@ -1,9 +1,7 @@
 import { useEffect, useState, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Sparkles, Zap, RefreshCw } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { getApiEndpoints } from "@/lib/api";
+import * as Icon from "@/components/vox/primitives";
 
 interface AICoachPanelProps {
   contactId: string | null;
@@ -47,7 +45,7 @@ export function AICoachPanel({
         }
       } catch {
         setSuggestions([
-          { action: data.result || "No suggestions yet", reason: "" },
+          { action: data.result || "Sin sugerencias por ahora", reason: "" },
         ]);
       }
     } finally {
@@ -55,7 +53,6 @@ export function AICoachPanel({
     }
   };
 
-  // Auto-trigger when conversation advances significantly (every 5 new segments)
   useEffect(() => {
     if (!isActive || !contactId) return;
     if (transcriptSegmentCount - lastSegmentCount.current >= 5) {
@@ -67,62 +64,52 @@ export function AICoachPanel({
 
   if (!isActive) {
     return (
-      <Card className="border-dashed">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Sparkles className="h-5 w-5 text-purple-500" />
-            AI Coach
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Real-time AI suggestions will appear during active calls.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="q-card">
+        <div className="q-card__head">
+          <Icon.Sparkles size={14} /> Amazon Q · Coach
+        </div>
+        <div className="q-card__body muted">
+          Las sugerencias de Q aparecerán durante una llamada activa.
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card className="relative overflow-hidden">
-      <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br from-purple-400/20 to-pink-400/20 blur-2xl" />
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 text-white shadow">
-              <Sparkles className="h-3.5 w-3.5" />
-            </div>
-            AI Coach
-            {sentiment === "NEGATIVE" && (
-              <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
-                <Zap className="h-2.5 w-2.5" />
-                Urgent
-              </span>
-            )}
-          </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={fetchSuggestions}
-            disabled={loading}
-            className="h-7 text-xs"
-          >
-            <RefreshCw
-              className={`mr-1 h-3 w-3 ${loading ? "animate-spin" : ""}`}
-            />
-            {loading ? "Thinking..." : "Refresh"}
-          </Button>
+    <div className="q-card">
+      <div className="q-card__head" style={{ justifyContent: "space-between" }}>
+        <div className="row" style={{ gap: 8 }}>
+          <Icon.Sparkles size={14} /> Amazon Q · Coach
+          {sentiment === "NEGATIVE" && (
+            <span className="chip chip--red" style={{ height: 18, fontSize: 10 }}>
+              <Icon.Shield size={10} /> Urgente
+            </span>
+          )}
         </div>
-      </CardHeader>
-      <CardContent className="relative space-y-2">
+        <button
+          className="btn btn--ghost btn--sm"
+          onClick={fetchSuggestions}
+          disabled={loading}
+          style={{ marginLeft: "auto" }}
+        >
+          <Icon.Refresh
+            size={12}
+            style={loading ? { animation: "spin 1s linear infinite" } : undefined}
+          />
+          {loading ? "Pensando…" : "Actualizar"}
+        </button>
+      </div>
+      <div className="q-card__body">
         <AnimatePresence mode="popLayout">
           {suggestions.length === 0 && !loading && (
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-xs text-muted-foreground py-2"
+              className="muted"
+              style={{ fontSize: 12, margin: 0 }}
             >
-              Coach will auto-suggest actions as the conversation develops...
+              Q sugerirá la próxima mejor acción conforme avance la
+              conversación…
             </motion.p>
           )}
           {suggestions.slice(0, 3).map((s, i) => (
@@ -132,23 +119,47 @@ export function AICoachPanel({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
               transition={{ delay: i * 0.1 }}
-              className="group flex gap-2 rounded-lg border border-purple-200/50 bg-gradient-to-br from-purple-50/50 to-pink-50/50 p-3 dark:border-purple-900/30 dark:from-purple-950/20 dark:to-pink-950/20"
+              style={{
+                display: "flex",
+                gap: 10,
+                padding: 10,
+                background: "var(--bg-2)",
+                borderRadius: 8,
+                marginTop: i === 0 ? 0 : 6,
+              }}
             >
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-600 text-white text-xs font-bold">
+              <div
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: "50%",
+                  display: "grid",
+                  placeItems: "center",
+                  background:
+                    "linear-gradient(135deg, var(--accent-violet), var(--accent-pink))",
+                  color: "white",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
                 {i + 1}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium leading-snug">{s.action}</p>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text-1)" }}>
+                  {s.action}
+                </div>
                 {s.reason && (
-                  <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+                  <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>
                     {s.reason}
-                  </p>
+                  </div>
                 )}
               </div>
             </motion.div>
           ))}
         </AnimatePresence>
-      </CardContent>
-    </Card>
+      </div>
+      <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+    </div>
   );
 }

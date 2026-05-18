@@ -1,0 +1,7 @@
+{
+  "Version":"2012-10-17",
+  "Statement":[
+    {"Effect":"Allow","Action":["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"],"Resource":"arn:aws:logs:us-east-1:731736972577:*"},
+    {"Effect":"Allow","Action":["profile:SearchProfiles","profile:GetProfileObjects","profile:ListProfileObjects"],"Resource":"arn:aws:profile:us-east-1:731736972577:domains/amazon-connect-novasys*"}
+  ]
+}

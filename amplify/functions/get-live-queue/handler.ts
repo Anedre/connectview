@@ -24,6 +24,8 @@ const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 const CONTACTS_TABLE = process.env.CONTACTS_TABLE || "connectview-contacts";
 const CAMPAIGN_CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+const CAMPAIGNS_TABLE =
+  process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 
 // How recently a contact must have been initiated to count as "ARRIVED"
 const ARRIVED_WINDOW_SEC = 10;
@@ -140,6 +142,11 @@ interface QueuedContactView {
   campaignRowId?: string | null;
   /** How many dial attempts this row has had (from connectview-campaign-contacts). */
   retryCount?: number | null;
+  /** If the row has been pre-assigned to a specific agent's bucket, the
+   *  agent user ID is exposed here. Used by the FlowView to render the
+   *  pending contact under that agent's column instead of in the global
+   *  "Pendientes" block. */
+  assignedAgentUserId?: string | null;
 }
 
 async function resolveRoutingProfileQueues(
@@ -320,13 +327,61 @@ async function fetchRecentlyFinishedFromDynamo(): Promise<QueuedContactView[]> {
  * DynamoDB and expose them as two synthetic stages. These feed the
  * "Pendientes" and "Marcando" blocks that replace the inbound-oriented
  * "Llegada / IVR" labels for campaign graphs.
+ *
+ * IMPORTANT: We filter out rows belonging to campaigns that are not currently
+ * active (DRAFT/COMPLETED/CANCELLED). Without this guard, a cancelled
+ * campaign's pending rows leak into the live queue forever — the cancel
+ * action only flips the campaign meta status and doesn't touch the row
+ * statuses, so they remain "pending" in the DB.
  */
+/**
+ * Returns `null` when we couldn't determine the active set (IAM denied, etc.) —
+ * callers treat null as "skip the filter" so the live queue degrades to its
+ * pre-filter behaviour instead of hiding every pending row. When we DO have
+ * a definitive answer, returns the Set (possibly empty if no campaigns are
+ * running/paused).
+ */
+async function fetchActiveCampaignIds(): Promise<Set<string> | null> {
+  const active = new Set<string>();
+  try {
+    for (const status of ["RUNNING", "PAUSED"]) {
+      const res = await dynamo.send(
+        new QueryCommand({
+          TableName: CAMPAIGNS_TABLE,
+          IndexName: "status-createdAt-index",
+          KeyConditionExpression: "#st = :s",
+          ExpressionAttributeNames: { "#st": "status" },
+          ExpressionAttributeValues: { ":s": { S: status } },
+        })
+      );
+      for (const it of res.Items || []) {
+        const row = unmarshall(it);
+        if (row.campaignId) active.add(row.campaignId as string);
+      }
+    }
+    return active;
+  } catch (err) {
+    // Most common failure mode: the Lambda role doesn't have
+    // dynamodb:Query on the campaigns table. Rather than silently hiding
+    // every row, we surface a null so the caller skips the filter.
+    console.warn("fetchActiveCampaignIds failed (returning null):", err);
+    return null;
+  }
+}
+
 async function fetchCampaignPendingAndDialing(): Promise<{
   pending: QueuedContactView[];
   dialing: QueuedContactView[];
 }> {
   const pending: QueuedContactView[] = [];
   const dialing: QueuedContactView[] = [];
+  // Resolve which campaigns are currently active so we can filter the scan
+  // results client-side. We could push this into a per-campaign Query loop
+  // but Scan is fine at the current scale (≤500 active rows total).
+  // When `null` we couldn't determine the active set (likely IAM denied)
+  // and we DON'T filter — falling back to the pre-filter behaviour so the
+  // live queue still works even with reduced permissions.
+  const activeCampaignIds = await fetchActiveCampaignIds();
   try {
     const res = await dynamo.send(
       new ScanCommand({
@@ -342,6 +397,16 @@ async function fetchCampaignPendingAndDialing(): Promise<{
     );
     for (const raw of res.Items || []) {
       const row = unmarshall(raw);
+      const campaignId = row.campaignId as string;
+      // Skip rows from campaigns that are not currently RUNNING/PAUSED. This
+      // is the root cause of the "zombie pending rows" bug. Only applies
+      // when we successfully determined which campaigns are active.
+      if (
+        activeCampaignIds !== null &&
+        campaignId &&
+        !activeCampaignIds.has(campaignId)
+      )
+        continue;
       const status = row.status as string;
       const rowId = row.rowId as string;
       const cid = (row.connectContactId as string) || `row-${rowId}`;
@@ -364,7 +429,9 @@ async function fetchCampaignPendingAndDialing(): Promise<{
         sortKey: (row.lastAttemptAt as string) || (row.createdAt as string) || "",
         campaignRowId: rowId,
         retryCount: Number(row.attempts) || 0,
-        campaignId: (row.campaignId as string) || null,
+        campaignId: campaignId || null,
+        assignedAgentUserId:
+          (row.assignedAgentUserId as string) || null,
       };
       if (status === "dialing") dialing.push(view);
       else pending.push(view);
@@ -375,25 +442,42 @@ async function fetchCampaignPendingAndDialing(): Promise<{
   return { pending, dialing };
 }
 
-async function fetchRetryScheduled(): Promise<QueuedContactView[]> {
+async function fetchRetryScheduled(
+  activeCampaignIds?: Set<string> | null
+): Promise<QueuedContactView[]> {
+  // If the caller didn't pass a set of currently-active campaign ids, fetch
+  // them so retry rows from cancelled/completed campaigns don't leak.
+  // `null` means we couldn't determine the active set — skip the filter.
+  const activeIds =
+    activeCampaignIds !== undefined
+      ? activeCampaignIds
+      : await fetchActiveCampaignIds();
   try {
+    // The original code used a Query on `status-createdAt-index`, but that
+    // GSI doesn't exist on the campaign-contacts table — the query was
+    // failing silently and the "Reencoladas" section was always empty.
+    // A Scan with FilterExpression is more expensive but it's bounded to
+    // 100 items and only runs when the live-queue is polled (every 3s
+    // worst case). At realistic campaign sizes (<10k contacts) this is
+    // cheaper than creating + waiting on a new GSI.
     const res = await dynamo.send(
-      new QueryCommand({
+      new ScanCommand({
         TableName: CAMPAIGN_CONTACTS_TABLE,
-        IndexName: "status-createdAt-index",
-        KeyConditionExpression: "#st = :p",
+        FilterExpression: "#st = :p AND attempts > :zero",
         ExpressionAttributeNames: { "#st": "status" },
-        FilterExpression: "attempts > :zero",
         ExpressionAttributeValues: {
           ":p": { S: "pending" },
           ":zero": { N: "0" },
         },
-        Limit: 50,
+        Limit: 100,
       })
     );
     const out: QueuedContactView[] = [];
     for (const raw of res.Items || []) {
       const row = unmarshall(raw);
+      const campaignId = row.campaignId as string | undefined;
+      if (activeIds !== null && campaignId && !activeIds.has(campaignId))
+        continue;
       out.push({
         contactId: `retry-${row.rowId}`,
         phone: (row.phone as string) || null,

@@ -1,12 +1,87 @@
 import "amazon-connect-streams";
+// chatjs piggybacks on streams and exposes connect.ChatSession + chat
+// media controllers. Importing it here makes the global available
+// everywhere the streams namespace is used.
+import "amazon-connect-chatjs";
+
+// Tell chatjs which region to target for the Connect Participant API.
+// Without this, the SDK defaults to us-west-2 and every GetTranscript
+// / SendMessage / SendEvent call against a contact from our us-east-1
+// instance returns 403 Forbidden (the participant token is region-scoped).
+//
+// We use both setGlobalConfig AND a .create() monkey-patch because the
+// Connect Streams library bundled with us-west-2 default invokes
+// ChatSession.create() without forwarding the global config — so options
+// have to be injected at call time.
+const CONNECT_REGION = import.meta.env.VITE_AWS_REGION || "us-east-1";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function patchChatJsRegion(CS: any): boolean {
+  if (!CS) return false;
+  try {
+    if (CS.setGlobalConfig) {
+      CS.setGlobalConfig({
+        region: CONNECT_REGION,
+        loggerConfig: {
+          useDefaultLogger: true,
+          level: CS.LogLevel?.INFO ?? "INFO",
+        },
+      });
+    }
+    if (CS.create && !CS.__voxRegionPatched) {
+      const original = CS.create.bind(CS);
+      // chatjs internally resolves region via:
+      //   L.getRegionOverride() || e.region || L.getRegion() || "us-west-2"
+      // where `e` is the create() argument. So we inject region at BOTH
+      // the root level (where chatjs reads it) and in options (to be
+      // future-proof against API shape changes).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      CS.create = (input: any) => {
+        const patched = {
+          ...(input || {}),
+          region: CONNECT_REGION,
+          options: {
+            region: CONNECT_REGION,
+            ...((input && input.options) || {}),
+          },
+        };
+        return original(patched);
+      };
+      CS.__voxRegionPatched = true;
+    }
+    // Also patch the global LOG.getRegion / regionOverride fallback by
+    // setting `connect.ChatSession.GlobalConfig` directly. Some versions
+    // of chatjs respect this even if setGlobalConfig didn't propagate.
+    if (CS.GlobalConfig) {
+      try {
+        CS.GlobalConfig.region = CONNECT_REGION;
+        CS.GlobalConfig.regionOverride = CONNECT_REGION;
+      } catch {
+        /* readonly — skip */
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+patchChatJsRegion((connect as any).ChatSession);
 
 // Embed the full Agent Workspace (CCP + Customer Profiles + Cases + Wisdom)
 // instead of just the CCP. The Agent Workspace URL is /connect/agent-app-v2
 // and includes additional apps that integrate automatically when they are
 // associated with the instance (in our case: Cases, Wisdom, Customer Profiles).
 export function initCCP(containerEl: HTMLElement, instanceUrl: string) {
+  // Re-apply chatjs region on every CCP init. Idempotent.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  patchChatJsRegion((connect as any).ChatSession);
+
   connect.core.initCCP(containerEl, {
     ccpUrl: `${instanceUrl}/connect/ccp-v2`,
+    // Top-level region. Streams' MediaFactory grabs params.region for chat
+    // sessions; without it streams defaults to 'us-west-2' and every chat
+    // API call 403s on our us-east-1 instance.
+    region: CONNECT_REGION,
     loginPopup: true,
     loginPopupAutoClose: true,
     loginUrl: `${instanceUrl}/connect/login`,
@@ -23,6 +98,14 @@ export function initCCP(containerEl: HTMLElement, instanceUrl: string) {
     ccpAckTimeout: 5000,
     ccpSynTimeout: 3000,
     ccpLoadTimeout: 10000,
+    // Same goes for the chat config — be explicit so streams doesn't
+    // pull defaults from us-west-2.
+    chat: {
+      region: CONNECT_REGION,
+    },
+  } as Parameters<typeof connect.core.initCCP>[1] & {
+    region?: string;
+    chat?: { region?: string };
   });
 }
 

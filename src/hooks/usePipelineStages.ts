@@ -47,6 +47,23 @@ export interface PipelineFilter {
   hideIvr?: boolean;
 }
 
+/**
+ * Threshold (in seconds) beyond which a pre-finished contact is treated as
+ * a "zombie" left over from an old Lambda snapshot and filtered out.
+ *
+ * Amazon Connect auto-disconnects queued/ringing calls after a few minutes,
+ * so anything older than an hour that's still reported as ARRIVED / IN_IVR /
+ * IN_QUEUE is definitely stale. We keep FINISHED contacts regardless — that
+ * column is where the user sees the actual campaign result.
+ */
+const ZOMBIE_THRESHOLD_SECONDS = 60 * 60; // 1 hour
+
+function isZombie(c: PipelineContact): boolean {
+  if (c.state === "FINISHED" || c.state === "WITH_AGENT") return false;
+  const age = secondsIn(c);
+  return age > ZOMBIE_THRESHOLD_SECONDS;
+}
+
 function makeAgentContact(a: LiveAgent): PipelineContact | null {
   if (!a.activeContact) return null;
   const ac = a.activeContact;
@@ -131,6 +148,11 @@ export function usePipelineStages(
 
     const applyFilters = (list: PipelineContact[]): PipelineContact[] => {
       return list.filter((c) => {
+        // Hide zombies — old snapshots the get-live-queue Lambda keeps
+        // returning after the underlying call is long gone. Without this
+        // the Pipeline General view fills with ghost bubbles from previous
+        // campaigns even when nothing is actually running.
+        if (isZombie(c)) return false;
         if (!channelMatches(c, filter.channel)) return false;
         if (!queueMatches(c, filter.queueId)) return false;
         if (!queryMatches(c, filter.query)) return false;

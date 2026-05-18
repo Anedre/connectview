@@ -26,6 +26,7 @@ interface UpdateBody {
   windowDaysOfWeek?: number[];
   retryNoAnswerMinutes?: number;
   retryMaxAttempts?: number;
+  maxContactsPerAgent?: number;
 }
 
 // Each editable field → a builder that knows its DynamoDB value type.
@@ -55,6 +56,7 @@ const FIELD_MAP: Record<
   },
   retryNoAnswerMinutes: { toAttrValue: (v: number) => ({ N: String(v) }) },
   retryMaxAttempts: { toAttrValue: (v: number) => ({ N: String(v) }) },
+  maxContactsPerAgent: { toAttrValue: (v: number) => ({ N: String(v) }) },
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

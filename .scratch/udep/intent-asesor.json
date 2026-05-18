@@ -1,0 +1,20 @@
+{
+  "intentName": "HablarConAsesor",
+  "description": "Usuario pide hablar con humano directamente",
+  "sampleUtterances": [
+    {"utterance":"asesor"},
+    {"utterance":"hablar con un asesor"},
+    {"utterance":"agente"},
+    {"utterance":"hablar con un agente"},
+    {"utterance":"humano"},
+    {"utterance":"hablar con persona"},
+    {"utterance":"persona real"},
+    {"utterance":"ayuda real"},
+    {"utterance":"no entiendo nada"},
+    {"utterance":"transferenme"},
+    {"utterance":"pasame con alguien"},
+    {"utterance":"quiero hablar con alguien"},
+    {"utterance":"operador"},
+    {"utterance":"representante"}
+  ]
+}

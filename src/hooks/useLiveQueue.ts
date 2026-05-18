@@ -61,6 +61,11 @@ export interface QueuedContact {
   retryCount?: number | null;
   /** For retry/finished contacts that belong to a campaign. */
   campaignId?: string | null;
+  /** When a campaign uses the per-agent bucket dialing strategy, pending and
+   *  dialing rows are pre-assigned to one specific agent. The FlowView uses
+   *  this to render the contact under that agent's column instead of the
+   *  global "Pendientes" block. */
+  assignedAgentUserId?: string | null;
 }
 
 export interface QueueMeta {
@@ -91,7 +96,7 @@ export interface LiveQueueData {
   generatedAt: string;
 }
 
-export function useLiveQueue(refreshMs = 3000) {
+export function useLiveQueue(refreshMs = 3000, paused = false) {
   const [data, setData] = useState<LiveQueueData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,14 +115,19 @@ export function useLiveQueue(refreshMs = 3000) {
     }
   }, []);
 
+  // Initial load — runs once, independent of the interval.
   useEffect(() => {
     setLoading(true);
     refresh().finally(() => setLoading(false));
-    if (refreshMs > 0) {
-      const id = setInterval(refresh, refreshMs);
-      return () => clearInterval(id);
-    }
-  }, [refresh, refreshMs]);
+  }, [refresh]);
+
+  // Polling interval — paused during drag so the UI doesn't flicker when
+  // a bubble the user is dragging gets re-rendered from a stale snapshot.
+  useEffect(() => {
+    if (paused || refreshMs <= 0) return;
+    const id = setInterval(refresh, refreshMs);
+    return () => clearInterval(id);
+  }, [refresh, refreshMs, paused]);
 
   return { data, loading, error, refresh };
 }

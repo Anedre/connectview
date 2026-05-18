@@ -1,0 +1,41 @@
+{
+  "Version": "2019-10-30",
+  "StartAction": "bfffaa11-695f-4c2d-b4b3-b22a2efdac50",
+  "Metadata": {
+    "entryPointPosition": {
+      "x": 40,
+      "y": 40
+    },
+    "ActionMetadata": {
+      "bfffaa11-695f-4c2d-b4b3-b22a2efdac50": {
+        "position": {
+          "x": 200,
+          "y": 200
+        }
+      }
+    }
+  },
+  "Actions": [
+    {
+      "Identifier": "bfffaa11-695f-4c2d-b4b3-b22a2efdac50",
+      "Parameters": {
+        "Messages": [
+          {
+            "Text": "Gracias por escribir a la Universidad de Piura. Tu consulta es importante; un asesor te atendera en breve."
+          },
+          {
+            "Text": "Gracias por tu paciencia. Estamos asignando un asesor disponible."
+          },
+          {
+            "Text": "Pronto un asesor te atendera."
+          }
+        ]
+      },
+      "Transitions": {
+        "Errors": [],
+        "Conditions": []
+      },
+      "Type": "MessageParticipantIteratively"
+    }
+  ]
+}

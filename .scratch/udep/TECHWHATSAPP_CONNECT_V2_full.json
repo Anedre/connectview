@@ -1,0 +1,11 @@
+{
+    "ContactFlow": {
+        "Arn": "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/contact-flow/9d62874a-57b9-45b7-bcce-81254b95d0a3",
+        "Id": "9d62874a-57b9-45b7-bcce-81254b95d0a3",
+        "Name": "TECHWHATSAPP_CONNECT_V2",
+        "Type": "CONTACT_FLOW",
+        "State": "ACTIVE",
+        "Status": "PUBLISHED",
+        "Description": "WhatsApp Connect V2 - hybrid Connect/Lex + Lambda",
+        "Content": 
+'charmap' codec can't encode character '\U0001f44b' in position 7224: character maps to <undefined>

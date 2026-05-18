@@ -143,28 +143,51 @@ Responde SOLO con el codigo, sin explicacion.`,
       }),
     };
   } catch (error) {
-    // Throttling → return 200 with empty result so AICoachPanel keeps its previous suggestions.
+    // Always return 200 with a soft-degraded body so the frontend doesn't
+    // flood the browser console with 5xx noise. Real failure modes that
+    // we degrade gracefully here:
+    //  - ThrottlingException        → Bedrock or Contact Lens rate limit
+    //  - AccessDeniedException      → Bedrock model not subscribed in the account
+    //  - ResourceNotFoundException  → contactId is from a different region
+    //                                 or doesn't have a Contact Lens record yet
+    //                                 (very common for CHAT contacts without
+    //                                 real-time analytics)
+    //  - any other Bedrock error    → graceful fallback
+    const errName =
+      error && typeof error === "object" && "name" in error
+        ? String((error as { name: unknown }).name)
+        : "UnknownError";
+    const errMsg = error instanceof Error ? error.message : String(error);
+
+    console.warn("generate-call-summary degraded:", errName, errMsg);
+
+    let fallback = "";
     if (isThrottlingError(error)) {
-      return {
-        statusCode: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contactId,
-          mode,
-          throttled: true,
-          result: mode === "next-action" ? "[]" : "",
-          transcriptLength: 0,
-        }),
-      };
+      fallback = ""; // AICoachPanel keeps previous suggestions
+    } else if (errName === "AccessDeniedException") {
+      fallback =
+        "Resumen automático no disponible (modelo de IA aún no habilitado en la cuenta).";
+    } else if (
+      errName === "ResourceNotFoundException" ||
+      /no.*transcript|not.*found/i.test(errMsg)
+    ) {
+      fallback = "Aún no hay transcripción disponible para este contacto.";
+    } else {
+      fallback =
+        "Resumen automático no disponible en este momento. Puedes redactarlo manualmente.";
     }
 
-    console.error("Error generating summary:", error);
     return {
-      statusCode: 500,
+      statusCode: 200,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        error: "Failed to generate summary",
-        message: error instanceof Error ? error.message : "Unknown error",
+        contactId,
+        mode,
+        degraded: true,
+        errorClass: errName,
+        result: mode === "next-action" ? "[]" : "",
+        summary: fallback,
+        transcriptLength: 0,
       }),
     };
   }

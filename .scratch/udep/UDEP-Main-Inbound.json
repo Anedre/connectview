@@ -1,0 +1,876 @@
+{
+  "Version": "2019-10-30",
+  "StartAction": "3cc28a07-f6bf-4a51-a913-480375f3d74c",
+  "Metadata": {
+    "entryPointPosition": {
+      "x": 40,
+      "y": 40
+    },
+    "ActionMetadata": {
+      "3cc28a07-f6bf-4a51-a913-480375f3d74c": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "816546ea-753d-4fc4-b7d9-264e02c9262c": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "9982c330-ab07-4d03-9456-25cb6278a77a": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "0be6c80b-902f-4f70-997c-b5421dbd73b6": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "697e5d32-7453-42ea-98ac-dd800bcd79d9": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "e5ed08cd-446d-402e-aa8d-6c5e52e8f719": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "1209706e-c948-4d85-9adf-6e54e308b876": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "7459d6ea-7fdd-4cc0-b2b4-180124e2ce7b": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "5f1daf2d-cb94-4ec8-aec6-65f807aa1861": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "39b14e0f-6794-49c7-859d-25eedcd62210": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "fa6603d5-1357-473a-9ed2-89744421fd5d": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "e471b8a0-3166-42cb-89c9-d689f3747d73": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "603157a8-74c4-4a26-a882-cca19aac2aab": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "980e4fbe-c984-4aa0-acd4-0e7c5c6d40c8": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "11af1b9e-914e-4513-b972-6640c3543794": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "bd831b4a-780f-4c83-971a-efaba3a42ceb": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "1dc35f9a-a821-4122-8adb-442ecc3aecf1": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "46ee4595-d099-4e2b-b5e1-bb68a1da5cc5": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "8a2f96a0-e5fd-4dcf-ac37-6d3b3b23b52a": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "ce0815c0-685d-4d66-9879-d221fff97f6b": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "a2a4107a-40aa-4ff2-b620-09cb30b2b98f": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "7f57d5d2-a8b8-4b09-b1fe-be2e3cfb661a": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "fc7c1a01-4b94-4dd7-a441-1534bec8a41f": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "2450385c-ab91-4fb8-a0c4-ef70eb5e02f2": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "00d0e150-f03d-4bde-abe9-0efbb0fd9cd0": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "1945eb3a-09cf-4cb9-a7af-5f862da21d69": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "29b456b5-7000-4e25-98a0-9ec3a12000c8": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "03f39772-a6eb-4225-a555-27ee007c7c9b": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "a9e7c527-7653-4d44-8028-b0f1ba748147": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "585da575-ce0c-48d2-b799-a1b9ad4ee730": {
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      }
+    },
+    "Annotations": [],
+    "name": "UDEP-Main-Inbound",
+    "description": "WhatsApp/Chat router for UDEP — interactive menus + Lex NLU",
+    "type": "contactFlow",
+    "status": "PUBLISHED",
+    "hash": {}
+  },
+  "Actions": [
+    {
+      "Identifier": "3cc28a07-f6bf-4a51-a913-480375f3d74c",
+      "Type": "UpdateFlowLoggingBehavior",
+      "Parameters": {
+        "FlowLoggingBehavior": "Enabled"
+      },
+      "Transitions": {
+        "NextAction": "816546ea-753d-4fc4-b7d9-264e02c9262c"
+      }
+    },
+    {
+      "Identifier": "816546ea-753d-4fc4-b7d9-264e02c9262c",
+      "Type": "UpdateContactTextToSpeechVoice",
+      "Parameters": {
+        "TextToSpeechVoice": "Lupe"
+      },
+      "Transitions": {
+        "NextAction": "9982c330-ab07-4d03-9456-25cb6278a77a",
+        "Errors": [
+          {
+            "NextAction": "9982c330-ab07-4d03-9456-25cb6278a77a",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "9982c330-ab07-4d03-9456-25cb6278a77a",
+      "Type": "UpdateContactData",
+      "Parameters": {
+        "LanguageCode": "es-US"
+      },
+      "Transitions": {
+        "NextAction": "0be6c80b-902f-4f70-997c-b5421dbd73b6",
+        "Errors": [
+          {
+            "NextAction": "0be6c80b-902f-4f70-997c-b5421dbd73b6",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "0be6c80b-902f-4f70-997c-b5421dbd73b6",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": {
+          "udep_source": "whatsapp",
+          "udep_idioma": "es"
+        },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "697e5d32-7453-42ea-98ac-dd800bcd79d9",
+        "Errors": [
+          {
+            "NextAction": "697e5d32-7453-42ea-98ac-dd800bcd79d9",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "697e5d32-7453-42ea-98ac-dd800bcd79d9",
+      "Type": "InvokeLambdaFunction",
+      "Parameters": {
+        "LambdaFunctionARN": "arn:aws:lambda:us-east-1:731736972577:function:UDEP-Lookup-Lead",
+        "InvocationTimeLimitSeconds": "5",
+        "ResponseValidation": {
+          "ResponseType": "JSON"
+        }
+      },
+      "Transitions": {
+        "NextAction": "e5ed08cd-446d-402e-aa8d-6c5e52e8f719",
+        "Errors": [
+          {
+            "NextAction": "e5ed08cd-446d-402e-aa8d-6c5e52e8f719",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "e5ed08cd-446d-402e-aa8d-6c5e52e8f719",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": {
+          "udep_lead_type": "$.External.leadType",
+          "udep_first_name": "$.External.firstName",
+          "udep_programa_interes": "$.External.programa",
+          "udep_student_id": "$.External.studentId"
+        },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "1209706e-c948-4d85-9adf-6e54e308b876",
+        "Errors": [
+          {
+            "NextAction": "1209706e-c948-4d85-9adf-6e54e308b876",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "1209706e-c948-4d85-9adf-6e54e308b876",
+      "Type": "CheckHoursOfOperation",
+      "Parameters": {
+        "HoursOfOperationId": "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/operating-hours/d697fc10-4c4c-42b8-b927-99e88196540e"
+      },
+      "Transitions": {
+        "NextAction": "7459d6ea-7fdd-4cc0-b2b4-180124e2ce7b",
+        "Conditions": [
+          {
+            "NextAction": "5f1daf2d-cb94-4ec8-aec6-65f807aa1861",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": [
+                "True"
+              ]
+            }
+          },
+          {
+            "NextAction": "7459d6ea-7fdd-4cc0-b2b4-180124e2ce7b",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": [
+                "False"
+              ]
+            }
+          }
+        ],
+        "Errors": [
+          {
+            "NextAction": "7459d6ea-7fdd-4cc0-b2b4-180124e2ce7b",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "7459d6ea-7fdd-4cc0-b2b4-180124e2ce7b",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "Gracias por escribir a la Universidad de Piura. Nuestro horario de atencion es L-V 8:00-20:00 y sabados 9:00-13:00. Por favor escribenos en ese horario para ser atendido por un asesor. ¡Hasta pronto!"
+      },
+      "Transitions": {
+        "NextAction": "a9e7c527-7653-4d44-8028-b0f1ba748147",
+        "Errors": [
+          {
+            "NextAction": "a9e7c527-7653-4d44-8028-b0f1ba748147",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "5f1daf2d-cb94-4ec8-aec6-65f807aa1861",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "¡Hola $.Attributes.udep_first_name! 👋 Bienvenido(a) a la *Universidad de Piura*. Soy tu asistente virtual y puedo ayudarte con informacion academica o conectarte con un asesor."
+      },
+      "Transitions": {
+        "NextAction": "39b14e0f-6794-49c7-859d-25eedcd62210",
+        "Errors": [
+          {
+            "NextAction": "39b14e0f-6794-49c7-859d-25eedcd62210",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "39b14e0f-6794-49c7-859d-25eedcd62210",
+      "Type": "InvokeLambdaFunction",
+      "Parameters": {
+        "LambdaFunctionARN": "arn:aws:lambda:us-east-1:731736972577:function:UDEP-Send-WhatsApp-Interactive",
+        "InvocationTimeLimitSeconds": "5",
+        "ResponseValidation": {
+          "ResponseType": "JSON"
+        }
+      },
+      "Transitions": {
+        "NextAction": "fa6603d5-1357-473a-9ed2-89744421fd5d",
+        "Errors": [
+          {
+            "NextAction": "e471b8a0-3166-42cb-89c9-d689f3747d73",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "fa6603d5-1357-473a-9ed2-89744421fd5d",
+      "Type": "Compare",
+      "Parameters": {
+        "ComparisonValue": "$.External.sent"
+      },
+      "Transitions": {
+        "NextAction": "e471b8a0-3166-42cb-89c9-d689f3747d73",
+        "Conditions": [
+          {
+            "NextAction": "603157a8-74c4-4a26-a882-cca19aac2aab",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": [
+                "true"
+              ]
+            }
+          }
+        ],
+        "Errors": [
+          {
+            "NextAction": "e471b8a0-3166-42cb-89c9-d689f3747d73",
+            "ErrorType": "NoMatchingCondition"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "e471b8a0-3166-42cb-89c9-d689f3747d73",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "¿En qué te podemos ayudar? 🎓\nResponde con el *número* o escribe tu consulta libre:\n\n1️⃣  Pregrado — carreras profesionales\n2️⃣  Posgrado — maestrías y doctorados\n3️⃣  Diplomados / PAD — educación ejecutiva\n4️⃣  Soy alumno — soporte académico\n5️⃣  Costos y becas\n6️⃣  Visitar el campus\n7️⃣  Hablar con un asesor"
+      },
+      "Transitions": {
+        "NextAction": "603157a8-74c4-4a26-a882-cca19aac2aab",
+        "Errors": [
+          {
+            "NextAction": "585da575-ce0c-48d2-b799-a1b9ad4ee730",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "603157a8-74c4-4a26-a882-cca19aac2aab",
+      "Type": "ConnectParticipantWithLexBot",
+      "Parameters": {
+        "Text": "​",
+        "LexV2Bot": {
+          "AliasArn": "arn:aws:lex:us-east-1:731736972577:bot-alias/VKG6YJG4DO/N1CUYQL5IK"
+        }
+      },
+      "Transitions": {
+        "NextAction": "03f39772-a6eb-4225-a555-27ee007c7c9b",
+        "Conditions": [
+          {
+            "NextAction": "980e4fbe-c984-4aa0-acd4-0e7c5c6d40c8",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": [
+                "ConsultarPrograma"
+              ]
+            }
+          },
+          {
+            "NextAction": "bd831b4a-780f-4c83-971a-efaba3a42ceb",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": [
+                "SolicitarCostos"
+              ]
+            }
+          },
+          {
+            "NextAction": "46ee4595-d099-4e2b-b5e1-bb68a1da5cc5",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": [
+                "AgendarVisita"
+              ]
+            }
+          },
+          {
+            "NextAction": "8a2f96a0-e5fd-4dcf-ac37-6d3b3b23b52a",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": [
+                "EstadoMatricula"
+              ]
+            }
+          },
+          {
+            "NextAction": "ce0815c0-685d-4d66-9879-d221fff97f6b",
+            "Condition": {
+              "Operator": "Equals",
+              "Operands": [
+                "HablarConAsesor"
+              ]
+            }
+          }
+        ],
+        "Errors": [
+          {
+            "NextAction": "03f39772-a6eb-4225-a555-27ee007c7c9b",
+            "ErrorType": "NoMatchingCondition"
+          },
+          {
+            "NextAction": "03f39772-a6eb-4225-a555-27ee007c7c9b",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "980e4fbe-c984-4aa0-acd4-0e7c5c6d40c8",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": {
+          "udep_intent": "consultar_programa",
+          "udep_nivel": "$.Lex.Slots.nivel",
+          "udep_facultad": "$.Lex.Slots.facultad",
+          "udep_sede": "$.Lex.Slots.sede"
+        },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "11af1b9e-914e-4513-b972-6640c3543794",
+        "Errors": [
+          {
+            "NextAction": "11af1b9e-914e-4513-b972-6640c3543794",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "11af1b9e-914e-4513-b972-6640c3543794",
+      "Type": "Compare",
+      "Parameters": {
+        "ComparisonValue": "$.Lex.Slots.nivel"
+      },
+      "Transitions": {
+        "NextAction": "39b14e0f-6794-49c7-859d-25eedcd62210",
+        "Conditions": [
+          {
+            "NextAction": "a2a4107a-40aa-4ff2-b620-09cb30b2b98f",
+            "Condition": {
+              "Operator": "TextContains",
+              "Operands": [
+                "pregrado"
+              ]
+            }
+          },
+          {
+            "NextAction": "7f57d5d2-a8b8-4b09-b1fe-be2e3cfb661a",
+            "Condition": {
+              "Operator": "TextContains",
+              "Operands": [
+                "maestria"
+              ]
+            }
+          },
+          {
+            "NextAction": "7f57d5d2-a8b8-4b09-b1fe-be2e3cfb661a",
+            "Condition": {
+              "Operator": "TextContains",
+              "Operands": [
+                "doctorado"
+              ]
+            }
+          },
+          {
+            "NextAction": "7f57d5d2-a8b8-4b09-b1fe-be2e3cfb661a",
+            "Condition": {
+              "Operator": "TextContains",
+              "Operands": [
+                "posgrado"
+              ]
+            }
+          },
+          {
+            "NextAction": "fc7c1a01-4b94-4dd7-a441-1534bec8a41f",
+            "Condition": {
+              "Operator": "TextContains",
+              "Operands": [
+                "diplomado"
+              ]
+            }
+          },
+          {
+            "NextAction": "fc7c1a01-4b94-4dd7-a441-1534bec8a41f",
+            "Condition": {
+              "Operator": "TextContains",
+              "Operands": [
+                "pad"
+              ]
+            }
+          }
+        ],
+        "Errors": [
+          {
+            "NextAction": "a2a4107a-40aa-4ff2-b620-09cb30b2b98f",
+            "ErrorType": "NoMatchingCondition"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "bd831b4a-780f-4c83-971a-efaba3a42ceb",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": {
+          "udep_intent": "solicitar_costos",
+          "udep_nivel": "$.Lex.Slots.nivel",
+          "udep_facultad": "$.Lex.Slots.facultad"
+        },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "1dc35f9a-a821-4122-8adb-442ecc3aecf1",
+        "Errors": [
+          {
+            "NextAction": "1dc35f9a-a821-4122-8adb-442ecc3aecf1",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "1dc35f9a-a821-4122-8adb-442ecc3aecf1",
+      "Type": "Compare",
+      "Parameters": {
+        "ComparisonValue": "$.Lex.Slots.nivel"
+      },
+      "Transitions": {
+        "NextAction": "a2a4107a-40aa-4ff2-b620-09cb30b2b98f",
+        "Conditions": [
+          {
+            "NextAction": "7f57d5d2-a8b8-4b09-b1fe-be2e3cfb661a",
+            "Condition": {
+              "Operator": "TextContains",
+              "Operands": [
+                "maestria"
+              ]
+            }
+          },
+          {
+            "NextAction": "7f57d5d2-a8b8-4b09-b1fe-be2e3cfb661a",
+            "Condition": {
+              "Operator": "TextContains",
+              "Operands": [
+                "doctorado"
+              ]
+            }
+          },
+          {
+            "NextAction": "7f57d5d2-a8b8-4b09-b1fe-be2e3cfb661a",
+            "Condition": {
+              "Operator": "TextContains",
+              "Operands": [
+                "posgrado"
+              ]
+            }
+          },
+          {
+            "NextAction": "fc7c1a01-4b94-4dd7-a441-1534bec8a41f",
+            "Condition": {
+              "Operator": "TextContains",
+              "Operands": [
+                "diplomado"
+              ]
+            }
+          }
+        ],
+        "Errors": [
+          {
+            "NextAction": "a2a4107a-40aa-4ff2-b620-09cb30b2b98f",
+            "ErrorType": "NoMatchingCondition"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "46ee4595-d099-4e2b-b5e1-bb68a1da5cc5",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": {
+          "udep_intent": "agendar_visita",
+          "udep_sede": "$.Lex.Slots.sede"
+        },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "a2a4107a-40aa-4ff2-b620-09cb30b2b98f",
+        "Errors": [
+          {
+            "NextAction": "a2a4107a-40aa-4ff2-b620-09cb30b2b98f",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "8a2f96a0-e5fd-4dcf-ac37-6d3b3b23b52a",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": {
+          "udep_intent": "soporte_alumno"
+        },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "2450385c-ab91-4fb8-a0c4-ef70eb5e02f2",
+        "Errors": [
+          {
+            "NextAction": "2450385c-ab91-4fb8-a0c4-ef70eb5e02f2",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "ce0815c0-685d-4d66-9879-d221fff97f6b",
+      "Type": "UpdateContactAttributes",
+      "Parameters": {
+        "Attributes": {
+          "udep_intent": "hablar_con_asesor"
+        },
+        "TargetContact": "Current"
+      },
+      "Transitions": {
+        "NextAction": "a2a4107a-40aa-4ff2-b620-09cb30b2b98f",
+        "Errors": [
+          {
+            "NextAction": "a2a4107a-40aa-4ff2-b620-09cb30b2b98f",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "a2a4107a-40aa-4ff2-b620-09cb30b2b98f",
+      "Type": "UpdateContactTargetQueue",
+      "Parameters": {
+        "QueueId": "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/queue/9ff3b0a1-90aa-4d2a-8029-c4526a22adc8"
+      },
+      "Transitions": {
+        "NextAction": "00d0e150-f03d-4bde-abe9-0efbb0fd9cd0",
+        "Errors": [
+          {
+            "NextAction": "585da575-ce0c-48d2-b799-a1b9ad4ee730",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "7f57d5d2-a8b8-4b09-b1fe-be2e3cfb661a",
+      "Type": "UpdateContactTargetQueue",
+      "Parameters": {
+        "QueueId": "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/queue/72e0ce0c-27d6-496c-9746-0394ba5a21e7"
+      },
+      "Transitions": {
+        "NextAction": "00d0e150-f03d-4bde-abe9-0efbb0fd9cd0",
+        "Errors": [
+          {
+            "NextAction": "585da575-ce0c-48d2-b799-a1b9ad4ee730",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "fc7c1a01-4b94-4dd7-a441-1534bec8a41f",
+      "Type": "UpdateContactTargetQueue",
+      "Parameters": {
+        "QueueId": "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/queue/b2865a8e-0d74-42d7-974a-8761beb34677"
+      },
+      "Transitions": {
+        "NextAction": "00d0e150-f03d-4bde-abe9-0efbb0fd9cd0",
+        "Errors": [
+          {
+            "NextAction": "585da575-ce0c-48d2-b799-a1b9ad4ee730",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "2450385c-ab91-4fb8-a0c4-ef70eb5e02f2",
+      "Type": "UpdateContactTargetQueue",
+      "Parameters": {
+        "QueueId": "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/queue/06bd9e25-c6db-4b04-b8be-103c508b03d1"
+      },
+      "Transitions": {
+        "NextAction": "00d0e150-f03d-4bde-abe9-0efbb0fd9cd0",
+        "Errors": [
+          {
+            "NextAction": "585da575-ce0c-48d2-b799-a1b9ad4ee730",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "00d0e150-f03d-4bde-abe9-0efbb0fd9cd0",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "¡Perfecto! Te estoy conectando con un asesor de la UDEP. Por favor espera unos segundos. 🎓"
+      },
+      "Transitions": {
+        "NextAction": "1945eb3a-09cf-4cb9-a7af-5f862da21d69",
+        "Errors": [
+          {
+            "NextAction": "1945eb3a-09cf-4cb9-a7af-5f862da21d69",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "1945eb3a-09cf-4cb9-a7af-5f862da21d69",
+      "Type": "UpdateContactEventHooks",
+      "Parameters": {
+        "EventHooks": {
+          "CustomerQueue": "arn:aws:connect:us-east-1:731736972577:instance/2345d564-4bd4-4318-9cf0-75649bad5197/contact-flow/934b7516-939e-4899-a112-9c2d405d564e"
+        }
+      },
+      "Transitions": {
+        "NextAction": "29b456b5-7000-4e25-98a0-9ec3a12000c8",
+        "Errors": [
+          {
+            "NextAction": "29b456b5-7000-4e25-98a0-9ec3a12000c8",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "29b456b5-7000-4e25-98a0-9ec3a12000c8",
+      "Type": "TransferContactToQueue",
+      "Parameters": {},
+      "Transitions": {
+        "NextAction": "a9e7c527-7653-4d44-8028-b0f1ba748147",
+        "Errors": [
+          {
+            "NextAction": "a9e7c527-7653-4d44-8028-b0f1ba748147",
+            "ErrorType": "QueueAtCapacity"
+          },
+          {
+            "NextAction": "a9e7c527-7653-4d44-8028-b0f1ba748147",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "03f39772-a6eb-4225-a555-27ee007c7c9b",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "No te entendi del todo 😅. Te muestro nuevamente las opciones:"
+      },
+      "Transitions": {
+        "NextAction": "39b14e0f-6794-49c7-859d-25eedcd62210",
+        "Errors": [
+          {
+            "NextAction": "a9e7c527-7653-4d44-8028-b0f1ba748147",
+            "ErrorType": "NoMatchingError"
+          }
+        ]
+      }
+    },
+    {
+      "Identifier": "a9e7c527-7653-4d44-8028-b0f1ba748147",
+      "Type": "DisconnectParticipant",
+      "Parameters": {},
+      "Transitions": {}
+    },
+    {
+      "Identifier": "585da575-ce0c-48d2-b799-a1b9ad4ee730",
+      "Type": "DisconnectParticipant",
+      "Parameters": {},
+      "Transitions": {}
+    }
+  ]
+}

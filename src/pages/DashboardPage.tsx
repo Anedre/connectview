@@ -1,319 +1,528 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { useAuth } from "@/hooks/useAuth";
-import { RoleGate } from "@/components/layout/RoleGate";
-import {
-  Headset,
-  Activity,
-  BarChart3,
-  Settings,
-  Disc,
-  TrendingUp,
-  Phone,
-  Users,
-  Clock,
-  ArrowRight,
-  Sparkles,
-} from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeMetrics } from "@/hooks/useRealtimeMetrics";
-import { GamificationCard } from "@/components/dashboard/GamificationCard";
-import { WellnessCard } from "@/components/dashboard/WellnessCard";
-import { ChurnRiskCard } from "@/components/dashboard/ChurnRiskCard";
+import { useRoles } from "@/hooks/useRoles";
+import { useCampaigns } from "@/hooks/useCampaigns";
+import * as Icon from "@/components/vox/primitives";
+import {
+  Avatar,
+  Card,
+  CardBody,
+  CardHead,
+  ChannelChip,
+  Kpi,
+  StatusPill,
+} from "@/components/vox/primitives";
 
-interface QuickActionProps {
-  title: string;
-  description: string;
-  icon: React.ElementType;
-  color: string;
-  path: string;
-  delay: number;
+type Role = "Agents" | "Supervisors" | "Admins" | "";
+
+function fmtWait(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function QuickActionCard({
+interface DashKpi {
+  label: string;
+  value: string;
+  delta?: string;
+  dir?: "up" | "down" | "flat";
+  color?: string;
+}
+
+function buildKpis(
+  role: Role,
+  metrics: ReturnType<typeof useRealtimeMetrics>["metrics"]
+): DashKpi[] {
+  const queue = metrics?.summary.totalContactsInQueue ?? 0;
+  const online = metrics?.summary.totalAgentsOnline ?? 0;
+  const available = metrics?.summary.totalAgentsAvailable ?? 0;
+  const longest = metrics?.summary.longestWaitSeconds ?? 0;
+
+  if (role === "Admins" || role === "Supervisors") {
+    return [
+      {
+        label: "Agentes activos",
+        value: `${available} / ${online}`,
+        delta: "en línea ahora",
+        dir: "flat",
+        color: "var(--accent-cyan)",
+      },
+      {
+        label: "Cola global",
+        value: String(queue),
+        delta: queue === 0 ? "Sin contactos" : "Contactos esperando",
+        dir: queue > 10 ? "up" : "flat",
+        color: queue > 10 ? "var(--accent-red)" : "var(--accent-green)",
+      },
+      {
+        label: "Espera más larga",
+        value: fmtWait(longest),
+        delta: longest === 0 ? "Sin espera" : longest > 120 ? "Sobre meta" : "Bajo meta",
+        dir: longest > 120 ? "down" : "flat",
+        color: longest > 120 ? "var(--accent-red)" : "var(--accent-green)",
+      },
+      {
+        label: "Colas reportadas",
+        value: String(metrics?.queues.length ?? 0),
+        delta: "Activas",
+        dir: "flat",
+        color: "var(--accent-violet)",
+      },
+    ];
+  }
+  // Agent view — no per-agent metrics endpoint yet
+  return [
+    { label: "Cola global", value: String(queue), delta: "Contactos esperando", dir: "flat", color: "var(--accent-cyan)" },
+    { label: "Agentes disponibles", value: String(available), delta: `de ${online} online`, dir: "flat", color: "var(--accent-green)" },
+    { label: "Espera más larga", value: fmtWait(longest), delta: "En tiempo real", dir: "flat", color: "var(--accent-amber)" },
+    { label: "Tu estado", value: "—", delta: "Cambia desde el topbar", dir: "flat", color: "var(--accent-violet)" },
+  ];
+}
+
+function EmptyCardBody({
+  icon: IconCmp,
   title,
-  description,
-  icon: Icon,
-  color,
-  path,
-  delay,
-}: QuickActionProps) {
-  const navigate = useNavigate();
+  body,
+}: {
+  icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+  title: string;
+  body: string;
+}) {
   return (
-    <button
-      onClick={() => navigate(path)}
-      className="group relative overflow-hidden rounded-xl border bg-card p-6 text-left transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 hover:-translate-y-1 animate-fade-in-up"
-      style={{ animationDelay: `${delay}ms` }}
+    <div
+      style={{
+        padding: 32,
+        textAlign: "center",
+        color: "var(--text-3)",
+      }}
     >
-      <div
-        className={`absolute -right-6 -top-6 h-24 w-24 rounded-full ${color} opacity-10 transition-all duration-500 group-hover:scale-150 group-hover:opacity-20`}
-      />
-      <div className="relative">
-        <div
-          className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl ${color} text-white shadow-lg transition-transform duration-300 group-hover:scale-110`}
-        >
-          <Icon className="h-5 w-5" />
-        </div>
-        <h3 className="mb-1 font-semibold tracking-tight">{title}</h3>
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          {description}
-        </p>
-        <div className="mt-4 flex items-center text-sm font-medium text-primary transition-all group-hover:gap-1">
-          <span>Open</span>
-          <ArrowRight className="ml-1 h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
-        </div>
+      <IconCmp size={26} style={{ opacity: 0.4 }} />
+      <div style={{ marginTop: 8, fontSize: 13, color: "var(--text-2)" }}>
+        {title}
       </div>
-    </button>
+      <div style={{ marginTop: 4, fontSize: 11.5 }}>{body}</div>
+    </div>
   );
 }
 
-interface StatCardProps {
-  label: string;
-  value: string | number;
-  change?: string;
-  changeType?: "up" | "down" | "neutral";
-  icon: React.ElementType;
-  gradient: string;
-  delay: number;
+function AgentDashSections({ navigate }: { navigate: (path: string) => void }) {
+  return (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16 }}>
+        <Card>
+          <CardHead
+            title="Mis casos asignados"
+            right={
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={() => navigate("/agent")}
+              >
+                Abrir Agent Desktop <Icon.ChevRight size={12} />
+              </button>
+            }
+          />
+          <CardBody>
+            <EmptyCardBody
+              icon={Icon.Ticket}
+              title="Los casos del cliente aparecen al recibir una llamada"
+              body="Amazon Connect Cases sincroniza casos por contacto activo."
+            />
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHead title="Resumen del día" />
+          <CardBody>
+            <EmptyCardBody
+              icon={Icon.Calendar}
+              title="Métricas personales aún no disponibles"
+              body="La agregación por agente se habilitará con Contact Lens histórico."
+            />
+          </CardBody>
+        </Card>
+      </div>
+    </>
+  );
 }
 
-function StatCard({
-  label,
-  value,
-  change,
-  changeType,
-  icon: Icon,
-  gradient,
-  delay,
-}: StatCardProps) {
-  const changeColor =
-    changeType === "up"
-      ? "text-emerald-600"
-      : changeType === "down"
-      ? "text-rose-600"
-      : "text-muted-foreground";
+function SupervisorDashSections({
+  navigate,
+  metrics,
+}: {
+  navigate: (path: string) => void;
+  metrics: ReturnType<typeof useRealtimeMetrics>["metrics"];
+}) {
+  const queues = (metrics?.queues ?? []).slice(0, 6);
+  const agentsNeedingAttention = (metrics?.agents ?? []).filter(
+    (a) => a.status === "AfterCallWork" || a.status === "MissedCallAgent"
+  );
 
   return (
-    <div
-      className="group relative overflow-hidden rounded-xl border bg-card p-5 transition-all duration-300 hover:border-primary/30 hover:shadow-lg animate-fade-in-up"
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      <div
-        className={`absolute right-0 top-0 h-full w-24 bg-gradient-to-l ${gradient} opacity-5 transition-opacity group-hover:opacity-10`}
-      />
-      <div className="relative flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {label}
-          </p>
-          <p className="mt-2 text-3xl font-bold tracking-tight">{value}</p>
-          {change && (
-            <div className={`mt-1 flex items-center gap-1 text-xs ${changeColor}`}>
-              <TrendingUp className="h-3 w-3" />
-              <span className="font-medium">{change}</span>
-            </div>
-          )}
-        </div>
-        <div
-          className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${gradient} text-white shadow-sm`}
-        >
-          <Icon className="h-5 w-5" />
-        </div>
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <Card>
+          <CardHead
+            title="Colas en tiempo real"
+            right={
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={() => navigate("/queue")}
+              >
+                Abrir supervisión <Icon.ChevRight size={12} />
+              </button>
+            }
+          />
+          <CardBody flush>
+            {queues.length === 0 ? (
+              <EmptyCardBody
+                icon={Icon.Queue}
+                title="Sin colas reportadas"
+                body="Aparecerán cuando haya tráfico en Amazon Connect."
+              />
+            ) : (
+              queues.map((q) => {
+                const status =
+                  q.contactsInQueue > 20
+                    ? "alert"
+                    : q.contactsInQueue > 5
+                    ? "warn"
+                    : "ok";
+                return (
+                  <div
+                    key={q.queueId}
+                    className={`queue-row ${
+                      status === "alert"
+                        ? "queue-row--alert"
+                        : status === "warn"
+                        ? "queue-row--warn"
+                        : ""
+                    }`}
+                  >
+                    <ChannelChip type="voice" />
+                    <div className="grow truncate">{q.queueName}</div>
+                    <div className="mono col-num">
+                      <span className="muted" style={{ fontSize: 11 }}>cola </span>
+                      {q.contactsInQueue}
+                    </div>
+                    <div className="mono col-num">
+                      <span className="muted" style={{ fontSize: 11 }}>libres </span>
+                      {q.agentsAvailable}
+                    </div>
+                    <div className="mono col-num">
+                      <span className="muted" style={{ fontSize: 11 }}>esp </span>
+                      {fmtWait(q.oldestContactAge ?? 0)}
+                    </div>
+                    <div>
+                      <StatusPill
+                        status={
+                          status === "alert"
+                            ? "En riesgo"
+                            : status === "warn"
+                            ? "Media"
+                            : "OK"
+                        }
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHead
+            title="Agentes que requieren atención"
+            right={
+              agentsNeedingAttention.length > 0 ? (
+                <span className="chip chip--amber">
+                  {agentsNeedingAttention.length} alertas
+                </span>
+              ) : (
+                <span className="chip chip--green">
+                  <span className="dot" /> Sin alertas
+                </span>
+              )
+            }
+          />
+          <CardBody>
+            {agentsNeedingAttention.length === 0 ? (
+              <EmptyCardBody
+                icon={Icon.Sparkles}
+                title="Sin alertas en este momento"
+                body="Aparecerán agentes con ACW prolongado, llamadas perdidas o sentiment negativo."
+              />
+            ) : (
+              <div className="col" style={{ gap: 8 }}>
+                {agentsNeedingAttention.map((a) => (
+                  <div
+                    key={a.agentId}
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "center",
+                      padding: "10px 12px",
+                      background: "var(--bg-2)",
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Avatar name={a.username} />
+                    <div className="grow">
+                      <div
+                        style={{ fontSize: 13, fontWeight: 500, color: "var(--text-1)" }}
+                      >
+                        {a.username}
+                      </div>
+                      <div className="muted" style={{ fontSize: 11.5 }}>
+                        {a.status === "AfterCallWork"
+                          ? "ACW · revisa wrap-up"
+                          : "Llamada perdida"}
+                      </div>
+                    </div>
+                    <button className="btn btn--sm">
+                      <Icon.Eye size={12} /> Whisper
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
       </div>
+    </>
+  );
+}
+
+function ManagerDashSections({
+  metrics,
+}: {
+  metrics: ReturnType<typeof useRealtimeMetrics>["metrics"];
+}) {
+  const { campaigns, loading } = useCampaigns(15000);
+  const active = campaigns.filter(
+    (c) => c.status === "RUNNING" || c.status === "PAUSED"
+  );
+  const topActive = active.slice(0, 5);
+
+  return (
+    <>
+      <div className="grid-2">
+        <Card>
+          <CardHead
+            title="Campañas activas"
+            right={
+              <span className="chip">
+                {active.length} {active.length === 1 ? "activa" : "activas"}
+              </span>
+            }
+          />
+          <CardBody flush>
+            {loading && campaigns.length === 0 ? (
+              <EmptyCardBody
+                icon={Icon.Megaphone}
+                title="Cargando campañas…"
+                body="Sincronizando con Amazon Connect."
+              />
+            ) : topActive.length === 0 ? (
+              <EmptyCardBody
+                icon={Icon.Megaphone}
+                title="Sin campañas activas"
+                body="Crea una nueva desde el menú Campañas."
+              />
+            ) : (
+              topActive.map((c) => {
+                const total = Number(c.totalContacts || 0);
+                const done = (c.doneCount || 0) + (c.failedCount || 0);
+                const pct = total ? Math.round((done / total) * 100) : 0;
+                return (
+                  <div
+                    key={c.campaignId}
+                    style={{
+                      padding: "12px 16px",
+                      borderBottom: "1px solid var(--border-1)",
+                    }}
+                  >
+                    <div className="spread" style={{ marginBottom: 6 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 500 }}>
+                        {c.name}
+                      </span>
+                      <span className="mono muted" style={{ fontSize: 11 }}>
+                        {done} / {total}
+                      </span>
+                    </div>
+                    <div className="bar">
+                      <div
+                        style={{
+                          width: `${pct}%`,
+                          background:
+                            c.status === "PAUSED"
+                              ? "var(--accent-amber)"
+                              : "var(--accent-cyan)",
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHead title="Snapshot de operación" />
+          <CardBody>
+            <div className="col" style={{ gap: 14 }}>
+              <SnapshotRow
+                label="Contactos en cola"
+                value={String(metrics?.summary.totalContactsInQueue ?? 0)}
+                color="var(--accent-cyan)"
+              />
+              <SnapshotRow
+                label="Agentes online"
+                value={String(metrics?.summary.totalAgentsOnline ?? 0)}
+                color="var(--accent-green)"
+              />
+              <SnapshotRow
+                label="Agentes disponibles"
+                value={String(metrics?.summary.totalAgentsAvailable ?? 0)}
+                color="var(--accent-violet)"
+              />
+              <SnapshotRow
+                label="Campañas totales"
+                value={String(campaigns.length)}
+                color="var(--accent-amber)"
+              />
+            </div>
+            <div className="divider" />
+            <div className="muted" style={{ fontSize: 11.5 }}>
+              Refresca cada 15 s desde Amazon Connect.
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+    </>
+  );
+}
+
+function SnapshotRow({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <div className="spread">
+      <div className="row" style={{ gap: 8 }}>
+        <span
+          style={{
+            width: 6,
+            height: 24,
+            borderRadius: 999,
+            background: color,
+          }}
+        />
+        <span style={{ fontSize: 13 }}>{label}</span>
+      </div>
+      <span className="mono" style={{ fontSize: 16 }}>
+        {value}
+      </span>
     </div>
   );
 }
 
 export function DashboardPage() {
   const { user } = useAuth();
-  const { metrics } = useRealtimeMetrics();
+  const { metrics, lastRefresh, refresh } = useRealtimeMetrics();
+  const { isAtLeast } = useRoles();
+  const navigate = useNavigate();
 
-  const hour = new Date().getHours();
+  const role: Role = isAtLeast("Admins")
+    ? "Admins"
+    : isAtLeast("Supervisors")
+    ? "Supervisors"
+    : isAtLeast("Agents")
+    ? "Agents"
+    : "";
+
+  const kpis = buildKpis(role, metrics);
   const greeting =
-    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    role === "Admins"
+      ? "Vista ejecutiva"
+      : role === "Supervisors"
+      ? "Centro de operaciones"
+      : `Hola, ${user?.username ?? "Agente"}`;
+  const sub =
+    role === "Admins"
+      ? `${metrics?.summary.totalAgentsOnline ?? 0} agentes online · ${
+          metrics?.queues.length ?? 0
+        } colas activas`
+      : role === "Supervisors"
+      ? `${metrics?.summary.totalAgentsOnline ?? 0} agentes online · ${
+          metrics?.summary.totalContactsInQueue ?? 0
+        } en cola`
+      : `Conectado como ${user?.highestRole ?? "Agente"}`;
 
   return (
-    <div className="space-y-8">
-      {/* Hero greeting */}
-      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-indigo-600 via-purple-600 to-indigo-700 p-8 text-white shadow-xl shadow-indigo-600/20">
-        <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute -bottom-10 -left-10 h-48 w-48 rounded-full bg-purple-400/20 blur-3xl" />
-        <div className="relative">
-          <div className="flex items-center gap-2 text-white/80">
-            <Sparkles className="h-4 w-4" />
-            <span className="text-sm font-medium">{greeting}</span>
+    <div className="view">
+      <div className="view__head">
+        <div>
+          <div className="view__crumb">
+            <span>Inicio</span>
           </div>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">
-            Welcome back, {user?.username || "Agent"}
-          </h1>
-          <p className="mt-2 max-w-xl text-white/80">
-            Here's what's happening in your contact center today. Everything
-            running smoothly.
-          </p>
+          <h1 className="view__title">{greeting}</h1>
+          <div className="view__sub">{sub}</div>
+        </div>
+        <div className="view__actions">
+          <span className="chip chip--green">
+            <span
+              className="pulse"
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: "currentColor",
+              }}
+            />
+            Live · {lastRefresh.toLocaleTimeString()}
+          </span>
+          <button className="btn" onClick={refresh}>
+            <Icon.Refresh size={14} /> Actualizar
+          </button>
+          {role === "Agents" && (
+            <button
+              className="btn btn--primary"
+              onClick={() => navigate("/agent")}
+            >
+              <Icon.PhoneIn size={14} /> Abrir Agent Desktop
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Stats row - visible to supervisors+ */}
-      <RoleGate minRole="Supervisors">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            label="In Queue"
-            value={metrics?.summary.totalContactsInQueue ?? 0}
-            change="Live"
-            changeType="neutral"
-            icon={Phone}
-            gradient="from-blue-500 to-indigo-600"
-            delay={0}
+      <div className="kpi-grid">
+        {kpis.map((k) => (
+          <Kpi
+            key={k.label}
+            label={k.label}
+            value={k.value}
+            delta={k.delta}
+            deltaDir={k.dir}
+            color={k.color}
           />
-          <StatCard
-            label="Agents Available"
-            value={metrics?.summary.totalAgentsAvailable ?? 0}
-            change={`of ${metrics?.summary.totalAgentsOnline ?? 0} online`}
-            changeType="neutral"
-            icon={Users}
-            gradient="from-emerald-500 to-teal-600"
-            delay={80}
-          />
-          <StatCard
-            label="Agents Online"
-            value={metrics?.summary.totalAgentsOnline ?? 0}
-            change="Active now"
-            changeType="up"
-            icon={Activity}
-            gradient="from-amber-500 to-orange-600"
-            delay={160}
-          />
-          <StatCard
-            label="Longest Wait"
-            value={`${metrics?.summary.longestWaitSeconds ?? 0}s`}
-            icon={Clock}
-            gradient="from-rose-500 to-pink-600"
-            delay={240}
-          />
-        </div>
-      </RoleGate>
-
-      {/* Premium insights cards */}
-      <RoleGate minRole="Agents">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <div className="animate-fade-in-up" style={{ animationDelay: "280ms" }}>
-            <GamificationCard />
-          </div>
-          <div className="animate-fade-in-up" style={{ animationDelay: "360ms" }}>
-            <WellnessCard userId={user?.userId} />
-          </div>
-          <RoleGate minRole="Supervisors">
-            <div className="animate-fade-in-up" style={{ animationDelay: "440ms" }}>
-              <ChurnRiskCard />
-            </div>
-          </RoleGate>
-        </div>
-      </RoleGate>
-
-      {/* Quick actions */}
-      <div>
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold tracking-tight">
-            Quick Actions
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Jump to your most-used tools
-          </p>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <QuickActionCard
-            title="Agent Desktop"
-            description="Handle calls, chats, and emails with full agent workspace"
-            icon={Headset}
-            color="bg-gradient-to-br from-emerald-500 to-teal-600"
-            path="/agent"
-            delay={0}
-          />
-
-          <RoleGate minRole="Supervisors">
-            <QuickActionCard
-              title="Real-time Monitoring"
-              description="Live queue metrics, agent status, and SLA tracking"
-              icon={Activity}
-              color="bg-gradient-to-br from-amber-500 to-orange-600"
-              path="/monitoring"
-              delay={80}
-            />
-          </RoleGate>
-
-          <RoleGate minRole="Supervisors">
-            <QuickActionCard
-              title="Reports & Analytics"
-              description="Contact Lens insights, sentiment trends, and history"
-              icon={BarChart3}
-              color="bg-gradient-to-br from-purple-500 to-pink-600"
-              path="/reports"
-              delay={160}
-            />
-          </RoleGate>
-
-          <RoleGate minRole="Supervisors">
-            <QuickActionCard
-              title="Call Recordings"
-              description="Search, playback, and review with AI transcription"
-              icon={Disc}
-              color="bg-gradient-to-br from-pink-500 to-rose-600"
-              path="/recordings"
-              delay={240}
-            />
-          </RoleGate>
-
-          <RoleGate minRole="Admins">
-            <QuickActionCard
-              title="Administration"
-              description="Manage users, security profiles, and system settings"
-              icon={Settings}
-              color="bg-gradient-to-br from-rose-500 to-red-600"
-              path="/admin"
-              delay={320}
-            />
-          </RoleGate>
-        </div>
+        ))}
       </div>
 
-      {/* Info card */}
-      <Card className="border-dashed">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="h-4 w-4 text-primary" />
-            AI-Powered Features
-          </CardTitle>
-          <CardDescription>
-            Connectview includes built-in AI assistance powered by Amazon
-            Bedrock and Amazon Q in Connect
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm md:grid-cols-3">
-          <div className="rounded-lg border bg-muted/30 p-3">
-            <div className="font-medium">Live Contact Lens</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              Real-time transcript with sentiment analysis during calls
-            </div>
-          </div>
-          <div className="rounded-lg border bg-muted/30 p-3">
-            <div className="font-medium">AI Call Summaries</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              Auto-generated summaries and wrap-up codes with Claude
-            </div>
-          </div>
-          <div className="rounded-lg border bg-muted/30 p-3">
-            <div className="font-medium">Unified History</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              Multi-channel customer timeline across voice, chat, email, task
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div style={{ height: 16 }} />
+
+      {role === "Agents" && <AgentDashSections navigate={navigate} />}
+      {role === "Supervisors" && (
+        <SupervisorDashSections navigate={navigate} metrics={metrics} />
+      )}
+      {role === "Admins" && <ManagerDashSections metrics={metrics} />}
     </div>
   );
 }

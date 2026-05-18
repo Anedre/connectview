@@ -7,15 +7,47 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
+import {
+  ConnectClient,
+  DescribeUserCommand,
+} from "@aws-sdk/client-connect";
 
 const dynamo = new DynamoDBClient({});
 const lambda = new LambdaClient({});
+const connect = new ConnectClient({ maxAttempts: 1 });
 const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "";
 const ENRICH_FUNCTION_NAME = process.env.ENRICH_FUNCTION_NAME || "";
 const CAMPAIGNS_TABLE =
   process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CAMPAIGN_CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+const CONNECT_INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+
+// Username cache (Lambda warm container scope). Maps user UUID → username.
+// DescribeUser is cheap but we still cache to avoid calling it for every
+// CONNECTED_TO_AGENT event when the same agent takes back-to-back calls.
+const usernameCache = new Map<string, string>();
+
+async function resolveUsername(userId: string): Promise<string> {
+  if (!userId) return "";
+  const cached = usernameCache.get(userId);
+  if (cached) return cached;
+  if (!CONNECT_INSTANCE_ID) return userId;
+  try {
+    const res = await connect.send(
+      new DescribeUserCommand({
+        InstanceId: CONNECT_INSTANCE_ID,
+        UserId: userId,
+      })
+    );
+    const username = res.User?.Username || userId;
+    usernameCache.set(userId, username);
+    return username;
+  } catch (err) {
+    console.warn("DescribeUser failed for", userId, err);
+    return userId;
+  }
+}
 
 interface ConnectContactEvent {
   detail: {
@@ -212,7 +244,10 @@ export const handler: EventBridgeHandler<
     // analytics row without an agent isn't useful. We'll get a CONNECTED_TO_AGENT
     // event later when the agent picks up, at which point we insert the row.
     if (eventType === "INITIATED" || eventType === "CONNECTED_TO_AGENT") {
-      const agentName = detail.agentInfo?.agentArn?.split("/").pop() || "";
+      const agentId = detail.agentInfo?.agentArn?.split("/").pop() || "";
+      // Same resolve as the campaign-contact write below — keeps both
+      // analytics and campaign tables consistent in their username field.
+      const agentName = agentId ? await resolveUsername(agentId) : "";
       const queueName = detail.queueInfo?.queueArn?.split("/").pop() || "";
       if (agentName) {
         try {
@@ -294,8 +329,12 @@ export const handler: EventBridgeHandler<
 
     if (eventType === "CONNECTED_TO_AGENT") {
       const agentId = detail.agentInfo?.agentArn?.split("/").pop() || "";
+      // Resolve the UUID to the actual username so the campaign detail
+      // table doesn't show raw IDs to the admin. Falls back to the UUID
+      // if DescribeUser fails (cached after first call per warm Lambda).
+      const username = await resolveUsername(agentId);
       await updateCampaignContactStatus(link, "connected", {
-        agentUsername: agentId,
+        agentUsername: username,
         connectedAt: new Date().toISOString(),
       });
       await updateCampaignCounters(link.campaignId, "connected", link.status);

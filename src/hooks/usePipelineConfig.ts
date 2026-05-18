@@ -5,7 +5,13 @@ import { useEffect, useState, useCallback } from "react";
  * here is purely cosmetic or filter-level — the actual data comes from
  * useLiveQueue. Stored in localStorage so each admin keeps their own layout.
  */
+export type PipelineViewMode = "flow" | "board";
+
 export interface PipelineConfig {
+  /** Which rendering mode to use for each campaign: graph ("flow") or kanban ("board"). */
+  viewMode: PipelineViewMode;
+  /** Which campaign tab is active: "ALL" shows every running campaign stacked, or a specific campaignId. */
+  activeCampaignTab: string;
   /** Show the FINISHED column? */
   showFinished: boolean;
   /** Show the IN_IVR column? Some instances skip IVR entirely. */
@@ -32,9 +38,20 @@ export interface PipelineConfig {
   query: string;
   /** Contact IDs the admin has pinned so they always stay visible at the top. */
   pinnedContactIds: string[];
+  /** Campaign IDs the admin has pinned — after the campaign finishes the Queue
+   *  Manager keeps showing a historical summary card until it's unpinned. */
+  pinnedCampaignIds: string[];
+  /** Show the extended campaign progress panel above each campaign flow. */
+  showCampaignProgress: boolean;
+  /** Show the live activity feed for each running campaign. */
+  showCampaignFeed: boolean;
+  /** Play a soft chime when a new event enters the campaign live feed. */
+  feedSoundEnabled: boolean;
 }
 
 const DEFAULT: PipelineConfig = {
+  viewMode: "flow",
+  activeCampaignTab: "ALL",
   showFinished: true,
   showIvr: true,
   showAgents: true,
@@ -48,6 +65,10 @@ const DEFAULT: PipelineConfig = {
   campaignId: "",
   query: "",
   pinnedContactIds: [],
+  pinnedCampaignIds: [],
+  showCampaignProgress: true,
+  showCampaignFeed: true,
+  feedSoundEnabled: false,
 };
 
 const KEY = "connectview.pipeline.config.v1";
@@ -100,5 +121,30 @@ export function usePipelineConfig() {
     [config.pinnedContactIds]
   );
 
-  return { config, update, reset, togglePin, isPinned };
+  const togglePinCampaign = useCallback((campaignId: string) => {
+    setConfig((c) => {
+      const has = c.pinnedCampaignIds.includes(campaignId);
+      return {
+        ...c,
+        pinnedCampaignIds: has
+          ? c.pinnedCampaignIds.filter((id) => id !== campaignId)
+          : [...c.pinnedCampaignIds, campaignId],
+      };
+    });
+  }, []);
+
+  const isCampaignPinned = useCallback(
+    (campaignId: string) => config.pinnedCampaignIds.includes(campaignId),
+    [config.pinnedCampaignIds]
+  );
+
+  return {
+    config,
+    update,
+    reset,
+    togglePin,
+    isPinned,
+    togglePinCampaign,
+    isCampaignPinned,
+  };
 }

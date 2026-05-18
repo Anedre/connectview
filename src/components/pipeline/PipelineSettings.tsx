@@ -212,6 +212,33 @@ export function PipelineSettings({
             />
           </div>
 
+          {/* Campaign detail panels */}
+          <div className="space-y-1 rounded-lg border p-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+              Detalle de campaña
+            </Label>
+            <ToggleRow
+              label="Panel de progreso"
+              hint="KPIs ampliados: tasa éxito, llamadas/min, ETA, pendientes"
+              active={config.showCampaignProgress}
+              onChange={(v) => update({ showCampaignProgress: v })}
+            />
+            <ToggleRow
+              label="Feed de llamadas en vivo"
+              hint="Cards animados desde arriba mostrando cada llamada y su evolución"
+              active={config.showCampaignFeed}
+              onChange={(v) => update({ showCampaignFeed: v })}
+            />
+            <ToggleRow
+              label="Chime al entrar llamada"
+              hint="Beep suave cuando una nueva llamada aparece en el feed"
+              active={config.feedSoundEnabled}
+              onChange={(v) => update({ feedSoundEnabled: v })}
+              OnIcon={Volume2}
+              OffIcon={VolumeX}
+            />
+          </div>
+
           {/* Bubble style */}
           <div className="space-y-1 rounded-lg border p-2">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
