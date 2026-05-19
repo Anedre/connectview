@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 
 type Theme = "light" | "dark" | "system";
@@ -52,16 +59,25 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => media.removeEventListener("change", handler);
   }, [theme]);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     setThemeState((prev) => (prev === "dark" ? "light" : "dark"));
-  };
+  }, []);
+
+  // Memoize so context consumers don't re-render on unrelated parent
+  // updates. `setThemeState` is stable by definition (React guarantees
+  // the same setState reference across renders).
+  const value = useMemo(
+    () => ({
+      theme,
+      resolvedTheme,
+      setTheme: setThemeState,
+      toggleTheme,
+    }),
+    [theme, resolvedTheme, toggleTheme]
+  );
 
   return (
-    <ThemeContext.Provider
-      value={{ theme, resolvedTheme, setTheme: setThemeState, toggleTheme }}
-    >
-      {children}
-    </ThemeContext.Provider>
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
   );
 }
 

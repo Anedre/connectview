@@ -9,6 +9,9 @@ import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
 import { ConnectAuthProvider, useConnectAuth } from "@/context/ConnectAuthContext";
 import { CCPProvider } from "@/context/CCPContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { DebugHUD } from "@/components/debug/DebugHUD";
+import { MissedCallNotifier } from "@/components/workspace/MissedCallNotifier";
+import { ActiveContactProvider } from "@/hooks/useActiveContact";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { CONNECT_INSTANCE_URL } from "@/lib/constants";
 import { DashboardPage } from "@/pages/DashboardPage";
@@ -312,6 +315,12 @@ function AnimatedRoutes() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
+          /* height: 100% so the route wrapper inherits `.app__main`'s
+             allocated grid row (viewport - header). Without this,
+             pages with their own internal flex layouts (like the
+             multi-contact AgentDesktop) grow to fit content and push
+             the bottom buttons below the fold. */
+          style={{ height: "100%" }}
         >
           <Routes location={location}>
             <Route path="/" element={<DashboardPage />} />
@@ -356,17 +365,31 @@ function AppContent() {
 
       {user && (
         <CCPProvider>
-          <BrowserRouter>
-            <TooltipProvider>
-              <AppLayout>
-                <AnimatedRoutes />
-              </AppLayout>
-            </TooltipProvider>
-          </BrowserRouter>
+          {/* Single polling source for the active contact — without
+              this, every component that calls useActiveContact() spins
+              up its own intervals and they race, producing visible
+              parpadeo. */}
+          <ActiveContactProvider>
+            <BrowserRouter>
+              <TooltipProvider>
+                <AppLayout>
+                  <AnimatedRoutes />
+                </AppLayout>
+                {/* Headless: fires a toast when a missed contact event
+                    is captured. Lives outside <AppLayout> so it can
+                    react on any route (dashboard, reports, etc.). */}
+                <MissedCallNotifier />
+              </TooltipProvider>
+            </BrowserRouter>
+          </ActiveContactProvider>
         </CCPProvider>
       )}
 
       <Toaster position="top-right" richColors closeButton />
+      {/* Floating debug HUD — only renders when `?debug=1` is in the URL.
+          Lets us watch every state change / render in real time to hunt
+          the parpadeo bug. No-op in production-normal sessions. */}
+      <DebugHUD />
     </>
   );
 }

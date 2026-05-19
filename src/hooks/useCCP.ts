@@ -4,4 +4,8 @@
  * This file re-exports the hook and the agent-state type for backwards
  * compatibility with existing imports.
  */
-export { useCCP, type ConnectAgentState } from "@/context/CCPContext";
+export {
+  useCCP,
+  type ConnectAgentState,
+  type QuickConnectEntry,
+} from "@/context/CCPContext";

@@ -84,15 +84,8 @@ function formatStepTime(at: number): string {
  */
 export function ContactJourney({ journey, compact }: Props) {
   // Canonical timeline columns — used to lay out dots even for stages we
-  // haven't observed yet.
-  const STAGES: Status[] = [
-    "pending",
-    "dialing",
-    "connected",
-    "done",
-    "no_answer",
-    "failed",
-  ];
+  // haven't observed yet. (Kept inline in `visibleStages` below; the bare
+  // STAGES array was historic and is no longer referenced.)
 
   // For terminal states we only highlight the actual outcome, not all three.
   const terminalReached =

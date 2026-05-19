@@ -1,4 +1,12 @@
-import { createContext, useContext, useState, useEffect, useRef } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import { initCCP } from "@/lib/connect";
 import { CONNECT_INSTANCE_URL } from "@/lib/constants";
@@ -142,14 +150,21 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
     // Terminating it on StrictMode unmount/remount breaks event listeners (core.initialized stays false).
   }, []);
 
-  const signOut = () => {
+  const signOut = useCallback(() => {
     window.location.href = `${CONNECT_INSTANCE_URL}/connect/logout`;
-  };
+  }, []);
+
+  // Memoize the context value so consumers don't re-render every time
+  // *this* provider re-renders for unrelated reasons. Without this,
+  // every internal `setState` here forces every `useConnectAuth()`
+  // consumer to re-render even when none of the actual values changed.
+  const value = useMemo(
+    () => ({ user, loading, error, needsLogin, ccpContainerRef, signOut }),
+    [user, loading, error, needsLogin, signOut]
+  );
 
   return (
-    <ConnectAuthContext.Provider
-      value={{ user, loading, error, needsLogin, ccpContainerRef, signOut }}
-    >
+    <ConnectAuthContext.Provider value={value}>
       {children}
     </ConnectAuthContext.Provider>
   );

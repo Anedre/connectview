@@ -8,6 +8,9 @@ interface ApiEndpoints {
   lookupCustomerProfile: string;
   getLiveTranscript: string;
   getContactHistory: string;
+  /** Optional — only present after deploying the list-missed-contacts
+   *  Lambda. Used by the "Perdidas" drawer in the agent desktop. */
+  listMissedContacts?: string;
   saveAgentNotes: string;
   generateCallSummary: string;
   getQSuggestions: string;
@@ -40,6 +43,20 @@ interface ApiEndpoints {
   assignCampaignAgents?: string;
   getCampaignAgents?: string;
   getFlowQueues?: string;
+  // Outbound creation (task + email) — single Lambda dispatches by `type`.
+  startOutboundContact?: string;
+  // Lists the Connect-registered email "From" addresses for the New
+  // Email composer's dropdown.
+  listEmailAddresses?: string;
+  // Idle Cliente 360° browser: search profiles by phone/email/name and
+  // update editable fields. Same DynamoDB-audited admin-action style as
+  // the rest of the privileged Lambdas.
+  searchCustomerProfiles?: string;
+  updateCustomerProfile?: string;
+  // Lists recently-contacted customers (deduplicated by phone) for the
+  // agent who's currently signed in. Powers the "Atendidos
+  // recientemente" list in the idle Cliente 360° browser.
+  listRecentCustomers?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

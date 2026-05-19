@@ -1,8 +1,12 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { useActiveContact } from "@/hooks/useActiveContact";
+import {
+  useAllActiveContacts,
+  type ActiveContact,
+} from "@/hooks/useActiveContact";
 import { useCCP } from "@/hooks/useCCP";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import * as Icon from "@/components/vox/primitives";
+import { useDebugRender } from "@/lib/debugTrace";
 
 /**
  * Global incoming-contact overlay. Subscribed to the active-contact stream
@@ -17,23 +21,68 @@ import * as Icon from "@/components/vox/primitives";
  *   - EMAIL → "Email entrante"
  *   - TASK  → "Tarea entrante"
  */
+/**
+ * Thin visibility gate. The previous version of this component called
+ * `useCustomerProfile` (which fires a fetch when the phone changes)
+ * unconditionally — including during an active chat where the overlay
+ * is hidden. That meant every contact attribute update re-fetched the
+ * profile for the customer 360° even though the overlay wasn't shown.
+ *
+ * Splitting it like this lets us early-return cheaply when the overlay
+ * isn't ringing and only mount the expensive inner body (with its
+ * fetch hook and channel-aware rendering) during the actual ringing
+ * window.
+ */
 export function IncomingCallOverlay() {
-  const contact = useActiveContact();
+  const location = useLocation();
+  // Pick the most recent inbound ringing contact — when multiple
+  // contacts ring at once (rare but possible in multi-channel) we
+  // surface the freshest one. The other ringing tabs will still pulse
+  // in the desktop's <ActiveContactsTabStrip>.
+  const allContacts = useAllActiveContacts();
+  const ringingContact = allContacts
+    .filter(
+      (c) =>
+        c.direction !== "outbound" &&
+        (c.state === "connecting" || c.state === "incoming" || c.state === "ringing")
+    )
+    .sort((a, b) => b.lastSeenTs - a.lastSeenTs)[0];
+
+  // Per the user's UX requirement: the full-screen modal only appears
+  // when the agent is OUTSIDE the agent desktop (it's a notification
+  // to pull them in). Inside /agent, the <ActiveContactsTabStrip>
+  // already shows the ringing tab pulsing, which is a discreet enough
+  // indicator while keeping the agent's current attention intact.
+  const onAgentRoute = location.pathname.startsWith("/agent");
+
+  useDebugRender("IncomingCallOverlay.gate", {
+    contactId: ringingContact?.contactId,
+    state: ringingContact?.state,
+    onAgentRoute,
+    visible: !!ringingContact && !onAgentRoute,
+  });
+
+  if (!ringingContact) return null;
+  if (onAgentRoute) return null;
+  return <IncomingCallOverlayBody contact={ringingContact} />;
+}
+
+interface OverlayBodyProps {
+  contact: ActiveContact;
+}
+
+function IncomingCallOverlayBody({ contact }: OverlayBodyProps) {
   const { accept, reject } = useCCP();
-  const { profile } = useCustomerProfile(contact?.customerPhone ?? null);
+  const { profile } = useCustomerProfile(contact.customerPhone ?? null);
   const navigate = useNavigate();
   const location = useLocation();
 
-  // The overlay is for INBOUND contacts only — when the customer is reaching us.
-  // For outbound (agent-initiated) interactions the agent doesn't need an
-  // "Accept" modal; they already initiated the action.
-  const isInboundRinging =
-    contact?.direction !== "outbound" &&
-    (contact?.state === "connecting" ||
-      contact?.state === "incoming" ||
-      contact?.state === "ringing");
-
-  if (!isInboundRinging) return null;
+  useDebugRender("IncomingCallOverlay.body", {
+    contactId: contact.contactId,
+    state: contact.state,
+    channel: contact.channel,
+    hasProfile: !!profile,
+  });
 
   // ─── Channel awareness ────────────────────────────────────────
   const channelKey = (contact.channel || "VOICE").toUpperCase();
@@ -114,13 +163,19 @@ export function IncomingCallOverlay() {
   const motivoLabel = udepIntent ? intentLabelMap[udepIntent] || udepIntent : null;
 
   const handleAccept = () => {
-    accept();
+    // Target this specific contact — in multi-contact mode the agent
+    // could have several contacts queued up, and we want to accept
+    // the one the overlay is showing, not whichever Streams returns
+    // first.
+    accept(contact.contactId);
     if (location.pathname !== "/agent") navigate("/agent");
   };
+  const handleReject = () => reject(contact.contactId);
 
   return (
     <div
       className="incoming-overlay"
+      data-debug-component="IncomingCallOverlay"
       style={{ position: "fixed", zIndex: 200 }}
     >
       <div className="incoming">
@@ -164,7 +219,7 @@ export function IncomingCallOverlay() {
         <div className="incoming__actions">
           <button
             className="incoming__btn incoming__btn--reject"
-            onClick={reject}
+            onClick={handleReject}
             title={isChat || isEmail || isTask ? "Rechazar" : "Rechazar"}
           >
             <Icon.Hangup size={22} />

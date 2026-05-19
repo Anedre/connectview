@@ -10,6 +10,7 @@ import {
   ListQueuesCommand,
   ListAgentStatusesCommand,
   ListRoutingProfileQueuesCommand,
+  ListRoutingProfilesCommand,
 } from "@aws-sdk/client-connect";
 import {
   DynamoDBClient,
@@ -40,6 +41,39 @@ const routingProfileQueuesCache = new Map<
   string,
   { id: string; name: string }[]
 >();
+
+// routingProfileId → human-readable name. GetCurrentUserData often
+// returns `RoutingProfile.Name` as null even though the ID is present,
+// so we fan out to ListRoutingProfiles once and use the cache for the
+// rest of the warm invocation.
+const routingProfileNameCache = new Map<string, string>();
+let routingProfileCacheExpiry = 0;
+
+async function refreshRoutingProfileNameCache(): Promise<void> {
+  if (
+    Date.now() < routingProfileCacheExpiry &&
+    routingProfileNameCache.size > 0
+  ) {
+    return;
+  }
+  routingProfileNameCache.clear();
+  let nextToken: string | undefined;
+  for (let i = 0; i < 10; i++) {
+    const res = await connect.send(
+      new ListRoutingProfilesCommand({
+        InstanceId: INSTANCE_ID,
+        MaxResults: 100,
+        NextToken: nextToken,
+      })
+    );
+    for (const rp of res.RoutingProfileSummaryList ?? []) {
+      if (rp.Id && rp.Name) routingProfileNameCache.set(rp.Id, rp.Name);
+    }
+    if (!res.NextToken) break;
+    nextToken = res.NextToken;
+  }
+  routingProfileCacheExpiry = Date.now() + 5 * 60 * 1000;
+}
 
 async function resolveUser(id: string): Promise<string> {
   if (!id) return "";
@@ -659,7 +693,14 @@ async function getAgents(): Promise<AgentView[]> {
           statusName: ud.Status?.StatusName || null,
           statusStartTimestamp:
             ud.Status?.StatusStartTimestamp?.toISOString() || null,
-          routingProfile: ud.RoutingProfile?.Name || null,
+          // GetCurrentUserData frequently returns null for the routing
+          // profile name even when the id is set — fall back to the
+          // cache built from ListRoutingProfiles.
+          routingProfile:
+            ud.RoutingProfile?.Name ||
+            (routingProfileId
+              ? routingProfileNameCache.get(routingProfileId) || null
+              : null),
           routingProfileId,
           activeContact,
         });
@@ -677,7 +718,9 @@ async function getAgents(): Promise<AgentView[]> {
       username: meta.username,
       statusName: "Offline",
       statusStartTimestamp: null,
-      routingProfile: null,
+      routingProfile: meta.routingProfileId
+        ? routingProfileNameCache.get(meta.routingProfileId) || null
+        : null,
       routingProfileId: meta.routingProfileId || null,
       activeContact: null,
     });
@@ -937,9 +980,16 @@ async function listQueuesAndStatuses() {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async () => {
   try {
+    // Warm the routing-profile name cache in parallel with everything
+    // else. Without this, agents in the live queue UI show their
+    // routing profile as `null`.
+    const rpCachePromise = refreshRoutingProfileNameCache();
+
     const [agents, contacts, meta, dynamoFinished, campaignActive] =
       await Promise.all([
-        getAgents(),
+        // getAgents references the routing-profile cache, so block on it
+        // first via the closure below.
+        rpCachePromise.then(() => getAgents()),
         getQueuedAndFinishedContacts(),
         listQueuesAndStatuses(),
         fetchRecentlyFinishedFromDynamo(),

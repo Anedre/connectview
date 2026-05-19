@@ -6,10 +6,15 @@ import { Avatar, colorFromName } from "@/components/vox/primitives";
 import type { ChannelType } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
 import { formatDistanceToNow } from "date-fns";
+import { es } from "date-fns/locale";
+import { useDebugRender, traceChange } from "@/lib/debugTrace";
 
 interface CustomerProfilePanelProps {
   phone: string | null;
   isActive: boolean;
+  /** Bump to force the customer-profile hook to re-fetch even when
+   *  the phone hasn't changed (used by the "Refrescar perfil" menu). */
+  refreshKey?: number;
 }
 
 const CHANNEL_META: Record<
@@ -32,9 +37,32 @@ function fmtDuration(s: number): string {
 export function CustomerProfilePanel({
   phone,
   isActive,
+  refreshKey = 0,
 }: CustomerProfilePanelProps) {
-  const { profile, loading, error } = useCustomerProfile(phone);
+  const { profile, loading, error } = useCustomerProfile(phone, refreshKey);
   const { contacts: history } = useContactHistory(phone, 90);
+
+  // ─── DEBUG INSTRUMENTATION ────────────────────────────────────
+  // Hot-path component — flickers between empty placeholder and the
+  // hero/stats card were a major user complaint. Render-trace it
+  // tightly so we can correlate state flips with parent re-renders.
+  useDebugRender("CustomerProfilePanel", {
+    phone,
+    isActive,
+    hasProfile: !!profile,
+    loading,
+    error: error || undefined,
+    historyCount: history?.length || 0,
+  });
+  traceChange("CustomerProfilePanel.view", {
+    branch: !phone
+      ? "empty"
+      : loading && !profile
+      ? "loading"
+      : error || !profile
+      ? "stub"
+      : "full",
+  });
 
   // Stats derived from real history
   const stats = useMemo(() => {
@@ -62,6 +90,7 @@ export function CustomerProfilePanel({
   if (!phone) {
     return (
       <div
+        data-debug-component="CustomerProfilePanel"
         style={{
           display: "grid",
           placeItems: "center",
@@ -83,7 +112,10 @@ export function CustomerProfilePanel({
 
   if (loading && !profile) {
     return (
-      <div style={{ padding: 24, fontSize: 13, color: "var(--text-3)" }}>
+      <div
+        data-debug-component="CustomerProfilePanel"
+        style={{ padding: 24, fontSize: 13, color: "var(--text-3)" }}
+      >
         Cargando perfil…
       </div>
     );
@@ -91,7 +123,7 @@ export function CustomerProfilePanel({
 
   if (error || !profile) {
     return (
-      <div className="c360">
+      <div className="c360" data-debug-component="CustomerProfilePanel">
         <div className="c360__hero">
           <Avatar name={phone} color={colorFromName(phone)} size="lg" />
           <div style={{ minWidth: 0, flex: 1 }}>
@@ -155,7 +187,7 @@ export function CustomerProfilePanel({
   }
 
   const lastInteractionRelative = stats.last
-    ? formatDistanceToNow(new Date(stats.last), { addSuffix: false })
+    ? formatDistanceToNow(new Date(stats.last), { addSuffix: false, locale: es })
     : null;
 
   // Build the list of all structured profile fields with a value — every
@@ -210,7 +242,7 @@ export function CustomerProfilePanel({
     .sort(([a], [b]) => a.localeCompare(b));
 
   return (
-    <div className="c360">
+    <div className="c360" data-debug-component="CustomerProfilePanel">
       {/* CONTEXTO DE LA CONVERSACION — surfaces attributes set by the
           contact flow (e.g. UDEP-Main-Inbound). Shown above the hero so
           the agent sees the intent immediately when WhatsApp routes the
@@ -436,7 +468,7 @@ export function CustomerProfilePanel({
               const Icn = meta.Icn;
               const when = formatDistanceToNow(
                 new Date(h.initiationTimestamp),
-                { addSuffix: false }
+                { addSuffix: false, locale: es }
               );
               return (
                 <div key={h.contactId} className="tl__item">

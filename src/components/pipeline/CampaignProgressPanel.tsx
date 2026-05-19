@@ -1,19 +1,6 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import {
-  Clock,
-  PhoneCall,
-  CheckCircle2,
-  XCircle,
-  PhoneOff,
-  Target,
-  Gauge,
-  TimerReset,
-  Hourglass,
-  Phone,
-  Activity,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Clock, Hourglass } from "lucide-react";
 import type { CampaignActivityKpis } from "@/hooks/useCampaignActivity";
 import type { Campaign } from "@/hooks/useCampaigns";
 import type { CampaignStatsData } from "@/hooks/useCampaignStats";
@@ -310,52 +297,6 @@ function HeroKpi({
       {hint && (
         <div className="mt-1 text-xs text-muted-foreground">{hint}</div>
       )}
-    </div>
-  );
-}
-
-function KpiTile({
-  label,
-  value,
-  tone = "default",
-  hint,
-  pulse,
-}: {
-  label: string;
-  value: string | number;
-  tone?: "default" | "warning" | "critical" | "success";
-  hint?: string;
-  pulse?: boolean;
-}) {
-  // Linear/Vercel-style metric: just label + value stacked. No card, no
-  // border, no icon. Tone is whispered via a tiny dot to the left of the
-  // value — only when tone !== default.
-  const dotCls =
-    tone === "critical"
-      ? "bg-rose-500"
-      : tone === "warning"
-        ? "bg-amber-500"
-        : tone === "success"
-          ? "bg-emerald-500"
-          : null;
-
-  return (
-    <div title={hint} className="min-w-0">
-      <div className="truncate text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1 flex items-center gap-1.5">
-        {dotCls && (
-          <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotCls} ${
-              pulse ? "animate-pulse" : ""
-            }`}
-          />
-        )}
-        <span className="truncate text-lg font-semibold tabular-nums">
-          {value}
-        </span>
-      </div>
     </div>
   );
 }

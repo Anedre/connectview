@@ -4,11 +4,39 @@ import {
   GetCurrentMetricDataCommand,
   GetCurrentUserDataCommand,
   ListQueuesCommand,
+  ListUsersCommand,
   type CurrentMetric,
 } from "@aws-sdk/client-connect";
 
 const client = new ConnectClient({});
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+
+// userId → human-readable username, refreshed on warm-start every ~5min.
+// Building this once per Lambda init makes the per-request agent name
+// resolution effectively free (no extra API hop).
+const userNameCache = new Map<string, string>();
+let userCacheExpiry = 0;
+
+async function refreshUserNameCache(): Promise<void> {
+  if (Date.now() < userCacheExpiry && userNameCache.size > 0) return;
+  userNameCache.clear();
+  let nextToken: string | undefined;
+  for (let page = 0; page < 20; page++) {
+    const res = await client.send(
+      new ListUsersCommand({
+        InstanceId: INSTANCE_ID,
+        MaxResults: 100,
+        NextToken: nextToken,
+      })
+    );
+    for (const u of res.UserSummaryList ?? []) {
+      if (u.Id && u.Username) userNameCache.set(u.Id, u.Username);
+    }
+    if (!res.NextToken) break;
+    nextToken = res.NextToken;
+  }
+  userCacheExpiry = Date.now() + 5 * 60 * 1000;
+}
 
 const QUEUE_METRICS: CurrentMetric[] = [
   { Name: "CONTACTS_IN_QUEUE", Unit: "COUNT" },
@@ -47,6 +75,9 @@ const queueNameCache = new Map<string, string>();
 export const handler: APIGatewayProxyHandler = async () => {
   try {
     const queueIds = await getQueueIds();
+    // Kick off the username cache refresh in parallel with the other
+    // queries. If it's already warm this resolves instantly.
+    const userNamePromise = refreshUserNameCache();
 
     const [metricsResponse, usersResponse] = await Promise.all([
       client.send(
@@ -120,16 +151,29 @@ export const handler: APIGatewayProxyHandler = async () => {
       });
     }
 
+    // Wait for the username cache before mapping agents.
+    await userNamePromise;
+
     const agents =
-      usersResponse.UserDataList?.map((userData) => ({
-        agentId: userData.User?.Id || "",
-        username: userData.User?.Arn?.split("/").pop() || "",
-        status: userData.Status?.StatusName || "Unknown",
-        statusStartTimestamp:
-          userData.Status?.StatusStartTimestamp?.toISOString() || "",
-        activeContacts: userData.ActiveSlotsByChannel || {},
-        availableSlots: userData.AvailableSlotsByChannel || {},
-      })) || [];
+      usersResponse.UserDataList?.map((userData) => {
+        // Connect's User.Arn looks like
+        //   arn:aws:connect:region:account:instance/INSTANCE/agent/USER_ID
+        // The last segment is the USER_ID (a UUID) — NOT the username.
+        // Resolve the real username via the cache we built from
+        // ListUsers; fall back to the id if (somehow) missing.
+        const agentId =
+          userData.User?.Id || userData.User?.Arn?.split("/").pop() || "";
+        const username = userNameCache.get(agentId) || agentId;
+        return {
+          agentId,
+          username,
+          status: userData.Status?.StatusName || "Unknown",
+          statusStartTimestamp:
+            userData.Status?.StatusStartTimestamp?.toISOString() || "",
+          activeContacts: userData.ActiveSlotsByChannel || {},
+          availableSlots: userData.AvailableSlotsByChannel || {},
+        };
+      }) || [];
 
     // Calculate summary KPIs
     const totalContactsInQueue = queueMetrics.reduce(

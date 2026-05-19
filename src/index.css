@@ -612,3 +612,32 @@ a { color: inherit; text-decoration: none; }
 /* Notion-spacious modifier hooks */
 [data-density="cozy"] .view { padding: 36px 40px 120px; }
 [data-density="cozy"] .card__body { padding: 22px; }
+
+/* ============================================================
+   ActiveContactsTabStrip — multi-contact navigator
+   ============================================================ */
+.contact-tab {
+  outline: none;
+}
+.contact-tab:hover {
+  background: var(--bg-2) !important;
+  border-color: var(--border-2) !important;
+}
+.contact-tab--focused {
+  /* highlighted via inline style — overrides the hover bg */
+  box-shadow: 0 0 0 1px transparent;
+}
+/* Subtle pulsing glow on a ringing tab. Discreet — not in your
+   face — so the agent notices a new contact without losing focus
+   on their current attention. */
+.contact-tab--ringing {
+  animation: contact-tab-pulse 1.8s ease-in-out infinite;
+}
+@keyframes contact-tab-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--accent-amber-soft, rgba(245, 165, 36, 0.35));
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--accent-amber-soft, rgba(245, 165, 36, 0.18));
+  }
+}

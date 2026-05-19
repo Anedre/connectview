@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useChatSession, type ChatMessage } from "@/hooks/useChatSession";
 import * as Icon from "@/components/vox/primitives";
+import { useDebugRender } from "@/lib/debugTrace";
 
 interface ChatThreadPanelProps {
   contactId: string | null;
@@ -93,6 +94,15 @@ export function ChatThreadPanel({
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // ─── DEBUG INSTRUMENTATION ────────────────────────────────────
+  useDebugRender("ChatThreadPanel", {
+    contactId,
+    channel,
+    status,
+    messageCount: messages.length,
+    customerTyping,
+  });
+
   // Auto-scroll to bottom on new messages — but ONLY if the agent is
   // already at (or very near) the bottom. If they've scrolled up to read
   // history we don't want to yank them down every time a system event
@@ -123,6 +133,7 @@ export function ChatThreadPanel({
 
   return (
     <div
+      data-debug-component="ChatThreadPanel"
       style={{
         display: "flex",
         flexDirection: "column",

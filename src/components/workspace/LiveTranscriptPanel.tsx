@@ -1,7 +1,16 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLiveTranscript } from "@/hooks/useLiveTranscript";
 import { Avatar } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+
+/**
+ * If the contact has been active for this long without producing any
+ * transcript segments, we assume Contact Lens analytics is NOT enabled
+ * in the contact flow. Real Contact Lens typically produces the first
+ * segment within 5-8 seconds of conversation; 20 s is a forgiving
+ * threshold that still gives clear feedback before the agent gives up.
+ */
+const CONTACT_LENS_GRACE_PERIOD_MS = 20_000;
 
 interface LiveTranscriptPanelProps {
   contactId: string | null;
@@ -51,6 +60,35 @@ export function LiveTranscriptPanel({
     isActive ? contactId : null
   );
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Track when the contact became active so we can detect "Contact
+  // Lens not enabled" — if segments don't arrive within 20s of the
+  // call going live, the flow most likely never enabled analytics.
+  const [activeSinceTs, setActiveSinceTs] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (isActive && contactId) {
+      // Reset the timer on every new contact, not just on isActive flips.
+      setActiveSinceTs((prev) => (prev === null ? Date.now() : prev));
+    } else {
+      setActiveSinceTs(null);
+    }
+  }, [isActive, contactId]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isActive]);
+
+  const elapsedActiveMs = activeSinceTs ? now - activeSinceTs : 0;
+  const totalSegments = data?.totalSegments ?? 0;
+  // Heuristic: after 20s of an active call with zero transcripts, we
+  // surface "Contact Lens not enabled" to the agent so they know the
+  // empty panel is configuration — not a delay.
+  const contactLensLikelyDisabled =
+    isActive && totalSegments === 0 && elapsedActiveMs > CONTACT_LENS_GRACE_PERIOD_MS;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -144,7 +182,7 @@ export function LiveTranscriptPanel({
           </div>
         )}
 
-        {!data?.segments.length && !loading && !error && (
+        {!data?.segments.length && !loading && !error && !contactLensLikelyDisabled && (
           <div
             style={{
               padding: 32,
@@ -154,6 +192,61 @@ export function LiveTranscriptPanel({
             }}
           >
             Esperando que inicie la conversación…
+            {activeSinceTs && (
+              <div className="muted mono" style={{ fontSize: 11, marginTop: 4 }}>
+                {Math.floor(elapsedActiveMs / 1000)}s sin segmentos
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Feature-disabled hint — appears after the grace period when
+            the call is active but no segments have arrived. Most
+            common cause: flow doesn't enable Contact Lens analytics. */}
+        {contactLensLikelyDisabled && (
+          <div
+            style={{
+              padding: "20px 24px",
+              borderRadius: 10,
+              background:
+                "linear-gradient(180deg, var(--accent-amber-soft), transparent 80%)",
+              border: "1px solid var(--accent-amber-soft)",
+              textAlign: "center",
+            }}
+          >
+            <Icon.Shield
+              size={28}
+              style={{ color: "var(--accent-amber)", opacity: 0.8 }}
+            />
+            <div
+              style={{
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: "var(--text-1)",
+                marginTop: 8,
+              }}
+            >
+              Contact Lens no parece habilitado en este flujo
+            </div>
+            <div
+              className="muted"
+              style={{
+                fontSize: 11.5,
+                marginTop: 6,
+                lineHeight: 1.55,
+                maxWidth: 420,
+                marginLeft: "auto",
+                marginRight: "auto",
+              }}
+            >
+              No llegan segmentos de transcripción después de{" "}
+              {Math.floor(elapsedActiveMs / 1000)} s en la llamada.
+              <br />
+              Para activarlo agrega un bloque{" "}
+              <span className="mono">Set recording &amp; analytics</span> al
+              flow de contacto con
+              <span className="mono"> AnalyticsBehavior.Enabled = True</span>.
+            </div>
           </div>
         )}
 

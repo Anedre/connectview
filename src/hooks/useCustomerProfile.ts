@@ -2,7 +2,13 @@ import { useState, useEffect, useRef } from "react";
 import type { CustomerProfile } from "@/types/customer-profile";
 import { getApiEndpoints } from "@/lib/api";
 
-export function useCustomerProfile(phone: string | null) {
+/**
+ * Look up a customer profile by phone number. The optional `refreshKey`
+ * argument forces a re-fetch when its value changes — the consumer
+ * (typically the agent desktop's "Refrescar perfil" menu item) bumps an
+ * integer counter to invalidate the cache without changing the phone.
+ */
+export function useCustomerProfile(phone: string | null, refreshKey: number = 0) {
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +62,9 @@ export function useCustomerProfile(phone: string | null) {
         }
       })
       .finally(() => setLoading(false));
-  }, [phone]);
+    // refreshKey is intentional — bumping it re-runs the effect for
+    // the same `phone`, which lets the More menu force a re-fetch.
+  }, [phone, refreshKey]);
 
   return { profile, loading, error };
 }

@@ -1,8 +1,19 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { getApiEndpoints } from "@/lib/api";
+import { traceChange, traceInfo } from "@/lib/debugTrace";
 
-interface ActiveContact {
+export interface ActiveContact {
   contactId: string;
   channel: string;
   state: string;
@@ -14,6 +25,32 @@ interface ActiveContact {
   direction: "inbound" | "outbound";
   /** Contact attributes set by the contact flow (e.g. udep_intent,
    *  udep_nivel, udep_facultad, udep_sede). Empty object if unavailable. */
+  attributes: Record<string, string>;
+  /** Wall-clock timestamp of the most recent poll/event that observed
+   *  this contact. We use this to expire contacts that disappeared from
+   *  Streams without ever firing onEnded/onDestroy. */
+  lastSeenTs: number;
+}
+
+/**
+ * A contact the agent failed to accept within the routing-profile
+ * timeout. Amazon Connect fires `contact.onMissed()` exactly once for
+ * these and then changes the agent state to `MissedCallAgent`, which
+ * blocks new routed contacts until the agent manually returns to
+ * Available.
+ *
+ * We surface them in their own short-lived list so the UI can:
+ *  - Toast the agent immediately ("Llamada perdida · +51953...")
+ *  - Show a dismissable tab with a red badge in the tab strip
+ *  - Auto-expire after 30s so old misses don't clutter the strip
+ */
+export interface MissedContact {
+  contactId: string;
+  channel: string;
+  customerPhone: string | null;
+  queueName: string;
+  /** When the miss was observed (Date.now() at the time onMissed fired). */
+  missedAt: number;
   attributes: Record<string, string>;
 }
 
@@ -27,12 +64,13 @@ function extractContact(c: any): ActiveContact | null {
     const state = c.getState?.()?.type || "";
     const queue = c.getQueue?.()?.name || "";
 
-    // Drop zombie contacts that Streams keeps in its snapshot after a
-    // session error / disconnect — they have state="error" or
-    // "missed" and can't be re-wired (getMediaController throws
-    // "Media Controller is no longer available"). Letting them through
-    // here makes the desktop show a ghost chat stuck on "Conectando…".
-    if (state === "error" || state === "missed") return null;
+    // Drop only `error` zombies — those are unrecoverable. `missed`
+    // contacts are still alive in the agent's slot (especially for
+    // chat / WhatsApp / email): they block new routing until the
+    // agent explicitly closes them via `contact.clear()`. The
+    // Amazon Connect native CCP surfaces them with a "Close contact"
+    // button for exactly this reason.
+    if (state === "error") return null;
 
     let customerPhone: string | null = null;
     let direction: "inbound" | "outbound" = "inbound";
@@ -40,16 +78,13 @@ function extractContact(c: any): ActiveContact | null {
       const conn = c.getInitialConnection?.();
       const endpoint = conn?.getEndpoint?.();
       customerPhone = endpoint?.phoneNumber || null;
-      // streams: connection.getType() returns 'inbound' or 'outbound'
       const t = conn?.getType?.();
       if (t === "outbound") direction = "outbound";
     } catch {
       // ignore
     }
 
-    // Streams Contact attributes come back as { [key]: { name, value } }.
-    // Flatten to a plain string map for ergonomic consumption downstream.
-    let attributes: Record<string, string> = {};
+    const attributes: Record<string, string> = {};
     try {
       const raw = c.getAttributes?.() || {};
       for (const k of Object.keys(raw)) {
@@ -60,107 +95,129 @@ function extractContact(c: any): ActiveContact | null {
       // ignore
     }
 
-    return { contactId, channel, state, customerPhone, queueName: queue, direction, attributes };
+    return {
+      contactId,
+      channel,
+      state,
+      customerPhone,
+      queueName: queue,
+      direction,
+      attributes,
+      lastSeenTs: Date.now(),
+    };
   } catch {
     return null;
   }
 }
 
-// Poll the DataProvider synchronously (may be stale - Streams IPC bug)
-function pollCurrentContact(): {
-  contact: ActiveContact | null;
+/**
+ * Extract a single contact from the Streams data-provider snapshot
+ * (different shape from the live `connect.contact` object — uses plain
+ * data instead of methods). Returns null for zombie contacts (state
+ * error / missed) so we never surface contacts the agent can't act on.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractFromSnapshot(c: any): ActiveContact | null {
+  if (!c) return null;
+  const state = c.state?.type || "";
+  // Same rationale as extractContact: keep `missed` contacts in the
+  // active list so the agent can see and act on them (close /
+  // callback). Only `error` is truly unrecoverable.
+  if (state === "error") return null;
+
+  let customerPhone: string | null = null;
+  if (c.connections && Array.isArray(c.connections)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const initialConn = c.connections.find((conn: any) => conn.initial);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const customerConn = c.connections.find(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (conn: any) => conn.endpoint?.type === "telephone_number"
+    );
+    customerPhone =
+      initialConn?.endpoint?.phoneNumber ||
+      customerConn?.endpoint?.phoneNumber ||
+      c.connections[0]?.endpoint?.phoneNumber ||
+      null;
+  }
+
+  let direction: "inbound" | "outbound" = "inbound";
+  if (c.connections && Array.isArray(c.connections)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const initialConn = c.connections.find((conn: any) => conn.initial);
+    const t = initialConn?.type;
+    if (t === "outbound") direction = "outbound";
+  }
+
+  const rawAttrs = c.attributes || {};
+  const attributes: Record<string, string> = {};
+  for (const k of Object.keys(rawAttrs)) {
+    const v = rawAttrs[k]?.value;
+    if (typeof v === "string" && v.length > 0) attributes[k] = v;
+  }
+
+  return {
+    contactId: c.contactId || "",
+    channel: c.type || "VOICE",
+    state,
+    customerPhone,
+    queueName: c.queue?.name || "",
+    direction,
+    attributes,
+    lastSeenTs: Date.now(),
+  };
+}
+
+/**
+ * Poll the Streams data-provider for **all** the agent's contacts at once.
+ *
+ * Previously this returned only the first contact, which forced the
+ * desktop into a single-contact mental model. Connect routing profiles
+ * with chat / email concurrency > 1 commonly produce 5–10 live contacts
+ * for an agent simultaneously, and we want the tab strip in the desktop
+ * to see them all.
+ */
+function pollAllContacts(): {
+  contacts: ActiveContact[];
   snapshotAgeMs: number;
 } {
   try {
     if (typeof connect === "undefined")
-      return { contact: null, snapshotAgeMs: Infinity };
+      return { contacts: [], snapshotAgeMs: Infinity };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const core = (connect as any).core;
-    if (core?.getAgentDataProvider) {
-      try {
-        const dp = core.getAgentDataProvider();
-        const data = dp?.getAgentData?.();
-        const snapshot = data?.snapshot || data;
-        const snapshotTs = snapshot?.snapshotTimestamp
-          ? new Date(snapshot.snapshotTimestamp).getTime()
-          : 0;
-        const snapshotAgeMs = snapshotTs ? Date.now() - snapshotTs : Infinity;
-
-        const contacts = snapshot?.contacts || [];
-        // Filter zombie contacts (state error/missed) from the snapshot so
-        // we don't show ghost chats.
-        const liveContacts = contacts.filter(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (cc: any) => cc?.state?.type !== "error" && cc?.state?.type !== "missed"
-        );
-        if (liveContacts.length > 0) {
-          const c = liveContacts[0];
-
-          let customerPhone: string | null = null;
-          if (c.connections && Array.isArray(c.connections)) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const initialConn = c.connections.find((conn: any) => conn.initial);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const customerConn = c.connections.find(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (conn: any) => conn.endpoint?.type === "telephone_number"
-            );
-            customerPhone =
-              initialConn?.endpoint?.phoneNumber ||
-              customerConn?.endpoint?.phoneNumber ||
-              c.connections[0]?.endpoint?.phoneNumber ||
-              null;
-          }
-
-          // direction: prefer the initial connection's type if available
-          let direction: "inbound" | "outbound" = "inbound";
-          if (c.connections && Array.isArray(c.connections)) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const initialConn = c.connections.find((conn: any) => conn.initial);
-            const t = initialConn?.type;
-            if (t === "outbound") direction = "outbound";
-          }
-
-          // Snapshot stores attributes flat: { key: { name, value } }
-          const rawAttrs = c.attributes || {};
-          const attributes: Record<string, string> = {};
-          for (const k of Object.keys(rawAttrs)) {
-            const v = rawAttrs[k]?.value;
-            if (typeof v === "string" && v.length > 0) attributes[k] = v;
-          }
-
-          return {
-            contact: {
-              contactId: c.contactId || "",
-              channel: c.type || "VOICE",
-              state: c.state?.type || "",
-              customerPhone,
-              queueName: c.queue?.name || "",
-              direction,
-              attributes,
-            },
-            snapshotAgeMs,
-          };
-        }
-
-        return { contact: null, snapshotAgeMs };
-      } catch {
-        return { contact: null, snapshotAgeMs: Infinity };
-      }
+    if (!core?.getAgentDataProvider) {
+      return { contacts: [], snapshotAgeMs: Infinity };
     }
 
-    return { contact: null, snapshotAgeMs: Infinity };
+    try {
+      const dp = core.getAgentDataProvider();
+      const data = dp?.getAgentData?.();
+      const snapshot = data?.snapshot || data;
+      const snapshotTs = snapshot?.snapshotTimestamp
+        ? new Date(snapshot.snapshotTimestamp).getTime()
+        : 0;
+      const snapshotAgeMs = snapshotTs ? Date.now() - snapshotTs : Infinity;
+
+      const raw = snapshot?.contacts || [];
+      const extracted: ActiveContact[] = [];
+      for (const c of raw) {
+        const ex = extractFromSnapshot(c);
+        if (ex) extracted.push(ex);
+      }
+      return { contacts: extracted, snapshotAgeMs };
+    } catch {
+      return { contacts: [], snapshotAgeMs: Infinity };
+    }
   } catch {
-    return { contact: null, snapshotAgeMs: Infinity };
+    return { contacts: [], snapshotAgeMs: Infinity };
   }
 }
 
 function sameContact(a: ActiveContact | null, b: ActiveContact | null) {
   if (!a && !b) return true;
   if (!a || !b) return false;
-  // Compare attribute fingerprints so the UI re-renders when the flow
-  // sets new context (e.g. udep_intent, udep_nivel) mid-contact.
   const fa = Object.entries(a.attributes).sort().map(([k, v]) => `${k}=${v}`).join("|");
   const fb = Object.entries(b.attributes).sort().map(([k, v]) => `${k}=${v}`).join("|");
   return (
@@ -171,89 +228,326 @@ function sameContact(a: ActiveContact | null, b: ActiveContact | null) {
   );
 }
 
-// How many consecutive null observations from BOTH sources before we
-// commit to clearing the contact. With Streams polling at 800 ms and API
-// polling at 5 s, ~4 polls covers brief snapshot gaps without flickering
-// the Agent Desktop empty state for a still-live contact.
-const CLEAR_AFTER_NULLS = 4;
+/**
+ * Merge a new observation of an existing contact with the cached value.
+ * Implements the monotonic-state and sticky-field rules that prevent
+ * the UI from oscillating when two pollers (Streams snapshot + API)
+ * report different fields for the same contactId in quick succession.
+ *
+ * Returns `prev` (same reference) when nothing meaningful changed —
+ * lets React bail out of re-renders.
+ */
+function mergeContact(prev: ActiveContact, next: ActiveContact): ActiveContact {
+  const stateRank: Record<string, number> = {
+    "": 0,
+    ringing: 1,
+    incoming: 2,
+    connecting: 3,
+    connected: 4,
+    onhold: 4,
+    acw: 5,
+    ended: 6,
+    error: 7,
+    missed: 7,
+  };
+  const prevRank = stateRank[prev.state] ?? 0;
+  const nextRank = stateRank[next.state] ?? 0;
+  const stickyState = nextRank >= prevRank ? next.state : prev.state;
 
-export function useActiveContact() {
+  const merged: ActiveContact = {
+    ...prev,
+    ...next,
+    state: stickyState,
+    customerPhone: next.customerPhone || prev.customerPhone,
+    queueName: next.queueName || prev.queueName,
+    attributes: { ...prev.attributes, ...next.attributes },
+    lastSeenTs: Math.max(prev.lastSeenTs, next.lastSeenTs),
+  };
+  if (stickyState !== next.state) {
+    traceInfo("useActiveContact.stateStickied", {
+      contactId: prev.contactId,
+      from: next.state,
+      kept: stickyState,
+      prevRank,
+      nextRank,
+    });
+  }
+  return sameContact(prev, merged) ? prev : merged;
+}
+
+/**
+ * Per-contact "missed observation" budget. If a contactId disappears
+ * from this many consecutive polls without firing onEnded/onDestroy,
+ * we evict it. Streams occasionally drops contacts from the snapshot
+ * before the lifecycle callback fires, so we need to garbage-collect
+ * stale contacts proactively.
+ *
+ * 4 polls × 800 ms ≈ 3.2 s window — covers transient snapshot gaps
+ * but evicts truly-dead contacts in a few seconds.
+ */
+const EVICT_AFTER_MS = 5_000;
+
+/**
+ * How long a missed-contact entry stays in the tab strip before
+ * auto-disappearing. 30s is enough for the agent to notice the toast,
+ * read the customer info, and decide if they want to call back.
+ */
+const MISSED_CONTACT_TTL_MS = 30_000;
+
+interface ActiveContactsContextValue {
+  contacts: ActiveContact[];
+  focusedContactId: string | null;
+  /** The currently-focused contact, derived from `contacts` +
+   *  `focusedContactId`. Null when no contacts exist. */
+  focused: ActiveContact | null;
+  focus: (contactId: string | null) => void;
+  /** Recently-missed contacts. Auto-expire after MISSED_CONTACT_TTL_MS
+   *  or when the agent calls `dismissMissed(contactId)`. */
+  missedContacts: MissedContact[];
+  dismissMissed: (contactId: string) => void;
+}
+
+/**
+ * SHARED POLLING HOOK — multi-contact.
+ *
+ * Tracks every active contact the agent has (Connect routing profiles
+ * allow concurrent voice / chat / email / task — an agent can easily
+ * have 8+ contacts at once). Each contact lives independently with its
+ * own merge state. A single "focused" contact at any time drives what
+ * the AgentDesktop center panels render; the tab strip lets the agent
+ * pick which one to focus.
+ *
+ * One Provider, one polling loop, one Streams subscription — all
+ * consumers read from React context.
+ */
+function useActiveContactsState(): ActiveContactsContextValue {
   const { user } = useAuth();
-  const [contact, setContact] = useState<ActiveContact | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  const [contacts, setContacts] = useState<ActiveContact[]>([]);
+  const [focusedContactId, setFocusedContactId] = useState<string | null>(null);
+  const [missedContacts, setMissedContacts] = useState<MissedContact[]>([]);
+  // Streams poll uses setTimeout self-rescheduling so it can back off
+  // when the data-provider IPC is stuck.
+  const intervalRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const apiIntervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const subscribedContactIds = useRef<Set<string>>(new Set());
-  // Counter for consecutive "no contact" observations from either source.
-  // Reset to 0 every time any source surfaces a real contact.
-  const nullCountRef = useRef<number>(0);
+  const missedExpiryRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
-  // Apply a debounced clear — only commits null after CLEAR_AFTER_NULLS
-  // consecutive nulls. Used by both Streams and API pollers to dampen
-  // the transient null spikes that were flickering the UI.
-  const observeNull = useCallback(() => {
-    nullCountRef.current += 1;
-    if (nullCountRef.current >= CLEAR_AFTER_NULLS) {
-      setContact((prev) => (prev === null ? prev : null));
-    }
-  }, []);
-  const observeReal = useCallback((next: ActiveContact) => {
-    nullCountRef.current = 0;
-    setContact((prev) => {
-      if (sameContact(prev, next)) return prev;
-      // Two pollers (Streams snapshot + API fallback) observe the same
-      // contact with slightly different field coverage:
-      //   - Streams: usually has customerPhone, queueName from snapshot
-      //   - API:     authoritative on contactId/state, but customerPhone
-      //              and queueName are sometimes empty
-      // When the *same* contactId comes back from a different poller
-      // with EMPTY fields, we'd otherwise overwrite the populated values
-      // with nulls — the UI then bounces between "Andre Alata Calle ·
-      // +51953730189" and "Sin contacto · ".
-      //
-      // Merge instead: keep populated fields when the new sample has
-      // them empty.
-      if (prev && prev.contactId === next.contactId) {
-        // State must be monotonic — once a contact reaches a "more
-        // progressed" state (e.g. connected), a stale poll reporting
-        // "connecting" shouldn't drag it back. This is exactly what
-        // caused the customer card to oscillate between "Sin contacto"
-        // (state=connected, but missing phone) and "Andre · Sin
-        // whatsapp activo" (state=connecting, phone present): two
-        // pollers reporting different fields with different state.
-        const stateRank: Record<string, number> = {
-          "": 0,
-          ringing: 1,
-          incoming: 2,
-          connecting: 3,
-          connected: 4,
-          onhold: 4,
-          acw: 5,
-          ended: 6,
-          error: 7,
-          missed: 7,
-        };
-        const prevRank = stateRank[prev.state] ?? 0;
-        const nextRank = stateRank[next.state] ?? 0;
-        const stickyState = nextRank >= prevRank ? next.state : prev.state;
+  /**
+   * Record a contact that the agent failed to accept. Called from the
+   * `contact.onMissed` subscription (Streams) or from a state
+   * transition into "missed" in the snapshot polls. Idempotent — same
+   * contactId fires only once per session, even if we observe the
+   * missed state multiple times via different paths.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recordMissed = useCallback((c: any) => {
+    if (!c) return;
+    const contactId =
+      typeof c.getContactId === "function" ? c.getContactId() : c.contactId;
+    if (!contactId) return;
 
-        const merged: ActiveContact = {
-          ...prev,
-          ...next,
-          state: stickyState,
-          customerPhone: next.customerPhone || prev.customerPhone,
-          queueName: next.queueName || prev.queueName,
-          // Union of attribute keys with `next` taking precedence on
-          // conflicting values. Streams snapshot + API may each have a
-          // subset (e.g. one has udep_source but not udep_intent).
-          attributes: { ...prev.attributes, ...next.attributes },
-        };
-        return sameContact(prev, merged) ? prev : merged;
+    // Try to read fields from both the live Streams contact object
+    // (has methods) and the snapshot shape (has plain fields).
+    const channel =
+      typeof c.getType === "function" ? c.getType() : c.type || "VOICE";
+    let queueName = "";
+    try {
+      queueName =
+        typeof c.getQueue === "function"
+          ? c.getQueue()?.name || ""
+          : c.queue?.name || "";
+    } catch { /* noop */ }
+
+    let customerPhone: string | null = null;
+    try {
+      if (typeof c.getInitialConnection === "function") {
+        customerPhone =
+          c.getInitialConnection()?.getEndpoint?.()?.phoneNumber || null;
+      } else if (c.connections && Array.isArray(c.connections)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const initial = c.connections.find((cn: any) => cn.initial);
+        customerPhone =
+          initial?.endpoint?.phoneNumber ||
+          c.connections[0]?.endpoint?.phoneNumber ||
+          null;
       }
-      return next;
+    } catch { /* noop */ }
+
+    const attributes: Record<string, string> = {};
+    try {
+      const raw =
+        typeof c.getAttributes === "function" ? c.getAttributes() : c.attributes;
+      if (raw) {
+        for (const k of Object.keys(raw)) {
+          const v = raw[k]?.value;
+          if (typeof v === "string" && v.length > 0) attributes[k] = v;
+        }
+      }
+    } catch { /* noop */ }
+
+    setMissedContacts((prev) => {
+      // Dedup — same contactId only goes into the list once.
+      if (prev.some((m) => m.contactId === contactId)) return prev;
+      traceChange("useActiveContact.contactMissed", {
+        contactId,
+        channel,
+        customerPhone,
+      });
+      return [
+        ...prev,
+        {
+          contactId,
+          channel,
+          customerPhone,
+          queueName,
+          missedAt: Date.now(),
+          attributes,
+        },
+      ];
     });
   }, []);
 
-  // Streams-based detection (fast path, may fail silently if IPC frozen)
+  /** Agent dismissed a missed-contact tab. Removes it immediately. */
+  const dismissMissed = useCallback((contactId: string) => {
+    setMissedContacts((prev) => prev.filter((m) => m.contactId !== contactId));
+  }, []);
+
+  // Auto-expire old missed contacts. Runs once per second — cheap
+  // because the list is bounded and short-lived.
+  useEffect(() => {
+    if (missedContacts.length === 0) {
+      if (missedExpiryRef.current) {
+        clearInterval(missedExpiryRef.current);
+        missedExpiryRef.current = undefined;
+      }
+      return;
+    }
+    if (missedExpiryRef.current) return;
+    missedExpiryRef.current = setInterval(() => {
+      const cutoff = Date.now() - MISSED_CONTACT_TTL_MS;
+      setMissedContacts((prev) => {
+        const next = prev.filter((m) => m.missedAt >= cutoff);
+        return next.length === prev.length ? prev : next;
+      });
+    }, 1000);
+    return () => {
+      if (missedExpiryRef.current) {
+        clearInterval(missedExpiryRef.current);
+        missedExpiryRef.current = undefined;
+      }
+    };
+  }, [missedContacts.length]);
+
+  /**
+   * Apply an observation of the current contact set. For each
+   * incoming contact, upsert into the array with merge logic. For
+   * cached contacts that didn't appear in the observation, decide
+   * whether to evict (based on lastSeenTs).
+   */
+  const observeAllContacts = useCallback(
+    (observed: ActiveContact[]) => {
+      setContacts((prev) => {
+        const observedIds = new Set(observed.map((c) => c.contactId));
+        const now = Date.now();
+
+        // 1) Upsert each observed contact
+        const next: ActiveContact[] = [];
+        const seen = new Set<string>();
+        for (const obs of observed) {
+          const prior = prev.find((p) => p.contactId === obs.contactId);
+          if (prior) {
+            const merged = mergeContact(prior, obs);
+            next.push(merged);
+          } else {
+            traceChange("useActiveContact.contactAdded", {
+              contactId: obs.contactId,
+              channel: obs.channel,
+              state: obs.state,
+            });
+            next.push(obs);
+          }
+          seen.add(obs.contactId);
+        }
+
+        // 2) Keep cached contacts that weren't observed but are still
+        //    within the eviction window (debounces transient snapshot
+        //    gaps).
+        for (const cached of prev) {
+          if (seen.has(cached.contactId)) continue;
+          if (!observedIds.has(cached.contactId)) {
+            const age = now - cached.lastSeenTs;
+            if (age < EVICT_AFTER_MS) {
+              // Keep it — Streams just dropped it from this snapshot
+              // but it'll likely come back next tick.
+              next.push(cached);
+            } else {
+              traceInfo("useActiveContact.contactEvicted", {
+                contactId: cached.contactId,
+                ageMs: age,
+              });
+            }
+          }
+        }
+
+        // 3) Bail out if nothing changed (same set + same ordering +
+        //    each pairwise equal via sameContact).
+        if (
+          next.length === prev.length &&
+          next.every((c, i) => sameContact(c, prev[i]))
+        ) {
+          return prev;
+        }
+        traceChange("useActiveContact.contactsChanged", {
+          count: next.length,
+          ids: next.map((c) => c.contactId),
+          states: next.map((c) => `${c.contactId.slice(-6)}:${c.state}`),
+        });
+        return next;
+      });
+    },
+    []
+  );
+
+  /** Force-remove a single contact (fired from onEnded / onDestroy). */
+  const removeContact = useCallback((contactId: string) => {
+    setContacts((prev) => {
+      if (!prev.some((c) => c.contactId === contactId)) return prev;
+      traceInfo("useActiveContact.contactRemoved", { contactId });
+      return prev.filter((c) => c.contactId !== contactId);
+    });
+  }, []);
+
+  // Auto-focus management.
+  //   - No focus + at least one contact → focus the most recent one.
+  //   - Focused contact disappears → focus next available.
+  //   - Brand new contact appears but agent already has focus → keep
+  //     current focus (tab strip will pulse to indicate the new one).
+  useEffect(() => {
+    if (contacts.length === 0) {
+      if (focusedContactId !== null) {
+        traceInfo("useActiveContact.focusCleared", {});
+        setFocusedContactId(null);
+      }
+      return;
+    }
+    const currentFocusValid =
+      focusedContactId !== null &&
+      contacts.some((c) => c.contactId === focusedContactId);
+    if (currentFocusValid) return;
+
+    // Pick the freshest contact (most recently observed).
+    const next = [...contacts].sort((a, b) => b.lastSeenTs - a.lastSeenTs)[0];
+    if (next) {
+      traceInfo("useActiveContact.autoFocus", {
+        contactId: next.contactId,
+        previousFocus: focusedContactId,
+        reason: focusedContactId === null ? "no-focus" : "focus-gone",
+      });
+      setFocusedContactId(next.contactId);
+    }
+  }, [contacts, focusedContactId]);
+
+  // ─── Streams subscription + polling (multi-contact) ────────────
   useEffect(() => {
     if (typeof connect === "undefined") return;
 
@@ -265,15 +559,7 @@ export function useActiveContact() {
 
       const refresh = () => {
         const info = extractContact(c);
-        if (info) {
-          setContact((prev) => (sameContact(prev, info) ? prev : info));
-        } else {
-          // extractContact returned null — either the contact has no id
-          // anymore, or its state is "error" / "missed" (a zombie). If
-          // this id was the one we were tracking, drop it so the desktop
-          // returns to the empty state rather than rendering a ghost.
-          setContact((prev) => (prev?.contactId === contactId ? null : prev));
-        }
+        if (info) observeAllContacts([info]);
       };
 
       refresh();
@@ -285,17 +571,33 @@ export function useActiveContact() {
       try { c.onACW?.(refresh); } catch { /* noop */ }
       try { c.onRefresh?.(refresh); } catch { /* noop */ }
       try { c.onError?.(refresh); } catch { /* noop */ }
-      try { c.onMissed?.(refresh); } catch { /* noop */ }
+      // onMissed fires exactly once when the agent fails to accept a
+      // ringing contact within the routing-profile timeout. We:
+      //   1) Record it so the toast + banner UX fires.
+      //   2) Refresh the contact (so its state transitions to "missed"
+      //      in the active contacts list).
+      //   3) Do NOT remove it. For chat / WhatsApp / email the contact
+      //      stays attached to the agent and blocks new routing —
+      //      they must explicitly close it via `contact.clear()`.
+      //      Voice missed contacts disappear from agent.getContacts()
+      //      shortly after on their own, so the eviction-by-staleness
+      //      logic catches them naturally.
+      try {
+        c.onMissed?.(() => {
+          recordMissed(c);
+          refresh();
+        });
+      } catch { /* noop */ }
       try {
         c.onEnded?.(() => {
           subscribedContactIds.current.delete(contactId);
-          setContact(null);
+          removeContact(contactId);
         });
       } catch { /* noop */ }
       try {
         c.onDestroy?.(() => {
           subscribedContactIds.current.delete(contactId);
-          setContact(null);
+          removeContact(contactId);
         });
       } catch { /* noop */ }
     };
@@ -322,39 +624,75 @@ export function useActiveContact() {
             bus.subscribe(evt, (c: any) => {
               subscribeToContact(c);
               const info = extractContact(c);
-              if (info)
-                setContact((prev) => (sameContact(prev, info) ? prev : info));
+              if (info) observeAllContacts([info]);
             });
           } catch { /* noop */ }
         });
       }
     } catch { /* noop */ }
 
-    // Streams polling (fast path). Apply the null-debounce so transient
-    // gaps in the data-provider snapshot don't bounce the UI to empty.
-    intervalRef.current = setInterval(() => {
-      const { contact: current, snapshotAgeMs } = pollCurrentContact();
-      if (snapshotAgeMs >= 8000) return; // snapshot stale — trust last known
-      if (current) {
-        observeReal(current);
-      } else {
-        observeNull();
+    // Streams polling with backoff. See the long comment in the
+    // previous (single-contact) version — same logic, but now it
+    // refreshes the entire contacts array instead of just the
+    // "current" one.
+    let staleCount = 0;
+    const FAST_MS = 800;
+    const schedule = (delay: number) => {
+      intervalRef.current = setTimeout(tick, delay);
+    };
+    const tick = () => {
+      const { contacts: snap, snapshotAgeMs } = pollAllContacts();
+      if (snapshotAgeMs >= 8000) {
+        staleCount += 1;
+        traceInfo("useActiveContact.streamsPoll.staleSnapshot", {
+          snapshotAgeMs,
+          staleCount,
+        });
+        const delay =
+          staleCount >= 10
+            ? FAST_MS * 12
+            : staleCount >= 6
+            ? FAST_MS * 6
+            : staleCount >= 3
+            ? FAST_MS * 3
+            : FAST_MS;
+        schedule(delay);
+        return;
       }
-    }, 800);
+      if (staleCount > 0) {
+        traceInfo("useActiveContact.streamsPoll.recovered", {
+          previousStaleCount: staleCount,
+        });
+        staleCount = 0;
+      }
+      traceChange("useActiveContact.streamsPoll", {
+        count: snap.length,
+        snapshotAgeMs,
+        ids: snap.map((c) => c.contactId.slice(-6)),
+      });
+      observeAllContacts(snap);
+      schedule(FAST_MS);
+    };
+    schedule(FAST_MS);
 
-    const { contact: initial, snapshotAgeMs } = pollCurrentContact();
-    if (initial && snapshotAgeMs < 8000) {
-      nullCountRef.current = 0;
-      setContact(initial);
+    // Seed initial state synchronously so the first render has the
+    // current contacts (rather than waiting 800 ms for the first tick).
+    const { contacts: initial, snapshotAgeMs: initialAge } = pollAllContacts();
+    if (initial.length > 0 && initialAge < 8000) {
+      observeAllContacts(initial);
     }
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) clearTimeout(intervalRef.current);
       subscribedContactIds.current.clear();
     };
-  }, [observeNull, observeReal]);
+  }, [observeAllContacts, removeContact]);
 
-  // API-based fallback (reliable, polls every 3s - bypasses Streams IPC)
+  // ─── API fallback (single primary contact) ─────────────────────
+  // The /agentActiveContact endpoint only returns one contact (the
+  // "primary"). We still hit it as a corroborator for the focused
+  // contact — useful when Streams IPC is wedged. It can't surface
+  // additional contacts beyond what Streams sees.
   useEffect(() => {
     const username = user?.username;
     if (!username) return;
@@ -376,19 +714,15 @@ export function useActiveContact() {
         if (cancelled) return;
 
         if (!data.contact) {
-          // API says no active contact — go through the same debounce so a
-          // single 5 s API hiccup doesn't flash the UI to empty state.
-          const { contact: streamsContact, snapshotAgeMs } = pollCurrentContact();
-          if (!streamsContact || snapshotAgeMs > 8000) {
-            observeNull();
-          }
+          // No primary contact — leave the Streams-tracked list alone;
+          // we don't infer "no contacts" from the API since it might
+          // just be missing the non-primary ones.
           return;
         }
 
         const apiContact: ActiveContact = {
           contactId: data.contact.contactId,
           channel: data.contact.channel || "VOICE",
-          // Map API state to Streams-like state
           state: (data.contact.state || "").toLowerCase(),
           customerPhone: data.contact.customerPhone || null,
           queueName: data.contact.queueName || "",
@@ -396,25 +730,28 @@ export function useActiveContact() {
             (data.contact.direction || data.contact.initiationMethod) === "outbound"
               ? "outbound"
               : "inbound",
-          // API may or may not surface attributes; default to empty.
-          // The Streams snapshot path above is the authoritative source.
           attributes: data.contact.attributes || {},
+          lastSeenTs: Date.now(),
         };
 
-        // Same zombie filter as Streams snapshot — don't observe contacts
-        // the agent can't actually interact with (state error / missed).
         if (apiContact.state === "error" || apiContact.state === "missed") {
-          observeNull();
+          traceInfo("useActiveContact.apiFallback.zombie", {
+            contactId: apiContact.contactId,
+            state: apiContact.state,
+          });
           return;
         }
 
-        observeReal(apiContact);
+        traceChange("useActiveContact.apiFallback.contact", {
+          contactId: apiContact.contactId,
+          state: apiContact.state,
+        });
+        observeAllContacts([apiContact]);
       } catch {
-        // network error - fall back to Streams polling
+        // network error — fall back to streams polling
       }
     };
 
-    // Initial fetch + 5s interval (Connect APIs are throttled — 3s was too aggressive)
     fetchActive();
     apiIntervalRef.current = setInterval(fetchActive, 5000);
 
@@ -422,7 +759,120 @@ export function useActiveContact() {
       cancelled = true;
       if (apiIntervalRef.current) clearInterval(apiIntervalRef.current);
     };
-  }, [user?.username, observeNull, observeReal]);
+  }, [user?.username, observeAllContacts]);
 
-  return contact;
+  // Stable callback for focus changes (used by the tab strip).
+  const focus = useCallback((contactId: string | null) => {
+    setFocusedContactId(contactId);
+  }, []);
+
+  // Derive the focused contact from the current contacts + focusedId.
+  const focused = useMemo(
+    () =>
+      focusedContactId == null
+        ? null
+        : contacts.find((c) => c.contactId === focusedContactId) || null,
+    [contacts, focusedContactId]
+  );
+
+  return useMemo(
+    () => ({
+      contacts,
+      focusedContactId,
+      focused,
+      focus,
+      missedContacts,
+      dismissMissed,
+    }),
+    [
+      contacts,
+      focusedContactId,
+      focused,
+      focus,
+      missedContacts,
+      dismissMissed,
+    ]
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Provider + context-backed hooks                                             */
+/* -------------------------------------------------------------------------- */
+
+const EMPTY_CONTEXT: ActiveContactsContextValue = {
+  contacts: [],
+  focusedContactId: null,
+  focused: null,
+  focus: () => {},
+  missedContacts: [],
+  dismissMissed: () => {},
+};
+
+const ActiveContactsContext = createContext<
+  ActiveContactsContextValue | undefined
+>(undefined);
+
+export function ActiveContactProvider({ children }: { children: ReactNode }) {
+  const value = useActiveContactsState();
+  return createElement(
+    ActiveContactsContext.Provider,
+    { value },
+    children
+  );
+}
+
+/**
+ * Backwards-compatible hook. Returns the **focused** contact only.
+ * Components that just need to know "what's the agent looking at right
+ * now?" can keep using this; nothing changed on their side.
+ */
+export function useActiveContact(): ActiveContact | null {
+  const ctx = useContext(ActiveContactsContext);
+  // Mirror the previous fallback path: if no provider is mounted, run
+  // a local poller. In practice the provider is always mounted at the
+  // app root, so this only fires in storybook/tests.
+  if (ctx !== undefined) return ctx.focused;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return useActiveContactsState().focused;
+}
+
+/**
+ * Read the full list of contacts the agent currently has, regardless
+ * of which one is focused. Use this for the tab strip / list views.
+ */
+export function useAllActiveContacts(): ActiveContact[] {
+  const ctx = useContext(ActiveContactsContext);
+  return ctx ? ctx.contacts : EMPTY_CONTEXT.contacts;
+}
+
+/**
+ * Read + change the focused contact id. The setter accepts null to
+ * deselect (rare). Use this from the tab strip click handler.
+ */
+export function useContactFocus(): {
+  focusedContactId: string | null;
+  focus: (contactId: string | null) => void;
+} {
+  const ctx = useContext(ActiveContactsContext);
+  return ctx
+    ? { focusedContactId: ctx.focusedContactId, focus: ctx.focus }
+    : { focusedContactId: null, focus: EMPTY_CONTEXT.focus };
+}
+
+/**
+ * Read the list of recently-missed contacts + a dismisser. Auto-expires
+ * each entry after 30 seconds; the agent can also dismiss manually via
+ * an `X` button on the tab strip / banner.
+ */
+export function useMissedContacts(): {
+  missedContacts: MissedContact[];
+  dismissMissed: (contactId: string) => void;
+} {
+  const ctx = useContext(ActiveContactsContext);
+  return ctx
+    ? { missedContacts: ctx.missedContacts, dismissMissed: ctx.dismissMissed }
+    : {
+        missedContacts: EMPTY_CONTEXT.missedContacts,
+        dismissMissed: EMPTY_CONTEXT.dismissMissed,
+      };
 }

@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useCCP } from "@/hooks/useCCP";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useActiveContact } from "@/hooks/useActiveContact";
 import { useLiveTranscript } from "@/hooks/useLiveTranscript";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
+import { useDebugRender, traceChange } from "@/lib/debugTrace";
+import { ActiveContactsTabStrip } from "@/components/workspace/ActiveContactsTabStrip";
+import { MissedCallBanner } from "@/components/workspace/MissedCallBanner";
+import { MissedHistoryDrawer } from "@/components/workspace/MissedHistoryDrawer";
 import { CustomerProfilePanel } from "@/components/workspace/CustomerProfilePanel";
 import { LiveTranscriptPanel } from "@/components/workspace/LiveTranscriptPanel";
 import { ChatThreadPanel } from "@/components/workspace/ChatThreadPanel";
@@ -11,8 +15,14 @@ import { AgentNotesPanel } from "@/components/workspace/AgentNotesPanel";
 import { AIAssistPanel } from "@/components/workspace/AIAssistPanel";
 import { AICoachPanel } from "@/components/workspace/AICoachPanel";
 import { CasesPanel } from "@/components/workspace/CasesPanel";
+import { DTMFKeypadModal } from "@/components/workspace/DTMFKeypadModal";
+import { TransferQueueModal } from "@/components/workspace/TransferQueueModal";
+import { Customer360MoreMenu } from "@/components/workspace/Customer360MoreMenu";
+import { LiveSummaryModal } from "@/components/workspace/LiveSummaryModal";
+import { QuickNoteModal } from "@/components/workspace/QuickNoteModal";
+import { OutboundActionsMenu } from "@/components/workspace/OutboundActionsMenu";
+import { CustomerBrowser } from "@/components/workspace/CustomerBrowser";
 import { WrapUpView } from "@/components/vox/WrapUpView";
-import { SoftphoneDialer } from "@/components/vox/SoftphoneDialer";
 import {
   Avatar,
   colorFromName,
@@ -20,13 +30,19 @@ import {
 import * as Icon from "@/components/vox/primitives";
 
 const STATE_STYLE: Record<string, { fg: string; bg: string; label: string }> = {
-  Init:            { fg: "var(--text-3)",      bg: "var(--bg-3)",            label: "Inicio" },
-  Available:       { fg: "var(--accent-green)",bg: "var(--accent-green-soft)",label: "Disponible" },
-  Busy:            { fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)", label: "En llamada" },
-  AfterCallWork:   { fg: "var(--accent-amber)",bg: "var(--accent-amber-soft)",label: "ACW" },
-  CallingCustomer: { fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)", label: "Marcando" },
-  Offline:         { fg: "var(--text-3)",      bg: "var(--bg-3)",             label: "Offline" },
-  Error:           { fg: "var(--accent-red)",  bg: "var(--accent-red-soft)",  label: "Error" },
+  Init:             { fg: "var(--text-3)",      bg: "var(--bg-3)",             label: "Inicio" },
+  Available:        { fg: "var(--accent-green)",bg: "var(--accent-green-soft)",label: "Disponible" },
+  Busy:             { fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)", label: "En llamada" },
+  AfterCallWork:    { fg: "var(--accent-amber)",bg: "var(--accent-amber-soft)",label: "ACW" },
+  CallingCustomer:  { fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)", label: "Marcando" },
+  Offline:          { fg: "var(--text-3)",      bg: "var(--bg-3)",             label: "Offline" },
+  Error:            { fg: "var(--accent-red)",  bg: "var(--accent-red-soft)",  label: "Error" },
+  // Connect moves the agent into one of these state names after a
+  // missed routed contact. They all mean "blocked from receiving new
+  // contacts until the agent manually returns to Available."
+  MissedCallAgent:  { fg: "var(--accent-red)",  bg: "var(--accent-red-soft)",  label: "Contacto perdido" },
+  MissedCall:       { fg: "var(--accent-red)",  bg: "var(--accent-red-soft)",  label: "Contacto perdido" },
+  "Missed Call Agent": { fg: "var(--accent-red)", bg: "var(--accent-red-soft)", label: "Contacto perdido" },
 };
 
 function fmtElapsed(s: number) {
@@ -34,6 +50,46 @@ function fmtElapsed(s: number) {
   const r = s % 60;
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
 }
+
+/**
+ * Isolated call-timer leaf. Holds its own `elapsed` state so the
+ * per-second tick doesn't bubble up and re-render the whole agent
+ * desktop (one of the main contributors to the parpadeo).
+ *
+ * Exposes the current elapsed value via the `onTick` ref so the
+ * wrap-up code in the parent can still read the duration when the
+ * call ends — without subscribing to the state and re-rendering.
+ */
+const CallTimerInner = ({
+  active,
+  resetKey,
+  onTick,
+}: {
+  active: boolean;
+  resetKey: string;
+  onTick?: React.MutableRefObject<number>;
+}) => {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!active) {
+      setElapsed(0);
+      if (onTick) onTick.current = 0;
+      return;
+    }
+    setElapsed(0);
+    if (onTick) onTick.current = 0;
+    const id = setInterval(() => {
+      setElapsed((e) => {
+        const next = e + 1;
+        if (onTick) onTick.current = next;
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [active, resetKey, onTick]);
+  return <>{active ? fmtElapsed(elapsed) : "--:--"}</>;
+};
+const CallTimer = memo(CallTimerInner);
 
 function EmptyPanel({
   icon: IconCmp,
@@ -79,6 +135,7 @@ export function AgentDesktopPage() {
     accept,
     reject,
     toggleRecording,
+    placeCall,
   } = useCCP();
   const { user } = useConnectAuth();
   // `rawContact` is the unfiltered streams snapshot — used only for
@@ -98,21 +155,25 @@ export function AgentDesktopPage() {
   const { data: liveData } = useLiveTranscript(
     rawContact && isVoice ? rawContact.contactId : null
   );
-  const { profile } = useCustomerProfile(rawContact?.customerPhone ?? null);
+  // The Customer 360° "Refrescar perfil" menu item bumps this counter,
+  // which both `useCustomerProfile` calls (here for the softphone header
+  // and inside <CustomerProfilePanel/> for the right column) consume to
+  // invalidate their cache without the phone changing.
+  const [profileRefreshKey, setProfileRefreshKey] = useState(0);
+  const { profile } = useCustomerProfile(
+    rawContact?.customerPhone ?? null,
+    profileRefreshKey
+  );
   const latestCustomerUtterance = liveData?.segments
     .filter((s) => s.participant === "CUSTOMER")
     .slice(-1)[0]?.content;
 
-  // Call timer — only counts while the call is connected
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    if (!rawContact || rawContact.state !== "connected") {
-      return;
-    }
-    setElapsed(0);
-    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(id);
-  }, [rawContact?.contactId, rawContact?.state]);
+  // Call timer — held inside the <CallTimer> leaf so the per-second
+  // tick doesn't re-render the rest of the page. The latest value is
+  // pushed into `elapsedRef` so the wrap-up snapshot can read it
+  // without subscribing to state.
+  const elapsedRef = useRef(0);
+  const isConnected = rawContact?.state === "connected";
 
   // Snapshot of the last contact + its duration so wrap-up can still render
   // the contact info after `useActiveContact` clears the live ref.
@@ -137,11 +198,11 @@ export function AgentDesktopPage() {
         channel: rawContact.channel,
         duration:
           lastContactRef.current?.contactId === rawContact.contactId
-            ? Math.max(lastContactRef.current.duration, elapsed)
-            : elapsed,
+            ? Math.max(lastContactRef.current.duration, elapsedRef.current)
+            : elapsedRef.current,
       };
     }
-  }, [rawContact, elapsed]);
+  }, [rawContact]);
   // Set of contactIds for which the agent already dismissed the wrap-up
   // screen. Persisted to localStorage so reopening the desktop / refreshing
   // the page doesn't bounce the agent back into a stale wrap-up from a
@@ -199,6 +260,15 @@ export function AgentDesktopPage() {
     }
   };
 
+  // ─── Action modals (DTMF keypad, transfer, summary, quick note) ──
+  // Each of these toggles a small overlay that drives one of the
+  // softphone toolbar / header buttons. Held here so a single state
+  // dispatch closes them all if the agent navigates away.
+  const [dtmfOpen, setDtmfOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [quickNoteOpen, setQuickNoteOpen] = useState(false);
+
   // Hide the CCP iframe — we drive everything via streams API
   useEffect(() => {
     const ccp = document.getElementById("ccp-container");
@@ -214,17 +284,14 @@ export function AgentDesktopPage() {
     };
   }, []);
 
-  // Even after the agent dismisses the wrap-up, Streams may keep the
-  // disconnected contact in the agent snapshot for ~30s. Without filtering
-  // here the desktop would re-render the customer card and chat panel for
-  // a ghost contact, which felt to the agent like the page "going back
-  // then forward by itself". Treat dismissed contacts as if they don't
-  // exist for display purposes; lastContactRef still has them for any
-  // wrap-up re-entry.
-  const activeContact =
-    rawContact && wrapDismissedIds.has(rawContact.contactId)
-      ? null
-      : rawContact;
+  // Previously we filtered `rawContact` by `wrapDismissedIds` so an
+  // agent who finished the wrap-up wouldn't keep seeing the ghost
+  // contact. With the multi-contact tab strip that filter is now
+  // counter-productive: the strip shows the contact, the workspace
+  // hides it, and clicking the tab looks broken. The wrap-up screen
+  // still uses `wrapDismissedIds` to avoid re-prompting; the workspace
+  // simply renders whatever Streams currently surfaces.
+  const activeContact = rawContact;
 
   // "Incoming" here means inbound + ringing — the agent has to decide whether
   // to accept. Outbound calls also pass through "connecting" but the agent
@@ -237,6 +304,11 @@ export function AgentDesktopPage() {
   const isIncoming = isRinging && !isOutbound;
   const isDialing = isRinging && isOutbound;
   const isActive = activeContact?.state === "connected";
+  // Missed but still attached (typical for chat / WhatsApp / email
+  // — the contact stays in the agent's slot blocking new routing
+  // until they call contact.clear()). The workspace shows a special
+  // "close-only" view in this case.
+  const isMissed = activeContact?.state === "missed";
   // ACW state needs the raw contact so the wrap-up screen still appears
   // the very first time the contact ends (before any dismiss has happened).
   const isACW = rawContact?.state === "ended" || agentState === "AfterCallWork";
@@ -346,28 +418,71 @@ export function AgentDesktopPage() {
     !!pendingWrap &&
     !wrapDismissedIds.has(pendingWrap.contactId) &&
     !isIncoming;
+
+  // ─── DEBUG INSTRUMENTATION ────────────────────────────────────
+  // Tracks every render plus diffs on the bag of derived state that
+  // governs which "screen" the desktop shows. When the page flickers
+  // between two views, the diff log here points straight at which
+  // variable flipped. Activate with `?debug=1` in the URL.
+  useDebugRender("AgentDesktopPage", {
+    rawContactId: rawContact?.contactId,
+    rawState: rawContact?.state,
+    rawPhone: rawContact?.customerPhone,
+    rawChannel: rawContact?.channel,
+    activeContactId: activeContact?.contactId,
+    isACW,
+    isIncoming,
+    isActive,
+    isDialing,
+    pendingWrap: pendingWrap?.contactId,
+    showWrapUp,
+    dismissedCount: wrapDismissedIds.size,
+  });
+  traceChange("AgentDesktopPage.screen", {
+    screen: showWrapUp
+      ? "wrap-up"
+      : activeContact
+      ? `active(${activeContact.channel}, ${activeContact.state})`
+      : "empty",
+    isACW,
+    isIncoming,
+    isActive,
+  });
+
   if (showWrapUp && pendingWrap) {
     return (
-      <WrapUpView
-        contactId={pendingWrap.contactId}
-        customerPhone={pendingWrap.customerPhone}
-        queueName={pendingWrap.queueName}
-        durationSeconds={pendingWrap.duration}
-        channel={pendingWrap.channel}
-        onFinish={() => {
-          dismissWrap(pendingWrap.contactId);
-          setPendingWrap(null);
-        }}
-      />
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <MissedCallBanner />
+      <ActiveContactsTabStrip />
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <WrapUpView
+            contactId={pendingWrap.contactId}
+            customerPhone={pendingWrap.customerPhone}
+            queueName={pendingWrap.queueName}
+            durationSeconds={pendingWrap.duration}
+            channel={pendingWrap.channel}
+            onFinish={() => {
+              dismissWrap(pendingWrap.contactId);
+              setPendingWrap(null);
+            }}
+          />
+        </div>
+      </div>
     );
   }
 
   return (
-    <div className="call">
+    <div
+      style={{ display: "flex", flexDirection: "column", height: "100%" }}
+      data-debug-component="AgentDesktopPage"
+    >
+      <MissedCallBanner />
+      <ActiveContactsTabStrip />
+      <div className="call" style={{ flex: 1, minHeight: 0 }}>
       {/* ──────────────────────────────────────────────────────────
          LEFT — Softphone (always rendered)
       ────────────────────────────────────────────────────────── */}
-      <div className="call__panel">
+      <div className="call__panel" data-debug-component="SoftphonePanel">
         <div className="softphone__caller">
           <Avatar
             name={activeContact ? callerName : agentName || user?.username || "Agente"}
@@ -402,7 +517,11 @@ export function AgentDesktopPage() {
           </div>
           <div style={{ textAlign: "center", marginTop: 10 }}>
             <div className="softphone__timer">
-              {isActive ? fmtElapsed(elapsed) : "--:--"}
+              <CallTimer
+                active={isConnected}
+                resetKey={rawContact?.contactId || ""}
+                onTick={elapsedRef}
+              />
             </div>
             <div className="lbl">
               {isActive ? (
@@ -435,10 +554,13 @@ export function AgentDesktopPage() {
           </div>
         </div>
 
-        {/* Voice-only controls — only render for VOICE channel. For CHAT,
-            the equivalent actions (send / end) live inside the
-            ChatThreadPanel composer in the center. */}
-        {!isChat && !isEmail && !isTask && (
+        {/* Voice-only controls — only render for VOICE channel AND when
+            there's an active contact. We deliberately don't show a
+            "ghost" toolbar of disabled Mute/Hold/Teclado buttons when
+            there's no call — that read as broken UI. The dialer takes
+            over the same vertical space instead. CHAT controls live
+            inside the ChatThreadPanel composer in the center. */}
+        {!isChat && !isEmail && !isTask && !!activeContact && (
           <div className="softphone__controls">
             <button
               className={`softphone__btn ${muted ? "softphone__btn--on" : ""}`}
@@ -456,15 +578,30 @@ export function AgentDesktopPage() {
               <Icon.Pause />
               <span>{onHold ? "En espera" : "Espera"}</span>
             </button>
-            <button className="softphone__btn" disabled={!isActive}>
+            <button
+              className={`softphone__btn ${dtmfOpen ? "softphone__btn--on" : ""}`}
+              onClick={() => setDtmfOpen(true)}
+              disabled={!isActive}
+              title="Enviar tonos DTMF (0-9, *, #)"
+            >
               <Icon.Pad />
               <span>Teclado</span>
             </button>
-            <button className="softphone__btn" disabled={!isActive}>
+            <button
+              className="softphone__btn"
+              onClick={() => setTransferOpen(true)}
+              disabled={!isActive}
+              title="Transferir a otra cola"
+            >
               <Icon.Transfer />
               <span>Transferir</span>
             </button>
-            <button className="softphone__btn" disabled={!isActive}>
+            <button
+              className="softphone__btn"
+              disabled
+              title="Conferencia · próximamente"
+              aria-disabled="true"
+            >
               <Icon.Users />
               <span>Conferencia</span>
             </button>
@@ -482,21 +619,55 @@ export function AgentDesktopPage() {
         {/* Chat-specific quick actions (only for CHAT contacts). */}
         {isChat && isActive && (
           <div className="softphone__controls" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <button className="softphone__btn" disabled>
+            <button
+              className="softphone__btn"
+              onClick={() => setTransferOpen(true)}
+              title="Transferir el chat a otra cola"
+            >
               <Icon.Transfer />
               <span>Transferir</span>
             </button>
-            <button className="softphone__btn" disabled>
+            <button
+              className="softphone__btn"
+              onClick={() => setQuickNoteOpen(true)}
+              title="Añadir nota rápida"
+            >
               <Icon.Note />
               <span>Nota</span>
             </button>
           </div>
         )}
 
-        {!activeContact && !isIncoming && <SoftphoneDialer />}
+        {!activeContact && !isIncoming && (
+          <>
+            {/* Empty-state hint above the outbound actions menu — gives
+                the column a clear purpose when there's no call: "this
+                is where you start one". The pill buttons below mirror
+                the native Amazon Connect CCP outbound menu. */}
+            <div
+              style={{
+                padding: "12px 14px 0",
+                fontSize: 11.5,
+                color: "var(--text-3)",
+                textAlign: "center",
+                lineHeight: 1.5,
+              }}
+            >
+              {agentState === "Available"
+                ? "Listo para recibir contactos · inicia uno manualmente abajo"
+                : agentState === "Offline"
+                ? "Cambia tu estado a Available para recibir contactos"
+                : "Sin contacto activo"}
+            </div>
+            <OutboundActionsMenu />
+          </>
+        )}
 
-        {/* Contact Lens sentiment is voice-only — hide for chat/email/task. */}
-        {!isChat && !isEmail && !isTask && (
+        {/* Contact Lens sentiment — voice-only, and only while there's
+            an active contact. Without a call there's nothing to score,
+            so showing an empty "Aparecerá cuando…" placeholder reads as
+            dead chrome. */}
+        {!isChat && !isEmail && !isTask && !!activeContact && (
         <div style={{ padding: 14, borderTop: "1px solid var(--border-1)" }}>
           <div className="section-title">Sentiment en vivo</div>
           {sentTotal > 0 && (sentimentCounts.pos + sentimentCounts.neu + sentimentCounts.neg) > 0 ? (
@@ -543,6 +714,12 @@ export function AgentDesktopPage() {
         </div>
         )}
 
+        {/* Bottom action bar — only render when there's an actual
+            contact to act on. If the agent has nothing going, the
+            dialer above is the affordance to start something; a
+            standalone disabled "Colgar llamada" button at the bottom
+            was misleading. */}
+        {(isIncoming || !!activeContact) && (
         <div
           style={{
             marginTop: "auto",
@@ -557,14 +734,14 @@ export function AgentDesktopPage() {
               <button
                 className="btn btn--danger"
                 style={{ flex: 1, height: 44, justifyContent: "center" }}
-                onClick={reject}
+                onClick={() => reject(activeContact?.contactId)}
               >
                 Rechazar
               </button>
               <button
                 className="btn btn--success"
                 style={{ flex: 1, height: 44, justifyContent: "center" }}
-                onClick={accept}
+                onClick={() => accept(activeContact?.contactId)}
               >
                 <Icon.PhoneIn size={14} /> Atender
               </button>
@@ -578,7 +755,7 @@ export function AgentDesktopPage() {
                 // contact (e.g. server-side stop-contact already happened).
                 // hangup() still works, plus we dismiss locally so the panel
                 // doesn't keep showing the ghost contact.
-                hangup();
+                hangup(activeContact?.contactId);
                 if (isChat && activeContact?.contactId) {
                   dismissWrap(activeContact.contactId);
                 }
@@ -605,6 +782,7 @@ export function AgentDesktopPage() {
             </button>
           )}
         </div>
+        )}
       </div>
 
       {/* ──────────────────────────────────────────────────────────
@@ -612,8 +790,107 @@ export function AgentDesktopPage() {
          for VOICE. Hidden chrome (header / Resumen button) for chat
          since the ChatThreadPanel renders its own header.
       ────────────────────────────────────────────────────────── */}
-      <div className="call__panel">
-        {isChat && activeContact ? (
+      <div className="call__panel" data-debug-component="CenterPanel">
+        {isMissed && activeContact ? (
+          /* Focused contact is in "missed" state — the conversation
+             never started but the contact still occupies a slot in
+             the agent's concurrency (true for chat/WhatsApp/email).
+             `flex: 1 + minHeight: 0` makes this view fill exactly the
+             center column's available height (the parent panel sets
+             `display: flex; flex-direction: column` so flex children
+             stretch). With `justifyContent: center` the buttons sit
+             in the middle of the viewport, never below the fold. */
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              padding: 20,
+              gap: 12,
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              background:
+                "radial-gradient(circle at 50% 0%, var(--accent-red-soft) 0%, transparent 70%)",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                placeItems: "center",
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                background: "var(--accent-red)",
+                color: "white",
+                flexShrink: 0,
+              }}
+            >
+              <Icon.Hangup size={22} />
+            </div>
+            <div style={{ maxWidth: 420 }}>
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: "var(--text-1)",
+                  marginBottom: 4,
+                }}
+              >
+                {channelLabel} perdido
+              </div>
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "var(--text-2)",
+                  lineHeight: 1.5,
+                }}
+              >
+                No aceptaste a tiempo. Sigue ocupando un espacio en tu
+                concurrencia hasta que lo cierres.
+              </div>
+              {activeContact.customerPhone && (
+                <div
+                  className="mono"
+                  style={{
+                    marginTop: 8,
+                    fontSize: 12.5,
+                    color: "var(--text-1)",
+                  }}
+                >
+                  {activeContact.customerPhone}
+                </div>
+              )}
+            </div>
+            <div className="row" style={{ gap: 10, marginTop: 4, flexShrink: 0 }}>
+              <button
+                type="button"
+                className="btn btn--danger"
+                style={{ minHeight: 38, padding: "0 16px" }}
+                onClick={() => hangup(activeContact.contactId)}
+              >
+                <Icon.Hangup size={13} /> Cerrar contacto
+              </button>
+              {channelKey === "VOICE" && activeContact.customerPhone && (
+                <button
+                  type="button"
+                  className="btn btn--success"
+                  style={{ minHeight: 38, padding: "0 16px" }}
+                  onClick={async () => {
+                    try {
+                      await placeCall(activeContact.customerPhone!);
+                    } catch {
+                      /* error toast handled by SoftphoneDialer ergo */
+                    }
+                  }}
+                >
+                  <Icon.PhoneIn size={13} /> Devolver llamada
+                </button>
+              )}
+            </div>
+          </div>
+        ) : isChat && activeContact ? (
           <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <ChatThreadPanel
               contactId={activeContact.contactId}
@@ -652,9 +929,15 @@ export function AgentDesktopPage() {
                   Stream
                 </span>
               )}
-              <button className="btn btn--ghost btn--sm" disabled={!activeContact}>
-                <Icon.Send size={12} /> Resumen
-              </button>
+              {activeContact && (
+                <button
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setSummaryOpen(true)}
+                  title="Generar resumen de la conversación"
+                >
+                  <Icon.Send size={12} /> Resumen
+                </button>
+              )}
             </div>
 
             <div className="call__panel-body">
@@ -712,18 +995,19 @@ export function AgentDesktopPage() {
       {/* ──────────────────────────────────────────────────────────
          RIGHT — Customer 360° (always rendered)
       ────────────────────────────────────────────────────────── */}
-      <div className="call__panel">
+      <div className="call__panel" data-debug-component="Customer360Panel">
         <div className="call__panel-head">
           <Icon.User size={16} />
           <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
             Cliente 360°
           </div>
-          <button
-            className="btn btn--ghost btn--sm btn--icon"
-            disabled={!activeContact}
-          >
-            <Icon.More size={14} />
-          </button>
+          {activeContact && (
+            <Customer360MoreMenu
+              customerPhone={activeContact.customerPhone}
+              contactId={activeContact.contactId}
+              onRefreshProfile={() => setProfileRefreshKey((k) => k + 1)}
+            />
+          )}
         </div>
         <div className="call__panel-body">
           <div className="c360">
@@ -735,6 +1019,7 @@ export function AgentDesktopPage() {
                 <CustomerProfilePanel
                   phone={activeContact.customerPhone}
                   isActive={!!isActive}
+                  refreshKey={profileRefreshKey}
                 />
 
                 <div>
@@ -755,44 +1040,43 @@ export function AgentDesktopPage() {
               </>
             ) : (
               <>
-                <EmptyPanel
-                  icon={Icon.User}
-                  title="Cliente 360° aparece al recibir una llamada"
-                  body="Verás perfil, casos abiertos, historial omnicanal y notas internas."
-                />
-                <div>
-                  <div className="section-title">Estado del agente</div>
-                  <div
-                    style={{
-                      padding: 12,
-                      background: "var(--bg-2)",
-                      borderRadius: 8,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                    }}
-                  >
-                    <div
-                      className="state-dot"
-                      style={{ background: stateToken.fg }}
-                    />
-                    <div style={{ flex: 1, fontSize: 12.5 }}>
-                      <div style={{ fontWeight: 500, color: "var(--text-1)" }}>
-                        {stateToken.label}
-                      </div>
-                      <div className="muted" style={{ fontSize: 11 }}>
-                        {agentName || user?.username || "Agente"} ·{" "}
-                        {user?.highestRole ?? ""}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                {/* Idle browser: when there's no active contact the agent
+                    can still search Connect Customer Profiles by phone /
+                    email / name, view a profile, and edit its fields.
+                    Keeps the right column useful between calls instead
+                    of showing a static "aparece al recibir una llamada"
+                    placeholder. */}
+                <CustomerBrowser />
               </>
             )}
           </div>
         </div>
       </div>
 
+      </div>
+      <MissedHistoryDrawer />
+
+      {/* Action modals — only one is visible at a time. Each is fully
+          unmounted when closed (the `if (!open) return null` inside the
+          component) so they don't keep listeners around. */}
+      <DTMFKeypadModal open={dtmfOpen} onClose={() => setDtmfOpen(false)} />
+      <TransferQueueModal
+        open={transferOpen}
+        onClose={() => setTransferOpen(false)}
+        contactId={activeContact?.contactId ?? null}
+        channelLabel={channelLabel.toLowerCase()}
+      />
+      <LiveSummaryModal
+        open={summaryOpen}
+        onClose={() => setSummaryOpen(false)}
+        contactId={activeContact?.contactId ?? null}
+      />
+      <QuickNoteModal
+        open={quickNoteOpen}
+        onClose={() => setQuickNoteOpen(false)}
+        contactId={activeContact?.contactId ?? null}
+        agentUsername={user?.username || ""}
+      />
     </div>
   );
 }

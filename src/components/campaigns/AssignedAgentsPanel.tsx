@@ -1,13 +1,5 @@
 import { useState, useMemo } from "react";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -16,11 +8,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { UserPlus, UserMinus, Users, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useCampaignAgents } from "@/hooks/useCampaignAgents";
 import { useLiveQueue } from "@/hooks/useLiveQueue";
 import type { Campaign } from "@/hooks/useCampaigns";
+import { Card, CardBody } from "@/components/vox/primitives";
+import * as Icon from "@/components/vox/primitives";
 
 interface Props {
   campaign: Campaign;
@@ -102,94 +95,201 @@ export function AssignedAgentsPanel({ campaign }: Props) {
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Users className="h-4 w-4" />
-            Agentes asignados ({agents.length})
-          </CardTitle>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setPickerOpen(true)}
-            disabled={mutating}
-          >
-            <UserPlus className="mr-1 h-4 w-4" />
-            Agregar agentes
-          </Button>
+      <div className="card__head">
+        <div className="card__title">
+          <Icon.Users
+            size={14}
+            style={{ marginRight: 6, verticalAlign: "middle" }}
+          />
+          Agentes asignados
         </div>
+        <span className="card__sub">{agents.length} asignados</span>
+        <button
+          className="btn btn--sm"
+          style={{ marginLeft: "auto" }}
+          onClick={() => setPickerOpen(true)}
+          disabled={mutating}
+        >
+          <Icon.Plus size={11} /> Agregar agentes
+        </button>
+      </div>
+      <CardBody>
         {!campaignQueueId && (
-          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-            ⚠️ Esta campaña no tiene queue asignada. Edita la campaña para elegir
-            una queue antes de asignar agentes.
-          </p>
+          <div
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: "var(--accent-amber-soft)",
+              color: "var(--accent-amber)",
+              fontSize: 11.5,
+              marginBottom: 10,
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+            }}
+          >
+            <Icon.Flag size={12} />
+            <span>
+              Esta campaña no tiene queue asignada. Edita la campaña para elegir
+              una queue antes de asignar agentes.
+            </span>
+          </div>
         )}
-      </CardHeader>
-      <CardContent>
         {loading && agents.length === 0 ? (
-          <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Cargando agentes...
+          <div
+            style={{
+              padding: 24,
+              textAlign: "center",
+              color: "var(--text-3)",
+              fontSize: 12.5,
+            }}
+          >
+            Cargando agentes…
           </div>
         ) : agents.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            No hay agentes asignados aún. Click "Agregar agentes" para empezar —
-            el sistema los configurará automáticamente para recibir llamadas de
-            esta campaña.
-          </p>
+          <div
+            style={{
+              padding: 24,
+              textAlign: "center",
+              color: "var(--text-3)",
+              fontSize: 12.5,
+              lineHeight: 1.6,
+            }}
+          >
+            No hay agentes asignados aún. Click <strong>"Agregar agentes"</strong> para empezar — el sistema los configurará automáticamente para recibir llamadas de esta campaña.
+          </div>
         ) : (
-          <div className="space-y-2">
+          /* Inline pills that wrap — keeps the list compact when an
+             agent has a short username (most cases) and gracefully
+             stretches to ~360px when multiple chips need to coexist
+             on the same row. */
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
             {agents.map((a) => {
-              // Find live status from Queue Manager data
               const live = liveQueue?.agents.find((x) => x.userId === a.userId);
+              const statusName = (live?.statusName || "Offline").toLowerCase();
+              const isAvailable = statusName === "available";
+              const isOnContact = !!live?.activeContact;
+              const avatarBg = isAvailable
+                ? "var(--accent-green-soft)"
+                : isOnContact
+                ? "var(--accent-cyan-soft)"
+                : "var(--bg-3)";
+              const avatarFg = isAvailable
+                ? "var(--accent-green)"
+                : isOnContact
+                ? "var(--accent-cyan)"
+                : "var(--text-3)";
+              const statusDotColor = isAvailable
+                ? "var(--accent-green)"
+                : isOnContact
+                ? "var(--accent-cyan)"
+                : "var(--text-3)";
               return (
                 <div
                   key={a.userId}
-                  className="flex items-center justify-between rounded-md border bg-card px-3 py-2"
+                  className="row"
+                  title={`${a.username} · ${live?.statusName || "Offline"} · prioridad ${a.priority}`}
+                  style={{
+                    gap: 8,
+                    padding: "4px 6px 4px 4px",
+                    background: "var(--bg-2)",
+                    border: "1px solid var(--border-1)",
+                    borderRadius: 999,
+                    alignItems: "center",
+                    flexShrink: 0,
+                  }}
                 >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
-                        live?.statusName?.toLowerCase() === "available"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : live?.activeContact
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {a.username.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium">{a.username}</div>
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        <Badge variant="outline" className="text-[9px]">
-                          {live?.statusName || "Offline"}
-                        </Badge>
-                        {a.addedQueueToRoutingProfile && (
-                          <Badge className="bg-emerald-50 text-emerald-700 text-[9px] dark:bg-emerald-950/50 dark:text-emerald-300">
-                            queue agregada auto
-                          </Badge>
-                        )}
-                        <span>prioridad {a.priority}</span>
-                      </div>
-                    </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      placeItems: "center",
+                      width: 24,
+                      height: 24,
+                      borderRadius: "50%",
+                      background: avatarBg,
+                      color: avatarFg,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {a.username.slice(0, 2).toUpperCase()}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 w-7 p-0 text-rose-600 hover:text-rose-700"
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: "var(--text-1)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {a.username}
+                  </span>
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: statusDotColor,
+                      flexShrink: 0,
+                    }}
+                    title={live?.statusName || "Offline"}
+                  />
+                  <span
+                    className="muted mono"
+                    style={{ fontSize: 10, flexShrink: 0 }}
+                  >
+                    p{a.priority}
+                  </span>
+                  {a.addedQueueToRoutingProfile && (
+                    <span
+                      className="muted"
+                      style={{ fontSize: 9.5, flexShrink: 0 }}
+                      title="Queue añadida automáticamente al routing profile"
+                    >
+                      · auto
+                    </span>
+                  )}
+                  <button
                     onClick={() => handleRemove(a.userId, a.username)}
                     disabled={mutating}
                     title="Desasignar"
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: "50%",
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--text-3)",
+                      cursor: mutating ? "not-allowed" : "pointer",
+                      display: "grid",
+                      placeItems: "center",
+                      padding: 0,
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={(e) =>
+                      ((e.currentTarget as HTMLButtonElement).style.color =
+                        "var(--accent-red)")
+                    }
+                    onMouseLeave={(e) =>
+                      ((e.currentTarget as HTMLButtonElement).style.color =
+                        "var(--text-3)")
+                    }
                   >
-                    <UserMinus className="h-3.5 w-3.5" />
-                  </Button>
+                    <Icon.Close size={11} />
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
-      </CardContent>
+      </CardBody>
 
       {/* Picker modal */}
       <Dialog open={pickerOpen} onOpenChange={(o) => !o && setPickerOpen(false)}>
@@ -203,7 +303,16 @@ export function AssignedAgentsPanel({ campaign }: Props) {
           </DialogHeader>
 
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Icon.Search
+              size={14}
+              style={{
+                position: "absolute",
+                left: 12,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "var(--text-3)",
+              }}
+            />
             <Input
               placeholder="Buscar agente..."
               value={search}
@@ -238,9 +347,9 @@ export function AssignedAgentsPanel({ campaign }: Props) {
                   <div className="flex-1">
                     <div className="text-sm font-medium">{u.username}</div>
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <Badge variant="outline" className="text-[9px]">
+                      <span className="chip" style={{ fontSize: 9.5 }}>
                         {u.statusName || "Offline"}
-                      </Badge>
+                      </span>
                       {u.routingProfile && (
                         <span className="truncate">{u.routingProfile}</span>
                       )}
@@ -252,26 +361,27 @@ export function AssignedAgentsPanel({ campaign }: Props) {
           </div>
 
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setPickerOpen(false)}>
+            <button
+              className="btn btn--ghost"
+              onClick={() => setPickerOpen(false)}
+            >
               Cancelar
-            </Button>
-            <Button
+            </button>
+            <button
+              className="btn btn--primary"
               onClick={handleAddSelected}
               disabled={selectedIds.size === 0 || mutating}
             >
               {mutating ? (
-                <>
-                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                  Asignando...
-                </>
+                <>Asignando…</>
               ) : (
                 <>
-                  <UserPlus className="mr-1 h-4 w-4" />
+                  <Icon.Plus size={13} />
                   Asignar {selectedIds.size} agente
                   {selectedIds.size === 1 ? "" : "s"}
                 </>
               )}
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

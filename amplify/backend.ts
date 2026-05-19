@@ -15,6 +15,7 @@ import { listUsers } from "./functions/list-users/resource";
 import { lookupCustomerProfile } from "./functions/lookup-customer-profile/resource";
 import { getLiveTranscript } from "./functions/get-live-transcript/resource";
 import { getContactHistory } from "./functions/get-contact-history/resource";
+import { listMissedContacts } from "./functions/list-missed-contacts/resource";
 import { saveAgentNotes } from "./functions/save-agent-notes/resource";
 import { generateCallSummary } from "./functions/generate-call-summary/resource";
 import { getQSuggestions } from "./functions/get-q-suggestions/resource";
@@ -40,6 +41,7 @@ const backend = defineBackend({
   lookupCustomerProfile,
   getLiveTranscript,
   getContactHistory,
+  listMissedContacts,
   saveAgentNotes,
   generateCallSummary,
   getQSuggestions,
@@ -224,6 +226,25 @@ asFunction(historyLambda).addEnvironment(
   CONNECT_INSTANCE_ID
 );
 
+// ---- list-missed-contacts (SearchContacts + DescribeContact + DescribeQueue) ----
+// Powers the "Perdidas hoy" drawer in the agent desktop. Filters
+// SearchContacts results to the ones the agent failed to accept.
+const missedLambda = backend.listMissedContacts.resources.lambda;
+missedLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: [
+      "connect:SearchContacts",
+      "connect:DescribeContact",
+      "connect:DescribeQueue",
+    ],
+    resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
+  })
+);
+asFunction(missedLambda).addEnvironment(
+  "CONNECT_INSTANCE_ID",
+  CONNECT_INSTANCE_ID
+);
+
 // ---- save-agent-notes (DynamoDB) ----
 const notesLambda = backend.saveAgentNotes.resources.lambda;
 notesLambda.addToRolePolicy(dynamoWritePolicy);
@@ -360,6 +381,15 @@ const historyUrl = asFunction(historyLambda).addFunctionUrl({
   },
 });
 
+const missedContactsUrl = asFunction(missedLambda).addFunctionUrl({
+  authType: lambda.FunctionUrlAuthType.NONE,
+  cors: {
+    allowedOrigins: ["*"],
+    allowedMethods: [lambda.HttpMethod.GET],
+    allowedHeaders: ["*"],
+  },
+});
+
 const notesUrl = asFunction(notesLambda).addFunctionUrl({
   authType: lambda.FunctionUrlAuthType.NONE,
   cors: {
@@ -408,6 +438,7 @@ backend.addOutput({
       lookupCustomerProfile: profileUrl.url,
       getLiveTranscript: liveTranscriptUrl.url,
       getContactHistory: historyUrl.url,
+      listMissedContacts: missedContactsUrl.url,
       saveAgentNotes: notesUrl.url,
       generateCallSummary: summaryUrl.url,
       getQSuggestions: qUrl.url,

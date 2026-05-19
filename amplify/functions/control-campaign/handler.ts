@@ -22,7 +22,17 @@ const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 
-const ALLOWED_ACTIONS = new Set(["start", "pause", "resume", "cancel"]);
+const ALLOWED_ACTIONS = new Set([
+  "start",
+  "pause",
+  "resume",
+  "cancel",
+  // Live tuning — adjust the dial pace without pausing the campaign.
+  // Updates `concurrency` on the campaign row; the dialer reads this
+  // every minute when it computes how many StartOutboundVoiceContact
+  // calls to make per tick.
+  "set-concurrency",
+]);
 
 interface ContactRow {
   campaignId: string;
@@ -154,6 +164,10 @@ export const handler: Handler = async (event: any) => {
   try {
     const body = JSON.parse(event.body || "{}");
     const { campaignId, action } = body;
+    // Optional payload for set-concurrency. Clamp to a sane range so a
+    // typo doesn't accidentally fire 500 concurrent dials.
+    const requestedConcurrency: number | undefined =
+      body.concurrency !== undefined ? Number(body.concurrency) : undefined;
 
     if (!campaignId || !action) {
       return {
@@ -191,6 +205,42 @@ export const handler: Handler = async (event: any) => {
     const currentStatus = campaign.status as string;
     const awsCampaignId = campaign.awsCampaignId as string | undefined;
     const useNative = !!awsCampaignId;
+
+    // ── set-concurrency: live tuning, doesn't touch status ───────
+    if (action === "set-concurrency") {
+      if (
+        requestedConcurrency === undefined ||
+        !Number.isFinite(requestedConcurrency)
+      ) {
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            error: "concurrency required (number)",
+          }),
+        };
+      }
+      const clamped = Math.max(1, Math.min(50, Math.round(requestedConcurrency)));
+      await dynamo.send(
+        new UpdateItemCommand({
+          TableName: CAMPAIGNS_TABLE,
+          Key: { campaignId: { S: campaignId } },
+          UpdateExpression: "SET concurrency = :c",
+          ExpressionAttributeValues: {
+            ":c": { N: String(clamped) },
+          },
+        })
+      );
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId,
+          concurrency: clamped,
+          previous: Number(campaign.concurrency) || null,
+        }),
+      };
+    }
 
     let newStatus: string;
     const extraSets: Record<string, { S?: string; NULL?: boolean }> = {};

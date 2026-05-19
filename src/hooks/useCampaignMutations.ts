@@ -80,6 +80,23 @@ export function useCampaignMutations() {
     [endpoints?.relaunchCampaign]
   );
 
+  const setConcurrency = useCallback(
+    async (campaignId: string, concurrency: number) => {
+      if (!endpoints?.controlCampaign) throw new Error("No endpoint");
+      setPending(true);
+      try {
+        return await postJson(endpoints.controlCampaign, {
+          campaignId,
+          action: "set-concurrency",
+          concurrency,
+        });
+      } finally {
+        setPending(false);
+      }
+    },
+    [endpoints?.controlCampaign]
+  );
+
   const clone = useCallback(
     async (
       campaignId: string,
@@ -100,5 +117,5 @@ export function useCampaignMutations() {
     [actor, endpoints?.cloneCampaign]
   );
 
-  return { pending, update, relaunch, clone };
+  return { pending, update, relaunch, clone, setConcurrency };
 }

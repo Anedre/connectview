@@ -8,13 +8,11 @@ import {
   Coffee,
   UserX,
   PhoneCall,
-  CheckCircle2,
   AlertTriangle,
   Hourglass,
   PhoneIncoming,
   UserPlus,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { ContactBubble, DND_BUBBLE } from "./ContactBubble";
 import type { BubbleDragPayload } from "./ContactBubble";
 import type { LiveAgent } from "@/hooks/useLiveQueue";
