@@ -31,8 +31,10 @@ interface CCPContextValue {
   toggleHold: (next?: boolean) => void;
   /** Hang up / end the specified contact. When `contactId` is omitted,
    *  operates on whichever contact Streams considers the agent's
-   *  current one (legacy single-contact behaviour). */
-  hangup: (contactId?: string) => void;
+   *  current one (legacy single-contact behaviour).
+   *  For chat contacts we send a farewell message to the customer
+   *  before tearing the connection down, hence the async return. */
+  hangup: (contactId?: string) => Promise<void> | void;
   /** Accept the specified contact. Pass `contactId` explicitly when
    *  multiple contacts may be ringing — otherwise the first ringing
    *  one in Streams' list wins. */
@@ -346,8 +348,56 @@ export function CCPProvider({ children }: { children: ReactNode }) {
     [onHold, currentContact]
   );
 
+  /**
+   * Template farewell the agent sends to a chat / WhatsApp customer
+   * right before disconnecting. We send this from the agent's chat
+   * session (via Streams ChatSession or the connection's media
+   * controller) so the customer reads "thanks, write 'hola' to start
+   * again" the moment the agent ends the contact — Connect's own
+   * disconnect-flow trigger doesn't reliably fire for WhatsApp.
+   *
+   * Kept here as a constant so it stays in sync with the equivalent
+   * text in the UDEP-Disconnect contact flow.
+   */
+  const CHAT_FAREWELL_TEMPLATE =
+    "👋 ¡Gracias por contactarte con la *Universidad de Piura*! 🎓\n\n" +
+    "💙 Esperamos haber resuelto tu consulta.\n\n" +
+    "📝 Si necesitas algo más:\n" +
+    "✍️ Escríbenos *hola* para empezar de nuevo 🔁\n" +
+    "🌐 Visítanos en udep.edu.pe\n\n" +
+    "🎉 ¡Que tengas un excelente día! ✨\n" +
+    "🚀 ¡Te esperamos en la UDEP! 🎓💙";
+
+  // Best-effort: send a message on the agent's chat session for a
+  // given contact. Returns a promise that resolves whether the send
+  // worked or not — we don't want to block disconnect on a flaky
+  // chat send.
+  const sendChatMessage = useCallback(
+    async (contact: any, message: string): Promise<void> => {
+      try {
+        const agentConn =
+          contact.getAgentConnection?.() ||
+          contact.getInitialConnection?.();
+        if (!agentConn) return;
+        // Streams exposes the media controller asynchronously on the
+        // agent connection. For a CHAT contact this resolves to a
+        // ChatController with `.sendMessage({ contentType, message })`.
+        const ctlr = await agentConn.getMediaController?.();
+        if (ctlr?.sendMessage) {
+          await ctlr.sendMessage({
+            contentType: "text/plain",
+            message,
+          });
+        }
+      } catch (err) {
+        console.warn("farewell sendMessage failed:", err);
+      }
+    },
+    []
+  );
+
   const hangup = useCallback(
-    (contactId?: string) => {
+    async (contactId?: string) => {
       const c = currentContact(contactId);
       if (!c) return;
       try {
@@ -368,13 +418,28 @@ export function CCPProvider({ children }: { children: ReactNode }) {
           });
           return;
         }
+
+        // For chat (incl. WhatsApp) we send a farewell message before
+        // tearing down the connection so the customer sees the
+        // closing text + "escribe hola para reiniciar" hint.
+        // Voice contacts skip this — they get the disconnect flow's
+        // TTS instead (or no message if no disconnect flow).
+        const channel = (c.getType?.() || "").toUpperCase();
+        if (channel === "CHAT") {
+          await sendChatMessage(c, CHAT_FAREWELL_TEMPLATE);
+          // Small grace period so the message lands before the
+          // socket teardown — without this the SendMessage POST can
+          // still be in-flight when the agent's connection drops.
+          await new Promise((r) => setTimeout(r, 350));
+        }
+
         const conn = c.getActiveInitialConnection?.() || c.getInitialConnection?.();
         conn?.destroy?.();
       } catch {
         /* noop */
       }
     },
-    [currentContact]
+    [currentContact, sendChatMessage]
   );
 
   // Streams plays the ringtone via a separate audio element managed by the
