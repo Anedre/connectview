@@ -71,7 +71,12 @@ export function NewCampaignWizard({
   const { phones, loading: phonesLoading } = useSourcePhones();
   const { queues, loading: queuesLoading } = useQueues();
 
-  const [step, setStep] = useState<Step>(1);
+  // We default to step 2 (Listado de contactos) so the 1-click flow
+  // ("just upload your CSV") is the primary path. Step 1 (name +
+  // description) is still reachable via "Atrás" for users who want
+  // to personalise — but the auto-generated name + sensible defaults
+  // make it optional for the common case.
+  const [step, setStep] = useState<Step>(2);
   const [submitting, setSubmitting] = useState(false);
 
   // Step 1 — Meta
@@ -113,11 +118,14 @@ export function NewCampaignWizard({
    *  general pool when it empties. */
   const [maxContactsPerAgent, setMaxContactsPerAgent] = useState(5);
 
-  // Reset when modal closes
+  // Reset when modal closes — and pre-fill an auto-generated name when
+  // the modal OPENS. The 1-click flow is "open → upload CSV → Lanzar",
+  // so we land the user directly on step 2 (Listado de contactos) and
+  // give the campaign a sensible default name they can keep or edit.
   useEffect(() => {
     if (!open) {
       setTimeout(() => {
-        setStep(1);
+        setStep(2);
         setName("");
         setDescription("");
         setContacts([]);
@@ -129,7 +137,22 @@ export function NewCampaignWizard({
         setCampaignQueueId("");
         setQueueTouched(false);
       }, 200);
+      return;
     }
+    // Auto-name: "Campaña 20 may · 11:34" — short, sortable, editable.
+    if (!name) {
+      const now = new Date();
+      const fmt = new Intl.DateTimeFormat("es-PE", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "America/Lima",
+      });
+      setName(`Campaña ${fmt.format(now).replace(",", " ·")}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Auto-detect primary queue when the user picks a contact flow, unless they
@@ -868,8 +891,40 @@ export function NewCampaignWizard({
               Atrás
             </Button>
           )}
+
+          {/* On step 2 we expose a 1-click "Lanzar ahora" fast path:
+              with auto-name + auto-flow + auto-source-phone + sensible
+              defaults already applied, the manager just needs to drop
+              a CSV and click. The "Siguiente" button stays as the
+              power-user path to tweak dial mode, concurrency, window,
+              retries, etc. */}
+          {step === 2 && canProceedStep2 && (
+            <Button
+              onClick={handleCreate}
+              disabled={submitting || !canProceedStep3}
+              title={
+                !canProceedStep3
+                  ? "Falta source phone o contact flow — usa Siguiente para configurar"
+                  : "Lanzar con la configuración por defecto"
+              }
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  Lanzando…
+                </>
+              ) : (
+                <>
+                  <Rocket className="mr-1 h-4 w-4" />
+                  Lanzar campaña
+                </>
+              )}
+            </Button>
+          )}
+
           {step < 4 && (
             <Button
+              variant={step === 2 ? "outline" : "default"}
               onClick={() => setStep((s) => (s + 1) as Step)}
               disabled={
                 (step === 1 && !canProceedStep1) ||
@@ -877,7 +932,7 @@ export function NewCampaignWizard({
                 (step === 3 && !canProceedStep3)
               }
             >
-              Siguiente
+              {step === 2 ? "Personalizar" : "Siguiente"}
               <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           )}
