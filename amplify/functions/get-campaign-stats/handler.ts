@@ -5,10 +5,53 @@ import {
   QueryCommand,
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
+import { ConnectClient, ListUsersCommand } from "@aws-sdk/client-connect";
 
 const dynamo = new DynamoDBClient({});
+const connect = new ConnectClient({ maxAttempts: 2 });
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE = process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+const CONNECT_INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+
+// userId → username cache. Refreshed at most every 5min per Lambda warm
+// instance. Even if a campaign-contact row stored a UUID (legacy or
+// before process-contact-event had perms), we resolve it on the fly so
+// the UI never shows raw IDs.
+const usernameCache = new Map<string, string>();
+let userCacheExpiry = 0;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function refreshUserCache(): Promise<void> {
+  if (Date.now() < userCacheExpiry && usernameCache.size > 0) return;
+  if (!CONNECT_INSTANCE_ID) return;
+  usernameCache.clear();
+  let nextToken: string | undefined;
+  for (let i = 0; i < 10; i++) {
+    try {
+      const res = await connect.send(
+        new ListUsersCommand({
+          InstanceId: CONNECT_INSTANCE_ID,
+          MaxResults: 100,
+          NextToken: nextToken,
+        })
+      );
+      for (const u of res.UserSummaryList ?? []) {
+        if (u.Id && u.Username) usernameCache.set(u.Id, u.Username);
+      }
+      if (!res.NextToken) break;
+      nextToken = res.NextToken;
+    } catch {
+      break;
+    }
+  }
+  userCacheExpiry = Date.now() + 5 * 60 * 1000;
+}
+
+function resolveAgent(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  if (!UUID_RE.test(raw)) return raw; // already a username
+  return usernameCache.get(raw) || raw;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
@@ -37,6 +80,10 @@ export const handler: Handler = async (event: any) => {
       };
     }
     const campaign = unmarshall(metaRes.Item);
+
+    // Warm the username cache in parallel with the queries below — by
+    // the time we project dialingContacts the map is ready.
+    const cacheWarm = refreshUserCache();
 
     // Fresh counts from contacts table by status (authoritative, in case counters drift)
     const statuses = [
@@ -83,7 +130,10 @@ export const handler: Handler = async (event: any) => {
               rowId: row.rowId as string,
               phone: row.phone as string,
               customerName: (row.customerName as string) || "",
-              agentUsername: row.agentUsername as string | undefined,
+              // Resolve UUID → username before responding; the cache is
+              // populated by the parallel ListUsers call we kicked off
+              // above.
+              agentUsername: resolveAgent(row.agentUsername as string | undefined),
               connectContactId: row.connectContactId as string | undefined,
               status: row.status as string,
             });
@@ -93,6 +143,13 @@ export const handler: Handler = async (event: any) => {
         if (!lastKey) break;
       }
       freshCounts[st] = count;
+    }
+
+    // Wait for the username cache (if it's still loading) and re-map
+    // any UUID-shaped agentUsername values that snuck through above.
+    await cacheWarm;
+    for (const lc of dialingContacts) {
+      lc.agentUsername = resolveAgent(lc.agentUsername);
     }
 
     return {

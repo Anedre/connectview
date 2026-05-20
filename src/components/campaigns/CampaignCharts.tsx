@@ -485,8 +485,15 @@ function ResponsiveSpark({
   const points = useMemo(() => {
     if (!data?.length) return [] as Array<{ x: number; y: number }>;
     const yMax = Math.max(1, total);
-    const n = Math.max(2, data.length);
-    return data.map((v, i) => {
+    // Prepend a baseline (0) so the very first sample doesn't read as
+    // a degenerate "flat full-width area at the bottom" — which the
+    // user reads as "100% complete". With this, a single point draws
+    // a rising line from bottom-left to the current value at the
+    // right edge, matching the agent's mental model of "progress
+    // ramping up".
+    const series = data.length === 1 ? [0, data[0]] : data;
+    const n = Math.max(2, series.length);
+    return series.map((v, i) => {
       const x = (i / (n - 1)) * VB_W;
       // Clamp to [0, yMax] so out-of-range data doesn't shoot off the chart.
       const ratio = Math.min(1, Math.max(0, v / yMax));

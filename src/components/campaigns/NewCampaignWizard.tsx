@@ -146,12 +146,25 @@ export function NewCampaignWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowQueues?.primaryQueue?.queueId]);
 
-  // Default selections once flows & phones load
+  // Default selections once flows & phones load. We prefer the
+  // "UDEP-Outbound-Smart" flow (the lead-routing flow) over anything
+  // else — when it's the only flow that makes sense for outbound
+  // campaigns, the wizard shouldn't make the user pick it manually.
+  // Voice source phone: prefer Peru numbers over WhatsApp / US.
   useEffect(() => {
-    if (!sourcePhoneNumber && phones.length > 0) {
-      setSourcePhoneNumber(phones[0].phoneNumber);
-    }
+    if (sourcePhoneNumber || phones.length === 0) return;
+    // Look for a PE (Peru) number first, then fall back to the first phone.
+    const pe = phones.find((p) => p.countryCode === "PE");
+    setSourcePhoneNumber((pe || phones[0]).phoneNumber);
   }, [phones, sourcePhoneNumber]);
+
+  useEffect(() => {
+    if (contactFlowId || flows.length === 0) return;
+    // Pre-select UDEP-Outbound-Smart whenever it exists. Falls back to
+    // the first published flow if it doesn't (non-UDEP deployments).
+    const smart = flows.find((f) => f.name === "UDEP-Outbound-Smart");
+    setContactFlowId((smart || flows[0]).id);
+  }, [flows, contactFlowId]);
 
   // ------- File upload -------
   const onFilePick = async (file: File) => {

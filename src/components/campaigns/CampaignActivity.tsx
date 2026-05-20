@@ -253,7 +253,13 @@ export function CampaignActivity({
                                 marginLeft: "auto",
                               }}
                             >
-                              <Icon.User size={9} /> {lc.agentUsername}
+                              <Icon.User size={9} />{" "}
+                              {/* Resolve Connect UUIDs → username when
+                                  the agent is reachable via the campaign-
+                                  agents list. Falls back to whatever the
+                                  feed sent (could already be a username
+                                  for legacy rows). */}
+                              {resolveAgentLabel(lc.agentUsername)}
                             </span>
                           )}
                         </div>
