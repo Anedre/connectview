@@ -22,6 +22,8 @@ import { LiveSummaryModal } from "@/components/workspace/LiveSummaryModal";
 import { QuickNoteModal } from "@/components/workspace/QuickNoteModal";
 import { OutboundActionsMenu } from "@/components/workspace/OutboundActionsMenu";
 import { CustomerBrowser } from "@/components/workspace/CustomerBrowser";
+import { ScheduleCallbackModal } from "@/components/workspace/ScheduleCallbackModal";
+import { CallbackHistoryDrawer } from "@/components/workspace/CallbackHistoryDrawer";
 import { WrapUpView } from "@/components/vox/WrapUpView";
 import {
   Avatar,
@@ -268,6 +270,13 @@ export function AgentDesktopPage() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [quickNoteOpen, setQuickNoteOpen] = useState(false);
+  // "📅 Agendar callback" — agent promises to call the customer back at a
+  // future time. Submits to schedule-callback Lambda; the dispatcher
+  // Lambda fires the outbound call at the agreed time.
+  const [scheduleCallbackOpen, setScheduleCallbackOpen] = useState(false);
+  // Bumped each time the modal successfully schedules a callback so
+  // the drawer below re-fetches without waiting for the next 60s poll.
+  const [callbackRefreshKey, setCallbackRefreshKey] = useState(0);
 
   // Hide the CCP iframe — we drive everything via streams API
   useEffect(() => {
@@ -561,81 +570,130 @@ export function AgentDesktopPage() {
             over the same vertical space instead. CHAT controls live
             inside the ChatThreadPanel composer in the center. */}
         {!isChat && !isEmail && !isTask && !!activeContact && (
-          <div className="softphone__controls">
-            <button
-              className={`softphone__btn ${muted ? "softphone__btn--on" : ""}`}
-              onClick={() => mute()}
-              disabled={!isActive}
-            >
-              {muted ? <Icon.MicOff /> : <Icon.Mic />}
-              <span>{muted ? "Mute on" : "Mute"}</span>
-            </button>
-            <button
-              className={`softphone__btn ${onHold ? "softphone__btn--on" : ""}`}
-              onClick={() => toggleHold()}
-              disabled={!isActive}
-            >
-              <Icon.Pause />
-              <span>{onHold ? "En espera" : "Espera"}</span>
-            </button>
-            <button
-              className={`softphone__btn ${dtmfOpen ? "softphone__btn--on" : ""}`}
-              onClick={() => setDtmfOpen(true)}
-              disabled={!isActive}
-              title="Enviar tonos DTMF (0-9, *, #)"
-            >
-              <Icon.Pad />
-              <span>Teclado</span>
-            </button>
-            <button
-              className="softphone__btn"
-              onClick={() => setTransferOpen(true)}
-              disabled={!isActive}
-              title="Transferir a otra cola"
-            >
-              <Icon.Transfer />
-              <span>Transferir</span>
-            </button>
-            <button
-              className="softphone__btn"
-              disabled
-              title="Conferencia · próximamente"
-              aria-disabled="true"
-            >
-              <Icon.Users />
-              <span>Conferencia</span>
-            </button>
-            <button
-              className={`softphone__btn ${recording ? "softphone__btn--on" : ""}`}
-              onClick={toggleRecording}
-              disabled={!isActive}
-            >
-              <Icon.Record />
-              <span>{recording ? "Grabando" : "Pausada"}</span>
-            </button>
-          </div>
+          <>
+            <div className="softphone__controls">
+              <button
+                className={`softphone__btn ${muted ? "softphone__btn--on" : ""}`}
+                onClick={() => mute()}
+                disabled={!isActive}
+              >
+                {muted ? <Icon.MicOff /> : <Icon.Mic />}
+                <span>{muted ? "Mute on" : "Mute"}</span>
+              </button>
+              <button
+                className={`softphone__btn ${onHold ? "softphone__btn--on" : ""}`}
+                onClick={() => toggleHold()}
+                disabled={!isActive}
+              >
+                <Icon.Pause />
+                <span>{onHold ? "En espera" : "Espera"}</span>
+              </button>
+              <button
+                className={`softphone__btn ${dtmfOpen ? "softphone__btn--on" : ""}`}
+                onClick={() => setDtmfOpen(true)}
+                disabled={!isActive}
+                title="Enviar tonos DTMF (0-9, *, #)"
+              >
+                <Icon.Pad />
+                <span>Teclado</span>
+              </button>
+              <button
+                className="softphone__btn"
+                onClick={() => setTransferOpen(true)}
+                disabled={!isActive}
+                title="Transferir a otra cola"
+              >
+                <Icon.Transfer />
+                <span>Transferir</span>
+              </button>
+              <button
+                className="softphone__btn"
+                disabled
+                title="Conferencia · próximamente"
+                aria-disabled="true"
+              >
+                <Icon.Users />
+                <span>Conferencia</span>
+              </button>
+              <button
+                className={`softphone__btn ${recording ? "softphone__btn--on" : ""}`}
+                onClick={toggleRecording}
+                disabled={!isActive}
+              >
+                <Icon.Record />
+                <span>{recording ? "Grabando" : "Pausada"}</span>
+              </button>
+            </div>
+            {/* Schedule callback — full-width prominent action below the
+                voice controls. Available during an active voice call so
+                the agent can promise to call back at a future time
+                without leaving the call. */}
+            {activeContact?.customerPhone && (
+              <div style={{ padding: "0 14px 14px" }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => setScheduleCallbackOpen(true)}
+                  disabled={!isActive}
+                  style={{
+                    width: "100%",
+                    height: 38,
+                    justifyContent: "center",
+                    fontSize: 12.5,
+                  }}
+                  title="Prometer una llamada para más tarde · el sistema te conectará automáticamente"
+                >
+                  📅 Agendar callback
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {/* Chat-specific quick actions (only for CHAT contacts). */}
         {isChat && isActive && (
-          <div className="softphone__controls" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <button
-              className="softphone__btn"
-              onClick={() => setTransferOpen(true)}
-              title="Transferir el chat a otra cola"
-            >
-              <Icon.Transfer />
-              <span>Transferir</span>
-            </button>
-            <button
-              className="softphone__btn"
-              onClick={() => setQuickNoteOpen(true)}
-              title="Añadir nota rápida"
-            >
-              <Icon.Note />
-              <span>Nota</span>
-            </button>
-          </div>
+          <>
+            <div className="softphone__controls" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <button
+                className="softphone__btn"
+                onClick={() => setTransferOpen(true)}
+                title="Transferir el chat a otra cola"
+              >
+                <Icon.Transfer />
+                <span>Transferir</span>
+              </button>
+              <button
+                className="softphone__btn"
+                onClick={() => setQuickNoteOpen(true)}
+                title="Añadir nota rápida"
+              >
+                <Icon.Note />
+                <span>Nota</span>
+              </button>
+            </div>
+            {/* Agenda callback also from chat — common when a WhatsApp
+                lead asks "¿me llaman más tarde?". Needs a phone, which
+                the chat contact may not always carry (e.g. webchat) so
+                we hide it when there's none. */}
+            {activeContact?.customerPhone && (
+              <div style={{ padding: "0 14px 14px" }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => setScheduleCallbackOpen(true)}
+                  style={{
+                    width: "100%",
+                    height: 38,
+                    justifyContent: "center",
+                    fontSize: 12.5,
+                  }}
+                  title="Prometer una llamada para más tarde"
+                >
+                  📅 Agendar callback
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {!activeContact && !isIncoming && (
@@ -1054,6 +1112,7 @@ export function AgentDesktopPage() {
       </div>
 
       </div>
+      <CallbackHistoryDrawer refreshKey={callbackRefreshKey} />
       <MissedHistoryDrawer />
 
       {/* Action modals — only one is visible at a time. Each is fully
@@ -1076,6 +1135,14 @@ export function AgentDesktopPage() {
         onClose={() => setQuickNoteOpen(false)}
         contactId={activeContact?.contactId ?? null}
         agentUsername={user?.username || ""}
+      />
+      <ScheduleCallbackModal
+        open={scheduleCallbackOpen}
+        onClose={() => setScheduleCallbackOpen(false)}
+        phone={activeContact?.customerPhone ?? null}
+        customerName={callerName}
+        assignedAgentUserId={user?.userId || ""}
+        onScheduled={() => setCallbackRefreshKey((k) => k + 1)}
       />
     </div>
   );
