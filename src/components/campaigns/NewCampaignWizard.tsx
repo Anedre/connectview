@@ -171,6 +171,23 @@ export function NewCampaignWizard({
       toast.success(
         `${result.contacts.length} contactos cargados (${result.skipped.length} skipped)`
       );
+
+      // Auto-pick the UDEP-Outbound-Smart flow when the CSV contains a
+      // nivel-like column AND the user hasn't already chosen a flow.
+      // Saves a step in the wizard for the common UDEP case.
+      const sampleAttrs = Object.keys(result.contacts[0]?.attributes ?? {});
+      const hasNivel = sampleAttrs.some((k) =>
+        ["nivel", "level", "udep_nivel", "tipo"].includes(k.trim().toLowerCase())
+      );
+      if (hasNivel && !contactFlowId) {
+        const smart = flows.find((f) => f.name === "UDEP-Outbound-Smart");
+        if (smart) {
+          setContactFlowId(smart.id);
+          toast.info(
+            "Detecté columna 'nivel' → autoseleccioné UDEP-Outbound-Smart"
+          );
+        }
+      }
     } catch (err) {
       setParseError(err instanceof Error ? err.message : "Parse error");
     }
@@ -448,6 +465,13 @@ export function NewCampaignWizard({
                     )}
                   </div>
                 </div>
+
+                {/* Lead routing preview: if the CSV has a `nivel` (or
+                    similar) column we show the distribution per nivel
+                    plus warnings for unknown / empty values. The wizard
+                    doesn't gate on this — the smart flow routes
+                    unknowns to UDEP-Pregrado by default. */}
+                <LevelDistributionPreview contacts={contacts} />
                 <div className="max-h-48 overflow-y-auto rounded-md border">
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 bg-muted/60">
@@ -845,6 +869,126 @@ export function NewCampaignWizard({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Lead routing distribution preview shown after CSV upload. Looks for a
+ * `nivel` (or equivalent) column in the parsed contacts and renders:
+ *   - One row per nivel value found, with count + percentage bar
+ *   - A warning chip for unknown values (anything outside the known set)
+ *   - A warning chip for leads missing nivel entirely (they'll go to
+ *     the default Pregrado queue via the UDEP-Outbound-Smart flow)
+ *
+ * When the CSV has no nivel-style column at all, the component renders
+ * nothing — the wizard works the same as before for non-UDEP CSVs.
+ */
+const NIVEL_KEYS = ["nivel", "level", "udep_nivel", "tipo", "category"];
+const KNOWN_NIVELS = new Set([
+  "pregrado",
+  "posgrado",
+  "diplomados",
+  "alumnos",
+]);
+const NIVEL_TONE: Record<string, string> = {
+  pregrado: "bg-emerald-500",
+  posgrado: "bg-blue-500",
+  diplomados: "bg-violet-500",
+  alumnos: "bg-amber-500",
+};
+
+function LevelDistributionPreview({ contacts }: { contacts: ParsedContact[] }) {
+  // Detect which attribute key carries the nivel — case-insensitive.
+  // We look at the FIRST contact's attribute keys; CSV header is the same
+  // for every row so this is safe.
+  const sampleKeys = Object.keys(contacts[0]?.attributes ?? {});
+  const nivelKey = sampleKeys.find((k) =>
+    NIVEL_KEYS.includes(k.trim().toLowerCase())
+  );
+
+  if (!nivelKey) return null;
+
+  // Tally each nivel value (lowercase + trimmed for matching) plus the
+  // empty bucket (leads without a nivel) and the unknown bucket (typos
+  // or new values we don't have a queue for).
+  const counts = new Map<string, number>();
+  let empty = 0;
+  for (const c of contacts) {
+    const raw = (c.attributes[nivelKey] ?? "").trim().toLowerCase();
+    if (!raw) {
+      empty += 1;
+      continue;
+    }
+    counts.set(raw, (counts.get(raw) ?? 0) + 1);
+  }
+
+  const total = contacts.length;
+  const knownEntries: Array<[string, number]> = [];
+  const unknownEntries: Array<[string, number]> = [];
+  for (const [k, v] of counts.entries()) {
+    if (KNOWN_NIVELS.has(k)) knownEntries.push([k, v]);
+    else unknownEntries.push([k, v]);
+  }
+  knownEntries.sort((a, b) => b[1] - a[1]);
+  unknownEntries.sort((a, b) => b[1] - a[1]);
+
+  const pct = (n: number) => Math.round((n / total) * 100);
+
+  return (
+    <div className="rounded-md border bg-muted/30 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-xs font-medium text-foreground">
+          Distribución por <span className="font-mono">{nivelKey}</span>
+        </div>
+        <div className="text-[11px] text-muted-foreground">
+          se ruteará automáticamente al asesor correspondiente
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        {knownEntries.map(([nivel, count]) => (
+          <div key={nivel} className="flex items-center gap-2 text-xs">
+            <span className="w-20 capitalize">{nivel}</span>
+            <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-muted">
+              <div
+                className={`absolute inset-y-0 left-0 ${
+                  NIVEL_TONE[nivel] || "bg-foreground/60"
+                }`}
+                style={{ width: `${pct(count)}%` }}
+              />
+            </div>
+            <span className="w-16 text-right font-mono tabular-nums">
+              {count}
+            </span>
+            <span className="w-10 text-right text-muted-foreground tabular-nums">
+              {pct(count)}%
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {(unknownEntries.length > 0 || empty > 0) && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {empty > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-[11px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <AlertTriangle className="h-3 w-3" />
+              {empty} sin <span className="font-mono">{nivelKey}</span> → irán a
+              UDEP-Pregrado por default
+            </span>
+          )}
+          {unknownEntries.map(([nivel, count]) => (
+            <span
+              key={nivel}
+              className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-2 py-1 text-[11px] text-rose-900 dark:bg-rose-950/40 dark:text-rose-200"
+              title="Valor no reconocido — caerán al default Pregrado"
+            >
+              <AlertTriangle className="h-3 w-3" />
+              {count} con "{nivel}" (desconocido)
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
