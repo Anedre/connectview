@@ -57,6 +57,11 @@ interface ApiEndpoints {
   // agent who's currently signed in. Powers the "Atendidos
   // recientemente" list in the idle Cliente 360° browser.
   listRecentCustomers?: string;
+  // WhatsApp campaign endpoints — list Meta-approved templates and
+  // send one to a single phone (used by the campaign-dialer when the
+  // campaign type is "whatsapp").
+  listWhatsAppTemplates?: string;
+  sendWhatsAppTemplate?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

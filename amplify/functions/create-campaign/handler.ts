@@ -231,6 +231,18 @@ export const handler: Handler = async (event: any, context: any) => {
               Math.max(1, Math.min(50, body.maxContactsPerAgent ?? 5))
             ),
           },
+          // WhatsApp template campaign fields. When campaignType is
+          // "whatsapp" the dialer routes to send-whatsapp-template
+          // instead of StartOutboundVoiceContact and the source phone
+          // / dial mode / contact flow fields above are unused.
+          campaignType: { S: (body as { campaignType?: string }).campaignType || "voice" },
+          templateName: { S: (body as { templateName?: string }).templateName || "" },
+          templateLanguage: { S: (body as { templateLanguage?: string }).templateLanguage || "es" },
+          templateVarColumns: {
+            S: JSON.stringify(
+              (body as { templateVarColumns?: string[] }).templateVarColumns || []
+            ),
+          },
           status: { S: status },
           createdAt: { S: now },
           createdBy: { S: body.createdBy || "system" },

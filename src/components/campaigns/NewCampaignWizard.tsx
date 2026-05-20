@@ -45,6 +45,18 @@ interface NewCampaignWizardProps {
 
 type Step = 1 | 2 | 3 | 4;
 
+interface WhatsAppTemplate {
+  name: string;
+  metaTemplateId?: string;
+  language?: string;
+  category?: string;
+  status?: string;
+  bodyText?: string;
+  variableCount?: number;
+  headerText?: string;
+  footerText?: string;
+}
+
 const DIAL_MODES = [
   { value: "progressive", label: "Progressive (1 llamada por agente libre)" },
   { value: "power", label: "Power (2 llamadas por agente libre)" },
@@ -82,6 +94,21 @@ export function NewCampaignWizard({
   // Step 1 — Meta
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+
+  // Channel selector — voice (existing) or whatsapp (Meta template).
+  // The whole step-3 config layout flips: WhatsApp campaigns don't
+  // need source phone / dial mode / queue, they need template + vars.
+  const [campaignType, setCampaignType] = useState<"voice" | "whatsapp">("voice");
+
+  // WhatsApp template state (step 3 when campaignType === "whatsapp")
+  const [waTemplates, setWaTemplates] = useState<WhatsAppTemplate[]>([]);
+  const [waTemplatesLoading, setWaTemplatesLoading] = useState(false);
+  const [waTemplateName, setWaTemplateName] = useState("");
+  const [waTemplateLang, setWaTemplateLang] = useState("es");
+  /** Ordered list of CSV column names that fill {{1}}, {{2}}, … of the
+   *  selected template. Length == template variableCount. The sentinel
+   *  "__customerName__" maps to the contact's customerName field. */
+  const [waVarColumns, setWaVarColumns] = useState<string[]>([]);
 
   // Step 2 — Contactos
   const [inputMode, setInputMode] = useState<"csv" | "paste">("csv");
@@ -189,6 +216,48 @@ export function NewCampaignWizard({
     setContactFlowId((smart || flows[0]).id);
   }, [flows, contactFlowId]);
 
+  // Lazy-load WhatsApp templates the first time the user switches the
+  // campaign type to WhatsApp. We cache the result for the modal's
+  // lifetime — reopening the wizard refreshes them.
+  useEffect(() => {
+    if (campaignType !== "whatsapp" || waTemplates.length > 0) return;
+    const endpoints = getApiEndpoints();
+    if (!endpoints?.listWhatsAppTemplates) return;
+    setWaTemplatesLoading(true);
+    fetch(endpoints.listWhatsAppTemplates)
+      .then((r) => r.json())
+      .then((j) => {
+        const list = (j.templates || []) as WhatsAppTemplate[];
+        setWaTemplates(list);
+        // Auto-pick the first APPROVED template if none chosen yet
+        if (list.length > 0 && !waTemplateName) {
+          const first = list[0];
+          setWaTemplateName(first.name);
+          setWaTemplateLang(first.language || "es");
+          setWaVarColumns(new Array(first.variableCount || 0).fill(""));
+        }
+      })
+      .catch(() => setWaTemplates([]))
+      .finally(() => setWaTemplatesLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignType]);
+
+  // When the user picks a different template, resize the variable
+  // mapping array to match (and reset entries to empty so the manager
+  // re-maps explicitly for the new template).
+  useEffect(() => {
+    if (!waTemplateName) return;
+    const tpl = waTemplates.find((t) => t.name === waTemplateName);
+    if (!tpl) return;
+    setWaTemplateLang(tpl.language || "es");
+    setWaVarColumns((prev) => {
+      const n = tpl.variableCount || 0;
+      const next = new Array(n).fill("");
+      for (let i = 0; i < Math.min(prev.length, n); i++) next[i] = prev[i];
+      return next;
+    });
+  }, [waTemplateName, waTemplates]);
+
   // ------- File upload -------
   const onFilePick = async (file: File) => {
     setParseError(null);
@@ -251,7 +320,13 @@ export function NewCampaignWizard({
   // ------- Submit -------
   const canProceedStep1 = name.trim().length > 0;
   const canProceedStep2 = contacts.length > 0;
-  const canProceedStep3 = !!sourcePhoneNumber && !!contactFlowId;
+  // Step 3 is reachable when the channel-specific minimum config is set:
+  //  · voice: source phone + contact flow
+  //  · whatsapp: template name + all variable mappings filled
+  const canProceedStep3 =
+    campaignType === "whatsapp"
+      ? !!waTemplateName && waVarColumns.every((c) => !!c)
+      : !!sourcePhoneNumber && !!contactFlowId;
 
   const handleCreate = async () => {
     setSubmitting(true);
@@ -265,6 +340,15 @@ export function NewCampaignWizard({
       const payload = {
         name: name.trim(),
         description: description.trim(),
+        // Channel + (voice fields | whatsapp fields). Sending both is
+        // harmless — the backend reads only the ones relevant to
+        // campaignType. We keep the voice fields present even for
+        // whatsapp so a later "convert to voice" admin action has
+        // sensible defaults.
+        campaignType,
+        templateName: campaignType === "whatsapp" ? waTemplateName : undefined,
+        templateLanguage: campaignType === "whatsapp" ? waTemplateLang : undefined,
+        templateVarColumns: campaignType === "whatsapp" ? waVarColumns : undefined,
         sourcePhoneNumber,
         contactFlowId,
         contactFlowName: flow?.name,
@@ -569,6 +653,140 @@ export function NewCampaignWizard({
         {/* STEP 3 — Dialing config */}
         {step === 3 && (
           <div className="space-y-4">
+            {/* Channel selector — switch the whole layout between
+                voice (StartOutboundVoiceContact) and WhatsApp (Meta
+                template send). */}
+            <div className="space-y-2">
+              <Label>Canal de la campaña</Label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCampaignType("voice")}
+                  className={`flex-1 rounded-md border px-3 py-2 text-sm transition ${
+                    campaignType === "voice"
+                      ? "border-orange-500 bg-orange-50 text-orange-900 dark:bg-orange-950/30 dark:text-orange-200"
+                      : "border-muted bg-muted/40 text-muted-foreground"
+                  }`}
+                >
+                  📞 Llamada de voz
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCampaignType("whatsapp")}
+                  className={`flex-1 rounded-md border px-3 py-2 text-sm transition ${
+                    campaignType === "whatsapp"
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200"
+                      : "border-muted bg-muted/40 text-muted-foreground"
+                  }`}
+                >
+                  💬 WhatsApp (template Meta)
+                </button>
+              </div>
+            </div>
+
+            {/* WhatsApp template config — only when channel = whatsapp */}
+            {campaignType === "whatsapp" && (
+              <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+                <div className="space-y-2">
+                  <Label>Plantilla Meta (APPROVED)</Label>
+                  <Select
+                    value={waTemplateName}
+                    onValueChange={(v) => setWaTemplateName(v || "")}
+                    disabled={waTemplatesLoading || waTemplates.length === 0}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          waTemplatesLoading
+                            ? "Cargando templates…"
+                            : waTemplates.length === 0
+                            ? "No hay templates aprobados"
+                            : "Elegir template"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {waTemplates.map((t) => (
+                        <SelectItem key={t.metaTemplateId || t.name} value={t.name}>
+                          {t.name} · {t.language || "es"} · {t.category || "?"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {/* Preview of the body with variable placeholders */}
+                  {(() => {
+                    const tpl = waTemplates.find((t) => t.name === waTemplateName);
+                    if (!tpl?.bodyText) return null;
+                    return (
+                      <div className="rounded-md border bg-background p-2 text-xs">
+                        {tpl.headerText && (
+                          <div className="mb-1 font-medium">{tpl.headerText}</div>
+                        )}
+                        <div className="whitespace-pre-wrap text-muted-foreground">
+                          {tpl.bodyText}
+                        </div>
+                        {tpl.footerText && (
+                          <div className="mt-1 text-[10px] italic text-muted-foreground/70">
+                            {tpl.footerText}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Variable → CSV column mapping */}
+                {waVarColumns.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Variables del template (mapear a CSV)</Label>
+                    {waVarColumns.map((col, idx) => {
+                      const csvCols = Object.keys(contacts[0]?.attributes ?? {});
+                      return (
+                        <div key={idx} className="flex items-center gap-2">
+                          <span className="font-mono text-xs text-muted-foreground w-12">
+                            {`{{${idx + 1}}}`}
+                          </span>
+                          <Select
+                            value={col}
+                            onValueChange={(v) => {
+                              setWaVarColumns((prev) => {
+                                const next = [...prev];
+                                next[idx] = v || "";
+                                return next;
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="flex-1">
+                              <SelectValue placeholder="Elegir columna del CSV…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__customerName__">
+                                (Nombre del contacto)
+                              </SelectItem>
+                              {csvCols.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {c}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      );
+                    })}
+                    <div className="text-[11px] text-muted-foreground">
+                      Cada variable se llena con el valor de la columna seleccionada
+                      por cada lead. Si la columna no existe en un lead se envía vacía.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Voice config — only when channel = voice. We wrap the
+                entire existing block in a fragment so the wizard renders
+                NOTHING voice-specific when WhatsApp is selected. */}
+            {campaignType === "voice" && (
+            <>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Número saliente</Label>
@@ -825,6 +1043,8 @@ export function NewCampaignWizard({
                 dialer le rellena desde el pool general.
               </p>
             </div>
+            </>
+            )}
           </div>
         )}
 

@@ -49,6 +49,20 @@ interface Campaign {
    *  predictable queue, and only dials one at a time per agent (the next
    *  pending in their bucket). Defaults to 5. */
   maxContactsPerAgent?: number;
+  /** "voice" (default — existing StartOutboundVoiceContact path) or
+   *  "whatsapp" (sends a Meta-approved template per lead). When
+   *  "whatsapp" the dialer dispatches to send-whatsapp-template and
+   *  the voice-specific fields (sourcePhone, dialMode, AMD) are
+   *  ignored. */
+  campaignType?: string;
+  /** Meta template name for WhatsApp campaigns. Must match an APPROVED
+   *  template in the connected WABA. */
+  templateName?: string;
+  /** Template language code (e.g. "es", "en"). Defaults to "es". */
+  templateLanguage?: string;
+  /** CSV columns whose values fill the template's {{1}}, {{2}}, …
+   *  placeholders in order. Stored as a JSON array of column names. */
+  templateVarColumns?: string;
 }
 
 interface CampaignContact {
@@ -464,10 +478,83 @@ async function markAsFailed(
     });
 }
 
+/**
+ * Send a WhatsApp template for one contact. Returns a fake "contactId"
+ * (the Meta messageId) on success so the rest of the dialer pipeline
+ * treats it the same as a placed call. We don't follow up with the
+ * usual Connect events — Meta delivery webhooks would be needed for
+ * accurate per-lead delivered/read tracking, and that's out of scope.
+ */
+async function sendWhatsAppTemplate(
+  campaign: Campaign,
+  contact: CampaignContact
+): Promise<string | null> {
+  if (!campaign.templateName) {
+    console.error("whatsapp campaign missing templateName");
+    return null;
+  }
+  let customAttrs: Record<string, string> = {};
+  try {
+    customAttrs = JSON.parse(contact.customAttributes || "{}");
+  } catch {
+    /* ignore */
+  }
+  // Fill the template variables from the CSV columns the manager
+  // selected (templateVarColumns is a JSON array of column names).
+  let varColumns: string[] = [];
+  try {
+    varColumns = JSON.parse(campaign.templateVarColumns || "[]");
+  } catch {
+    /* ignore */
+  }
+  const variables = varColumns.map((col) => {
+    if (col === "__customerName__") return contact.customerName || "";
+    return customAttrs[col] != null ? String(customAttrs[col]) : "";
+  });
+
+  const url = process.env.SEND_WHATSAPP_TEMPLATE_URL;
+  if (!url) {
+    console.error("SEND_WHATSAPP_TEMPLATE_URL env not set");
+    return null;
+  }
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone: contact.phone,
+        templateName: campaign.templateName,
+        language: campaign.templateLanguage || "es",
+        variables,
+      }),
+    });
+    const body = (await r.json().catch(() => ({}))) as {
+      sent?: boolean;
+      messageId?: string;
+      error?: string;
+    };
+    if (!r.ok || !body.sent) {
+      console.error(
+        "WhatsApp template send failed:",
+        body.error || `HTTP ${r.status}`
+      );
+      return null;
+    }
+    return body.messageId || `wa-${Date.now()}-${contact.rowId.slice(0, 6)}`;
+  } catch (err) {
+    console.error("WhatsApp template fetch failed:", err);
+    return null;
+  }
+}
+
 async function startOutbound(
   campaign: Campaign,
   contact: CampaignContact
 ): Promise<string | null> {
+  // Route to the right dispatcher based on campaign type.
+  if ((campaign.campaignType || "voice").toLowerCase() === "whatsapp") {
+    return sendWhatsAppTemplate(campaign, contact);
+  }
   try {
     // Pass custom attributes + campaign/name so the flow can identify the call
     let customAttrs: Record<string, string> = {};
