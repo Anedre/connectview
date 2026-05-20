@@ -259,7 +259,24 @@ export function NewCampaignWizard({
         contacts: contacts.map((c) => ({
           phone: c.phone,
           customerName: c.customerName,
-          attributes: c.attributes,
+          // Inject a canonical `udep_nivel` attribute when we can derive
+          // it from any nivel-like column in the CSV (grado de
+          // instrucción, código de programa, etc). The Smart contact
+          // flow branches on $.Attributes.udep_nivel — so this is what
+          // makes lead-based routing work even when the CSV uses real-
+          // world column names like "C_GRADO DE INSTRUCCION".
+          attributes: (() => {
+            const out = { ...c.attributes };
+            const keys = Object.keys(out);
+            const nivelKey = keys.find((k) =>
+              NIVEL_KEYS.includes(k.trim().toLowerCase())
+            );
+            if (nivelKey && !out.udep_nivel) {
+              const canonical = canonicaliseNivel(out[nivelKey] || "");
+              if (canonical) out.udep_nivel = canonical;
+            }
+            return out;
+          })(),
         })),
         createdBy: user?.username || "system",
         startNow: true,
@@ -896,13 +913,70 @@ export function NewCampaignWizard({
  * When the CSV has no nivel-style column at all, the component renders
  * nothing — the wizard works the same as before for non-UDEP CSVs.
  */
-const NIVEL_KEYS = ["nivel", "level", "udep_nivel", "tipo", "category"];
+const NIVEL_KEYS = [
+  "nivel",
+  "level",
+  "udep_nivel",
+  "tipo",
+  "category",
+  // Real-world UDEP CSV columns — same data, different name. We pick
+  // the first one that's present in the CSV header.
+  "c_grado de instruccion",
+  "c_grado_de_instruccion",
+  "grado de instruccion",
+  "grado_instruccion",
+  "a_codigo del programa",
+  "a_codigo_del_programa",
+  "codigo programa",
+];
+
 const KNOWN_NIVELS = new Set([
   "pregrado",
   "posgrado",
   "diplomados",
   "alumnos",
 ]);
+
+// Map values found in CSVs to one of the 4 canonical nivels the
+// UDEP-Outbound-Smart flow knows. This is the place to extend when
+// a new program-code mapping needs to be supported.
+const NIVEL_ALIAS: Record<string, string> = {
+  // Grado-de-instrucción synonyms
+  universitario: "pregrado",
+  pregrado: "pregrado",
+  bachiller: "pregrado",
+  posgrado: "posgrado",
+  postgrado: "posgrado",
+  maestria: "posgrado",
+  "maestría": "posgrado",
+  doctorado: "posgrado",
+  mba: "posgrado",
+  diplomado: "diplomados",
+  diplomados: "diplomados",
+  alumno: "alumnos",
+  alumnos: "alumnos",
+  // Program-code prefixes (anything starting with these maps to the
+  // matching nivel via the prefix check in canonicaliseNivel below).
+};
+
+const NIVEL_PROGRAM_PREFIX: Array<[RegExp, string]> = [
+  [/^prg|^pre/i, "pregrado"],
+  [/^pos|^mae|^mba|^doc/i, "posgrado"],
+  [/^dip/i, "diplomados"],
+  [/^alu/i, "alumnos"],
+];
+
+function canonicaliseNivel(raw: string): string | null {
+  const v = raw.trim().toLowerCase();
+  if (!v) return null;
+  if (KNOWN_NIVELS.has(v)) return v;
+  if (NIVEL_ALIAS[v]) return NIVEL_ALIAS[v];
+  for (const [re, target] of NIVEL_PROGRAM_PREFIX) {
+    if (re.test(v)) return target;
+  }
+  return null; // unknown
+}
+
 const NIVEL_TONE: Record<string, string> = {
   pregrado: "bg-emerald-500",
   posgrado: "bg-blue-500",
@@ -921,27 +995,29 @@ function LevelDistributionPreview({ contacts }: { contacts: ParsedContact[] }) {
 
   if (!nivelKey) return null;
 
-  // Tally each nivel value (lowercase + trimmed for matching) plus the
-  // empty bucket (leads without a nivel) and the unknown bucket (typos
-  // or new values we don't have a queue for).
+  // Tally each canonical nivel, plus the empty / unknown buckets.
+  // We push raw values through canonicaliseNivel so "Universitario"
+  // → "pregrado", "PRG100" → "pregrado", etc.
   const counts = new Map<string, number>();
+  const unknownByRaw = new Map<string, number>();
   let empty = 0;
   for (const c of contacts) {
-    const raw = (c.attributes[nivelKey] ?? "").trim().toLowerCase();
+    const raw = (c.attributes[nivelKey] ?? "").trim();
     if (!raw) {
       empty += 1;
       continue;
     }
-    counts.set(raw, (counts.get(raw) ?? 0) + 1);
+    const canonical = canonicaliseNivel(raw);
+    if (canonical) {
+      counts.set(canonical, (counts.get(canonical) ?? 0) + 1);
+    } else {
+      unknownByRaw.set(raw, (unknownByRaw.get(raw) ?? 0) + 1);
+    }
   }
 
   const total = contacts.length;
-  const knownEntries: Array<[string, number]> = [];
-  const unknownEntries: Array<[string, number]> = [];
-  for (const [k, v] of counts.entries()) {
-    if (KNOWN_NIVELS.has(k)) knownEntries.push([k, v]);
-    else unknownEntries.push([k, v]);
-  }
+  const knownEntries: Array<[string, number]> = Array.from(counts.entries());
+  const unknownEntries: Array<[string, number]> = Array.from(unknownByRaw.entries());
   knownEntries.sort((a, b) => b[1] - a[1]);
   unknownEntries.sort((a, b) => b[1] - a[1]);
 

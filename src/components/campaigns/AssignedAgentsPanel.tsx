@@ -247,6 +247,48 @@ export function AssignedAgentsPanel({ campaign }: Props) {
                   >
                     p{a.priority}
                   </span>
+                  {/* Queue mini-tags — show which queues this agent can
+                      service (from their routing profile). Lets the
+                      manager see at a glance "Andre handles
+                      Pregrado+Posgrado, María only Posgrado" etc. We
+                      trim "UDEP-" so the chips stay readable. */}
+                  {live?.queues && live.queues.length > 0 && (
+                    <span
+                      className="row"
+                      style={{ gap: 3, flexShrink: 0 }}
+                      title={`Queues: ${live.queues
+                        .map((q) => q.name)
+                        .join(", ")}`}
+                    >
+                      {live.queues.slice(0, 4).map((q) => {
+                        const label = q.name.replace(/^UDEP-/i, "");
+                        return (
+                          <span
+                            key={q.id}
+                            style={{
+                              fontSize: 9,
+                              padding: "1px 5px",
+                              borderRadius: 4,
+                              background: "var(--accent-cyan-soft)",
+                              color: "var(--accent-cyan)",
+                              fontWeight: 500,
+                              lineHeight: 1.3,
+                            }}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })}
+                      {live.queues.length > 4 && (
+                        <span
+                          className="muted"
+                          style={{ fontSize: 9, marginLeft: 2 }}
+                        >
+                          +{live.queues.length - 4}
+                        </span>
+                      )}
+                    </span>
+                  )}
                   {a.addedQueueToRoutingProfile && (
                     <span
                       className="muted"
@@ -344,14 +386,42 @@ export function AssignedAgentsPanel({ campaign }: Props) {
                     onChange={() => toggleSelect(u.userId)}
                     className="h-4 w-4"
                   />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium">{u.username}</div>
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
                       <span className="chip" style={{ fontSize: 9.5 }}>
                         {u.statusName || "Offline"}
                       </span>
                       {u.routingProfile && (
                         <span className="truncate">{u.routingProfile}</span>
+                      )}
+                      {/* Queue tags — same UX as the assigned list so the
+                          manager can pick agents knowing what nivel they
+                          will handle. */}
+                      {u.queues && u.queues.length > 0 && (
+                        <span className="flex gap-1 flex-wrap">
+                          {u.queues.slice(0, 4).map((q) => (
+                            <span
+                              key={q.id}
+                              style={{
+                                fontSize: 9,
+                                padding: "1px 5px",
+                                borderRadius: 4,
+                                background: "var(--accent-cyan-soft)",
+                                color: "var(--accent-cyan)",
+                                fontWeight: 500,
+                                lineHeight: 1.3,
+                              }}
+                            >
+                              {q.name.replace(/^UDEP-/i, "")}
+                            </span>
+                          ))}
+                          {u.queues.length > 4 && (
+                            <span className="text-[9px] opacity-70">
+                              +{u.queues.length - 4}
+                            </span>
+                          )}
+                        </span>
                       )}
                     </div>
                   </div>
