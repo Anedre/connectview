@@ -21,6 +21,13 @@ const CORS: Record<string, string> = {
   "Content-Type": "application/json",
 };
 
+interface TemplateButton {
+  type: string; // QUICK_REPLY · URL · PHONE_NUMBER · COPY_CODE
+  text: string;
+  url?: string;
+  phoneNumber?: string;
+}
+
 interface TemplateBrief {
   name: string;
   metaTemplateId?: string;
@@ -31,6 +38,7 @@ interface TemplateBrief {
   variableCount?: number;
   headerText?: string;
   footerText?: string;
+  buttons?: TemplateButton[];
 }
 
 function extractBody(definition: unknown): {
@@ -38,6 +46,7 @@ function extractBody(definition: unknown): {
   variableCount: number;
   headerText?: string;
   footerText?: string;
+  buttons?: TemplateButton[];
 } {
   if (!definition || typeof definition !== "object") {
     return { variableCount: 0 };
@@ -46,12 +55,26 @@ function extractBody(definition: unknown): {
   let bodyText: string | undefined;
   let headerText: string | undefined;
   let footerText: string | undefined;
+  let buttons: TemplateButton[] | undefined;
   for (const c of def.components || []) {
     const t = String(c.type || "").toUpperCase();
     const txt = typeof c.text === "string" ? c.text : undefined;
     if (t === "BODY") bodyText = txt;
     if (t === "HEADER") headerText = txt;
     if (t === "FOOTER") footerText = txt;
+    if (t === "BUTTONS" && Array.isArray(c.buttons)) {
+      buttons = (c.buttons as Array<Record<string, unknown>>).map((b) => ({
+        type: String(b.type || ""),
+        text: String(b.text || ""),
+        url: typeof b.url === "string" ? b.url : undefined,
+        phoneNumber:
+          typeof b.phone_number === "string"
+            ? b.phone_number
+            : typeof b.phoneNumber === "string"
+            ? b.phoneNumber
+            : undefined,
+      }));
+    }
   }
   // Count {{N}} placeholders in the body — that's how many CSV cols
   // the manager has to map when configuring the campaign.
@@ -61,7 +84,7 @@ function extractBody(definition: unknown): {
         0
       )
     : 0;
-  return { bodyText, variableCount, headerText, footerText };
+  return { bodyText, variableCount, headerText, footerText, buttons };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

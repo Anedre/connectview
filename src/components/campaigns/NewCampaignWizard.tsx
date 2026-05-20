@@ -45,6 +45,13 @@ interface NewCampaignWizardProps {
 
 type Step = 1 | 2 | 3 | 4;
 
+interface WhatsAppTemplateButton {
+  type: string; // QUICK_REPLY · URL · PHONE_NUMBER · COPY_CODE
+  text: string;
+  url?: string;
+  phoneNumber?: string;
+}
+
 interface WhatsAppTemplate {
   name: string;
   metaTemplateId?: string;
@@ -55,6 +62,7 @@ interface WhatsAppTemplate {
   variableCount?: number;
   headerText?: string;
   footerText?: string;
+  buttons?: WhatsAppTemplateButton[];
 }
 
 const DIAL_MODES = [
@@ -713,21 +721,50 @@ export function NewCampaignWizard({
                       ))}
                     </SelectContent>
                   </Select>
-                  {/* Preview of the body with variable placeholders */}
+                  {/* Preview of the rendered WhatsApp bubble: header,
+                      body with {{N}} placeholders, footer, and the
+                      action buttons (Quick Reply / URL / Phone) so the
+                      manager sees exactly what the customer will get. */}
                   {(() => {
                     const tpl = waTemplates.find((t) => t.name === waTemplateName);
                     if (!tpl?.bodyText) return null;
                     return (
-                      <div className="rounded-md border bg-background p-2 text-xs">
+                      <div className="rounded-md border bg-background p-2 text-xs space-y-1">
                         {tpl.headerText && (
-                          <div className="mb-1 font-medium">{tpl.headerText}</div>
+                          <div className="font-medium">{tpl.headerText}</div>
                         )}
                         <div className="whitespace-pre-wrap text-muted-foreground">
                           {tpl.bodyText}
                         </div>
                         {tpl.footerText && (
-                          <div className="mt-1 text-[10px] italic text-muted-foreground/70">
+                          <div className="text-[10px] italic text-muted-foreground/70">
                             {tpl.footerText}
+                          </div>
+                        )}
+                        {tpl.buttons && tpl.buttons.length > 0 && (
+                          <div className="mt-2 border-t pt-1.5 flex flex-wrap gap-1.5">
+                            {tpl.buttons.map((b, i) => {
+                              const icon =
+                                b.type === "URL"
+                                  ? "🔗"
+                                  : b.type === "PHONE_NUMBER"
+                                  ? "📞"
+                                  : b.type === "COPY_CODE"
+                                  ? "📋"
+                                  : "💬";
+                              const subtitle =
+                                b.url || b.phoneNumber || b.type.toLowerCase();
+                              return (
+                                <span
+                                  key={i}
+                                  className="inline-flex items-center gap-1 rounded-full border border-emerald-400/50 bg-emerald-50 px-2.5 py-1 text-[10.5px] text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+                                  title={subtitle}
+                                >
+                                  <span>{icon}</span>
+                                  <span className="font-medium">{b.text}</span>
+                                </span>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
