@@ -3,17 +3,37 @@ import { useAuth } from "@/hooks/useAuth";
 import { getApiEndpoints } from "@/lib/api";
 
 /**
- * One scheduled callback row, as returned by the list-callbacks
+ * One scheduled follow-up row, as returned by the list-callbacks
  * Lambda. Mirrors the DynamoDB schema of `connectview-callbacks`.
+ *
+ * The legacy name "callback" is kept for backward compat but the row
+ * now represents any kind of follow-up: voice callback, email follow-
+ * up, WhatsApp template follow-up.
  */
 export interface CallbackRecord {
   callbackId: string;
   phone: string;
   customerName?: string;
   scheduledAt: string; // ISO
-  status: "SCHEDULED" | "RINGING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  /** SCHEDULED → in the future (voice & non-voice)
+   *  DUE       → email/whatsapp that's past its scheduledAt and waiting
+   *              for the agent to attend it manually
+   *  RINGING   → voice callback currently being dispatched
+   *  COMPLETED → voice fired OK, OR email/whatsapp attended by agent
+   *  FAILED    → voice dispatch threw
+   *  CANCELLED → soft-cancelled */
+  status:
+    | "SCHEDULED"
+    | "DUE"
+    | "RINGING"
+    | "COMPLETED"
+    | "FAILED"
+    | "CANCELLED";
   assignedAgentUserId?: string;
   notes?: string;
+  /** Default "voice" when missing (legacy rows). */
+  channel?: "voice" | "email" | "whatsapp";
+  actionType?: "auto-dispatch" | "manual-action";
   campaignId?: string;
   contactFlowId?: string;
   sourcePhoneNumber?: string;
@@ -22,16 +42,28 @@ export interface CallbackRecord {
   updatedAt?: string;
   lastError?: string;
   connectContactId?: string;
+  // Email-specific
+  emailFromAddress?: string;
+  emailToAddress?: string;
+  emailSubject?: string;
+  emailBody?: string;
+  // WhatsApp-specific
+  templateName?: string;
+  templateLanguage?: string;
+  /** JSON-stringified array — parse to use. */
+  templateVariables?: string;
 }
 
 interface UseCallbacksOptions {
-  /** Connect user-id whose callbacks we want. When omitted, defaults
-   *  to the signed-in agent's userId. Supervisors / admins can pass
-   *  a specific agentUserId to peek at their queue.
-   *  Pass `null` to fetch ALL callbacks (admin view). */
+  /** Connect user-id whose follow-ups we want. When omitted, defaults
+   *  to the signed-in agent's userId. Pass `null` to fetch ALL
+   *  follow-ups (admin view). */
   agentUserId?: string | null;
-  /** Filter by status. Default: undefined (all statuses). */
-  status?: CallbackRecord["status"];
+  /** Filter by status. `"PENDING"` is sugar for SCHEDULED OR DUE
+   *  (most useful for the drawer). */
+  status?: CallbackRecord["status"] | "PENDING";
+  /** Filter by channel. */
+  channel?: "voice" | "email" | "whatsapp";
   /** Max rows returned. Default: 50, cap 200. */
   limit?: number;
   /** Auto-poll every N seconds. 0 = no auto-refresh. Default: 60. */
@@ -43,30 +75,28 @@ interface UseCallbacksReturn {
   loading: boolean;
   error: string | null;
   /** Manually re-fetch — useful after the agent cancels or after the
-   *  schedule modal submits a new callback. */
+   *  schedule modal submits a new follow-up. */
   refetch: () => void;
-  /** Cancel a scheduled callback (status=SCHEDULED only). Returns the
-   *  resolved cancel promise; the caller can await it before refetching. */
+  /** Cancel a follow-up (SCHEDULED or DUE). */
   cancel: (callbackId: string) => Promise<void>;
+  /** Mark an email/whatsapp follow-up as completed (the agent
+   *  attended it manually). Only valid for DUE rows. */
+  complete: (callbackId: string) => Promise<void>;
   /** `false` until the listCallbacks endpoint has been deployed. UI
    *  hides the drawer entirely when this is false. */
   available: boolean;
 }
 
-/**
- * Polls the list-callbacks Lambda for the current agent's scheduled
- * callbacks. Auto-refreshes every minute so the agent sees the
- * countdown shrink in (near) real time and rows disappear after the
- * dispatcher fires them.
- *
- * Falls back gracefully when the endpoint isn't deployed yet
- * (`available: false`) so the UI can hide the drawer rather than
- * showing an error.
- */
 export function useCallbacks(
   options: UseCallbacksOptions = {}
 ): UseCallbacksReturn {
-  const { agentUserId, status, limit = 50, pollIntervalSec = 60 } = options;
+  const {
+    agentUserId,
+    status,
+    channel,
+    limit = 50,
+    pollIntervalSec = 60,
+  } = options;
   const { user } = useAuth();
   const [callbacks, setCallbacks] = useState<CallbackRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -76,9 +106,6 @@ export function useCallbacks(
   const endpoints = getApiEndpoints();
   const listUrl = endpoints?.listCallbacks;
   const cancelUrl = endpoints?.cancelCallback;
-  // When `agentUserId` is explicitly `null` → admin "all callbacks" view.
-  // When omitted (undefined) → default to the signed-in agent.
-  // When a string is passed → use that string.
   const effectiveUserId =
     agentUserId === null
       ? null
@@ -91,8 +118,6 @@ export function useCallbacks(
 
   useEffect(() => {
     if (!listUrl) return;
-    // The signed-in user might not be loaded yet — wait until we have a
-    // userId (or the explicit `null` admin-mode signal) before fetching.
     if (effectiveUserId === undefined) return;
 
     let cancelled = false;
@@ -103,6 +128,7 @@ export function useCallbacks(
         const qs = new URLSearchParams({ limit: String(limit) });
         if (effectiveUserId) qs.set("agentUserId", effectiveUserId);
         if (status) qs.set("status", status);
+        if (channel) qs.set("channel", channel);
         const res = await fetch(`${listUrl}?${qs.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -125,10 +151,10 @@ export function useCallbacks(
       cancelled = true;
       if (timer) clearInterval(timer);
     };
-  }, [listUrl, effectiveUserId, status, limit, pollIntervalSec, refreshTick]);
+  }, [listUrl, effectiveUserId, status, channel, limit, pollIntervalSec, refreshTick]);
 
-  const cancel = useCallback(
-    async (callbackId: string) => {
+  const callMutation = useCallback(
+    async (callbackId: string, action: "cancel" | "complete") => {
       if (!cancelUrl) throw new Error("Endpoint cancelCallback no configurado");
       const r = await fetch(cancelUrl, {
         method: "POST",
@@ -136,6 +162,7 @@ export function useCallbacks(
         body: JSON.stringify({
           callbackId,
           actor: user?.username || user?.userId || "unknown",
+          action,
         }),
       });
       const data = await r.json().catch(() => ({}));
@@ -146,5 +173,14 @@ export function useCallbacks(
     [cancelUrl, user]
   );
 
-  return { callbacks, loading, error, refetch, cancel, available };
+  const cancel = useCallback(
+    (callbackId: string) => callMutation(callbackId, "cancel"),
+    [callMutation]
+  );
+  const complete = useCallback(
+    (callbackId: string) => callMutation(callbackId, "complete"),
+    [callMutation]
+  );
+
+  return { callbacks, loading, error, refetch, cancel, complete, available };
 }

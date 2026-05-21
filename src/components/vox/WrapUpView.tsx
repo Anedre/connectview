@@ -11,6 +11,28 @@ import {
   type DispositionStage,
 } from "@/lib/dispositions";
 import * as Icon from "@/components/vox/primitives";
+import { ScheduleFollowupModal } from "@/components/workspace/ScheduleCallbackModal";
+
+/**
+ * Map a sub-stage id (from the disposition tree) to the channel of
+ * follow-up the agent is implicitly committing to. Returning null
+ * means the sub-stage is not a follow-up commitment (e.g.
+ * "no_contesta", "se_inscribio") so we don't open the modal.
+ *
+ * The mapping reads the prefix from `volver_*` sub-stage ids:
+ *   volver_llamar   → voice
+ *   volver_correo   → email
+ *   volver_whatsapp → whatsapp
+ */
+function followupChannelFor(
+  subStageId: string | null
+): "voice" | "email" | "whatsapp" | null {
+  if (!subStageId) return null;
+  if (subStageId === "volver_llamar") return "voice";
+  if (subStageId === "volver_correo") return "email";
+  if (subStageId === "volver_whatsapp") return "whatsapp";
+  return null;
+}
 
 interface WrapUpViewProps {
   contactId: string;
@@ -154,6 +176,15 @@ export function WrapUpView({
     setTags((curr) => curr.filter((x) => x !== t));
   };
 
+  // Detect whether the chosen sub-stage commits the agent to a
+  // follow-up. If so, after Enviar we open the Schedule Follow-up
+  // modal with the channel pre-decided.
+  const followupChannel = useMemo(
+    () => followupChannelFor(subStageId),
+    [subStageId]
+  );
+  const [followupOpen, setFollowupOpen] = useState(false);
+
   const canSend = !!stageId && !!subStageId;
 
   const handleSend = async () => {
@@ -194,7 +225,15 @@ export function WrapUpView({
         wrapUpAgent: user?.username || "",
       });
       toast.success("Wrap-up enviado");
-      onFinish();
+      // If the sub-stage commits to a follow-up, open the schedule
+      // modal instead of finishing — the agent still needs to pick
+      // WHEN (and refine the content for email/whatsapp). Closing the
+      // modal proceeds to onFinish.
+      if (followupChannel) {
+        setFollowupOpen(true);
+      } else {
+        onFinish();
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo enviar");
     } finally {
@@ -436,6 +475,15 @@ export function WrapUpView({
               <div className="card__body" style={{ display: "grid", gap: 6 }}>
                 {selectedStage.subStages.map((sub) => {
                   const isSelected = sub.id === subStageId;
+                  const followCh = followupChannelFor(sub.id);
+                  const chipIcon =
+                    followCh === "voice"
+                      ? "📞"
+                      : followCh === "email"
+                      ? "📧"
+                      : followCh === "whatsapp"
+                      ? "💬"
+                      : null;
                   return (
                     <label
                       key={sub.id}
@@ -457,10 +505,36 @@ export function WrapUpView({
                         style={{ accentColor: "var(--accent-amber)" }}
                       />
                       <span style={{ flex: 1, fontSize: 13 }}>{sub.label}</span>
+                      {chipIcon && (
+                        <span
+                          className="chip chip--cyan"
+                          style={{ height: 18, fontSize: 10 }}
+                          title="Al enviar se abrirá el modal de Agendar follow-up"
+                        >
+                          {chipIcon} agendar
+                        </span>
+                      )}
                     </label>
                   );
                 })}
               </div>
+              {followupChannel && (
+                <div
+                  className="muted"
+                  style={{
+                    padding: "8px 10px",
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                    background: "var(--accent-cyan-soft)",
+                    color: "var(--accent-cyan)",
+                    borderTop: "1px solid var(--border-1)",
+                  }}
+                >
+                  💡 Al hacer{" "}
+                  <strong>Enviar resumen</strong> te abriremos el modal de
+                  Agendar follow-up para que pongas la fecha/hora.
+                </div>
+              )}
             </div>
           )}
 
@@ -551,6 +625,28 @@ export function WrapUpView({
           </div>
         </div>
       </div>
+
+      {/* Schedule follow-up modal — opens after the wrap-up is sent
+          IF the sub-stage was one of "volver_*". The agent picks the
+          actual when/content here. Closing the modal proceeds to
+          onFinish so the wrap-up screen unmounts. */}
+      <ScheduleFollowupModal
+        open={followupOpen}
+        onClose={() => {
+          setFollowupOpen(false);
+          onFinish();
+        }}
+        phone={customerPhone}
+        customerName={customerName}
+        customerEmail={profile?.email ?? null}
+        assignedAgentUserId={user?.userId || ""}
+        defaultChannel={followupChannel || "voice"}
+        defaultNotes={notes}
+        onScheduled={() => {
+          // Modal will call onClose after scheduling, which triggers
+          // onFinish above. Toast already fired from the modal.
+        }}
+      />
     </div>
   );
 }

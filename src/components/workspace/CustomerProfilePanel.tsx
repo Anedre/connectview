@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import { useContactHistory } from "@/hooks/useContactHistory";
 import { useActiveContact } from "@/hooks/useActiveContact";
@@ -8,6 +8,7 @@ import * as Icon from "@/components/vox/primitives";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useDebugRender, traceChange } from "@/lib/debugTrace";
+import { ContactDetailModal } from "@/components/workspace/ContactDetailModal";
 
 interface CustomerProfilePanelProps {
   phone: string | null;
@@ -41,6 +42,10 @@ export function CustomerProfilePanel({
 }: CustomerProfilePanelProps) {
   const { profile, loading, error } = useCustomerProfile(phone, refreshKey);
   const { contacts: history } = useContactHistory(phone, 90);
+  // Tracks which interaction the agent clicked on — opens the detail
+  // modal with the contactId, which fetches recording + transcript +
+  // attachments and renders the player + transcript view.
+  const [openContactId, setOpenContactId] = useState<string | null>(null);
 
   // ─── DEBUG INSTRUMENTATION ────────────────────────────────────
   // Hot-path component — flickers between empty placeholder and the
@@ -471,7 +476,13 @@ export function CustomerProfilePanel({
                 { addSuffix: false, locale: es }
               );
               return (
-                <div key={h.contactId} className="tl__item">
+                <div
+                  key={h.contactId}
+                  className="tl__item"
+                  onClick={() => setOpenContactId(h.contactId)}
+                  style={{ cursor: "pointer" }}
+                  title="Click para ver el detalle (grabación, transcripción, adjuntos)"
+                >
                   <div
                     className="tl__dot"
                     style={{ color: meta.color, borderColor: meta.color }}
@@ -484,6 +495,20 @@ export function CustomerProfilePanel({
                       <div className="tl__title" style={{ fontSize: 12.5 }}>
                         {meta.label}
                         {h.agentUsername ? ` con ${h.agentUsername}` : ""}
+                        {h.hasRecording && (
+                          <span
+                            className="chip chip--violet"
+                            style={{
+                              marginLeft: 6,
+                              height: 16,
+                              fontSize: 9.5,
+                              padding: "0 5px",
+                            }}
+                            title="Tiene grabación"
+                          >
+                            🎙️
+                          </span>
+                        )}
                       </div>
                       <div
                         className="muted truncate"
@@ -500,6 +525,12 @@ export function CustomerProfilePanel({
           </div>
         )}
       </div>
+
+      <ContactDetailModal
+        open={!!openContactId}
+        onClose={() => setOpenContactId(null)}
+        contactId={openContactId}
+      />
     </div>
   );
 }

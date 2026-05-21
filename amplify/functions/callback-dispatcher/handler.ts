@@ -13,20 +13,26 @@ import {
 /**
  * callback-dispatcher — runs every 1 minute via EventBridge.
  *
- * Scans the callbacks table (GSI status-scheduledAt) for rows where
- *   status = "SCHEDULED" AND scheduledAt <= now
+ * Multi-channel behaviour:
  *
- * For each due callback:
- *   1. Mark RINGING (optimistic concurrency — skip if already grabbed
- *      by a parallel dispatcher invocation).
- *   2. Place an outbound voice call:
- *        - DestinationPhoneNumber: callback.phone
- *        - SourcePhoneNumber: callback.sourcePhoneNumber OR default
- *        - ContactFlowId: callback.contactFlowId OR UDEP-Outbound-Smart
- *        - Attributes include the assignedAgentUserId — the contact
- *          flow's TransferContactToQueue / agent routing can read this
- *          and route to the specific agent who promised the callback.
- *   3. Mark COMPLETED if the call started, RETRY / FAILED otherwise.
+ *   channel="voice" (or missing):
+ *     1. Mark RINGING (optimistic concurrency).
+ *     2. Place an outbound voice call via StartOutboundVoiceContact
+ *        with callback metadata as Connect contact attributes.
+ *     3. Mark COMPLETED if accepted, FAILED otherwise.
+ *
+ *   channel="email" | "whatsapp":
+ *     1. Mark DUE so the agent's "Mis pendientes" drawer surfaces it
+ *        in red. The agent then opens it, edits if needed, and clicks
+ *        "Enviar" — that hits the existing start-outbound-contact /
+ *        send-whatsapp-template Lambdas. The row is then moved to
+ *        COMPLETED by the cancel-callback flow (with `completed`
+ *        actor).
+ *
+ * Status flow:
+ *   SCHEDULED → (voice) RINGING → COMPLETED / FAILED
+ *   SCHEDULED → (email/whatsapp) DUE → COMPLETED (when agent attends)
+ *   SCHEDULED → CANCELLED (when agent or supervisor cancels)
  *
  * Concurrency safety: ConditionExpression ensures only one dispatcher
  * grabs each row.
@@ -41,6 +47,8 @@ const DEFAULT_FLOW_ID =
 const DEFAULT_SOURCE_PHONE =
   process.env.DEFAULT_SOURCE_PHONE || "+5116433467";
 
+type Channel = "voice" | "email" | "whatsapp";
+
 interface CallbackRow {
   callbackId: string;
   phone: string;
@@ -49,6 +57,8 @@ interface CallbackRow {
   status: string;
   assignedAgentUserId?: string;
   notes?: string;
+  channel?: Channel;
+  actionType?: string;
   campaignId?: string;
   contactFlowId?: string;
   sourcePhoneNumber?: string;
@@ -56,18 +66,23 @@ interface CallbackRow {
   attempts?: number;
 }
 
-async function claim(row: CallbackRow): Promise<boolean> {
+/**
+ * Try to claim a row by moving it from SCHEDULED → targetStatus
+ * atomically. Returns true only if we won the race (other dispatchers
+ * fail the ConditionExpression and skip the row).
+ */
+async function claim(row: CallbackRow, targetStatus: string): Promise<boolean> {
   try {
     await dynamo.send(
       new UpdateItemCommand({
         TableName: TABLE,
         Key: { callbackId: { S: row.callbackId } },
         UpdateExpression:
-          "SET #s = :ringing, updatedAt = :now, dispatchAt = :now, attempts = if_not_exists(attempts, :zero) + :one",
+          "SET #s = :target, updatedAt = :now, dispatchAt = :now, attempts = if_not_exists(attempts, :zero) + :one",
         ConditionExpression: "#s = :scheduled",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {
-          ":ringing": { S: "RINGING" },
+          ":target": { S: targetStatus },
           ":scheduled": { S: "SCHEDULED" },
           ":now": { S: new Date().toISOString() },
           ":zero": { N: "0" },
@@ -120,7 +135,7 @@ async function markFailed(callbackId: string, error: string) {
   );
 }
 
-async function dispatchOne(row: CallbackRow): Promise<void> {
+async function dispatchVoice(row: CallbackRow): Promise<void> {
   // Pass the callback metadata as Connect contact attributes so the
   // flow's "Set contact attributes" / queue routing can react to it
   // (e.g. route to the specific agent who promised the callback).
@@ -157,14 +172,14 @@ async function dispatchOne(row: CallbackRow): Promise<void> {
     if (res.ContactId) {
       await markCompleted(row.callbackId, res.ContactId);
       console.log(
-        `[ok] callback ${row.callbackId.slice(0, 8)} fired → contact ${res.ContactId}`
+        `[ok] voice callback ${row.callbackId.slice(0, 8)} fired → contact ${res.ContactId}`
       );
     } else {
       await markFailed(row.callbackId, "StartOutboundVoiceContact returned no contactId");
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[err] callback ${row.callbackId.slice(0, 8)} dispatch:`, msg);
+    console.error(`[err] voice callback ${row.callbackId.slice(0, 8)} dispatch:`, msg);
     await markFailed(row.callbackId, msg);
   }
 }
@@ -192,13 +207,35 @@ export const handler: Handler = async (_event: any) => {
   );
 
   const rows = (res.Items || []).map((it) => unmarshall(it) as CallbackRow);
-  console.log(`[dispatcher] ${rows.length} due callback(s)`);
+  console.log(`[dispatcher] ${rows.length} due follow-up(s)`);
+
+  let voiceDispatched = 0;
+  let markedDue = 0;
 
   for (const row of rows) {
-    const claimed = await claim(row);
-    if (!claimed) continue;
-    await dispatchOne(row);
+    const channel: Channel = (row.channel as Channel) || "voice";
+
+    if (channel === "voice") {
+      // Atomic claim then dispatch.
+      const claimed = await claim(row, "RINGING");
+      if (!claimed) continue;
+      await dispatchVoice(row);
+      voiceDispatched += 1;
+    } else {
+      // Email / WhatsApp: just flip to DUE so the agent's drawer
+      // surfaces it. The agent decides when to actually attend.
+      const claimed = await claim(row, "DUE");
+      if (!claimed) continue;
+      markedDue += 1;
+      console.log(
+        `[ok] ${channel} follow-up ${row.callbackId.slice(0, 8)} → DUE (agent ${row.assignedAgentUserId})`
+      );
+    }
   }
 
-  return { dispatched: rows.length };
+  return {
+    dispatched: voiceDispatched,
+    markedDue,
+    total: rows.length,
+  };
 };

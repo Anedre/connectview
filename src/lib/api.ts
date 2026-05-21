@@ -62,11 +62,15 @@ interface ApiEndpoints {
   // campaign type is "whatsapp").
   listWhatsAppTemplates?: string;
   sendWhatsAppTemplate?: string;
-  // Callback scheduling — agent promises a future call, dispatcher
-  // Lambda fires it at the agreed time.
+  // Callback / follow-up scheduling — agent promises a future
+  // call/email/whatsapp; dispatcher fires (voice) or marks DUE
+  // (email/whatsapp).
   scheduleCallback?: string;
   listCallbacks?: string;
   cancelCallback?: string;
+  // Detailed contact view — audio recording presigned URL, transcript
+  // (historical Contact Lens or chat), attachments with presigned URLs.
+  getContactDetail?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

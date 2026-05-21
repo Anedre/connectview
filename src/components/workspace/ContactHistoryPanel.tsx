@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useContactHistory } from "@/hooks/useContactHistory";
 import { formatDistanceToNow, format } from "date-fns";
 import * as Icon from "@/components/vox/primitives";
 import type { ChannelType } from "@/components/vox/primitives";
+import { ContactDetailModal } from "@/components/workspace/ContactDetailModal";
 
 interface ContactHistoryPanelProps {
   phone: string | null;
@@ -26,6 +28,7 @@ function formatDuration(seconds: number): string {
 
 export function ContactHistoryPanel({ phone }: ContactHistoryPanelProps) {
   const { contacts, loading, error } = useContactHistory(phone);
+  const [openContactId, setOpenContactId] = useState<string | null>(null);
 
   if (!phone) {
     return (
@@ -100,7 +103,13 @@ export function ContactHistoryPanel({ phone }: ContactHistoryPanelProps) {
           const meta = CHANNEL_MAP[contact.channel] ?? CHANNEL_MAP.VOICE;
           const Icn = meta.Icn;
           return (
-            <div key={contact.contactId} className="tl__item">
+            <div
+              key={contact.contactId}
+              className="tl__item"
+              onClick={() => setOpenContactId(contact.contactId)}
+              style={{ cursor: "pointer" }}
+              title="Click para ver el detalle (grabación, transcripción, adjuntos)"
+            >
               <div
                 className="tl__dot"
                 style={{ color: meta.color, borderColor: meta.color }}
@@ -162,6 +171,12 @@ export function ContactHistoryPanel({ phone }: ContactHistoryPanelProps) {
           );
         })}
       </div>
+
+      <ContactDetailModal
+        open={!!openContactId}
+        onClose={() => setOpenContactId(null)}
+        contactId={openContactId}
+      />
     </div>
   );
 }

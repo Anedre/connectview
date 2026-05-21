@@ -641,9 +641,9 @@ export function AgentDesktopPage() {
                     justifyContent: "center",
                     fontSize: 12.5,
                   }}
-                  title="Prometer una llamada para más tarde · el sistema te conectará automáticamente"
+                  title="Prometer un follow-up para más tarde (llamada / email / WhatsApp)"
                 >
-                  📅 Agendar callback
+                  📅 Agendar follow-up
                 </button>
               </div>
             )}
@@ -687,9 +687,9 @@ export function AgentDesktopPage() {
                     justifyContent: "center",
                     fontSize: 12.5,
                   }}
-                  title="Prometer una llamada para más tarde"
+                  title="Prometer un follow-up para más tarde"
                 >
-                  📅 Agendar callback
+                  📅 Agendar follow-up
                 </button>
               </div>
             )}
