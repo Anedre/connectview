@@ -12,9 +12,15 @@ import {
   GetCurrentUserDataCommand,
   ListUsersCommand,
 } from "@aws-sdk/client-connect";
+import {
+  LambdaClient,
+  InvokeCommand,
+  InvocationType,
+} from "@aws-sdk/client-lambda";
 
 const dynamo = new DynamoDBClient({});
 const connect = new ConnectClient({ maxAttempts: 1 });
+const lambda = new LambdaClient({});
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
@@ -170,6 +176,33 @@ async function findPendingContacts(
   );
   // Extra filter client-side because FilterExpression after Query limit may over-filter
   return items.filter((c) => !c.nextRetryAt || c.nextRetryAt <= nowIso);
+}
+
+/**
+ * Cheap count of pending contacts for a campaign. Used by the self-chain
+ * logic to decide whether there's still work to do. Returns 0 on error
+ * (treated as "no work left" — safe default that just stops the chain).
+ */
+async function countPendingContacts(campaignId: string): Promise<number> {
+  try {
+    const res = await dynamo.send(
+      new QueryCommand({
+        TableName: CONTACTS_TABLE,
+        IndexName: "campaignId-status-index",
+        KeyConditionExpression: "campaignId = :cid AND #st = :s",
+        ExpressionAttributeNames: { "#st": "status" },
+        ExpressionAttributeValues: {
+          ":cid": { S: campaignId },
+          ":s": { S: "pending" },
+        },
+        Select: "COUNT",
+      })
+    );
+    return res.Count || 0;
+  } catch (err) {
+    console.error("countPendingContacts error:", err);
+    return 0;
+  }
 }
 
 /**
@@ -849,14 +882,63 @@ async function processCampaignLegacy(campaign: Campaign): Promise<void> {
   void rollbackToPending;
 }
 
-export const handler: Handler = async () => {
+// Maximum chain depth — each invocation can self-invoke up to this many
+// times before the EventBridge tick takes over again. With chain depth 6
+// the worst-case sub-second gap covers the first 6 contacts after a
+// terminal call; the 7th waits for the next minute tick. In practice we
+// only chain while we keep dialing, so the depth caps runaway not
+// throughput.
+const MAX_CHAIN_DEPTH = 6;
+// Tiny pause between chain links so DynamoDB has time to commit the
+// markAsDialing UpdateItem and so Connect's user data API reflects the
+// new state. Without this, the next chain link sees stale data and
+// thinks the agent is still idle.
+const CHAIN_DELAY_MS = 2000;
+
+interface DialerEvent {
+  /** Set by self-invocations to track chain depth. Absent on EventBridge ticks. */
+  chainDepth?: number;
+}
+
+async function selfInvoke(depth: number): Promise<void> {
+  const fnName = process.env.AWS_LAMBDA_FUNCTION_NAME;
+  if (!fnName) {
+    console.warn("[dialer] AWS_LAMBDA_FUNCTION_NAME unset — skipping chain");
+    return;
+  }
+  try {
+    await lambda.send(
+      new InvokeCommand({
+        FunctionName: fnName,
+        InvocationType: InvocationType.Event, // fire-and-forget
+        Payload: new TextEncoder().encode(
+          JSON.stringify({ chainDepth: depth } satisfies DialerEvent)
+        ),
+      })
+    );
+    console.log(`[dialer] chained self at depth=${depth}`);
+  } catch (err) {
+    console.error("[dialer] chain self-invoke failed:", err);
+  }
+}
+
+export const handler: Handler<DialerEvent> = async (event) => {
+  const chainDepth = event?.chainDepth ?? 0;
   try {
     const campaigns = await listRunningCampaigns();
-    console.log(`[dialer] running campaigns: ${campaigns.length}`);
+    console.log(
+      `[dialer] running campaigns: ${campaigns.length} · chainDepth=${chainDepth}`
+    );
 
     if (campaigns.length === 0) {
       return { ok: true, campaignsProcessed: 0 };
     }
+
+    // Track whether this tick made progress AND still has more to do.
+    // If so, we chain ourselves so the next contact dials in seconds
+    // instead of waiting up to 60s for the next EventBridge tick.
+    let anyProgressInTick = false;
+    let anyPendingLeft = false;
 
     for (const campaign of campaigns) {
       // Check time window
@@ -869,15 +951,39 @@ export const handler: Handler = async () => {
       const useBuckets =
         campaign.dialMode !== "agentless" && assignedAgentIds.length > 0;
 
+      const before = await countPendingContacts(campaign.campaignId);
+
       if (useBuckets) {
         await processCampaignWithBuckets(campaign, assignedAgentIds);
       } else {
         // No assigned agents or agentless mode → original behavior.
         await processCampaignLegacy(campaign);
       }
+
+      const after = await countPendingContacts(campaign.campaignId);
+      if (after < before) anyProgressInTick = true;
+      if (after > 0) anyPendingLeft = true;
     }
 
-    return { ok: true, campaignsProcessed: campaigns.length };
+    // Chain ourselves if (a) we made progress (so the bottleneck is the
+    // 60s tick, not agent availability) and (b) there's still pending
+    // work and (c) we haven't exceeded the safety cap.
+    if (
+      anyProgressInTick &&
+      anyPendingLeft &&
+      chainDepth < MAX_CHAIN_DEPTH
+    ) {
+      // Brief wait so DynamoDB writes propagate before the next link reads.
+      await new Promise((r) => setTimeout(r, CHAIN_DELAY_MS));
+      await selfInvoke(chainDepth + 1);
+    }
+
+    return {
+      ok: true,
+      campaignsProcessed: campaigns.length,
+      chainDepth,
+      chained: anyProgressInTick && anyPendingLeft,
+    };
   } catch (err) {
     console.error("dialer error", err);
     throw err;
