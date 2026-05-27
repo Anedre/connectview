@@ -84,7 +84,9 @@ export function AdminPage() {
           </div>
           <h1 className="view__title">Configuración</h1>
           <div className="view__sub">
-            Workspace · Connect users · {stats.total} usuarios totales
+            {/* Inconsistencia cross-página: el resto de subtítulos están
+                en español puro, este mezclaba "Workspace · Connect users". */}
+            Sistema · Usuarios de Connect · {stats.total} en total
           </div>
         </div>
         <div className="view__actions">
@@ -126,10 +128,20 @@ export function AdminPage() {
           {section === "users" && (
             <div className="col" style={{ gap: 16 }}>
               <div className="kpi-grid">
-                <Kpi label="Usuarios totales" value={String(stats.total)} delta="—" deltaDir="flat" />
-                <Kpi label="Admins" value={String(stats.admins)} delta="—" deltaDir="flat" />
-                <Kpi label="Managers" value={String(stats.managers)} delta="—" deltaDir="flat" />
-                <Kpi label="Agentes" value={String(stats.agents)} delta="—" deltaDir="flat" />
+                <Kpi label="Usuarios totales" value={String(stats.total)} deltaDir="flat" />
+                {/* Mantenemos el español puro para alinear con el resto
+                    de la app. "Managers" → "Supervisores" para reflejar el
+                    rol CallCenterManager del Connect security profile. */}
+                <Kpi label="Administradores" value={String(stats.admins)} deltaDir="flat" />
+                <Kpi label="Supervisores" value={String(stats.managers)} deltaDir="flat" />
+                <Kpi label="Agentes" value={String(stats.agents)} deltaDir="flat" />
+              </div>
+              <div
+                className="muted"
+                style={{ fontSize: 11.5, marginTop: -4 }}
+              >
+                Un mismo usuario puede tener varios perfiles, por lo que la suma de
+                Administradores/Supervisores/Agentes puede superar el total.
               </div>
 
               {error && (
@@ -174,7 +186,9 @@ export function AdminPage() {
                           <th>Usuario</th>
                           <th>Nombre</th>
                           <th>Email</th>
-                          <th>Security profiles</th>
+                          {/* Inconsistencia: el resto de la app usa español;
+                              "Security profiles" → "Perfiles de seguridad". */}
+                          <th>Perfiles de seguridad</th>
                           <th>Estado</th>
                         </tr>
                       </thead>
@@ -237,11 +251,24 @@ export function AdminPage() {
               >
                 <Icon.Sparkles size={32} style={{ opacity: 0.4 }} />
                 <div style={{ marginTop: 12, fontSize: 14 }}>
-                  Sección en construcción · {sections.find((s) => s.id === section)?.label}
+                  Próximamente · {sections.find((s) => s.id === section)?.label}
                 </div>
                 <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)" }}>
-                  Disponible cuando se conecte con la consola de Amazon Connect.
+                  Por ahora gestiona esta sección desde la consola de Amazon Connect.
                 </div>
+                <button
+                  className="btn btn--ghost btn--sm"
+                  style={{ marginTop: 14 }}
+                  onClick={() =>
+                    window.open(
+                      "https://novasys.my.connect.aws/connect",
+                      "_blank",
+                      "noopener"
+                    )
+                  }
+                >
+                  Abrir consola de Connect <Icon.ChevRight size={12} />
+                </button>
               </CardBody>
             </Card>
           )}

@@ -20,13 +20,13 @@ export function WisdomPanel() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <BookOpen className="h-5 w-5" />
-          Knowledge Base
+          Base de conocimiento
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex gap-2">
           <Input
-            placeholder="Search Amazon Q in Connect..."
+            placeholder="Buscar en Amazon Q…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && openInConnect()}
@@ -43,12 +43,12 @@ export function WisdomPanel() {
           onClick={openInConnect}
         >
           <ExternalLink className="mr-2 h-4 w-4" />
-          Open Knowledge Base
+          Abrir base de conocimiento
         </Button>
 
         <p className="text-xs text-muted-foreground">
-          Amazon Q in Connect powered by your knowledge bases and quick
-          responses.
+          Amazon Q en Connect, alimentado por tus bases de conocimiento y
+          respuestas rápidas.
         </p>
       </CardContent>
     </Card>

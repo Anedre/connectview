@@ -9,6 +9,7 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useDebugRender, traceChange } from "@/lib/debugTrace";
 import { ContactDetailModal } from "@/components/workspace/ContactDetailModal";
+import { formatDurationSec } from "@/lib/utils";
 
 interface CustomerProfilePanelProps {
   phone: string | null;
@@ -28,11 +29,10 @@ const CHANNEL_META: Record<
   TASK: { color: "var(--accent-violet)", Icn: Icon.Note, label: "Tarea", type: "sms" },
 };
 
+// Bug #7/#11 — old MM:SS format produced absurd values like "1440:00"
+// for chats over an hour. Delegate to the shared HH:MM:SS helper.
 function fmtDuration(s: number): string {
-  if (!s) return "—";
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
+  return formatDurationSec(s);
 }
 
 export function CustomerProfilePanel({
@@ -204,7 +204,9 @@ export function CustomerProfilePanel({
       profileRows.push({ label, value: String(value), mono });
     }
   };
-  push("Profile ID", profile.profileId, true);
+  // Bug — Profile ID is a UUID and has no value for the agent. We keep
+  // it accessible via the more-menu / debug tooltips, but stop pushing
+  // it as a primary profile row.
   push("Nombre", profile.firstName);
   push("Segundo nombre", profile.middleName);
   push("Apellido", profile.lastName);
@@ -273,29 +275,39 @@ export function CustomerProfilePanel({
         </div>
       </div>
 
-      {/* STATS GRID 2×2 */}
-      <div className="c360__stats">
-        <div className="c360__stat">
-          <div className="c360__stat-label">ARR</div>
-          <div className="c360__stat-value">
-            {arr ? (arr.startsWith("$") ? arr : `$${arr}`) : "—"}
-          </div>
+      {/* STATS GRID 2×2 — Bug #6: only render the grid when at least ONE
+          field has a real value. The all-em-dashes panel used to take 80px
+          of vertical real estate while telling the agent nothing. */}
+      {(arr || openCases != null || lastInteractionRelative || csat) && (
+        <div className="c360__stats">
+          {arr && (
+            <div className="c360__stat">
+              <div className="c360__stat-label">ARR</div>
+              <div className="c360__stat-value">
+                {arr.startsWith("$") ? arr : `$${arr}`}
+              </div>
+            </div>
+          )}
+          {openCases != null && (
+            <div className="c360__stat">
+              <div className="c360__stat-label">Casos abiertos</div>
+              <div className="c360__stat-value">{openCases}</div>
+            </div>
+          )}
+          {lastInteractionRelative && (
+            <div className="c360__stat">
+              <div className="c360__stat-label">Última interacción</div>
+              <div className="c360__stat-value">{lastInteractionRelative}</div>
+            </div>
+          )}
+          {csat && (
+            <div className="c360__stat">
+              <div className="c360__stat-label">CSAT promedio</div>
+              <div className="c360__stat-value">{csat}%</div>
+            </div>
+          )}
         </div>
-        <div className="c360__stat">
-          <div className="c360__stat-label">Casos abiertos</div>
-          <div className="c360__stat-value">{openCases ?? "—"}</div>
-        </div>
-        <div className="c360__stat">
-          <div className="c360__stat-label">Última interacción</div>
-          <div className="c360__stat-value">
-            {lastInteractionRelative ? lastInteractionRelative : "—"}
-          </div>
-        </div>
-        <div className="c360__stat">
-          <div className="c360__stat-label">CSAT promedio</div>
-          <div className="c360__stat-value">{csat ? `${csat}%` : "—"}</div>
-        </div>
-      </div>
+      )}
 
       {/* CONTACTO */}
       <div>

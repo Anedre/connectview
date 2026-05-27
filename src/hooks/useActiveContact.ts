@@ -30,6 +30,11 @@ export interface ActiveContact {
    *  this contact. We use this to expire contacts that disappeared from
    *  Streams without ever firing onEnded/onDestroy. */
   lastSeenTs: number;
+  /** Wall-clock ms when this contact entered the "connected" state.
+   *  Stays stable across snapshot polls so the call timer keeps
+   *  ticking the REAL duration even when the agent switches focused
+   *  tab (which used to reset the timer's internal counter). */
+  connectedAtMs: number | null;
 }
 
 /**
@@ -95,6 +100,20 @@ function extractContact(c: any): ActiveContact | null {
       // ignore
     }
 
+    // Streams exposes `c.getStatusDuration()` = ms since the contact
+    // entered its CURRENT state. When state==="connected" we anchor the
+    // wall-clock at (now - statusDuration) so the timer keeps real time
+    // regardless of how many snapshot polls / refresh callbacks fire.
+    let connectedAtMs: number | null = null;
+    if (state === "connected") {
+      try {
+        const dur = c.getStatusDuration?.() ?? 0;
+        connectedAtMs = Date.now() - (typeof dur === "number" ? dur : 0);
+      } catch {
+        connectedAtMs = Date.now();
+      }
+    }
+
     return {
       contactId,
       channel,
@@ -104,6 +123,7 @@ function extractContact(c: any): ActiveContact | null {
       direction,
       attributes,
       lastSeenTs: Date.now(),
+      connectedAtMs,
     };
   } catch {
     return null;
@@ -156,6 +176,14 @@ function extractFromSnapshot(c: any): ActiveContact | null {
     if (typeof v === "string" && v.length > 0) attributes[k] = v;
   }
 
+  // Snapshot shape has `state.duration` (ms in current state). Use it
+  // to anchor the connected timestamp the same way extractContact does.
+  let connectedAtMs: number | null = null;
+  if (state === "connected") {
+    const dur = typeof c.state?.duration === "number" ? c.state.duration : 0;
+    connectedAtMs = Date.now() - dur;
+  }
+
   return {
     contactId: c.contactId || "",
     channel: c.type || "VOICE",
@@ -165,6 +193,7 @@ function extractFromSnapshot(c: any): ActiveContact | null {
     direction,
     attributes,
     lastSeenTs: Date.now(),
+    connectedAtMs,
   };
 }
 
@@ -254,6 +283,15 @@ function mergeContact(prev: ActiveContact, next: ActiveContact): ActiveContact {
   const nextRank = stateRank[next.state] ?? 0;
   const stickyState = nextRank >= prevRank ? next.state : prev.state;
 
+  // Preserve `connectedAtMs` across polls — it's the wall-clock anchor
+  // for the call timer. The new snapshot might re-derive a slightly
+  // different value (drift in Date.now() vs Streams' duration counter),
+  // so once we have a value we KEEP it for the lifetime of the contact.
+  // Only adopt the new value when prev didn't have one yet (e.g. the
+  // contact just transitioned ringing → connected).
+  const connectedAtMs =
+    prev.connectedAtMs ?? next.connectedAtMs ?? null;
+
   const merged: ActiveContact = {
     ...prev,
     ...next,
@@ -262,6 +300,7 @@ function mergeContact(prev: ActiveContact, next: ActiveContact): ActiveContact {
     queueName: next.queueName || prev.queueName,
     attributes: { ...prev.attributes, ...next.attributes },
     lastSeenTs: Math.max(prev.lastSeenTs, next.lastSeenTs),
+    connectedAtMs,
   };
   if (stickyState !== next.state) {
     traceInfo("useActiveContact.stateStickied", {
@@ -444,13 +483,30 @@ function useActiveContactsState(): ActiveContactsContextValue {
    * cached contacts that didn't appear in the observation, decide
    * whether to evict (based on lastSeenTs).
    */
+  /**
+   * Reconcile observed contacts into the cached list.
+   *
+   * @param observed      The contacts we just saw.
+   * @param isFullSnapshot When TRUE, the caller represents the COMPLETE
+   *                       agent state (e.g. a Streams snapshot poll that
+   *                       called `agent.getContacts()`). Cached contacts
+   *                       that aren't in `observed` are considered for
+   *                       eviction after the grace window.
+   *
+   *                       When FALSE, this is a partial update from a
+   *                       single contact's lifecycle callback
+   *                       (onRefresh, onConnected, …). We only upsert
+   *                       that contact and leave the others alone —
+   *                       evicting them based on a partial observation
+   *                       was THE bug that caused the multi-contact
+   *                       strip to flicker tabs in/out every ~5-10 s.
+   */
   const observeAllContacts = useCallback(
-    (observed: ActiveContact[]) => {
+    (observed: ActiveContact[], isFullSnapshot = false) => {
       setContacts((prev) => {
-        const observedIds = new Set(observed.map((c) => c.contactId));
         const now = Date.now();
 
-        // 1) Upsert each observed contact
+        // 1) Upsert each observed contact (always — both modes do this)
         const next: ActiveContact[] = [];
         const seen = new Set<string>();
         for (const obs of observed) {
@@ -469,23 +525,27 @@ function useActiveContactsState(): ActiveContactsContextValue {
           seen.add(obs.contactId);
         }
 
-        // 2) Keep cached contacts that weren't observed but are still
-        //    within the eviction window (debounces transient snapshot
-        //    gaps).
+        // 2) Carry forward the rest of the cached contacts.
         for (const cached of prev) {
           if (seen.has(cached.contactId)) continue;
-          if (!observedIds.has(cached.contactId)) {
-            const age = now - cached.lastSeenTs;
-            if (age < EVICT_AFTER_MS) {
-              // Keep it — Streams just dropped it from this snapshot
-              // but it'll likely come back next tick.
-              next.push(cached);
-            } else {
-              traceInfo("useActiveContact.contactEvicted", {
-                contactId: cached.contactId,
-                ageMs: age,
-              });
-            }
+          if (!isFullSnapshot) {
+            // PARTIAL update — preserve every other cached contact
+            // verbatim. They're still alive; this callback just doesn't
+            // know about them.
+            next.push(cached);
+            continue;
+          }
+          // FULL snapshot — check the eviction window. The grace
+          // covers transient snapshot gaps (Streams IPC briefly drops
+          // a contact then re-includes it on the next tick).
+          const age = now - cached.lastSeenTs;
+          if (age < EVICT_AFTER_MS) {
+            next.push(cached);
+          } else {
+            traceInfo("useActiveContact.contactEvicted", {
+              contactId: cached.contactId,
+              ageMs: age,
+            });
           }
         }
 
@@ -559,7 +619,11 @@ function useActiveContactsState(): ActiveContactsContextValue {
 
       const refresh = () => {
         const info = extractContact(c);
-        if (info) observeAllContacts([info]);
+        // Per-contact lifecycle callback — NOT a full snapshot. We must
+        // pass isFullSnapshot=false so the other cached contacts aren't
+        // mistakenly considered for eviction just because they aren't
+        // in this single-contact observation.
+        if (info) observeAllContacts([info], false);
       };
 
       refresh();
@@ -624,7 +688,8 @@ function useActiveContactsState(): ActiveContactsContextValue {
             bus.subscribe(evt, (c: any) => {
               subscribeToContact(c);
               const info = extractContact(c);
-              if (info) observeAllContacts([info]);
+              // Bus events fire for a single contact — partial update.
+              if (info) observeAllContacts([info], false);
             });
           } catch { /* noop */ }
         });
@@ -670,7 +735,10 @@ function useActiveContactsState(): ActiveContactsContextValue {
         snapshotAgeMs,
         ids: snap.map((c) => c.contactId.slice(-6)),
       });
-      observeAllContacts(snap);
+      // Snapshot is the canonical "all contacts the agent currently
+      // has". Pass isFullSnapshot=true so missing contacts can be
+      // evicted (subject to the EVICT_AFTER_MS grace window).
+      observeAllContacts(snap, true);
       schedule(FAST_MS);
     };
     schedule(FAST_MS);
@@ -679,7 +747,7 @@ function useActiveContactsState(): ActiveContactsContextValue {
     // current contacts (rather than waiting 800 ms for the first tick).
     const { contacts: initial, snapshotAgeMs: initialAge } = pollAllContacts();
     if (initial.length > 0 && initialAge < 8000) {
-      observeAllContacts(initial);
+      observeAllContacts(initial, true);
     }
 
     return () => {
@@ -732,6 +800,7 @@ function useActiveContactsState(): ActiveContactsContextValue {
               : "inbound",
           attributes: data.contact.attributes || {},
           lastSeenTs: Date.now(),
+          connectedAtMs: null,
         };
 
         if (apiContact.state === "error" || apiContact.state === "missed") {

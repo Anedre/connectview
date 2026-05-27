@@ -92,7 +92,10 @@ export function PacingControlCard({
           Pacing en vivo
         </div>
         <span className="card__sub">
-          modo {dialMode} · cambio efectivo en ≤60s
+          modo {dialMode}
+          {disabled
+            ? " · campaña finalizada — pacing congelado"
+            : " · cambio efectivo en ≤60s"}
         </span>
       </div>
       <CardBody>

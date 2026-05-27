@@ -1,8 +1,10 @@
 import { useEffect, useMemo } from "react";
+import { toast } from "sonner";
 import { useContacts } from "@/hooks/useContacts";
 import { ContactFilters } from "@/components/reports/ContactFilters";
 import { SentimentChart } from "@/components/reports/SentimentChart";
 import { ContactsTable } from "@/components/reports/ContactsTable";
+import { formatDurationSec } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
 import { Card, CardBody, CardHead, Kpi } from "@/components/vox/primitives";
 import type { ContactRecord } from "@/types/monitoring";
@@ -245,6 +247,53 @@ function AHTHistogram({ contacts }: { contacts: ContactRecord[] }) {
   );
 }
 
+/**
+ * Bug #13 — the "Exportar" button used to be a silent no-op. We now
+ * generate a CSV from the current contacts list, trigger a real browser
+ * download, and confirm with a toast.
+ */
+function exportContactsToCsv(contacts: ContactRecord[]) {
+  if (contacts.length === 0) {
+    toast.info("No hay contactos para exportar");
+    return;
+  }
+  const cols = [
+    "contactId",
+    "initiationTimestamp",
+    "disconnectTimestamp",
+    "agentUsername",
+    "queueName",
+    "channel",
+    "duration",
+    "sentiment",
+    "categories",
+    "status",
+    "disconnectReason",
+  ] as const;
+  const escape = (raw: unknown): string => {
+    if (raw == null) return "";
+    const s = Array.isArray(raw) ? raw.join("|") : String(raw);
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+  const lines = [cols.join(",")];
+  for (const c of contacts) {
+    const row = c as unknown as Record<string, unknown>;
+    lines.push(cols.map((k) => escape(row[k])).join(","));
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+  a.href = url;
+  a.download = `contacts-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast.success(`CSV descargado · ${contacts.length} contactos`);
+}
+
 export function ReportsPage() {
   const { contacts, loading, searchContacts } = useContacts();
 
@@ -256,14 +305,22 @@ export function ReportsPage() {
 
   const kpis = useMemo(() => {
     const total = contacts.length;
+    // Only voice/chat have meaningful durations — Bug #11: emails were
+    // skewing the avg with cap-out-of-conversation timestamps.
     const durations = contacts
+      .filter((c) => {
+        const ch = (c.channel || "").toUpperCase();
+        return ch === "VOICE" || ch === "TELEPHONY" || ch === "CHAT";
+      })
       .map((c) => c.duration)
       .filter((d): d is number => typeof d === "number" && d > 0);
     const avgAht = durations.length
       ? durations.reduce((a, b) => a + b, 0) / durations.length
       : 0;
-    const avgMin = Math.floor(avgAht / 60);
-    const avgSec = Math.floor(avgAht % 60);
+    const sortedDur = durations.slice().sort((a, b) => a - b);
+    const medianAht = sortedDur.length
+      ? sortedDur[Math.floor(sortedDur.length / 2)]
+      : 0;
     const pos = contacts.filter((c) => c.sentiment === "POSITIVE").length;
     const neg = contacts.filter((c) => c.sentiment === "NEGATIVE").length;
     const sentimentScore = total
@@ -271,9 +328,9 @@ export function ReportsPage() {
       : 0;
     return {
       total,
-      aht: avgAht
-        ? `${String(avgMin).padStart(2, "0")}:${String(avgSec).padStart(2, "0")}`
-        : "—",
+      // Bug #11 — switch to HH:MM:SS automatically for AHTs ≥ 1h.
+      aht: avgAht ? formatDurationSec(avgAht) : "—",
+      ahtMedian: medianAht ? formatDurationSec(medianAht) : "—",
       pos: total ? Math.round((pos / total) * 100) : 0,
       sentimentScore,
     };
@@ -295,7 +352,18 @@ export function ReportsPage() {
           <button className="btn">
             <Icon.Calendar size={14} /> Últimos 7 días
           </button>
-          <button className="btn">Exportar</button>
+          <button
+            className="btn"
+            disabled={contacts.length === 0}
+            onClick={() => exportContactsToCsv(contacts)}
+            title={
+              contacts.length === 0
+                ? "No hay contactos para exportar"
+                : `Descargar ${contacts.length} contactos como CSV`
+            }
+          >
+            <Icon.Download size={14} /> Exportar
+          </button>
         </div>
       </div>
 
@@ -309,13 +377,17 @@ export function ReportsPage() {
         <Kpi
           label="AHT promedio"
           value={kpis.aht}
-          delta={kpis.aht === "—" ? "Sin datos" : "Calculado de duraciones"}
+          delta={
+            kpis.aht === "—"
+              ? "Sin datos"
+              : `Mediana ${kpis.ahtMedian}`
+          }
           deltaDir="flat"
         />
         <Kpi
-          label="Sentiment positivo"
+          label="Sentimiento positivo"
           value={`${kpis.pos}%`}
-          delta={kpis.pos > 0 ? "% de contactos" : "Sin sentiment"}
+          delta={kpis.pos > 0 ? "% de contactos" : "Sin datos de sentimiento"}
           deltaDir={kpis.pos > 50 ? "up" : "flat"}
         />
         <Kpi

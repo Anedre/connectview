@@ -1,16 +1,19 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useCCP } from "@/hooks/useCCP";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
+import { roleLabelOf } from "@/types/auth";
 import { useActiveContact } from "@/hooks/useActiveContact";
 import { useLiveTranscript } from "@/hooks/useLiveTranscript";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import { useDebugRender, traceChange } from "@/lib/debugTrace";
 import { ActiveContactsTabStrip } from "@/components/workspace/ActiveContactsTabStrip";
+import { OmnichannelNotifierProvider } from "@/context/OmnichannelNotifierContext";
 import { MissedCallBanner } from "@/components/workspace/MissedCallBanner";
 import { MissedHistoryDrawer } from "@/components/workspace/MissedHistoryDrawer";
 import { CustomerProfilePanel } from "@/components/workspace/CustomerProfilePanel";
 import { LiveTranscriptPanel } from "@/components/workspace/LiveTranscriptPanel";
 import { ChatThreadPanel } from "@/components/workspace/ChatThreadPanel";
+import { EmailThreadPanel } from "@/components/workspace/EmailThreadPanel";
 import { AgentNotesPanel } from "@/components/workspace/AgentNotesPanel";
 import { AIAssistPanel } from "@/components/workspace/AIAssistPanel";
 import { AICoachPanel } from "@/components/workspace/AICoachPanel";
@@ -54,41 +57,68 @@ function fmtElapsed(s: number) {
 }
 
 /**
- * Isolated call-timer leaf. Holds its own `elapsed` state so the
- * per-second tick doesn't bubble up and re-render the whole agent
- * desktop (one of the main contributors to the parpadeo).
+ * Isolated call-timer leaf. Holds its own per-second tick so the
+ * parent doesn't re-render every second.
  *
- * Exposes the current elapsed value via the `onTick` ref so the
- * wrap-up code in the parent can still read the duration when the
- * call ends — without subscribing to the state and re-rendering.
+ * In single-contact mode the elapsed counter is "ms since this leaf
+ * mounted" — which was fine when the agent had ONE contact. In
+ * multi-contact mode (voice + chat + email), switching the focused
+ * tab re-mounts the leaf with a different `resetKey`, which made the
+ * timer reset to 00:00 every time the agent switched away and back.
+ *
+ * Fix: when the parent passes a `startedAtMs` wall-clock anchor (e.g.
+ * the streams contact's connection timestamp), compute elapsed from
+ * that anchor — so the displayed time matches the REAL call duration
+ * regardless of how many times the agent switched tabs.
+ *
+ * onTick still publishes the latest second so the wrap-up snapshot
+ * can read it without subscribing.
  */
 const CallTimerInner = ({
   active,
   resetKey,
+  startedAtMs,
   onTick,
 }: {
   active: boolean;
   resetKey: string;
+  /** Wall-clock ms when the contact CONNECTED. If provided, elapsed
+   *  is derived as `floor((now - startedAtMs) / 1000)` so switching
+   *  tabs doesn't reset the displayed time. */
+  startedAtMs?: number | null;
   onTick?: React.MutableRefObject<number>;
 }) => {
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsed, setElapsed] = useState(() => {
+    if (!active) return 0;
+    if (startedAtMs && startedAtMs > 0) {
+      return Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
+    }
+    return 0;
+  });
   useEffect(() => {
     if (!active) {
       setElapsed(0);
       if (onTick) onTick.current = 0;
       return;
     }
-    setElapsed(0);
-    if (onTick) onTick.current = 0;
+    const initial =
+      startedAtMs && startedAtMs > 0
+        ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000))
+        : 0;
+    setElapsed(initial);
+    if (onTick) onTick.current = initial;
     const id = setInterval(() => {
-      setElapsed((e) => {
-        const next = e + 1;
+      setElapsed(() => {
+        const next =
+          startedAtMs && startedAtMs > 0
+            ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000))
+            : 0;
         if (onTick) onTick.current = next;
         return next;
       });
     }, 1000);
     return () => clearInterval(id);
-  }, [active, resetKey, onTick]);
+  }, [active, resetKey, startedAtMs, onTick]);
   return <>{active ? fmtElapsed(elapsed) : "--:--"}</>;
 };
 const CallTimer = memo(CallTimerInner);
@@ -460,27 +490,30 @@ export function AgentDesktopPage() {
 
   if (showWrapUp && pendingWrap) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        <MissedCallBanner />
-      <ActiveContactsTabStrip />
-        <div style={{ flex: 1, minHeight: 0 }}>
-          <WrapUpView
-            contactId={pendingWrap.contactId}
-            customerPhone={pendingWrap.customerPhone}
-            queueName={pendingWrap.queueName}
-            durationSeconds={pendingWrap.duration}
-            channel={pendingWrap.channel}
-            onFinish={() => {
-              dismissWrap(pendingWrap.contactId);
-              setPendingWrap(null);
-            }}
-          />
+      <OmnichannelNotifierProvider>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <MissedCallBanner />
+          <ActiveContactsTabStrip />
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <WrapUpView
+              contactId={pendingWrap.contactId}
+              customerPhone={pendingWrap.customerPhone}
+              queueName={pendingWrap.queueName}
+              durationSeconds={pendingWrap.duration}
+              channel={pendingWrap.channel}
+              onFinish={() => {
+                dismissWrap(pendingWrap.contactId);
+                setPendingWrap(null);
+              }}
+            />
+          </div>
         </div>
-      </div>
+      </OmnichannelNotifierProvider>
     );
   }
 
   return (
+    <OmnichannelNotifierProvider>
     <div
       style={{ display: "flex", flexDirection: "column", height: "100%" }}
       data-debug-component="AgentDesktopPage"
@@ -504,7 +537,7 @@ export function AgentDesktopPage() {
             {activeContact ? callerName : agentName || user?.username || "Agente"}
           </div>
           <div className="softphone__num mono">
-            {activeContact ? callerSecondary : `Listo · ${user?.highestRole ?? "Agente"}`}
+            {activeContact ? callerSecondary : `Listo · ${roleLabelOf(user?.highestRole)}`}
           </div>
           <div
             className="row"
@@ -529,6 +562,7 @@ export function AgentDesktopPage() {
               <CallTimer
                 active={isConnected}
                 resetKey={rawContact?.contactId || ""}
+                startedAtMs={rawContact?.connectedAtMs ?? null}
                 onTick={elapsedRef}
               />
             </div>
@@ -539,6 +573,14 @@ export function AgentDesktopPage() {
                   {isChat ? (
                     <span style={{ color: "var(--accent-cyan)" }}>
                       💬 {channelLabel}
+                    </span>
+                  ) : isEmail ? (
+                    <span style={{ color: "var(--accent-amber)" }}>
+                      📧 {channelLabel}
+                    </span>
+                  ) : isTask ? (
+                    <span style={{ color: "var(--accent-violet)" }}>
+                      📋 {channelLabel}
                     </span>
                   ) : recording ? (
                     <span style={{ color: "var(--accent-red)" }}>● Grabando</span>
@@ -955,6 +997,16 @@ export function AgentDesktopPage() {
               channel={activeContact.channel}
               customerName={callerName}
               channelLabel={channelLabel}
+              customerPhone={activeContact.customerPhone}
+              agentName={agentName || user?.username}
+              queueName={activeContact.queueName}
+            />
+          </div>
+        ) : isEmail && activeContact ? (
+          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            <EmailThreadPanel
+              contactId={activeContact.contactId}
+              customerName={callerName}
             />
           </div>
         ) : (
@@ -1016,9 +1068,10 @@ export function AgentDesktopPage() {
         )}
 
         {/* AI panels (Coach + Assist) rely on the Contact Lens voice
-            transcript. Hide them for chat — the ChatThreadPanel above
-            already occupies the full center. */}
-        {!isChat && (
+            transcript. Hide them for chat AND email — their own panels
+            already occupy the full center, and Q has nothing useful
+            to add to an email thread anyway. */}
+        {!isChat && !isEmail && (
           <div style={{ borderTop: "1px solid var(--border-1)", padding: 14 }}>
             {activeContact ? (
               <>
@@ -1145,5 +1198,6 @@ export function AgentDesktopPage() {
         onScheduled={() => setCallbackRefreshKey((k) => k + 1)}
       />
     </div>
+    </OmnichannelNotifierProvider>
   );
 }

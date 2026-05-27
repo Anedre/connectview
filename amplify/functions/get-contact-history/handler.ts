@@ -123,18 +123,34 @@ async function findProfileId(phone: string): Promise<string | null> {
   }
 }
 
-async function listProfileCtrs(profileId: string): Promise<HistoricalContact[]> {
-  const res = await profiles.send(
-    new ListProfileObjectsCommand({
-      DomainName: CUSTOMER_PROFILES_DOMAIN,
-      ProfileId: profileId,
-      ObjectTypeName: "CTR",
-      MaxResults: 100,
-    })
-  );
+async function listProfileCtrs(
+  profileId: string,
+  cap: number
+): Promise<HistoricalContact[]> {
+  // ListProfileObjects caps each call at 100; paginate with NextToken until
+  // we've gathered enough rows. cap is the upper bound; we never exceed it
+  // because the frontend only ever renders ~200 entries.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const items: any[] = [];
+  let nextToken: string | undefined = undefined;
+  while (items.length < cap) {
+    const res: import("@aws-sdk/client-customer-profiles").ListProfileObjectsCommandOutput =
+      await profiles.send(
+        new ListProfileObjectsCommand({
+          DomainName: CUSTOMER_PROFILES_DOMAIN,
+          ProfileId: profileId,
+          ObjectTypeName: "CTR",
+          MaxResults: 100,
+          NextToken: nextToken,
+        })
+      );
+    items.push(...(res.Items || []));
+    if (!res.NextToken) break;
+    nextToken = res.NextToken;
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parsed: any[] = (res.Items || [])
+  const parsed: any[] = items
     .map((item) => parseCtr(item.Object || "{}"))
     .filter((ctr) => ctr && ctr.contactId);
 
@@ -279,6 +295,11 @@ async function searchContactsFallback(
 export const handler: Handler = async (event: any) => {
   const phone = event.queryStringParameters?.phone;
   const maxDays = parseInt(event.queryStringParameters?.days || "90");
+  // Cap pagination — defaults to 200 (enough for the heaviest active customer
+  // we have today) but the frontend can request fewer when it knows the
+  // visible viewport. Hard-cap at 500 so a hostile caller can't loop forever.
+  const requestedLimit = parseInt(event.queryStringParameters?.limit || "200");
+  const cap = Math.min(Math.max(requestedLimit, 1), 500);
 
   if (!phone) {
     return {
@@ -297,7 +318,7 @@ export const handler: Handler = async (event: any) => {
     const profileId = await findProfileId(phone);
     if (profileId) {
       try {
-        contacts = await listProfileCtrs(profileId);
+        contacts = await listProfileCtrs(profileId, cap);
         source = "customer-profiles";
       } catch (err) {
         console.warn("ListProfileObjects failed, falling back:", err);

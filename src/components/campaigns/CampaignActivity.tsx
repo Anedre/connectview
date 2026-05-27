@@ -373,7 +373,10 @@ export function CampaignActivity({
                   }}
                 >
                   <tr>
-                    {["Agente", "Atend.", "Done", "NoAns", "Failed"].map(
+                    {/* Inconsistencia: mezclaba español ("Agente", "Atend.")
+                        con inglés ("Done", "NoAns", "Failed"). Unificamos
+                        en español corto para alinear con el resto. */}
+                    {["Agente", "Atend.", "Cerrados", "Sin resp.", "Fallidos"].map(
                       (h, i) => (
                         <th
                           key={i}
@@ -437,8 +440,9 @@ export function CampaignActivity({
                               <div
                                 className="muted mono"
                                 style={{ fontSize: 10 }}
+                                title="Done / Atendidas — Bug #31: 'conversión' implicaba ventas, ahora es la tasa real de cierres exitosos."
                               >
-                                {rate}% conversión
+                                {rate}% éxito
                               </div>
                             </div>
                           </div>

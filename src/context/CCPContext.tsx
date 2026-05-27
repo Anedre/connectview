@@ -679,15 +679,53 @@ export function CCPProvider({ children }: { children: ReactNode }) {
     if (!a || !conn?.Endpoint) {
       throw new Error("Amazon Connect aún no está listo");
     }
+    // Pre-flight: confirm the agent's routing profile has an OutboundCallerId
+    // and the agent has the outboundCall permission. Both are the root cause
+    // of >90% of "dialer just sits there" reports, and Streams hides them
+    // behind a generic BadEndpointException.
+    try {
+      const perms: string[] = a.getPermissions?.() || [];
+      if (perms.length > 0 && !perms.includes("outboundCall")) {
+        const msg =
+          "Tu perfil de seguridad no incluye 'outboundCall'. Pide al admin que lo habilite.";
+        setError(msg);
+        throw new Error(msg);
+      }
+    } catch (err) {
+      if (err instanceof Error && /outboundCall/i.test(err.message)) throw err;
+      /* getPermissions sometimes throws before Streams is fully ready; fall through */
+    }
+    if (!phoneNumber || !phoneNumber.trim()) {
+      throw new Error("Número vacío");
+    }
     return new Promise<void>((resolve, reject) => {
       try {
-        const endpoint = conn.Endpoint.byPhoneNumber(phoneNumber);
+        const endpoint = conn.Endpoint.byPhoneNumber(phoneNumber.trim());
+        if (!endpoint || endpoint.type !== "phone_number" || !endpoint.phoneNumber) {
+          // Endpoint.byPhoneNumber returned a phantom — usually means the
+          // streams snapshot isn't loaded yet.
+          const msg = "Streams aún no está listo para marcar. Espera un segundo y reintenta.";
+          setError(msg);
+          reject(new Error(msg));
+          return;
+        }
         a.connect(endpoint, {
           success: () => resolve(),
           failure: (err: any) => {
-            const msg =
+            // Streams hands us either a string or an object with type/message.
+            let msg =
               err?.message ||
+              err?.type ||
               (typeof err === "string" ? err : "No se pudo iniciar la llamada");
+            // Common Streams failure codes — translate to actionable Spanish.
+            if (/BadEndpointException/i.test(msg)) {
+              msg =
+                "Connect rechazó el número o tu estado actual. Revisa que estés en Disponible y el número tenga + y código de país.";
+            } else if (/Unauthorized|Permission/i.test(msg)) {
+              msg = "Tu perfil de seguridad no permite llamadas salientes.";
+            } else if (/InvalidStateException/i.test(msg)) {
+              msg = "Tu estado actual no permite marcar. Cambia a Disponible.";
+            }
             setError(msg);
             reject(new Error(msg));
           },

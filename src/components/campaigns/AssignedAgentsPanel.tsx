@@ -17,9 +17,14 @@ import * as Icon from "@/components/vox/primitives";
 
 interface Props {
   campaign: Campaign;
+  // Bug #28 — when a campaign has 0 explicit assignees but agents in the
+  // queue answered the calls anyway (via routing profile), the empty
+  // state used to look like a contradiction. The parent passes
+  // `participatingAgentsCount` so we can show a clarifying note.
+  participatingAgentsCount?: number;
 }
 
-export function AssignedAgentsPanel({ campaign }: Props) {
+export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: Props) {
   const { agents, loading, mutating, assign } = useCampaignAgents(
     campaign.campaignId,
     10000
@@ -156,7 +161,27 @@ export function AssignedAgentsPanel({ campaign }: Props) {
               lineHeight: 1.6,
             }}
           >
-            No hay agentes asignados aún. Click <strong>"Agregar agentes"</strong> para empezar — el sistema los configurará automáticamente para recibir llamadas de esta campaña.
+            {participatingAgentsCount > 0 ? (
+              <>
+                Sin asignaciones explícitas, pero{" "}
+                <strong>
+                  {participatingAgentsCount}{" "}
+                  {participatingAgentsCount === 1
+                    ? "agente atendió llamadas"
+                    : "agentes atendieron llamadas"}
+                </strong>{" "}
+                vía el routing profile (sección "Agentes en esta campaña"
+                arriba). Si quieres priorizar agentes específicos haz click
+                en <strong>"Agregar agentes"</strong>.
+              </>
+            ) : (
+              <>
+                No hay agentes asignados aún. Click{" "}
+                <strong>"Agregar agentes"</strong> para empezar — el sistema
+                los configurará automáticamente para recibir llamadas de esta
+                campaña.
+              </>
+            )}
           </div>
         ) : (
           /* Inline pills that wrap — keeps the list compact when an

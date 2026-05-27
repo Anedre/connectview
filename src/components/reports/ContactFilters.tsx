@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { Search } from "lucide-react";
 import type { ContactFilters as FilterType } from "@/types/monitoring";
+import { useQueues } from "@/hooks/useQueues";
 
 interface ContactFiltersProps {
   onSearch: (filters: FilterType) => void;
@@ -28,6 +29,11 @@ export function ContactFilters({ onSearch, loading }: ContactFiltersProps) {
   const [queue, setQueue] = useState("all");
   const [sentiment, setSentiment] = useState("all");
 
+  // Bug #14 — the dropdown used to be hardcoded to the Connect demo
+  // queues (BasicQueue/SalesQueue/SupportQueue). Now we pull the real
+  // queues from listQueues so Reports matches /queue and /admin.
+  const { queues } = useQueues();
+
   const handleSearch = () => {
     onSearch({
       startDate: `${startDate}T00:00:00Z`,
@@ -42,7 +48,7 @@ export function ContactFilters({ onSearch, loading }: ContactFiltersProps) {
     <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          Start Date
+          Inicio
         </label>
         <Input
           type="date"
@@ -53,7 +59,7 @@ export function ContactFilters({ onSearch, loading }: ContactFiltersProps) {
       </div>
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          End Date
+          Fin
         </label>
         <Input
           type="date"
@@ -64,10 +70,10 @@ export function ContactFilters({ onSearch, loading }: ContactFiltersProps) {
       </div>
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          Agent
+          Agente
         </label>
         <Input
-          placeholder="Agent username"
+          placeholder="Username del agente"
           value={agent}
           onChange={(e) => setAgent(e.target.value)}
           className="w-40"
@@ -75,17 +81,19 @@ export function ContactFilters({ onSearch, loading }: ContactFiltersProps) {
       </div>
       <div className="space-y-1">
         <label className="text-xs font-medium text-muted-foreground">
-          Queue
+          Cola
         </label>
         <Select value={queue} onValueChange={(v) => setQueue(v ?? "all")}>
           <SelectTrigger className="w-40">
-            <SelectValue placeholder="All queues" />
+            <SelectValue placeholder="Todas las colas" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Queues</SelectItem>
-            <SelectItem value="BasicQueue">BasicQueue</SelectItem>
-            <SelectItem value="SalesQueue">SalesQueue</SelectItem>
-            <SelectItem value="SupportQueue">SupportQueue</SelectItem>
+            <SelectItem value="all">Todas las colas</SelectItem>
+            {queues.map((q) => (
+              <SelectItem key={q.id} value={q.name}>
+                {q.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -95,20 +103,20 @@ export function ContactFilters({ onSearch, loading }: ContactFiltersProps) {
         </label>
         <Select value={sentiment} onValueChange={(v) => setSentiment(v ?? "all")}>
           <SelectTrigger className="w-40">
-            <SelectValue placeholder="All" />
+            <SelectValue placeholder="Todos" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="POSITIVE">Positive</SelectItem>
-            <SelectItem value="NEGATIVE">Negative</SelectItem>
+            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="POSITIVE">Positivo</SelectItem>
+            <SelectItem value="NEGATIVE">Negativo</SelectItem>
             <SelectItem value="NEUTRAL">Neutral</SelectItem>
-            <SelectItem value="MIXED">Mixed</SelectItem>
+            <SelectItem value="MIXED">Mixto</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <Button onClick={handleSearch} disabled={loading}>
         <Search className="mr-2 h-4 w-4" />
-        Search
+        Buscar
       </Button>
     </div>
   );

@@ -325,11 +325,53 @@ export function useChatSession(contactId: string | null | undefined, channel: st
     }
   }, []);
 
+  /**
+   * Upload a file via chatjs' sendAttachment. Connect's limits (as of
+   * 2025-Q1): 20 MB max, mime-allowlist excludes executables. We bubble
+   * the SDK error message up so the UI can show a toast.
+   */
+  const sendAttachment = useCallback(async (file: File) => {
+    if (!controllerRef.current) {
+      throw new Error("Chat no conectado");
+    }
+    // Soft size guard so a 200MB drop doesn't even hit the API.
+    const MAX_BYTES = 20 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      throw new Error("El archivo supera 20 MB (límite de Connect)");
+    }
+    try {
+      await controllerRef.current.sendAttachment({ attachment: file });
+      // Optimistic local echo so the agent immediately sees their upload
+      // — the websocket replay will dedupe on the real attachment Id.
+      setState((s) => ({
+        ...s,
+        messages: [
+          ...s.messages,
+          {
+            id: `local-att-${Date.now()}`,
+            participantRole: "AGENT",
+            contentType: file.type || "application/octet-stream",
+            content: `📎 ${file.name}`,
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      }));
+    } catch (e) {
+      // chatjs surfaces { errorMessage, statusCode } on rejection — pick
+      // the most useful field to show the user.
+      const err = e as { errorMessage?: string; message?: string };
+      throw new Error(
+        err.errorMessage || err.message || "No se pudo enviar el adjunto"
+      );
+    }
+  }, []);
+
   return {
     messages: state.messages,
     status: state.status,
     customerTyping: state.customerTyping,
     sendMessage,
     sendTyping,
+    sendAttachment,
   };
 }

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -9,6 +10,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import type { ContactRecord } from "@/types/monitoring";
 import { format } from "date-fns";
+import { useUsers, UUID_RE } from "@/hooks/useUsers";
+import { useQueues } from "@/hooks/useQueues";
+import { formatDurationSec } from "@/lib/utils";
 
 interface ContactsTableProps {
   contacts: ContactRecord[];
@@ -22,18 +26,49 @@ const SENTIMENT_STYLES: Record<string, string> = {
   UNKNOWN: "bg-gray-50 text-gray-500",
 };
 
-function formatDuration(seconds?: number): string {
-  if (!seconds) return "-";
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${String(secs).padStart(2, "0")}`;
-}
-
 export function ContactsTable({ contacts }: ContactsTableProps) {
+  // Bug #9 / #10 — the backend frequently returns raw Connect UUIDs in
+  // `agentUsername` and `queueName` (the field names are misleading).
+  // We map them client-side to real names before rendering.
+  const { userIdToName } = useUsers();
+  const { queues } = useQueues();
+  const queueIdToName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const q of queues) map.set(q.id, q.name);
+    return map;
+  }, [queues]);
+
+  const resolveAgent = (raw?: string): string => {
+    if (!raw) return "—";
+    if (UUID_RE.test(raw)) {
+      const resolved = userIdToName.get(raw);
+      // Bug #9 — until the listUsers Lambda redeploy lands the userId
+      // field, fall back to a short prefix so the column has SOME
+      // signal instead of a bare em-dash for every row.
+      return resolved || `agente-${raw.slice(0, 4)}`;
+    }
+    return raw;
+  };
+  const resolveQueue = (raw?: string): string => {
+    if (!raw) return "—";
+    if (UUID_RE.test(raw)) {
+      const resolved = queueIdToName.get(raw);
+      return resolved || `cola-${raw.slice(0, 4)}`;
+    }
+    return raw;
+  };
+
+  // Bug #12 — hide the Categories column entirely when NONE of the contacts
+  // in the current dataset have any. Removes a permanently-empty column.
+  const showCategories = useMemo(
+    () => contacts.some((c) => (c.categories?.length ?? 0) > 0),
+    [contacts]
+  );
+
   if (contacts.length === 0) {
     return (
       <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
-        No contacts found. Adjust your filters and search again.
+        No hay contactos. Ajusta los filtros y vuelve a buscar.
       </div>
     );
   }
@@ -43,51 +78,63 @@ export function ContactsTable({ contacts }: ContactsTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Agent</TableHead>
-            <TableHead>Queue</TableHead>
-            <TableHead>Channel</TableHead>
-            <TableHead className="text-center">Duration</TableHead>
+            <TableHead>Fecha</TableHead>
+            <TableHead>Agente</TableHead>
+            <TableHead>Cola</TableHead>
+            <TableHead>Canal</TableHead>
+            <TableHead className="text-center">Duración</TableHead>
             <TableHead>Sentiment</TableHead>
-            <TableHead>Categories</TableHead>
+            {showCategories && <TableHead>Categorías</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {contacts.map((contact) => (
-            <TableRow key={contact.contactId}>
-              <TableCell className="text-sm">
-                {format(new Date(contact.initiationTimestamp), "MMM dd, HH:mm")}
-              </TableCell>
-              <TableCell className="font-medium">
-                {contact.agentUsername}
-              </TableCell>
-              <TableCell>{contact.queueName}</TableCell>
-              <TableCell>
-                <Badge variant="secondary" className="text-xs">
-                  {contact.channel}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-center">
-                {formatDuration(contact.duration)}
-              </TableCell>
-              <TableCell>
-                <Badge
-                  className={SENTIMENT_STYLES[contact.sentiment || "UNKNOWN"]}
-                >
-                  {contact.sentiment || "N/A"}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-wrap gap-1">
-                  {contact.categories?.map((cat, i) => (
-                    <Badge key={i} variant="outline" className="text-xs">
-                      {cat}
-                    </Badge>
-                  ))}
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+          {contacts.map((contact) => {
+            // Bug #11 — emails/SMS don't have a meaningful "duration",
+            // and chats can run > 1 hour: format as HH:MM:SS in that
+            // case and show a clear "—" for non-applicable channels.
+            const channelUpper = (contact.channel || "").toUpperCase();
+            const hasDuration =
+              channelUpper === "VOICE" ||
+              channelUpper === "TELEPHONY" ||
+              channelUpper === "CHAT";
+            return (
+              <TableRow key={contact.contactId}>
+                <TableCell className="text-sm">
+                  {format(new Date(contact.initiationTimestamp), "MMM dd, HH:mm")}
+                </TableCell>
+                <TableCell className="font-medium">
+                  {resolveAgent(contact.agentUsername)}
+                </TableCell>
+                <TableCell>{resolveQueue(contact.queueName)}</TableCell>
+                <TableCell>
+                  <Badge variant="secondary" className="text-xs">
+                    {contact.channel}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-center">
+                  {hasDuration ? formatDurationSec(contact.duration) : "—"}
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    className={SENTIMENT_STYLES[contact.sentiment || "UNKNOWN"]}
+                  >
+                    {contact.sentiment || "N/A"}
+                  </Badge>
+                </TableCell>
+                {showCategories && (
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {contact.categories?.map((cat, i) => (
+                        <Badge key={i} variant="outline" className="text-xs">
+                          {cat}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                )}
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

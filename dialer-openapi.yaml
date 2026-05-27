@@ -1,0 +1,390 @@
+openapi: 3.1.0
+info:
+  title: Vox Dialer API
+  description: |
+    HTTP contract exposed by the Vox Dialer service. Any client that can speak
+    HTTP/JSON can create campaigns, query state, and control them.
+
+    The dialer itself runs on EventBridge `rate(1 minute)` and consumes the
+    rows written by `POST /createCampaign`. Callers do NOT invoke the dialer
+    directly; they write to DynamoDB (via this API) and the tick picks it up.
+  version: "1.0.0"
+  contact:
+    name: Connectview Team
+    email: dev@novasys.com
+
+servers:
+  - url: https://26bia7kkxupfzfdcsscemnftna0vwaju.lambda-url.us-east-1.on.aws
+    description: createCampaign (production)
+  - url: https://vpql6uhqbiuvgfdr3il7gpsr5a0lnaai.lambda-url.us-east-1.on.aws
+    description: listCampaigns (production)
+  - url: https://z4mczuwsu33gevossudmmgagn40nieis.lambda-url.us-east-1.on.aws
+    description: getCampaignStats (production)
+  - url: https://iomp4hmxk76rk4i3pxqalf6roy0rupmb.lambda-url.us-east-1.on.aws
+    description: controlCampaign (production)
+
+paths:
+  /:
+    post:
+      operationId: createCampaign
+      summary: Create a new outbound campaign
+      description: |
+        Inserts a row in `connectview-campaigns` and N rows in
+        `connectview-campaign-contacts`. The dialer picks it up on the next
+        tick (≤60 s) when `status === "RUNNING"`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCampaignRequest"
+            examples:
+              voice-campaign:
+                summary: Voice campaign (UDEP example)
+                value:
+                  name: "Recordatorio cita febrero 2026"
+                  description: "Campaña de seguimiento UDEP-Pregrado"
+                  sourcePhoneNumber: "+5116433467"
+                  contactFlowId: "a40dc527-8348-4694-a389-7b675c0ac3ac"
+                  contactFlowName: "UDEP-Outbound-Smart"
+                  campaignQueueId: "9ff3b0a1-90aa-4d2a-8029-c4526a22adc8"
+                  campaignType: "voice"
+                  dialMode: "progressive"
+                  concurrency: 5
+                  maxContactsPerAgent: 5
+                  timezone: "America/Lima"
+                  windowStartHour: 9
+                  windowEndHour: 18
+                  windowDaysOfWeek: [1, 2, 3, 4, 5]
+                  retryNoAnswerMinutes: 30
+                  retryMaxAttempts: 3
+                  startNow: true
+                  createdBy: "salesforce-user-xyz"
+                  contacts:
+                    - phone: "+51953730189"
+                      customerName: "Andre Alata"
+                      attributes:
+                        nombre: "Andre"
+                        programa: "Pregrado"
+                        lead_source: "salesforce"
+                    - phone: "+51987654321"
+                      customerName: "María Pérez"
+                      attributes:
+                        nombre: "María"
+                        programa: "Posgrado"
+              whatsapp-campaign:
+                summary: WhatsApp template campaign
+                value:
+                  name: "WA admisión enero"
+                  campaignType: "whatsapp"
+                  templateName: "udep_admision_emoji"
+                  templateLanguage: "es"
+                  templateVarColumns: ["nombre", "programa"]
+                  startNow: true
+                  contacts:
+                    - phone: "+51953730189"
+                      customerName: "Andre Alata"
+                      attributes:
+                        nombre: "Andre"
+                        programa: "Pregrado"
+      responses:
+        "201":
+          description: Campaign created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCampaignResponse"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /listCampaigns:
+    get:
+      operationId: listCampaigns
+      summary: List all campaigns
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [DRAFT, RUNNING, PAUSED, COMPLETED, CANCELLED]
+      responses:
+        "200":
+          description: Campaign list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaigns:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Campaign"
+
+  /getCampaignStats:
+    get:
+      operationId: getCampaignStats
+      summary: Stats for a single campaign
+      parameters:
+        - in: query
+          name: campaignId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign:
+                    $ref: "#/components/schemas/Campaign"
+                  counts:
+                    $ref: "#/components/schemas/StatusCounts"
+
+  /controlCampaign:
+    post:
+      operationId: controlCampaign
+      summary: Pause, resume, cancel or change concurrency on a campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [campaignId, action]
+              properties:
+                campaignId:
+                  type: string
+                action:
+                  type: string
+                  enum: [pause, resume, cancel, set-concurrency]
+                concurrency:
+                  type: integer
+                  description: Required only when action is "set-concurrency"
+      responses:
+        "200":
+          description: OK
+
+components:
+  schemas:
+    CreateCampaignRequest:
+      type: object
+      required: [name, contacts]
+      properties:
+        name:
+          type: string
+          maxLength: 127
+        description:
+          type: string
+        createdBy:
+          type: string
+        campaignType:
+          type: string
+          enum: [voice, whatsapp]
+          default: voice
+        # Voice fields (required when campaignType === "voice")
+        sourcePhoneNumber:
+          type: string
+          description: Connect outbound phone number in E.164
+          example: "+5116433467"
+        contactFlowId:
+          type: string
+          description: Connect contact flow ID
+        contactFlowName:
+          type: string
+        campaignQueueId:
+          type: string
+        campaignQueueName:
+          type: string
+        # WhatsApp fields (required when campaignType === "whatsapp")
+        templateName:
+          type: string
+          description: Meta-approved WhatsApp template name
+        templateLanguage:
+          type: string
+          default: "es"
+        templateVarColumns:
+          type: array
+          items:
+            type: string
+          description: |
+            Ordered list of attribute keys (or `__customerName__`) that fill
+            the template's `{{1}}, {{2}}, …` placeholders.
+        # Pacing
+        dialMode:
+          type: string
+          enum: [progressive, power, agentless]
+          default: progressive
+        concurrency:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 5
+        maxContactsPerAgent:
+          type: integer
+          default: 5
+        # Window
+        timezone:
+          type: string
+          default: "America/Lima"
+        windowStartHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          default: 9
+        windowEndHour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          default: 18
+        windowDaysOfWeek:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+            maximum: 6
+          default: [1, 2, 3, 4, 5]
+        # Retry
+        retryNoAnswerMinutes:
+          type: integer
+          minimum: 5
+          maximum: 1440
+          default: 30
+        retryMaxAttempts:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 3
+        # State
+        startNow:
+          type: boolean
+          default: true
+          description: When true, the campaign starts RUNNING immediately
+        useNativeCampaign:
+          type: boolean
+          default: false
+          description: |
+            When true, also creates an AWS Outbound Campaigns V2 resource
+            so the AWS-managed AMD pipeline handles dialing. Only available
+            in supported regions (US, MX, BR from us-east-1 as of 2026-Q2).
+        contacts:
+          type: array
+          minItems: 1
+          maxItems: 10000
+          items:
+            $ref: "#/components/schemas/Contact"
+
+    Contact:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          description: E.164 phone number (+51 prefix for Peru)
+          example: "+51953730189"
+        customerName:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Custom attributes attached to the contact and propagated as
+            Connect contact attributes ($.Attributes.X in flows).
+            Max 30 keys, max 127 char key, max 256 char value (Connect limits).
+
+    CreateCampaignResponse:
+      type: object
+      properties:
+        campaignId:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, RUNNING]
+        totalContacts:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        awsCampaignId:
+          type: string
+          nullable: true
+          description: Set when useNativeCampaign was true
+
+    Campaign:
+      type: object
+      properties:
+        campaignId:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, RUNNING, PAUSED, COMPLETED, CANCELLED]
+        totalContacts:
+          type: integer
+        doneCount:
+          type: integer
+        failedCount:
+          type: integer
+        noAnswerCount:
+          type: integer
+        pendingCount:
+          type: integer
+        dialingCount:
+          type: integer
+        connectedCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        sourcePhoneNumber:
+          type: string
+        contactFlowId:
+          type: string
+
+    StatusCounts:
+      type: object
+      properties:
+        pending:
+          type: integer
+        dialing:
+          type: integer
+        connected:
+          type: integer
+        done:
+          type: integer
+        no_answer:
+          type: integer
+        failed:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string

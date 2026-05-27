@@ -8,6 +8,7 @@ import {
   type MissedContact,
 } from "@/hooks/useActiveContact";
 import { useCCP } from "@/hooks/useCCP";
+import { useOmnichannelNotifierContext } from "@/context/OmnichannelNotifierContext";
 import * as Icon from "@/components/vox/primitives";
 import { useDebugRender } from "@/lib/debugTrace";
 
@@ -113,10 +114,11 @@ function isMissedState(s: string) {
 interface TabProps {
   contact: ActiveContact;
   focused: boolean;
+  unread: number;
   onClick: () => void;
 }
 
-function ContactTab({ contact, focused, onClick }: TabProps) {
+function ContactTab({ contact, focused, unread, onClick }: TabProps) {
   const meta = metaFor(contact);
   const Icn = meta.Icn;
   const ringing = isRingingState(contact.state);
@@ -161,9 +163,12 @@ function ContactTab({ contact, focused, onClick }: TabProps) {
       }}
       title={`${meta.label} · ${customerLabel(contact)} · ${contact.state || "—"}`}
     >
-      {/* Channel icon — colored circle */}
+      {/* Channel icon — colored circle. Renders an unread-message badge
+          on top-right when the agent has new customer messages on a chat
+          tab they're NOT currently viewing. */}
       <span
         style={{
+          position: "relative",
           display: "grid",
           placeItems: "center",
           width: 22,
@@ -175,6 +180,29 @@ function ContactTab({ contact, focused, onClick }: TabProps) {
         }}
       >
         <Icn size={12} />
+        {unread > 0 && (
+          <span
+            style={{
+              position: "absolute",
+              top: -4,
+              right: -6,
+              minWidth: 16,
+              height: 16,
+              padding: "0 4px",
+              borderRadius: 999,
+              background: "var(--accent-red)",
+              color: "white",
+              fontSize: 9.5,
+              fontWeight: 700,
+              lineHeight: "16px",
+              textAlign: "center",
+              boxShadow: "0 0 0 2px var(--bg-1)",
+            }}
+            title={`${unread} mensaje${unread === 1 ? "" : "s"} sin leer`}
+          >
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
       </span>
 
       {/* Main label */}
@@ -259,6 +287,7 @@ function MissedTab({
     direction: "inbound",
     attributes: missed.attributes,
     lastSeenTs: missed.missedAt,
+    connectedAtMs: null,
   });
   const Icn = meta.Icn;
   const elapsed = Math.max(0, Math.floor((Date.now() - missed.missedAt) / 1000));
@@ -424,6 +453,9 @@ export function ActiveContactsTabStrip() {
   const contacts = useAllActiveContacts();
   const { focusedContactId, focus } = useContactFocus();
   const { missedContacts, dismissMissed } = useMissedContacts();
+  // Per-contact unread badges fed by the omnichannel notifier. When
+  // outside the provider (e.g. a unit test) we get an empty map.
+  const { unreadCount } = useOmnichannelNotifierContext();
 
   // Sort so the focused tab stays first, then ringing, then by channel.
   // Stable order so tabs don't jump around mid-conversation.
@@ -500,6 +532,7 @@ export function ActiveContactsTabStrip() {
           key={c.contactId}
           contact={c}
           focused={c.contactId === focusedContactId}
+          unread={unreadCount[c.contactId] || 0}
           onClick={() => focus(c.contactId)}
         />
       ))}

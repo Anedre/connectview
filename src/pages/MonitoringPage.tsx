@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { useRealtimeMetrics } from "@/hooks/useRealtimeMetrics";
+import { useLiveQueue, type LiveAgent } from "@/hooks/useLiveQueue";
+import { AgentActionsDialog } from "@/components/queue/AgentActionsDialog";
+import { formatDurationSec, pluralES } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
 import {
   Avatar,
@@ -11,11 +14,9 @@ import {
   StatusPill,
 } from "@/components/vox/primitives";
 
-function formatWait(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${String(secs).padStart(2, "0")}`;
-}
+// Bug #11/#7 — delegate to the shared helper so durations consistently
+// switch to HH:MM:SS once they cross the 1-hour mark.
+const formatWait = formatDurationSec;
 
 function SentimentEmpty() {
   return (
@@ -40,6 +41,8 @@ function SentimentEmpty() {
 export function MonitoringPage() {
   const { metrics, loading, error, lastRefresh, usingLiveData, refresh } =
     useRealtimeMetrics();
+  const { data: liveQueue, refresh: refreshLiveQueue } = useLiveQueue(5000);
+  const [selectedAgent, setSelectedAgent] = useState<LiveAgent | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -75,8 +78,16 @@ export function MonitoringPage() {
           </div>
           <h1 className="view__title">Cola en vivo · Supervisión</h1>
           <div className="view__sub">
-            {metrics.summary.totalAgentsOnline} agentes activos ·{" "}
-            {metrics.summary.totalContactsInQueue} contactos en cola · Refresh 15s
+            {metrics.summary.totalAgentsOnline}{" "}
+            {pluralES(metrics.summary.totalAgentsOnline, "agente activo", "agentes activos")}
+            {" · "}
+            {metrics.summary.totalContactsInQueue}{" "}
+            {pluralES(
+              metrics.summary.totalContactsInQueue,
+              "contacto en cola",
+              "contactos en cola"
+            )}
+            {" · "}Refresca cada 15 s
           </div>
         </div>
         <div className="view__actions">
@@ -122,8 +133,16 @@ export function MonitoringPage() {
         <Kpi
           label="En cola"
           value={metrics.summary.totalContactsInQueue + (tick % 1)}
-          delta="+12 últimos 5m"
-          deltaDir="up"
+          delta={
+            metrics.summary.totalContactsInQueue === 0
+              ? "Sin contactos"
+              : pluralES(
+                  metrics.summary.totalContactsInQueue,
+                  "contacto esperando",
+                  "contactos esperando"
+                )
+          }
+          deltaDir={metrics.summary.totalContactsInQueue > 0 ? "up" : "flat"}
           color="var(--accent-red)"
         />
         <Kpi
@@ -141,13 +160,17 @@ export function MonitoringPage() {
           delta={`${Math.round(
             (available / Math.max(1, metrics.summary.totalAgentsOnline)) * 100
           )}% del staff`}
-          deltaDir="up"
+          deltaDir={available > 0 ? "up" : "flat"}
           color="var(--accent-green)"
         />
         <Kpi
           label="ACW"
           value={acw}
-          delta="AHT wrap 1:42"
+          delta={
+            acw === 0
+              ? "Sin wrap-up activo"
+              : pluralES(acw, "agente en wrap-up", "agentes en wrap-up")
+          }
           deltaDir="flat"
           color="var(--accent-amber)"
         />
@@ -288,8 +311,40 @@ export function MonitoringPage() {
                     : a.status === "Offline"
                     ? "var(--text-3)"
                     : "var(--accent-violet)";
+                // Bug #32 — find the matching LiveAgent so the
+                // dialog has the routing profile + active contact info
+                // it needs to expose monitor/barge/hangup actions.
+                const liveAgent =
+                  liveQueue?.agents.find((la) => la.userId === a.agentId) ||
+                  null;
+                const openDialog = () => {
+                  if (liveAgent) {
+                    setSelectedAgent(liveAgent);
+                  }
+                };
                 return (
-                  <div key={a.agentId} className="agent">
+                  <div
+                    key={a.agentId}
+                    className="agent"
+                    role="button"
+                    tabIndex={0}
+                    onClick={openDialog}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openDialog();
+                      }
+                    }}
+                    style={{
+                      cursor: liveAgent ? "pointer" : "default",
+                      opacity: liveAgent ? 1 : 0.7,
+                    }}
+                    title={
+                      liveAgent
+                        ? "Click para acciones: cambiar estado, monitorear, colgar"
+                        : "Datos del agente todavía sincronizando…"
+                    }
+                  >
                     <Avatar name={a.username} />
                     <div className="agent__meta">
                       <div className="agent__name">{a.username}</div>
@@ -304,6 +359,11 @@ export function MonitoringPage() {
                     <button
                       className="btn btn--ghost btn--sm btn--icon"
                       title="Whisper"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDialog();
+                      }}
+                      disabled={!liveAgent}
                     >
                       <Icon.Headset size={13} />
                     </button>
@@ -314,6 +374,17 @@ export function MonitoringPage() {
           </div>
         </CardBody>
       </Card>
+
+      <AgentActionsDialog
+        agent={selectedAgent}
+        statuses={liveQueue?.statuses || []}
+        open={!!selectedAgent}
+        onClose={() => setSelectedAgent(null)}
+        onActionCompleted={() => {
+          refresh();
+          refreshLiveQueue();
+        }}
+      />
     </div>
   );
 }

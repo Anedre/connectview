@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useChatSession, type ChatMessage } from "@/hooks/useChatSession";
 import * as Icon from "@/components/vox/primitives";
 import { useDebugRender } from "@/lib/debugTrace";
+import { TemplatesPopover } from "@/components/workspace/TemplatesPopover";
+import { EmojiPicker } from "@/components/workspace/EmojiPicker";
+import { PreviousChatsDrawer } from "@/components/workspace/PreviousChatsDrawer";
 
 interface ChatThreadPanelProps {
   contactId: string | null;
@@ -9,6 +12,12 @@ interface ChatThreadPanelProps {
   customerName: string;
   /** Visible label for the channel ("WhatsApp", "Chat web", …). */
   channelLabel?: string;
+  /** Customer's phone — used to look up prior chat sessions in the drawer. */
+  customerPhone?: string | null;
+  /** Logged-in agent username — fills the {{agente}} variable in templates. */
+  agentName?: string;
+  /** Queue / business unit — fills the {{cola}} variable. */
+  queueName?: string;
 }
 
 function fmtTime(iso: string) {
@@ -88,11 +97,25 @@ export function ChatThreadPanel({
   channel,
   customerName,
   channelLabel = "Chat",
+  customerPhone = null,
+  agentName,
+  queueName,
 }: ChatThreadPanelProps) {
-  const { messages, status, customerTyping, sendMessage, sendTyping } =
-    useChatSession(contactId, channel);
+  const {
+    messages,
+    status,
+    customerTyping,
+    sendMessage,
+    sendTyping,
+    sendAttachment,
+  } = useChatSession(contactId, channel);
   const [draft, setDraft] = useState("");
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [attaching, setAttaching] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ─── DEBUG INSTRUMENTATION ────────────────────────────────────
   useDebugRender("ChatThreadPanel", {
@@ -131,6 +154,42 @@ export function ChatThreadPanel({
     await sendMessage(text);
   };
 
+  // Insert text (templates / emojis) at the current cursor position so the
+  // agent can compose around an existing message instead of always appending.
+  const insertAtCursor = (text: string) => {
+    const ta = textareaRef.current;
+    if (!ta) {
+      setDraft((d) => d + text);
+      return;
+    }
+    const start = ta.selectionStart ?? draft.length;
+    const end = ta.selectionEnd ?? draft.length;
+    const next = draft.slice(0, start) + text + draft.slice(end);
+    setDraft(next);
+    // Restore focus + put the cursor right after the inserted text on the
+    // next paint so the agent can keep typing.
+    requestAnimationFrame(() => {
+      ta.focus();
+      const pos = start + text.length;
+      ta.setSelectionRange(pos, pos);
+    });
+  };
+
+  const handleFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    setAttachError(null);
+    setAttaching(true);
+    try {
+      await sendAttachment(file);
+    } catch (err) {
+      setAttachError(err instanceof Error ? err.message : "Error al enviar archivo");
+    } finally {
+      setAttaching(false);
+    }
+  };
+
   return (
     <div
       data-debug-component="ChatThreadPanel"
@@ -149,9 +208,10 @@ export function ChatThreadPanel({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          gap: 12,
         }}
       >
-        <div>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div
             style={{
               display: "flex",
@@ -174,21 +234,34 @@ export function ChatThreadPanel({
             {status === "idle" && "Sin conversación activa"}
           </div>
         </div>
-        <span
-          className="chip"
-          style={{
-            background:
-              status === "connected"
-                ? "var(--accent-green-soft)"
-                : "var(--bg-2)",
-            color:
-              status === "connected"
-                ? "var(--accent-green)"
-                : "var(--text-3)",
-          }}
-        >
-          <span className="dot" /> {status === "connected" ? "En vivo" : status}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* History drawer trigger — only meaningful when we know the phone. */}
+          {customerPhone && (
+            <button
+              onClick={() => setHistoryOpen(true)}
+              className="btn btn--ghost btn--sm"
+              title="Ver chats anteriores con este cliente"
+              style={{ fontSize: 11.5 }}
+            >
+              🕒 Historial
+            </button>
+          )}
+          <span
+            className="chip"
+            style={{
+              background:
+                status === "connected"
+                  ? "var(--accent-green-soft)"
+                  : "var(--bg-2)",
+              color:
+                status === "connected"
+                  ? "var(--accent-green)"
+                  : "var(--text-3)",
+            }}
+          >
+            <span className="dot" /> {status === "connected" ? "En vivo" : status}
+          </span>
+        </div>
       </div>
 
       {/* Messages */}
@@ -237,6 +310,33 @@ export function ChatThreadPanel({
         )}
       </div>
 
+      {/* Attachment error (transient) */}
+      {attachError && (
+        <div
+          style={{
+            margin: "0 10px 6px",
+            padding: "6px 10px",
+            background: "var(--accent-red-soft)",
+            color: "var(--accent-red)",
+            borderRadius: 6,
+            fontSize: 11.5,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          ⚠ {attachError}
+          <button
+            onClick={() => setAttachError(null)}
+            className="btn btn--ghost btn--sm btn--icon"
+            aria-label="Cerrar"
+            style={{ marginLeft: "auto" }}
+          >
+            <Icon.Close size={11} />
+          </button>
+        </div>
+      )}
+
       {/* Composer */}
       <div
         style={{
@@ -245,6 +345,50 @@ export function ChatThreadPanel({
           background: "var(--bg-1)",
         }}
       >
+        {/* Toolbar row */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            marginBottom: 6,
+            paddingLeft: 2,
+          }}
+        >
+          <TemplatesPopover
+            ctx={{
+              customerName,
+              agentName,
+              queueName,
+            }}
+            onPick={insertAtCursor}
+            disabled={status !== "connected"}
+          />
+          <EmojiPicker
+            onPick={insertAtCursor}
+            disabled={status !== "connected"}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={status !== "connected" || attaching}
+            className="btn btn--ghost btn--sm btn--icon"
+            title="Adjuntar archivo (máx. 20 MB)"
+            aria-label="Adjuntar archivo"
+            style={{ fontSize: 14 }}
+          >
+            {attaching ? "⏳" : "📎"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleFilePicked}
+            style={{ display: "none" }}
+            // Connect rejects executable types and oversized files — we
+            // still let the user try anything else so they can attach
+            // PDFs/images/audios from WhatsApp without us mis-guessing.
+            accept="image/*,application/pdf,audio/*,video/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+          />
+        </div>
         <div
           style={{
             display: "flex",
@@ -257,6 +401,7 @@ export function ChatThreadPanel({
           }}
         >
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={(e) => {
               setDraft(e.target.value);
@@ -270,7 +415,7 @@ export function ChatThreadPanel({
             }}
             placeholder={
               status === "connected"
-                ? "Escribe tu respuesta… (Enter para enviar)"
+                ? "Escribe tu respuesta… (Enter para enviar, Shift+Enter salto)"
                 : "Conectando…"
             }
             disabled={status !== "connected"}
@@ -298,6 +443,14 @@ export function ChatThreadPanel({
           </button>
         </div>
       </div>
+
+      {/* Side drawer with prior chats — only renders when open. */}
+      <PreviousChatsDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        phone={customerPhone}
+        customerName={customerName}
+      />
     </div>
   );
 }

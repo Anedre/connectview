@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useRoles } from "@/hooks/useRoles";
 import { useCCP } from "@/hooks/useCCP";
+import { roleLabelOf } from "@/types/auth";
 import * as Icon from "./primitives";
 import { initialsOf } from "./primitives";
 
@@ -104,13 +105,11 @@ export function VoxSidebar() {
     PRESENCE_COLOR[agentState] ?? PRESENCE_COLOR.Init;
 
   const initials = initialsOf(user?.username);
-  const roleLabel = user?.highestRole
-    ? user.highestRole === "Admins"
-      ? "Manager"
-      : user.highestRole === "Supervisors"
-      ? "Supervisor"
-      : "Agente"
-    : "Agente";
+  // Use the centralized label so the sidebar matches every other
+  // place that shows the role chip (was previously its own ad-hoc
+  // mapping that called "Admins" → "Manager", introducing the
+  // dual-terminology problem reported in Bug #19).
+  const roleLabel = roleLabelOf(user?.highestRole);
 
   return (
     <aside className="app__sidebar">

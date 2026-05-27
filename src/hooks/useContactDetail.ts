@@ -1,14 +1,36 @@
 import { useEffect, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
 
+/**
+ * One segment from the contact transcript. The `type` field discriminates:
+ *   - "transcript"  : voice / Contact Lens segment (has begin/end offsets)
+ *   - "message"     : chat text message
+ *   - "attachment"  : chat file (PDF, image, audio, video) — see attachmentRef
+ *   - "event"       : participant.joined / left / chat.ended / typing / read
+ */
 export interface ContactTranscriptSegment {
-  type: "transcript";
+  type: "transcript" | "message" | "attachment" | "event";
   participant: string;
   content: string;
+  /** Voice/Lens-only — content type for chat (e.g. text/plain, application/json) */
+  contentType?: string;
+  /** Voice/Lens-only — overall sentiment of the segment */
   sentiment?: string;
   beginOffsetMs: number;
   endOffsetMs: number;
+  /** Chat-only — wall-clock timestamp of the message */
   timestamp?: string;
+  /** Chat attachment cross-link — resolves to one of the top-level
+   *  attachments[] by attachmentId, giving the bubble its presigned URL. */
+  attachmentRef?: {
+    attachmentId: string;
+    name?: string;
+    contentType?: string;
+  };
+  /** Chat event kind — participant.joined / chat.ended / etc. */
+  eventKind?: string;
+  /** Original Connect message id (delivered/read receipts) */
+  id?: string;
 }
 
 export interface ContactAttachment {
@@ -18,6 +40,27 @@ export interface ContactAttachment {
   fileStatus?: string;
   url?: string | null;
   createdTime?: string;
+}
+
+/**
+ * Wrap-up data captured by the agent at the end of the contact —
+ * disposition (stage → sub-stage), notes, tags, follow-up flags, and
+ * any tasks that were spawned (task24h → Connect Task contactIds).
+ * Returned by get-contact-detail when the wrap-up DynamoDB row exists.
+ */
+export interface ContactWrapUp {
+  notes: string;
+  summary: string;
+  stage: string;
+  stageLabel: string;
+  subStage: string;
+  subStageLabel: string;
+  valoracion: string; // "muy_caliente" | "caliente" | "tibio" | "frio" | "no_califica" | ...
+  tags: string[];
+  followUps: Record<string, boolean>;
+  followUpTaskIds: string[];
+  agentUsername: string;
+  updatedAt: string;
 }
 
 export interface ContactDetail {
@@ -34,6 +77,11 @@ export interface ContactDetail {
   disconnectReason?: string;
   customerEndpoint?: string;
   customerEndpointType?: string;
+  /** EMAIL channel only — the message Subject (from Contact.Name). */
+  subject?: string;
+  /** Whoever received the contact (e.g. UDEP admision email address). */
+  systemEndpoint?: string;
+  systemEndpointType?: string;
   attributes: Record<string, string>;
   recording: {
     url: string;
@@ -45,6 +93,7 @@ export interface ContactDetail {
     source: "contact-lens-s3" | "chat-s3" | string;
   } | null;
   attachments: ContactAttachment[];
+  wrapUp: ContactWrapUp | null;
 }
 
 /**

@@ -62,6 +62,10 @@ export const handler: Handler = async (event: any) => {
             );
 
             return {
+              // Bug #9 — expose the Connect userId so the frontend can
+              // resolve the agentARN UUID returned by getContact /
+              // queryContacts to a real username.
+              userId: summary.Id || "",
               username: summary.Username || "",
               email: user?.IdentityInfo?.Email || "",
               firstName: user?.IdentityInfo?.FirstName || "",
@@ -73,6 +77,7 @@ export const handler: Handler = async (event: any) => {
             };
           } catch {
             return {
+              userId: summary.Id || "",
               username: summary.Username || "",
               email: "",
               firstName: "",

@@ -208,17 +208,39 @@ export function CampaignDetailPage() {
   };
 
   if (loading && !data) {
+    // Bug #24 — replace the plain "Cargando campaña…" text with a
+    // structured skeleton so the user gets an immediate visual hint
+    // that the detail view is mounting (vs. the lingering list view).
     return (
       <div className="view">
-        <div
-          style={{
-            display: "grid",
-            placeItems: "center",
-            padding: 80,
-            color: "var(--text-3)",
-            fontSize: 13,
-          }}
-        >
+        <div className="view__head">
+          <div>
+            <div className="view__crumb"><span>Crecimiento</span></div>
+            <h1
+              className="view__title skel skel--text"
+              style={{ width: 320, height: 28 }}
+            />
+            <div
+              className="view__sub skel skel--text"
+              style={{ width: 220, height: 14, marginTop: 6 }}
+            />
+          </div>
+        </div>
+        <div className="kpi-grid">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="kpi skel"
+              style={{ minHeight: 86 }}
+            />
+          ))}
+        </div>
+        <div style={{ height: 16 }} />
+        <div className="grid-2" style={{ gap: 16 }}>
+          <div className="card skel" style={{ minHeight: 220 }} />
+          <div className="card skel" style={{ minHeight: 220 }} />
+        </div>
+        <div className="muted" style={{ marginTop: 12, fontSize: 12 }}>
           Cargando campaña…
         </div>
       </div>
@@ -725,7 +747,21 @@ export function CampaignDetailPage() {
       </Card>
 
       {/* ── Charts (donut + sparkline + gauge) ───────────────────── */}
-      <CampaignCharts counts={counts} total={total} startedAt={c.startedAt} />
+      <CampaignCharts
+        counts={counts}
+        total={total}
+        startedAt={c.startedAt}
+        // Bug #25: freeze the "en curso" clock for terminated campaigns.
+        // We pass the endedAt (preferring the completedAt timestamp if
+        // the backend includes one) and `isFinished` so the header label
+        // flips to "de duración total".
+        endedAt={
+          (c as unknown as { completedAt?: string; endedAt?: string }).completedAt ||
+          (c as unknown as { completedAt?: string; endedAt?: string }).endedAt ||
+          null
+        }
+        isFinished={c.status === "COMPLETED" || c.status === "CANCELLED"}
+      />
 
       {/* ── Pacing controls (live tuning of concurrency) ─────────── */}
       <PacingControlCard
@@ -844,7 +880,19 @@ export function CampaignDetailPage() {
       />
 
       {/* Assigned agents — routing profile auto-configured */}
-      <AssignedAgentsPanel campaign={c} />
+      <AssignedAgentsPanel
+        campaign={c}
+        // Bug #28: pass the number of distinct agents who answered any
+        // contact so the panel can disambiguate "no assignees" vs
+        // "no assignees AND nobody answered yet".
+        participatingAgentsCount={
+          new Set(
+            contacts
+              .map((r) => resolveAgentLabel(r.agentUsername))
+              .filter((n) => n && n !== "—")
+          ).size
+        }
+      />
 
       <EditCampaignDialog
         campaign={c}

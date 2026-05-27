@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/context/ThemeContext";
 import { useCCP, type ConnectAgentState } from "@/hooks/useCCP";
+import { modifierLabel } from "@/lib/utils";
 import * as Icon from "./primitives";
 
 const STATE_COLORS: Record<
@@ -54,7 +55,7 @@ export function VoxTopbar() {
       <div className="tb__search">
         <Icon.Search size={14} />
         <input placeholder="Buscar contactos, agentes, casos, transcripciones…" />
-        <span className="tb__kbd">⌘K</span>
+        <span className="tb__kbd">{modifierLabel()} K</span>
       </div>
 
       <div className="tb__actions">

@@ -58,7 +58,13 @@ function CommandDialog({
         )}
         showCloseButton={showCloseButton}
       >
-        {children}
+        {/* cmdk primitives (Input/List/Group/Item) require the Command root
+            provider for their store — without it they throw
+            `Cannot read properties of undefined (reading 'subscribe')`
+            and the entire React tree unmounts. */}
+        <Command>
+          {children}
+        </Command>
       </DialogContent>
     </Dialog>
   )

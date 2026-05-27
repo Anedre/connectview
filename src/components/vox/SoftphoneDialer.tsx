@@ -12,11 +12,25 @@ import * as Icon from "@/components/vox/primitives";
  * and non-digit chars except the leading '+' (E.164).
  */
 export function SoftphoneDialer({ disabled }: { disabled?: boolean }) {
-  const { placeCall, agentState } = useCCP();
+  const { placeCall, agentState, availableStates, changeAgentState } = useCCP();
   const [number, setNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const canDial = agentState === "Available" || agentState === "Busy";
+  // Connect blocks `agent.connect()` whenever the agent isn't in a
+  // routable state. The states that produce a working outbound call are
+  // Available (agent is idle) and Busy/AfterCallWork (agent has a contact
+  // attached but Connect permits a second leg for transfers etc.). When
+  // the agent is in MissedCallAgent (Connect's auto-block after a missed
+  // contact), Offline or Init, `agent.connect()` either throws
+  // BadEndpointException or silently fails — both terrible UX.
+  const isMissedBlocked =
+    agentState === "MissedCallAgent" ||
+    agentState === "MissedCall" ||
+    agentState === "Missed Call Agent";
+  const canDial =
+    agentState === "Available" ||
+    agentState === "Busy" ||
+    agentState === "AfterCallWork";
 
   const normalise = (raw: string) => {
     const trimmed = raw.trim();
@@ -27,10 +41,36 @@ export function SoftphoneDialer({ disabled }: { disabled?: boolean }) {
     return hasPlus ? `+${digits}` : digits;
   };
 
+  // Translate Streams' raw error codes into something an agent can act on.
+  const friendlyError = (e: unknown): string => {
+    const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "";
+    const raw = String(msg);
+    if (/BadEndpointException/i.test(raw)) {
+      return "Connect rechazó el número. Verifica que comience con + y código de país (ej. +51).";
+    }
+    if (/Unauthorized|Permission|denied/i.test(raw)) {
+      return "Tu perfil de seguridad no permite llamadas salientes. Contacta al admin.";
+    }
+    if (/InvalidStateException|state/i.test(raw)) {
+      return "No puedes marcar en este estado. Cambia a Disponible primero.";
+    }
+    if (/Timeout|timed out/i.test(raw)) {
+      return "Connect tardó demasiado en responder. Reintenta en unos segundos.";
+    }
+    return raw || "No se pudo iniciar la llamada";
+  };
+
   const dial = async () => {
     const normalised = normalise(number);
     if (!normalised) {
       toast.error("Ingresa un número válido");
+      return;
+    }
+    if (!/^\+\d{7,15}$/.test(normalised)) {
+      toast.error(
+        "Usa formato E.164 con código de país (ej. +51953730189).",
+        { description: "Sin el + Connect no sabe a qué país enrutar." }
+      );
       return;
     }
     setSubmitting(true);
@@ -38,9 +78,26 @@ export function SoftphoneDialer({ disabled }: { disabled?: boolean }) {
       await placeCall(normalised);
       toast.success(`Llamando a ${normalised}…`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo iniciar la llamada");
+      toast.error(friendlyError(e));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // One-click "unblock me" — agent missed a previous call, Connect put
+  // them into MissedCallAgent, and now the dialer is gated. Surfacing
+  // changeAgentState here saves a trip to the status menu.
+  const returnToAvailable = () => {
+    const available = availableStates.find((s) => s.name === "Available");
+    if (!available) {
+      toast.error("Estado 'Available' no disponible en este perfil");
+      return;
+    }
+    try {
+      changeAgentState(available);
+      toast.success("De vuelta a Disponible");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo cambiar de estado");
     }
   };
 
@@ -138,7 +195,37 @@ export function SoftphoneDialer({ disabled }: { disabled?: boolean }) {
         {submitting ? "Marcando…" : "Llamar"}
       </button>
 
-      {!canDial && (
+      {/* Blocked-because-missed: most common reason the dialer "stops working" — an
+          earlier missed call put the agent into MissedCallAgent and Connect refuses
+          outbound. Give the agent a one-click way back to Available. */}
+      {isMissedBlocked && (
+        <div
+          style={{
+            marginTop: 8,
+            padding: "8px 10px",
+            background: "var(--accent-red-soft)",
+            border: "1px solid var(--accent-red)",
+            borderRadius: 6,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
+          <span style={{ fontSize: 11.5, color: "var(--accent-red)", lineHeight: 1.4 }}>
+            Connect bloqueó las salientes porque no aceptaste un contacto previo.
+          </span>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={returnToAvailable}
+            style={{ height: 28, justifyContent: "center", fontSize: 11.5 }}
+          >
+            Volver a Disponible
+          </button>
+        </div>
+      )}
+
+      {!canDial && !isMissedBlocked && (
         <div
           className="muted"
           style={{ fontSize: 11, marginTop: 6, textAlign: "center" }}

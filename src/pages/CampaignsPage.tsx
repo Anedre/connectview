@@ -148,8 +148,16 @@ export function CampaignsPage() {
         <Kpi
           label="Total campañas"
           value={String(tabCounts.all)}
-          delta={`${tabCounts.active} activas`}
-          deltaDir="up"
+          delta={
+            tabCounts.active > 0
+              ? `${tabCounts.active} ${
+                  tabCounts.active === 1 ? "activa" : "activas"
+                }`
+              : "ninguna activa"
+          }
+          // Bug #21 — only show an up-arrow when there's actually
+          // something trending up. With 0 activas the arrow is noise.
+          deltaDir={tabCounts.active > 0 ? "up" : "flat"}
         />
         <Kpi
           label="Alcance acumulado"
@@ -160,8 +168,10 @@ export function CampaignsPage() {
         <Kpi
           label="En vivo ahora"
           value={String(live)}
-          delta="conectados/marcando"
-          deltaDir="up"
+          delta={
+            live > 0 ? "conectados/marcando" : "sin actividad en vivo"
+          }
+          deltaDir={live > 0 ? "up" : "flat"}
           color="var(--accent-green)"
         />
         <Kpi
@@ -361,8 +371,19 @@ export function CampaignsPage() {
                   className="row"
                   style={{ justifyContent: "space-between", marginTop: 8, fontSize: 11 }}
                 >
-                  <span className="muted">
-                    Avance{" "}
+                  <span
+                    className="muted"
+                    title={
+                      c.status === "COMPLETED" || c.status === "CANCELLED"
+                        ? "Tasa de éxito final (Completados / total)"
+                        : "Avance: cuántos contactos ya se procesaron"
+                    }
+                  >
+                    {/* Bug #22/#23 — for finished campaigns "Avance" is
+                        misleading; it's really the success rate. */}
+                    {c.status === "COMPLETED" || c.status === "CANCELLED"
+                      ? "Tasa éxito"
+                      : "Avance"}{" "}
                     <span className="mono" style={{ color: "var(--text-1)" }}>
                       {pct}%
                     </span>

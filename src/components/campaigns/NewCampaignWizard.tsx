@@ -91,12 +91,11 @@ export function NewCampaignWizard({
   const { phones, loading: phonesLoading } = useSourcePhones();
   const { queues, loading: queuesLoading } = useQueues();
 
-  // We default to step 2 (Listado de contactos) so the 1-click flow
-  // ("just upload your CSV") is the primary path. Step 1 (name +
-  // description) is still reachable via "Atrás" for users who want
-  // to personalise — but the auto-generated name + sensible defaults
-  // make it optional for the common case.
-  const [step, setStep] = useState<Step>(2);
+  // Bug #29 — the wizard used to default to step 2 and, more importantly,
+  // didn't fully reset on close, so reopening landed the user back at
+  // step 2 with stale data. We now start at step 1 (the canonical
+  // beginning) and fully reset every piece of state on close.
+  const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
 
   // Step 1 — Meta
@@ -154,13 +153,14 @@ export function NewCampaignWizard({
   const [maxContactsPerAgent, setMaxContactsPerAgent] = useState(5);
 
   // Reset when modal closes — and pre-fill an auto-generated name when
-  // the modal OPENS. The 1-click flow is "open → upload CSV → Lanzar",
-  // so we land the user directly on step 2 (Listado de contactos) and
-  // give the campaign a sensible default name they can keep or edit.
+  // the modal OPENS. Bug #29: previously some state (sourcePhoneNumber,
+  // contactFlowId, dialMode, retries…) persisted across opens, so a user
+  // who started a draft and cancelled would see those values leak into
+  // the next attempt. We now reset everything user-touchable.
   useEffect(() => {
     if (!open) {
       setTimeout(() => {
-        setStep(2);
+        setStep(1);
         setName("");
         setDescription("");
         setContacts([]);
@@ -171,6 +171,22 @@ export function NewCampaignWizard({
         setSubmitting(false);
         setCampaignQueueId("");
         setQueueTouched(false);
+        // Channel + voice/WA config
+        setCampaignType("voice");
+        setInputMode("csv");
+        setSourcePhoneNumber("");
+        setContactFlowId("");
+        setDialMode("progressive");
+        setConcurrency(5);
+        setTimezone("America/Lima");
+        setWindowStartHour(9);
+        setWindowEndHour(18);
+        setRetryNoAnswerMinutes(30);
+        setRetryMaxAttempts(3);
+        setMaxContactsPerAgent(5);
+        setWaTemplateName("");
+        setWaTemplateLang("es");
+        setWaVarColumns([]);
       }, 200);
       return;
     }
@@ -1189,7 +1205,7 @@ export function NewCampaignWizard({
                 (step === 3 && !canProceedStep3)
               }
             >
-              {step === 2 ? "Personalizar" : "Siguiente"}
+              Siguiente
               <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           )}

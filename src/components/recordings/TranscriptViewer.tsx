@@ -20,11 +20,18 @@ function formatTime(ms: number): string {
   return `${min}:${String(sec).padStart(2, "0")}`;
 }
 
+const PARTICIPANT_LABELS: Record<string, string> = {
+  AGENT: "Agente",
+  CUSTOMER: "Cliente",
+  SYSTEM: "Sistema",
+  UNKNOWN: "—",
+};
+
 export function TranscriptViewer({ segments, currentTimeMs }: TranscriptViewerProps) {
   if (segments.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
-        No transcript available for this contact.
+        Sin transcripción disponible para este contacto.
       </p>
     );
   }
@@ -37,6 +44,8 @@ export function TranscriptViewer({ segments, currentTimeMs }: TranscriptViewerPr
           currentTimeMs >= seg.beginOffsetMillis &&
           currentTimeMs <= seg.endOffsetMillis;
         const isAgent = seg.participant === "AGENT";
+        const isSystem = seg.participant === "SYSTEM";
+        const label = PARTICIPANT_LABELS[seg.participant] || seg.participant;
 
         return (
           <div
@@ -47,17 +56,17 @@ export function TranscriptViewer({ segments, currentTimeMs }: TranscriptViewerPr
           >
             <div className="shrink-0">
               <Badge
-                variant={isAgent ? "default" : "secondary"}
+                variant={isAgent ? "default" : isSystem ? "outline" : "secondary"}
                 className="text-xs"
               >
-                {isAgent ? "Agent" : "Customer"}
+                {label}
               </Badge>
               <div className="mt-1 text-xs text-muted-foreground">
                 {formatTime(seg.beginOffsetMillis)}
               </div>
             </div>
             <div className="flex-1">
-              <p className="text-sm">{seg.content}</p>
+              <p className="text-sm whitespace-pre-wrap">{seg.content}</p>
               {seg.sentiment && seg.sentiment !== "NEUTRAL" && (
                 <span className="mt-1 text-xs text-muted-foreground">
                   {seg.sentiment.toLowerCase()}

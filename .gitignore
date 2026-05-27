@@ -30,3 +30,6 @@ amplify_outputs.d.ts
 *.sln
 *.sw?
 deploy.zip
+
+# Local experiments / one-off scripts and flow dumps
+.scratch/

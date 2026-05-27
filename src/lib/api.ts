@@ -71,6 +71,13 @@ interface ApiEndpoints {
   // Detailed contact view — audio recording presigned URL, transcript
   // (historical Contact Lens or chat), attachments with presigned URLs.
   getContactDetail?: string;
+  // Unified WhatsApp/chat thread — merges every CHAT contact for a phone
+  // into one chronological timeline with session boundaries and a per-day
+  // activity histogram for the calendar picker.
+  getCustomerThread?: string;
+  // Cross-channel attachment grid — every file the customer shared (or we
+  // sent) across all voice / chat / email contacts, with presigned URLs.
+  getCustomerAttachments?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

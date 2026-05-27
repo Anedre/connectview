@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import { initCCP } from "@/lib/connect";
+import { initCCP, terminateCCP } from "@/lib/connect";
 import { CONNECT_INSTANCE_URL } from "@/lib/constants";
 import {
   SECURITY_PROFILE_TO_ROLE,
@@ -95,9 +95,22 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
     // to send the user to Connect in a new tab.
     // The connect.agent() callback (below) clears this timer when auth succeeds.
     // If it never fires within LOGIN_TIMEOUT_MS, the user has no Connect session.
+    //
+    // Bug #1 — once we know the user is unauthenticated we also tear down the
+    // CCP iframe; otherwise amazon-connect-streams keeps retrying the
+    // authentication every ~10 seconds for the entire page lifetime,
+    // burning CPU + network + console noise. The LoginScreen drives a
+    // full page reload on focus, so a fresh CCP gets initialised cleanly
+    // when the user comes back from logging in.
     loginTimerRef.current = setTimeout(() => {
       setNeedsLogin(true);
       setLoading(false);
+      try {
+        terminateCCP();
+        ccpInitialized = false;
+      } catch {
+        // CCP may not be fully initialised yet — best-effort cleanup.
+      }
     }, LOGIN_TIMEOUT_MS);
 
     try {

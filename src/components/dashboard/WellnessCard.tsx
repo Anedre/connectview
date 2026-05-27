@@ -61,10 +61,10 @@ export function WellnessCard({ userId }: WellnessCardProps) {
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow">
               <Heart className="h-4 w-4" />
             </div>
-            Wellness Tracker
+            Bienestar del agente
           </CardTitle>
           <span className="text-xs text-muted-foreground">
-            Today {data ? `· ${data.contactsToday} contacts` : ""}
+            Hoy {data ? `· ${data.contactsToday} contactos` : ""}
           </span>
         </div>
       </CardHeader>
@@ -72,7 +72,7 @@ export function WellnessCard({ userId }: WellnessCardProps) {
         {loading && !data && (
           <div className="flex items-center justify-center py-6 text-xs text-muted-foreground">
             <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-            Loading wellness...
+            Cargando bienestar…
           </div>
         )}
         {error && !data && (
@@ -81,21 +81,21 @@ export function WellnessCard({ userId }: WellnessCardProps) {
         {data && (
           <>
             <MetricBar
-              label="Energy Level"
+              label="Nivel de energía"
               value={data.energy}
               max={100}
               color="from-emerald-400 to-teal-500"
               icon={Zap}
             />
             <MetricBar
-              label="Focus Time (min)"
+              label="Tiempo de foco (min)"
               value={data.focusMinutes}
               max={480}
               color="from-blue-400 to-indigo-500"
               icon={Brain}
             />
             <MetricBar
-              label="Mood Score"
+              label="Ánimo"
               value={data.moodScore}
               max={100}
               color="from-pink-400 to-rose-500"
@@ -110,16 +110,18 @@ export function WellnessCard({ userId }: WellnessCardProps) {
               >
                 <div className="flex items-center gap-2 text-sm font-medium text-amber-900 dark:text-amber-200">
                   <Coffee className="h-4 w-4" />
-                  Time for a break!
+                  ¡Hora de un break!
                 </div>
                 <p className="mt-1 text-xs text-amber-800 dark:text-amber-300/80">
-                  You've been on calls for {data.focusMinutes} min.
+                  Llevas {data.focusMinutes} min en llamadas.
                   {data.negativeContactCount > 0
-                    ? ` ${data.negativeContactCount} tough call${
-                        data.negativeContactCount === 1 ? "" : "s"
-                      } today.`
+                    ? ` ${data.negativeContactCount} ${
+                        data.negativeContactCount === 1
+                          ? "llamada difícil"
+                          : "llamadas difíciles"
+                      } hoy.`
                     : ""}{" "}
-                  Take 10 minutes.
+                  Tómate 10 minutos.
                 </p>
               </motion.div>
             ) : (
@@ -127,13 +129,13 @@ export function WellnessCard({ userId }: WellnessCardProps) {
                 <div className="flex items-center gap-2 text-sm font-medium text-emerald-900 dark:text-emerald-200">
                   <Zap className="h-4 w-4" />
                   {data.contactsToday === 0
-                    ? "Ready to start your day"
-                    : "You're in the zone!"}
+                    ? "Listo para empezar el día"
+                    : "¡Estás en racha!"}
                 </div>
                 <p className="mt-1 text-xs text-emerald-800 dark:text-emerald-300/80">
                   {data.contactsToday === 0
-                    ? "No contacts yet today. Make the first one count."
-                    : `${data.contactsToday} contacts, ${data.focusMinutes} min focused. Keep it up.`}
+                    ? "Sin contactos todavía. Que el primero cuente."
+                    : `${data.contactsToday} contactos, ${data.focusMinutes} min de foco. Sigue así.`}
                 </p>
               </div>
             )}

@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeMetrics } from "@/hooks/useRealtimeMetrics";
 import { useRoles } from "@/hooks/useRoles";
 import { useCampaigns } from "@/hooks/useCampaigns";
+import { pluralES } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
 import {
   Avatar,
@@ -313,7 +314,8 @@ function ManagerDashSections({
             title="Campañas activas"
             right={
               <span className="chip">
-                {active.length} {active.length === 1 ? "activa" : "activas"}
+                {active.length} de {campaigns.length}{" "}
+                {active.length === 1 ? "activa" : "activas"}
               </span>
             }
           />
@@ -327,8 +329,14 @@ function ManagerDashSections({
             ) : topActive.length === 0 ? (
               <EmptyCardBody
                 icon={Icon.Megaphone}
-                title="Sin campañas activas"
-                body="Crea una nueva desde el menú Campañas."
+                title="Sin campañas activas en este momento"
+                body={
+                  campaigns.length > 0
+                    ? `Tienes ${campaigns.length} ${
+                        campaigns.length === 1 ? "campaña" : "campañas"
+                      } finalizadas o en borrador. Crea una nueva o relanza desde Campañas.`
+                    : "Crea una nueva desde el menú Campañas."
+                }
               />
             ) : (
               topActive.map((c) => {
@@ -455,15 +463,16 @@ export function DashboardPage() {
       : role === "Supervisors"
       ? "Centro de operaciones"
       : `Hola, ${user?.username ?? "Agente"}`;
+  // Cross-page consistency: use pluralES + español puro (the rest of
+  // the app says "agente activo", not "agente online").
+  const agentsOnline = metrics?.summary.totalAgentsOnline ?? 0;
+  const queueCount = metrics?.queues.length ?? 0;
+  const contactsInQueue = metrics?.summary.totalContactsInQueue ?? 0;
   const sub =
     role === "Admins"
-      ? `${metrics?.summary.totalAgentsOnline ?? 0} agentes online · ${
-          metrics?.queues.length ?? 0
-        } colas activas`
+      ? `${agentsOnline} ${pluralES(agentsOnline, "agente conectado", "agentes conectados")} · ${queueCount} ${pluralES(queueCount, "cola activa", "colas activas")}`
       : role === "Supervisors"
-      ? `${metrics?.summary.totalAgentsOnline ?? 0} agentes online · ${
-          metrics?.summary.totalContactsInQueue ?? 0
-        } en cola`
+      ? `${agentsOnline} ${pluralES(agentsOnline, "agente conectado", "agentes conectados")} · ${contactsInQueue} ${pluralES(contactsInQueue, "en cola", "en cola")}`
       : `Conectado como ${user?.highestRole ?? "Agente"}`;
 
   return (

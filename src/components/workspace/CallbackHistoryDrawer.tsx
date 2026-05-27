@@ -4,6 +4,7 @@ import {
   useCallbacks,
   type CallbackRecord,
 } from "@/hooks/useCallbacks";
+import { sanitizeText } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
 import { useDebugRender } from "@/lib/debugTrace";
 
@@ -409,7 +410,7 @@ function FollowupRow({
               whiteSpace: "nowrap",
             }}
           >
-            {record.customerName || "Cliente"}
+            {sanitizeText(record.customerName) || "Cliente"}
           </span>
           <span
             className="mono"
@@ -460,9 +461,9 @@ function FollowupRow({
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
-            title={record.emailSubject}
+            title={sanitizeText(record.emailSubject)}
           >
-            📧 {record.emailSubject}
+            📧 {sanitizeText(record.emailSubject)}
           </div>
         )}
         {ch === "whatsapp" && record.templateName && (
@@ -487,9 +488,9 @@ function FollowupRow({
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
-            title={record.notes}
+            title={sanitizeText(record.notes)}
           >
-            📝 {record.notes}
+            📝 {sanitizeText(record.notes)}
           </div>
         )}
       </div>

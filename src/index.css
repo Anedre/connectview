@@ -641,3 +641,34 @@ a { color: inherit; text-decoration: none; }
     box-shadow: 0 0 0 4px var(--accent-amber-soft, rgba(245, 165, 36, 0.18));
   }
 }
+
+/* ============================================================
+   Skeleton loaders — used by route transitions / data-loading
+   placeholders. Solid shimmering blocks shaped like the final
+   content. See Bug #24 (campaign detail) for the canonical use.
+   ============================================================ */
+.skel {
+  position: relative;
+  background: linear-gradient(
+    90deg,
+    var(--bg-2) 0%,
+    var(--bg-3) 40%,
+    var(--bg-2) 80%
+  );
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.skel--text {
+  display: inline-block;
+  border-radius: 4px;
+}
+@keyframes skel-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

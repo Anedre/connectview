@@ -110,44 +110,45 @@ export function ActiveCampaignsPanel({ data, loading }: Props) {
                 </div>
               </div>
 
-              {/* Mini KPI row */}
+              {/* Mini KPI row — labels en español para alinear con el
+                  resto de la UI. Antes mezclaba "Pending/Done/Failed". */}
               <div className="mt-2 grid grid-cols-6 gap-1 text-center text-[11px]">
                 <MiniKpi
                   icon={Clock}
                   value={counts.pending}
-                  label="Pending"
+                  label="Pendientes"
                   color="text-slate-500"
                 />
                 <MiniKpi
                   icon={Phone}
                   value={counts.dialing}
-                  label="Dialing"
+                  label="Marcando"
                   color="text-blue-600"
                   highlight={counts.dialing > 0}
                 />
                 <MiniKpi
                   icon={PhoneCall}
                   value={counts.connected}
-                  label="Connected"
+                  label="En llamada"
                   color="text-emerald-600"
                   highlight={counts.connected > 0}
                 />
                 <MiniKpi
                   icon={CheckCircle2}
                   value={counts.done}
-                  label="Done"
+                  label="Cerrados"
                   color="text-emerald-700"
                 />
                 <MiniKpi
                   icon={PhoneOff}
                   value={counts.no_answer}
-                  label="No ans."
+                  label="Sin resp."
                   color="text-amber-600"
                 />
                 <MiniKpi
                   icon={XCircle}
                   value={counts.failed}
-                  label="Failed"
+                  label="Fallidos"
                   color="text-rose-600"
                 />
               </div>

@@ -194,10 +194,14 @@ export function WrapUpView({
     }
     setSaving(true);
     const endpoints = getApiEndpoints();
+    // saveAgentNotes uses `notes` (not `note`) — the old payload was
+    // silently dropping the textarea content because of this typo. Also
+    // include customerPhone so the Lambda can spawn the follow-up task
+    // with the right customer reference.
     const payload = {
       contactId,
       agentUsername: user?.username || "",
-      note: notes,
+      notes,
       summary,
       stage: selectedStage.id,
       stageLabel: selectedStage.label,
@@ -206,14 +210,21 @@ export function WrapUpView({
       valoracion: selectedStage.valoracion,
       tags,
       followUps,
+      customerPhone,
     };
     try {
       if (endpoints?.saveAgentNotes) {
-        await fetch(endpoints.saveAgentNotes, {
+        const r = await fetch(endpoints.saveAgentNotes, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        const json = await r.json().catch(() => ({}));
+        if (Array.isArray(json.followUpTaskIds) && json.followUpTaskIds.length > 0) {
+          toast.success(
+            `Tarea follow-up creada (${json.followUpTaskIds.length}) · llegará en 24h`
+          );
+        }
       }
       // Also push to Amazon Connect Contact Attributes so the CTR carries
       // stage / sub-stage / valoración for analytics + Contact Lens search.

@@ -63,17 +63,38 @@ function isThrottlingError(error: unknown): boolean {
 export const handler: Handler = async (event: any) => {
   const body = JSON.parse(event.body || "{}");
   const { contactId, mode = "summary" } = body;
+  // Allow callers (e.g. the Agent Desktop ContactDetailModal viewing
+  // historical contacts) to pre-supply the transcript text. The real-time
+  // ContactLens API only works for live calls; for historical chats/voice
+  // the frontend already fetched the transcript via get-contact-detail
+  // and just needs us to summarize it.
+  const inlineTranscript: string | undefined = body.transcript;
 
-  if (!contactId) {
+  if (!contactId && !inlineTranscript) {
     return {
       statusCode: 400,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "contactId required" }),
+      body: JSON.stringify({ error: "contactId or transcript required" }),
     };
   }
 
   try {
-    const segments = await getTranscript(contactId);
+    let segments: TranscriptSegment[];
+    if (inlineTranscript && inlineTranscript.trim()) {
+      // Parse a pre-formatted transcript ("AGENT: ...\nCUSTOMER: ...") OR
+      // accept it as one big blob. We accept both because the front-end
+      // already does the role tagging when building the payload.
+      segments = inlineTranscript
+        .split("\n")
+        .map((line) => {
+          const m = line.match(/^(AGENT|CUSTOMER|SYSTEM|UNKNOWN):\s?(.*)$/i);
+          if (m) return { participant: m[1].toUpperCase(), content: m[2] };
+          return { participant: "UNKNOWN", content: line };
+        })
+        .filter((s) => s.content && s.content.trim());
+    } else {
+      segments = await getTranscript(contactId);
+    }
     if (segments.length === 0) {
       return {
         statusCode: 200,

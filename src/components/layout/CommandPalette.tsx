@@ -72,93 +72,99 @@ export function CommandPalette() {
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="Type a command or search..." />
+      <CommandInput placeholder="Escribe un comando o búsqueda…" />
       <CommandList>
-        <CommandEmpty>No results found.</CommandEmpty>
+        <CommandEmpty>Sin resultados.</CommandEmpty>
 
-        <CommandGroup heading="Navigation">
+        <CommandGroup heading="Navegación">
           <CommandItem onSelect={run(() => navigate("/"))}>
             <LayoutDashboard className="mr-2 h-4 w-4 text-blue-500" />
-            Dashboard
-            <CommandShortcut>G then D</CommandShortcut>
+            Inicio
+            <CommandShortcut>G luego D</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/agent"))}>
             <Headset className="mr-2 h-4 w-4 text-emerald-500" />
             Agent Desktop
-            <CommandShortcut>G then A</CommandShortcut>
+            <CommandShortcut>G luego A</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/queue"))}>
             <Activity className="mr-2 h-4 w-4 text-amber-500" />
             Cola en vivo
-            <CommandShortcut>G then Q</CommandShortcut>
+            <CommandShortcut>G luego Q</CommandShortcut>
+          </CommandItem>
+          <CommandItem onSelect={run(() => navigate("/campaigns"))}>
+            <BarChart3 className="mr-2 h-4 w-4 text-orange-500" />
+            Campañas
+            <CommandShortcut>G luego C</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/reports"))}>
             <BarChart3 className="mr-2 h-4 w-4 text-purple-500" />
-            Reports & Analytics
+            Reportes
+            <CommandShortcut>G luego R</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/recordings"))}>
             <Disc className="mr-2 h-4 w-4 text-pink-500" />
-            Call Recordings
+            Grabaciones
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/admin"))}>
             <Settings className="mr-2 h-4 w-4 text-rose-500" />
-            Administration
+            Configuración
           </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
 
-        <CommandGroup heading="Agent Actions">
+        <CommandGroup heading="Acciones del agente">
           <CommandItem onSelect={run(() => setAgentState("Available"))}>
             <UserCheck className="mr-2 h-4 w-4 text-emerald-500" />
-            Go Available
+            Marcarme Disponible
             <CommandShortcut>A</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => setAgentState("Offline"))}>
             <UserX className="mr-2 h-4 w-4 text-slate-500" />
-            Go Offline
+            Marcarme Offline
             <CommandShortcut>O</CommandShortcut>
           </CommandItem>
-          <CommandItem onSelect={run(() => toast.info("Opening number pad..."))}>
+          <CommandItem onSelect={run(() => toast.info("Abriendo marcador…"))}>
             <Phone className="mr-2 h-4 w-4 text-blue-500" />
-            Make Outbound Call
+            Llamada saliente
           </CommandItem>
-          <CommandItem onSelect={run(() => toast.info("Ending current call..."))}>
+          <CommandItem onSelect={run(() => toast.info("Terminando llamada actual…"))}>
             <PhoneOff className="mr-2 h-4 w-4 text-rose-500" />
-            End Current Call
+            Colgar llamada actual
           </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
 
-        <CommandGroup heading="Settings">
+        <CommandGroup heading="Preferencias">
           <CommandItem onSelect={run(toggleTheme)}>
             {resolvedTheme === "dark" ? (
               <Sun className="mr-2 h-4 w-4 text-amber-500" />
             ) : (
               <Moon className="mr-2 h-4 w-4 text-indigo-500" />
             )}
-            Toggle {resolvedTheme === "dark" ? "Light" : "Dark"} Mode
-            <CommandShortcut>⌘⇧D</CommandShortcut>
+            Cambiar a modo {resolvedTheme === "dark" ? "claro" : "oscuro"}
+            <CommandShortcut>Ctrl ⇧ D</CommandShortcut>
           </CommandItem>
           <CommandItem
             onSelect={run(() =>
-              toast.info("Keyboard shortcuts: Press ? to see all")
+              toast.info("Atajos de teclado: presiona ? para verlos")
             )}
           >
             <HelpCircle className="mr-2 h-4 w-4 text-muted-foreground" />
-            Show Keyboard Shortcuts
+            Ver atajos de teclado
             <CommandShortcut>?</CommandShortcut>
           </CommandItem>
           <CommandItem
             onSelect={run(() =>
-              toast.success("AI Assist activated", {
-                description: "Amazon Q + Bedrock ready to help",
+              toast.success("AI Assist activado", {
+                description: "Amazon Q + Bedrock listos para ayudar",
               })
             )}
           >
             <Sparkles className="mr-2 h-4 w-4 text-purple-500" />
-            Activate AI Assist
+            Activar AI Assist
           </CommandItem>
         </CommandGroup>
       </CommandList>

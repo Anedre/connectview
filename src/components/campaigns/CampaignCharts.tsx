@@ -21,6 +21,14 @@ interface Props {
   counts: Counts;
   total: number;
   startedAt?: string | null;
+  /** Bug #25 — when present, the "en curso" clock freezes at this
+   *  timestamp instead of ticking with `Date.now()`. The campaign
+   *  detail page passes `endedAt` (or the campaign's `completedAt`)
+   *  for COMPLETED / CANCELLED campaigns. */
+  endedAt?: string | null;
+  /** Used to flip the sub-label from "en curso" to "de duración total"
+   *  for finished campaigns. */
+  isFinished?: boolean;
 }
 
 /**
@@ -34,7 +42,13 @@ interface Props {
  *
  * Everything is pure-SVG / inline CSS so we don't pull in chart libs.
  */
-export function CampaignCharts({ counts, total, startedAt }: Props) {
+export function CampaignCharts({
+  counts,
+  total,
+  startedAt,
+  endedAt,
+  isFinished,
+}: Props) {
   // Rolling buffer of snapshots. ~60 samples × 3s poll ≈ 3 minutes.
   const [buffer, setBuffer] = useState<Snapshot[]>([]);
   const lastCompletedRef = useRef(-1);
@@ -99,9 +113,18 @@ export function CampaignCharts({ counts, total, startedAt }: Props) {
   // Elapsed time since campaign started. Show hours/days when the
   // campaign has been running a while — "1273m en curso" is correct
   // but unreadable; "21h en curso" is what humans want.
+  // Bug #25 — for terminated campaigns, freeze the clock at endedAt
+  // (or at the last sample in the buffer as a fallback) so the
+  // "47H 54M EN CURSO" no longer ticks for a finished campaign.
   const elapsedLabel = useMemo(() => {
     if (!startedAt) return "0m";
-    const ms = Date.now() - new Date(startedAt).getTime();
+    const start = new Date(startedAt).getTime();
+    const end = endedAt
+      ? new Date(endedAt).getTime()
+      : isFinished && buffer.length > 0
+      ? buffer[buffer.length - 1].ts
+      : Date.now();
+    const ms = end - start;
     if (ms <= 0) return "0m";
     const minutes = Math.floor(ms / 60_000);
     if (minutes < 60) return `${minutes}m`;
@@ -113,7 +136,7 @@ export function CampaignCharts({ counts, total, startedAt }: Props) {
     const days = Math.floor(hours / 24);
     const remH = hours - days * 24;
     return remH > 0 ? `${days}d ${remH}h` : `${days}d`;
-  }, [startedAt]);
+  }, [startedAt, endedAt, isFinished, buffer]);
 
   return (
     <Card>
@@ -123,7 +146,8 @@ export function CampaignCharts({ counts, total, startedAt }: Props) {
           Métricas en vivo
         </div>
         <span className="card__sub">
-          {buffer.length} muestras · {elapsedLabel} en curso
+          {buffer.length} muestras · {elapsedLabel}{" "}
+          {isFinished ? "de duración total" : "en curso"}
         </span>
       </div>
       <CardBody>

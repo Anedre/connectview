@@ -208,17 +208,22 @@ export function Kpi({
       : deltaDir === "down"
       ? "kpi__delta--down"
       : "kpi__delta--flat";
+  // Show an arrow only for real trends. Bug #21: an up-arrow with value 0
+  // and "flat" KPIs (placeholder dashes) used to be misleading — now flat
+  // dirs and empty/placeholder deltas render no arrow.
   const arrow =
     deltaDir === "up" ? (
       <ArrowUp size={11} />
     ) : deltaDir === "down" ? (
       <ArrowDown size={11} />
     ) : null;
+  const deltaIsPlaceholder =
+    typeof delta === "string" && (delta.trim() === "" || delta.trim() === "—");
   return (
     <div className="kpi">
       <div className="kpi__label">{label}</div>
       <div className="kpi__value">{value}</div>
-      {delta && (
+      {delta && !deltaIsPlaceholder && (
         <div className={`kpi__delta ${cls}`}>
           {arrow} {delta}
         </div>

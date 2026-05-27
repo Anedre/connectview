@@ -1,223 +1,240 @@
 import { useState } from "react";
-import { AudioPlayer } from "@/components/recordings/AudioPlayer";
-import { TranscriptViewer } from "@/components/recordings/TranscriptViewer";
-import type { TranscriptSegment } from "@/types/recordings";
-import type { ContactRecord } from "@/types/monitoring";
-import { getApiEndpoints } from "@/lib/api";
 import * as Icon from "@/components/vox/primitives";
-import { Card, CardBody, CardHead } from "@/components/vox/primitives";
+import { CustomerListSidebar, type CustomerSummary } from "@/components/recordings/CustomerListSidebar";
+import { CustomerContactsList, type ContactRow } from "@/components/recordings/CustomerContactsList";
+import { ContactDetailView } from "@/components/recordings/ContactDetailView";
+import { WhatsAppThreadView } from "@/components/recordings/WhatsAppThreadView";
+import { CallLogView } from "@/components/recordings/CallLogView";
+import { EmailThreadsView } from "@/components/recordings/EmailThreadsView";
+import { AttachmentsGrid } from "@/components/recordings/AttachmentsGrid";
 
-const SENTIMENT_CHIP: Record<string, string> = {
-  POSITIVE: "chip--green",
-  NEGATIVE: "chip--red",
-  NEUTRAL: "",
-  MIXED: "chip--amber",
-};
+type RightPaneMode = "sessions" | "whatsapp" | "calls" | "emails" | "files";
 
+interface TabDef {
+  id: RightPaneMode;
+  label: string;
+}
+
+const TABS: TabDef[] = [
+  { id: "sessions", label: "📋 Sesiones" },
+  { id: "whatsapp", label: "💬 WhatsApp" },
+  { id: "calls", label: "📞 Llamadas" },
+  { id: "emails", label: "📧 Emails" },
+  { id: "files", label: "📎 Archivos" },
+];
+
+/**
+ * Recordings page — channel-specific lenses on the customer's whole
+ * interaction history. The page is a customer picker (left) + a
+ * mode-dependent right pane (each mode reaches into the appropriate
+ * backend Lambda — there is no shared right-pane model on purpose, each
+ * lens decides what to fetch).
+ *
+ *   - "Sesiones": legacy per-contactId detail view (middle column lists
+ *     contactIds; right column shows audio/transcript/wrap-up).
+ *   - "WhatsApp": every CHAT contact merged into one continuous bubble
+ *     thread, calendar popover for date jumping, session separators.
+ *   - "Llamadas": bitácora telefónica — large cards per call with
+ *     inline expansion to AudioPlayer + Contact Lens transcript.
+ *   - "Emails": Gmail-style threads grouped by normalized Subject.
+ *   - "Archivos": cross-channel attachment grid (every file ever
+ *     exchanged with this customer, filterable by media kind).
+ */
 export function RecordingsPage() {
-  const [searchId, setSearchId] = useState("");
-  const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
-  const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
-  const [currentTimeMs, setCurrentTimeMs] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+  const [customer, setCustomer] = useState<CustomerSummary | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ContactRow | null>(
+    null
+  );
+  const [mode, setMode] = useState<RightPaneMode>("sessions");
 
-  const handleSearch = async () => {
-    if (!searchId.trim()) {
-      setSearchError("Ingresa un Contact ID para buscar.");
-      return;
-    }
-    setLoading(true);
-    setSearchError(null);
-    try {
-      const endpoints = getApiEndpoints();
-      if (!endpoints?.getRecording) {
-        throw new Error("La API de grabaciones no está configurada.");
-      }
-      const response = await fetch(
-        `${endpoints.getRecording}?contactId=${encodeURIComponent(searchId)}`
-      );
-      if (!response.ok) {
-        throw new Error(
-          response.status === 404
-            ? "No se encontró ninguna grabación para este Contact ID."
-            : `HTTP ${response.status}`
-        );
-      }
-      const data = await response.json();
-      setSelectedContact({
-        contactId: data.contactId,
-        initiationTimestamp: data.initiationTimestamp || new Date().toISOString(),
-        agentUsername: data.agentUsername || "—",
-        queueName: data.queueName || "—",
-        channel: data.channel || "VOICE",
-        duration: data.duration || 0,
-        sentiment: data.sentiment || "UNKNOWN",
-        categories: data.categories || [],
-        status: "COMPLETED",
-      });
-      setTranscript(data.transcript || []);
-    } catch (err) {
-      setSearchError(err instanceof Error ? err.message : "Error al cargar la grabación.");
-      setSelectedContact(null);
-      setTranscript([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const customerKey = customer?.phoneNumber || customer?.email || null;
+  const customerLabel =
+    customer?.businessName ||
+    [customer?.firstName, customer?.lastName].filter(Boolean).join(" ").trim() ||
+    customer?.phoneNumber ||
+    customer?.email ||
+    "";
+
+  // Only "Sesiones" mode uses the middle column (per-contactId list).
+  // All other lenses span the full width of the right pane.
+  const showMiddleColumn = mode === "sessions";
 
   return (
-    <div className="view">
-      <div className="view__head">
+    <div className="view" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div
+        className="view__head"
+        style={{
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <div>
           <div className="view__crumb">
             <span>Crecimiento</span>
           </div>
           <h1 className="view__title">Grabaciones</h1>
           <div className="view__sub">
-            Búsqueda y reproducción de llamadas con transcripción Contact Lens
+            Historial completo por cliente: llamadas con audio + transcripción,
+            chats de WhatsApp con mensajes y adjuntos, y emails.
           </div>
         </div>
-        <div className="view__actions">
-          <button className="btn">
-            <Icon.Filter size={14} /> Filtros avanzados
-          </button>
+        <div
+          role="tablist"
+          aria-label="Modo de vista"
+          style={{
+            display: "inline-flex",
+            background: "var(--bg-2)",
+            border: "1px solid var(--border-1)",
+            borderRadius: 8,
+            padding: 2,
+            flexWrap: "wrap",
+          }}
+        >
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={mode === t.id}
+              onClick={() => setMode(t.id)}
+              className="btn btn--sm"
+              style={{
+                background: mode === t.id ? "var(--bg-1)" : "transparent",
+                border: "none",
+                boxShadow:
+                  mode === t.id ? "0 1px 2px rgba(0,0,0,.06)" : undefined,
+                fontSize: 12,
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <Card style={{ marginBottom: 16 }}>
-        <CardHead title="Buscar por Contact ID" />
-        <CardBody>
-          <div className="row" style={{ gap: 8, alignItems: "center" }}>
-            <div className="tb__search" style={{ maxWidth: 480, height: 36 }}>
-              <Icon.Search size={14} />
-              <input
-                placeholder="Contact ID…"
-                value={searchId}
-                onChange={(e) => setSearchId(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSearch();
+      {/* 3-column shell in "Sesiones" mode, 2-column for every other lens. */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: showMiddleColumn ? "280px 320px 1fr" : "280px 1fr",
+          gap: 12,
+          flex: 1,
+          minHeight: 0,
+          marginTop: 4,
+        }}
+      >
+        {/* Customer picker (always present) */}
+        <div
+          style={{
+            background: "var(--bg-1)",
+            border: "1px solid var(--border-1)",
+            borderRadius: 10,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          <CustomerListSidebar
+            selectedKey={customerKey}
+            onSelect={(c) => {
+              setCustomer(c);
+              setSelectedContact(null);
+            }}
+          />
+        </div>
+
+        {/* Middle column — only in "Sesiones" mode. */}
+        {showMiddleColumn && (
+          <div
+            style={{
+              background: "var(--bg-1)",
+              border: "1px solid var(--border-1)",
+              borderRadius: 10,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            {customer && (
+              <div
+                style={{
+                  padding: "10px 12px",
+                  borderBottom: "1px solid var(--border-1)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
                 }}
+              >
+                <Icon.User size={14} style={{ color: "var(--text-3)" }} />
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={customerLabel}
+                >
+                  {customerLabel}
+                </span>
+                <button
+                  onClick={() => {
+                    setCustomer(null);
+                    setSelectedContact(null);
+                  }}
+                  className="btn btn--ghost btn--sm btn--icon"
+                  title="Volver al picker"
+                  aria-label="Volver"
+                >
+                  <Icon.Close size={12} />
+                </button>
+              </div>
+            )}
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <CustomerContactsList
+                customerKey={customerKey}
+                selectedContactId={selectedContact?.contactId || null}
+                onSelect={(c) => setSelectedContact(c)}
               />
             </div>
-            <button
-              className="btn btn--primary"
-              onClick={handleSearch}
-              disabled={loading}
-            >
-              <Icon.Search size={14} />
-              {loading ? "Buscando…" : "Buscar"}
-            </button>
           </div>
-          {searchError && (
-            <div
-              style={{
-                marginTop: 12,
-                padding: 10,
-                borderRadius: 8,
-                background: "var(--accent-red-soft)",
-                color: "var(--accent-red)",
-                fontSize: 12.5,
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-              }}
-            >
-              <Icon.Close size={14} /> {searchError}
-            </div>
+        )}
+
+        {/* Right pane — channel-specific lens. */}
+        <div
+          style={{
+            background: "var(--bg-1)",
+            border: "1px solid var(--border-1)",
+            borderRadius: 10,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+          }}
+        >
+          {mode === "sessions" && (
+            <ContactDetailView contactId={selectedContact?.contactId || null} />
           )}
-        </CardBody>
-      </Card>
-
-      {selectedContact && (
-        <div className="grid-2">
-          <div className="col" style={{ gap: 16 }}>
-            <Card>
-              <CardHead title="Info del contacto" />
-              <CardBody>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "120px 1fr",
-                    gap: "10px 14px",
-                    fontSize: 12.5,
-                  }}
-                >
-                  <span className="muted">Contact ID</span>
-                  <span className="mono" style={{ fontSize: 11.5 }}>
-                    {selectedContact.contactId}
-                  </span>
-                  <span className="muted">Agente</span>
-                  <span>{selectedContact.agentUsername}</span>
-                  <span className="muted">Cola</span>
-                  <span>{selectedContact.queueName}</span>
-                  <span className="muted">Canal</span>
-                  <span>
-                    <span className="chip">{selectedContact.channel}</span>
-                  </span>
-                  <span className="muted">Duración</span>
-                  <span className="mono">
-                    {Math.floor((selectedContact.duration || 0) / 60)}m{" "}
-                    {(selectedContact.duration || 0) % 60}s
-                  </span>
-                  <span className="muted">Sentiment</span>
-                  <span>
-                    <span
-                      className={`chip ${
-                        SENTIMENT_CHIP[selectedContact.sentiment || "NEUTRAL"] ?? ""
-                      }`}
-                    >
-                      <span className="dot" />
-                      {selectedContact.sentiment}
-                    </span>
-                  </span>
-                  <span className="muted">Categorías</span>
-                  <span className="row" style={{ flexWrap: "wrap", gap: 4 }}>
-                    {selectedContact.categories?.map((cat, i) => (
-                      <span key={i} className="chip">
-                        {cat}
-                      </span>
-                    ))}
-                  </span>
-                </div>
-              </CardBody>
-            </Card>
-
-            <Card>
-              <CardHead title="Reproducción de audio" />
-              <CardBody>
-                <AudioPlayer src="" onTimeUpdate={setCurrentTimeMs} />
-                <p
-                  className="muted"
-                  style={{ marginTop: 8, fontSize: 11.5 }}
-                >
-                  La reproducción está disponible cuando hay grabaciones en S3.
-                </p>
-              </CardBody>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHead title="Transcripción" />
-            <CardBody>
-              <TranscriptViewer segments={transcript} currentTimeMs={currentTimeMs} />
-            </CardBody>
-          </Card>
+          {mode === "whatsapp" && (
+            <WhatsAppThreadView phone={customer?.phoneNumber || null} />
+          )}
+          {mode === "calls" && (
+            <CallLogView phone={customer?.phoneNumber || null} />
+          )}
+          {mode === "emails" && (
+            <EmailThreadsView customerKey={customerKey} />
+          )}
+          {mode === "files" && (
+            <AttachmentsGrid phone={customer?.phoneNumber || null} />
+          )}
         </div>
-      )}
-
-      {!selectedContact && !searchError && (
-        <Card>
-          <CardBody
-            style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}
-          >
-            <Icon.Disc size={32} style={{ opacity: 0.4 }} />
-            <div style={{ marginTop: 12, fontSize: 13 }}>
-              Busca un Contact ID para revisar audio, transcripción y sentiment.
-            </div>
-          </CardBody>
-        </Card>
-      )}
+      </div>
     </div>
   );
 }
