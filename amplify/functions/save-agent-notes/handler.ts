@@ -4,6 +4,7 @@ import {
   PutItemCommand,
   GetItemCommand,
   UpdateItemCommand,
+  QueryCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import {
@@ -14,6 +15,15 @@ import {
 const dynamo = new DynamoDBClient({});
 const connect = new ConnectClient({ maxAttempts: 1 });
 const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
+/**
+ * Append-only history of every wrap-up save. PK=contactId, SK=savedAt.
+ * Lets the UI show "agent A on 2026-05-20 marked it ContestóInteresado,
+ * agent B on 2026-05-27 reopened and marked NoContestó". The current
+ * (latest) state still lives on connectview-contacts so all the existing
+ * read paths keep working with no migration.
+ */
+const HISTORY_TABLE =
+  process.env.WRAPUP_HISTORY_TABLE || "connectview-wrapup-history";
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 // The contact flow we route the follow-up task to. Defaults to the same
 // inbound-handling flow so it shows in the agent's task queue.
@@ -37,14 +47,37 @@ export const handler: Handler = async (event: any) => {
         };
       }
 
-      const result = await dynamo.send(
-        new GetItemCommand({
-          TableName: TABLE_NAME,
-          Key: { contactId: { S: contactId } },
-        })
-      );
+      const [result, historyRes] = await Promise.all([
+        dynamo.send(
+          new GetItemCommand({
+            TableName: TABLE_NAME,
+            Key: { contactId: { S: contactId } },
+          })
+        ),
+        // History is append-only — sort descending so the most recent
+        // wrap-up is first. Cap at 50 to keep payload bounded; in
+        // practice a single contactId never has more than a handful.
+        dynamo
+          .send(
+            new QueryCommand({
+              TableName: HISTORY_TABLE,
+              KeyConditionExpression: "contactId = :cid",
+              ExpressionAttributeValues: {
+                ":cid": { S: contactId },
+              },
+              ScanIndexForward: false,
+              Limit: 50,
+            })
+          )
+          .catch((err) => {
+            // History table might not exist yet on first read; treat as empty.
+            console.warn("history query failed:", err);
+            return { Items: [] as Record<string, unknown>[] };
+          }),
+      ]);
 
       const item = result.Item ? unmarshall(result.Item) : null;
+      const history = (historyRes.Items || []).map((row) => unmarshall(row));
       // Surface ALL wrap-up fields so the historical-contact viewer can
       // render the full disposition + follow-up state, not just the
       // free-form notes + summary.
@@ -66,6 +99,7 @@ export const handler: Handler = async (event: any) => {
           followUpTaskIds: item?.followUpTaskIds || [],
           updatedAt: item?.updatedAt || "",
           agentUsername: item?.agentUsername || "",
+          history,
         }),
       };
     }
@@ -175,6 +209,42 @@ export const handler: Handler = async (event: any) => {
           Item: marshall(item, { removeUndefinedValues: true }),
         })
       );
+
+      // Append-only history row. Even if the current row was overwritten
+      // (which is the failure mode the user reported — "no guardamos
+      // historial de tipificación"), this preserves every save with the
+      // agent + timestamp so QA / supervisors can see the full audit
+      // trail of how the contact was dispositioned over time.
+      const historyRow: Record<string, unknown> = {
+        contactId,
+        savedAt: item.updatedAt,
+        agentUsername: agentUsername || "",
+      };
+      if (notes !== undefined) historyRow.agentNotes = notes;
+      if (wrapUpCode !== undefined) historyRow.wrapUpCode = wrapUpCode;
+      if (summary !== undefined) historyRow.summary = summary;
+      if (stage !== undefined) historyRow.stage = stage;
+      if (stageLabel !== undefined) historyRow.stageLabel = stageLabel;
+      if (subStage !== undefined) historyRow.subStage = subStage;
+      if (subStageLabel !== undefined) historyRow.subStageLabel = subStageLabel;
+      if (valoracion !== undefined) historyRow.valoracion = valoracion;
+      if (Array.isArray(tags)) historyRow.tags = tags;
+      if (followUps && typeof followUps === "object")
+        historyRow.followUps = followUps;
+      if (followUpTaskIds.length > 0)
+        historyRow.followUpTaskIds = followUpTaskIds;
+      try {
+        await dynamo.send(
+          new PutItemCommand({
+            TableName: HISTORY_TABLE,
+            Item: marshall(historyRow, { removeUndefinedValues: true }),
+          })
+        );
+      } catch (err) {
+        // History write is best-effort — don't fail the save if the
+        // history table is unavailable.
+        console.warn("wrap-up history write failed:", err);
+      }
 
       return {
         statusCode: 200,

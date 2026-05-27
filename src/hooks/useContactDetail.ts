@@ -48,6 +48,29 @@ export interface ContactAttachment {
  * any tasks that were spawned (task24h → Connect Task contactIds).
  * Returned by get-contact-detail when the wrap-up DynamoDB row exists.
  */
+/**
+ * A single historical wrap-up entry — produced every time an agent saves
+ * the wrap-up form. Append-only; we never delete or update history rows.
+ * The most-recent entry is also reflected in the top-level wrap-up
+ * fields (notes/stage/valoracion/...) for the legacy single-state UI;
+ * `history` carries the full audit trail when the same contact was
+ * dispositioned more than once (e.g. agent reopens, supervisor corrects).
+ */
+export interface ContactWrapUpHistoryEntry {
+  savedAt: string;
+  agentUsername: string;
+  agentNotes?: string;
+  summary?: string;
+  stage?: string;
+  stageLabel?: string;
+  subStage?: string;
+  subStageLabel?: string;
+  valoracion?: string;
+  tags?: string[];
+  followUps?: Record<string, boolean>;
+  followUpTaskIds?: string[];
+}
+
 export interface ContactWrapUp {
   notes: string;
   summary: string;
@@ -61,6 +84,10 @@ export interface ContactWrapUp {
   followUpTaskIds: string[];
   agentUsername: string;
   updatedAt: string;
+  /** Append-only audit trail of every wrap-up save. Newest first.
+   *  Empty if the contact has only been dispositioned once (so the UI
+   *  can skip rendering the "Historial" panel). */
+  history?: ContactWrapUpHistoryEntry[];
 }
 
 export interface ContactDetail {

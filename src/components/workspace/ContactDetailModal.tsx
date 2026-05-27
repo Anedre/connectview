@@ -539,7 +539,173 @@ function WrapUpCard({ wrapUp }: { wrapUp: ContactWrapUp }) {
           ))}
         </div>
       )}
+
+      {/* Audit trail — only render when there's more than one entry
+          (otherwise it would just duplicate the current card). */}
+      {wrapUp.history && wrapUp.history.length > 1 && (
+        <WrapUpHistory entries={wrapUp.history} />
+      )}
     </div>
+  );
+}
+
+/**
+ * Collapsible audit trail of every wrap-up save for this contact. The
+ * newest entry is already shown in the parent card; this surfaces the
+ * older ones so QA / supervisors can see the disposition evolution
+ * (agent reopens, status changes, multiple attempts, etc.).
+ */
+function WrapUpHistory({
+  entries,
+}: {
+  entries: NonNullable<ContactWrapUp["history"]>;
+}) {
+  const [open, setOpen] = useState(false);
+  // Skip the first entry (it's already the "current" card above).
+  const older = entries.slice(1);
+  if (older.length === 0) return null;
+
+  return (
+    <details
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+      style={{
+        marginTop: 8,
+        borderTop: "1px dashed var(--border-1)",
+        paddingTop: 8,
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontSize: 11,
+          color: "var(--text-2)",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          userSelect: "none",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <span>{open ? "▾" : "▸"}</span>
+        Historial de tipificación · {older.length} previa{older.length === 1 ? "" : "s"}
+      </summary>
+      <div
+        style={{
+          marginTop: 8,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        {older.map((entry, idx) => {
+          const dt = entry.savedAt ? new Date(entry.savedAt) : null;
+          const when = dt
+            ? dt.toLocaleString("es-PE", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "—";
+          return (
+            <div
+              key={`${entry.savedAt}-${idx}`}
+              style={{
+                background: "var(--bg-1)",
+                border: "1px solid var(--border-1)",
+                borderRadius: 6,
+                padding: 8,
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  flexWrap: "wrap",
+                  marginBottom: entry.agentNotes ? 6 : 0,
+                }}
+              >
+                <span className="muted mono" style={{ fontSize: 10.5 }}>
+                  {when}
+                </span>
+                {entry.agentUsername && (
+                  <span className="muted" style={{ fontSize: 10.5 }}>
+                    · {entry.agentUsername}
+                  </span>
+                )}
+                {entry.stageLabel && (
+                  <span className="chip" style={{ fontSize: 10.5 }}>
+                    {entry.stageLabel}
+                  </span>
+                )}
+                {entry.subStageLabel && (
+                  <>
+                    <span className="muted" style={{ fontSize: 10.5 }}>
+                      →
+                    </span>
+                    <span
+                      className="chip"
+                      style={{ fontSize: 10.5, background: "var(--bg-2)" }}
+                    >
+                      {entry.subStageLabel}
+                    </span>
+                  </>
+                )}
+                {entry.valoracion && (
+                  <span
+                    className="chip"
+                    style={{ fontSize: 10, opacity: 0.85 }}
+                  >
+                    {entry.valoracion}
+                  </span>
+                )}
+              </div>
+              {entry.agentNotes && (
+                <div
+                  style={{
+                    background: "var(--bg-2)",
+                    padding: 6,
+                    borderRadius: 4,
+                    whiteSpace: "pre-wrap",
+                    fontSize: 11.5,
+                    color: "var(--text-2)",
+                  }}
+                >
+                  {sanitizeText(entry.agentNotes)}
+                </div>
+              )}
+              {Array.isArray(entry.tags) && entry.tags.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 4,
+                    flexWrap: "wrap",
+                    marginTop: 6,
+                  }}
+                >
+                  {entry.tags.map((t) => (
+                    <span
+                      key={t}
+                      className="chip chip--cyan"
+                      style={{ fontSize: 10 }}
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </details>
   );
 }
 

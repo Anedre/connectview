@@ -9,7 +9,11 @@ import {
 } from "@aws-sdk/client-connect";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
+import {
+  DynamoDBClient,
+  GetItemCommand,
+  QueryCommand,
+} from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 
 /**
@@ -612,6 +616,7 @@ export const handler: Handler = async (event: any) => {
               : [],
             agentUsername: u.agentUsername || "",
             updatedAt: u.updatedAt || "",
+            history: [], // populated below
           };
         }
       }
@@ -619,6 +624,51 @@ export const handler: Handler = async (event: any) => {
       // Wrap-up is optional context — never fail the whole detail call
       // because the agent-notes table is unavailable or empty.
       console.warn("wrap-up lookup failed:", err);
+    }
+
+    // Append-only wrap-up history. We always try to fetch it, even when
+    // the current `connectview-contacts` row is empty (the agent might
+    // have edited the contact, cleared the fields, and the history
+    // still tells the story of every save).
+    try {
+      const histRes = await dynamo.send(
+        new QueryCommand({
+          TableName: "connectview-wrapup-history",
+          KeyConditionExpression: "contactId = :cid",
+          ExpressionAttributeValues: { ":cid": { S: contactId } },
+          ScanIndexForward: false, // newest first
+          Limit: 50,
+        })
+      );
+      const rows = (histRes.Items || []).map((r) => unmarshall(r));
+      if (rows.length > 0) {
+        // If we never built a wrapUp (because the current row was empty)
+        // but we DO have history, surface a synthesised wrapUp from the
+        // most recent entry so the UI still shows the disposition card.
+        if (!wrapUp) {
+          const latest = rows[0];
+          wrapUp = {
+            notes: latest.agentNotes || "",
+            summary: latest.summary || "",
+            stage: latest.stage || "",
+            stageLabel: latest.stageLabel || "",
+            subStage: latest.subStage || "",
+            subStageLabel: latest.subStageLabel || "",
+            valoracion: latest.valoracion || "",
+            tags: Array.isArray(latest.tags) ? latest.tags : [],
+            followUps: latest.followUps || {},
+            followUpTaskIds: Array.isArray(latest.followUpTaskIds)
+              ? latest.followUpTaskIds
+              : [],
+            agentUsername: latest.agentUsername || "",
+            updatedAt: latest.savedAt || "",
+            history: [],
+          };
+        }
+        wrapUp.history = rows;
+      }
+    } catch (err) {
+      console.warn("wrap-up history lookup failed:", err);
     }
 
     const duration =
