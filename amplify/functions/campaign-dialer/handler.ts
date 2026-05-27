@@ -12,15 +12,9 @@ import {
   GetCurrentUserDataCommand,
   ListUsersCommand,
 } from "@aws-sdk/client-connect";
-import {
-  LambdaClient,
-  InvokeCommand,
-  InvocationType,
-} from "@aws-sdk/client-lambda";
 
 const dynamo = new DynamoDBClient({});
 const connect = new ConnectClient({ maxAttempts: 1 });
-const lambda = new LambdaClient({});
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
@@ -899,66 +893,35 @@ async function processCampaignLegacy(campaign: Campaign): Promise<void> {
   void rollbackToPending;
 }
 
-// Maximum chain depth — each invocation can self-invoke up to this many
-// times before the EventBridge tick takes over again. We chain while ANY
-// pending contact remains (even if no new dial this tick) so single-
-// concurrency campaigns don't have to wait for the 60s EB tick after
-// each call. With depth=30 × delay=2s the chain runs for ~60s, enough
-// to span a typical voice call's full duration (ring + talk + ACW); if
-// a call lasts longer than 60s the EB tick picks back up automatically.
-const MAX_CHAIN_DEPTH = 30;
-// Tiny pause between chain links so DynamoDB has time to commit the
-// markAsDialing UpdateItem and so Connect's user data API reflects the
-// new state. Without this, the next chain link sees stale data and
-// thinks the agent is still idle.
-const CHAIN_DELAY_MS = 2000;
-
+/**
+ * Self-chaining was removed: AWS Lambda Recursive Loop Detection flags
+ * any function that invokes itself via the Invoke API, regardless of
+ * the chain depth cap we set. The Health dashboard reported the dialer
+ * on 2026-05-27 18:36 UTC and the function still has
+ * `RecursiveLoop: Terminate` (default), which means future chained
+ * invocations could start getting dropped.
+ *
+ * The pacing improvement now relies solely on EventBridge `rate(1
+ * minute)`. The gap between sequential calls is up to ~60s, which we
+ * accept as a tradeoff vs. tripping the recursion guardrail. Future
+ * sub-minute pacing should use EventBridge Scheduler (rate as low as
+ * 1 minute via cron is the floor for rate(); EventBridge Scheduler
+ * supports seconds-level rates) or a workflow service like Step
+ * Functions Express — none of which trigger the loop detector.
+ */
 interface DialerEvent {
-  /** Set by self-invocations to track chain depth. Absent on EventBridge ticks. */
-  chainDepth?: number;
+  /** Reserved for future use. EventBridge ticks always arrive empty. */
+  reserved?: never;
 }
 
-async function selfInvoke(depth: number): Promise<void> {
-  const fnName = process.env.AWS_LAMBDA_FUNCTION_NAME;
-  if (!fnName) {
-    console.warn("[dialer] AWS_LAMBDA_FUNCTION_NAME unset — skipping chain");
-    return;
-  }
-  try {
-    await lambda.send(
-      new InvokeCommand({
-        FunctionName: fnName,
-        InvocationType: InvocationType.Event, // fire-and-forget
-        Payload: new TextEncoder().encode(
-          JSON.stringify({ chainDepth: depth } satisfies DialerEvent)
-        ),
-      })
-    );
-    console.log(`[dialer] chained self at depth=${depth}`);
-  } catch (err) {
-    console.error("[dialer] chain self-invoke failed:", err);
-  }
-}
-
-export const handler: Handler<DialerEvent> = async (event) => {
-  const chainDepth = event?.chainDepth ?? 0;
+export const handler: Handler<DialerEvent> = async () => {
   try {
     const campaigns = await listRunningCampaigns();
-    console.log(
-      `[dialer] running campaigns: ${campaigns.length} · chainDepth=${chainDepth}`
-    );
+    console.log(`[dialer] running campaigns: ${campaigns.length}`);
 
     if (campaigns.length === 0) {
       return { ok: true, campaignsProcessed: 0 };
     }
-
-    // Track whether any campaign still has pending work — that's enough
-    // reason to chain ourselves, even if THIS tick didn't actually dial
-    // anything (e.g. concurrency=1 and the previous dial is still in
-    // flight). Without this, sequential single-concurrency campaigns
-    // wait for the next 60s EventBridge tick after every call instead of
-    // dialing within a few seconds.
-    let anyPendingLeft = false;
 
     for (const campaign of campaigns) {
       // Check time window
@@ -977,27 +940,11 @@ export const handler: Handler<DialerEvent> = async (event) => {
         // No assigned agents or agentless mode → original behavior.
         await processCampaignLegacy(campaign);
       }
-
-      const after = await countPendingContacts(campaign.campaignId);
-      if (after > 0) anyPendingLeft = true;
-    }
-
-    // Chain ourselves while ANY campaign still has pending work. With
-    // CHAIN_DELAY_MS=2000 and MAX_CHAIN_DEPTH=6 the chain runs for ~12s
-    // before the next EventBridge tick takes over — that ~12s window
-    // covers the gap between an outbound call ending and the agent's
-    // state flipping back to Available in Connect's user-data API.
-    if (anyPendingLeft && chainDepth < MAX_CHAIN_DEPTH) {
-      // Brief wait so DynamoDB writes propagate before the next link reads.
-      await new Promise((r) => setTimeout(r, CHAIN_DELAY_MS));
-      await selfInvoke(chainDepth + 1);
     }
 
     return {
       ok: true,
       campaignsProcessed: campaigns.length,
-      chainDepth,
-      chained: anyPendingLeft && chainDepth < MAX_CHAIN_DEPTH,
     };
   } catch (err) {
     console.error("dialer error", err);
