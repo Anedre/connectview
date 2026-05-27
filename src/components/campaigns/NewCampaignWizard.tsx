@@ -66,10 +66,38 @@ interface WhatsAppTemplate {
 }
 
 const DIAL_MODES = [
-  { value: "progressive", label: "Progressive (1 llamada por agente libre)" },
-  { value: "power", label: "Power (2 llamadas por agente libre)" },
-  { value: "manual", label: "Manual / Preview (el agente decide y marca)" },
-  { value: "agentless", label: "Agentless (IVR sin agente)" },
+  {
+    value: "progressive",
+    label: "Automático — 1 a la vez",
+    short: "Dialer marca un contacto, espera a que termine, marca el siguiente.",
+    detail:
+      "Lo más usado. Cuando el agente está libre, el sistema marca el próximo lead automáticamente.",
+    icon: "📞",
+  },
+  {
+    value: "power",
+    label: "Automático — 2 a la vez",
+    short: "Dialer marca 2 contactos por cada agente libre, prioriza el primero que conteste.",
+    detail:
+      "Más rápido. Útil cuando muchos leads no contestan y querés maximizar conversaciones por hora.",
+    icon: "⚡",
+  },
+  {
+    value: "manual",
+    label: "Manual — el agente decide",
+    short: "Los leads aparecen en una lista. El agente revisa y elige cuándo marcar o saltar.",
+    detail:
+      "Recomendado para cuentas premium o cuando el agente necesita ver contexto antes de hablar.",
+    icon: "👤",
+  },
+  {
+    value: "agentless",
+    label: "Sin agente (IVR / encuesta)",
+    short: "Marca sin necesidad de agente. La llamada la atiende un flujo automático.",
+    detail:
+      "Para encuestas grabadas, recordatorios automáticos, NPS, etc. No requiere agentes asignados.",
+    icon: "🤖",
+  },
 ];
 
 const TIMEZONES = [
@@ -90,7 +118,7 @@ export function NewCampaignWizard({
   const { user } = useAuth();
   const { flows, loading: flowsLoading } = useContactFlows();
   const { phones, loading: phonesLoading } = useSourcePhones();
-  const { queues, loading: queuesLoading } = useQueues();
+  const { queues } = useQueues();
 
   // Bug #29 — the wizard used to default to step 2 and, more importantly,
   // didn't fully reset on close, so reopening landed the user back at
@@ -447,7 +475,7 @@ export function NewCampaignWizard({
               : step === 2
               ? "Listado de contactos"
               : step === 3
-              ? "Configuración de dialing"
+              ? "Cómo se van a marcar los leads"
               : "Revisar y lanzar"}
           </DialogDescription>
         </DialogHeader>
@@ -889,214 +917,250 @@ export function NewCampaignWizard({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Queue destino (para asignar agentes)</Label>
-              <Select
-                value={campaignQueueId}
-                onValueChange={(v) => {
-                  setCampaignQueueId(v || "");
-                  setQueueTouched(true);
-                }}
-                disabled={queuesLoading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Opcional — elegir queue" />
-                </SelectTrigger>
-                <SelectContent>
-                  {queues.map((q) => (
-                    <SelectItem key={q.id} value={q.id}>
-                      {q.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {flowQueuesLoading && (
-                <p className="text-xs text-muted-foreground">
-                  🔍 Analizando queues del flow...
-                </p>
-              )}
-              {flowQueues?.primaryQueue && !flowQueues.primaryQueue.isDynamic && (
-                <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                  ✓ Detectada del flow:{" "}
-                  <strong>{flowQueues.primaryQueue.queueName}</strong>
-                  {flowQueues.literalQueues.length > 1 && (
-                    <span className="ml-1 text-amber-600">
-                      ({flowQueues.literalQueues.length} queues en el flow —
-                      puedes cambiar)
-                    </span>
-                  )}
-                </p>
-              )}
-              {flowQueues &&
-                flowQueues.literalQueues.length === 0 &&
-                flowQueues.dynamicQueues.length > 0 && (
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
-                    ⚠️ El flow usa queue dinámica — elige manualmente.
-                  </p>
-                )}
-              <p className="text-xs text-muted-foreground">
-                Usada para auto-configurar routing profiles cuando asignes
-                agentes a la campaña.
-              </p>
-            </div>
+            {/* Colas detectadas del flow — READ-ONLY summary. Un flow
+                puede enrutar a varias colas (UDEP-Outbound-Smart tiene 4
+                según el udep_nivel del lead). Cuando el admin asigne
+                agentes, podrá elegir qué cola atiende cada uno (UI smart
+                en AssignedAgentsPanel). Aquí solo informamos.
 
-            {/* AMD (Answer Machine Detection) notice — currently blocked for PE */}
-            <div className="rounded-lg border border-amber-300 bg-gradient-to-br from-amber-50/50 to-orange-50/50 p-3 dark:border-amber-900 dark:from-amber-950/20 dark:to-orange-950/20">
-              <div className="flex items-start gap-2">
-                <Badge className="mt-0.5 bg-amber-100 text-[10px] text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                  PRÓXIMAMENTE
-                </Badge>
-                <div className="flex-1 text-xs">
-                  <div className="font-semibold text-amber-900 dark:text-amber-200">
-                    AMD (Answer Machine Detection) bloqueado por AWS en Perú
+                campaignQueueId sigue existiendo como fallback técnico:
+                se auto-rellena con el primaryQueue del flow para que el
+                backend tenga algo cuando una asignación llegue sin
+                queueByUserId explícito. El usuario no lo edita. */}
+            <div className="space-y-2">
+              <Label>Colas que usará la campaña</Label>
+              {flowQueuesLoading ? (
+                <p className="text-xs text-muted-foreground">
+                  Detectando colas del flow…
+                </p>
+              ) : flowQueues && flowQueues.literalQueues.length > 0 ? (
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {flowQueues.literalQueues.map((q) => (
+                      <span
+                        key={q.queueId}
+                        className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200"
+                      >
+                        <span>✓</span>
+                        {q.queueName}
+                      </span>
+                    ))}
                   </div>
-                  <p className="mt-0.5 text-muted-foreground">
-                    AWS solo ofrece AMD como parte de Outbound Campaigns
-                    v2, que hoy únicamente soporta destinos en US, MX y BR
-                    desde us-east-1. Cuando AWS agregue Perú a la lista
-                    (ver{" "}
-                    <a
-                      href="https://docs.aws.amazon.com/connect/latest/adminguide/regions.html#campaigns_region"
-                      className="underline"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      regiones soportadas
-                    </a>
-                    ) activamos AMD automáticamente. Mientras tanto el
-                    dialer marca con tráfico GENERAL y el agente recibe
-                    todas las llamadas contestadas, incluidas las que
-                    caen a voicemail.
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {flowQueues.literalQueues.length === 1
+                      ? "Esta campaña enviará todos los leads a esta cola."
+                      : `Esta campaña enruta automáticamente a ${flowQueues.literalQueues.length} colas según los atributos del lead (por ejemplo udep_nivel). Cuando asignes agentes, vas a elegir qué cola atiende cada uno.`}
                   </p>
                 </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Dial mode</Label>
-                <Select value={dialMode} onValueChange={(v) => setDialMode(v || "progressive")}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DIAL_MODES.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>
-                        {m.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Concurrencia máx.</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={concurrency}
-                  onChange={(e) =>
-                    setConcurrency(parseInt(e.target.value) || 1)
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Zona horaria</Label>
-              <Select value={timezone} onValueChange={(v) => setTimezone(v || "America/Lima")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIMEZONES.map((tz) => (
-                    <SelectItem key={tz.value} value={tz.value}>
-                      {tz.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Ventana desde (hora)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={windowStartHour}
-                  onChange={(e) =>
-                    setWindowStartHour(parseInt(e.target.value) || 0)
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Ventana hasta (hora)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={windowEndHour}
-                  onChange={(e) =>
-                    setWindowEndHour(parseInt(e.target.value) || 0)
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Retry no-answer (min)</Label>
-                <Input
-                  type="number"
-                  min={5}
-                  max={1440}
-                  value={retryNoAnswerMinutes}
-                  onChange={(e) =>
-                    setRetryNoAnswerMinutes(parseInt(e.target.value) || 30)
-                  }
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Cuánto esperar antes de reintentar un contacto que no atendió
+              ) : flowQueues && flowQueues.dynamicQueues.length > 0 ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+                  El flow usa enrutamiento dinámico — las colas dependen
+                  de los atributos del lead. Al asignar agentes podrás
+                  elegir entre las colas disponibles del instance.
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Elige un Contact flow arriba para ver a qué colas
+                  enrutará los leads.
                 </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Máx. intentos</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={retryMaxAttempts}
-                  onChange={(e) =>
-                    setRetryMaxAttempts(parseInt(e.target.value) || 3)
-                  }
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Cuántas veces se reintenta cada contacto antes de marcarlo
-                  como definitivamente fallido
-                </p>
-              </div>
+              )}
             </div>
 
+            {/* Visual dial-mode picker — 4 tarjetas con descripción
+                clara, sin jergon de contact center. */}
             <div className="space-y-2">
-              <Label>Capacidad de cola por agente</Label>
-              <Input
-                type="number"
-                min={1}
-                max={50}
-                value={maxContactsPerAgent}
-                onChange={(e) =>
-                  setMaxContactsPerAgent(parseInt(e.target.value) || 5)
-                }
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Cuántos contactos se le pre-asignan a cada agente. Los ve en
-                su cola en orden de llegada y atiende uno a uno; cuando termina
-                uno, toma el siguiente automáticamente. Si su cola se vacía, el
-                dialer le rellena desde el pool general.
-              </p>
+              <Label>¿Cómo se marcan los leads?</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {DIAL_MODES.map((m) => {
+                  const isActive = dialMode === m.value;
+                  return (
+                    <button
+                      key={m.value}
+                      type="button"
+                      onClick={() => setDialMode(m.value)}
+                      className={`text-left rounded-lg border p-3 transition ${
+                        isActive
+                          ? "border-orange-500 bg-orange-50 dark:border-orange-400 dark:bg-orange-950/30"
+                          : "border-muted bg-muted/30 hover:bg-muted/60"
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className="text-lg leading-none">{m.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div
+                            className={`text-sm font-semibold ${
+                              isActive
+                                ? "text-orange-900 dark:text-orange-100"
+                                : "text-foreground"
+                            }`}
+                          >
+                            {m.label}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                            {m.short}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Detail text for the selected mode */}
+              {(() => {
+                const sel = DIAL_MODES.find((m) => m.value === dialMode);
+                return sel ? (
+                  <p className="text-[11px] text-muted-foreground leading-relaxed pl-1">
+                    💡 {sel.detail}
+                  </p>
+                ) : null;
+              })()}
             </div>
+
+            {/* Configuración avanzada — collapsible. Los campos
+                quedan escondidos por defecto con valores razonables.
+                Los expertos los abren si los necesitan. */}
+            <details className="rounded-lg border bg-muted/20">
+              <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium hover:bg-muted/40 rounded-lg">
+                Configuración avanzada (opcional)
+              </summary>
+              <div className="px-3 pb-3 pt-1 space-y-4">
+                <p className="text-[11px] text-muted-foreground">
+                  Valores por defecto razonables. Tocalos solo si sabes
+                  exactamente lo que necesitas.
+                </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Llamadas simultáneas</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={concurrency}
+                      onChange={(e) =>
+                        setConcurrency(parseInt(e.target.value) || 1)
+                      }
+                    />
+                    <p className="text-[10px] text-muted-foreground leading-snug">
+                      Cuántas llamadas puede tener la campaña en vuelo a
+                      la vez. Más = más rápido, pero también más demanda
+                      sobre los agentes.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Cola por agente</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={maxContactsPerAgent}
+                      onChange={(e) =>
+                        setMaxContactsPerAgent(parseInt(e.target.value) || 5)
+                      }
+                    />
+                    <p className="text-[10px] text-muted-foreground leading-snug">
+                      Cuántos leads se le pre-asignan a cada agente. Los
+                      ve en orden de llegada y los atiende uno por uno.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Horario de llamadas</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={23}
+                      value={windowStartHour}
+                      onChange={(e) =>
+                        setWindowStartHour(parseInt(e.target.value) || 0)
+                      }
+                      className="w-20"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      hasta
+                    </span>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={23}
+                      value={windowEndHour}
+                      onChange={(e) =>
+                        setWindowEndHour(parseInt(e.target.value) || 0)
+                      }
+                      className="w-20"
+                    />
+                    <span className="text-xs text-muted-foreground">hs</span>
+                    <Select
+                      value={timezone}
+                      onValueChange={(v) =>
+                        setTimezone(v || "America/Lima")
+                      }
+                    >
+                      <SelectTrigger className="flex-1 ml-2">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIMEZONES.map((tz) => (
+                          <SelectItem key={tz.value} value={tz.value}>
+                            {tz.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-snug">
+                    Fuera de este horario el dialer no marca. Para llamar
+                    24/7, deja 0 → 23.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">
+                      Si no contestan, reintentar en…
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={5}
+                        max={1440}
+                        value={retryNoAnswerMinutes}
+                        onChange={(e) =>
+                          setRetryNoAnswerMinutes(
+                            parseInt(e.target.value) || 30
+                          )
+                        }
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        min
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-snug">
+                      Cuánto tiempo dejar pasar antes de volver a marcar
+                      a un lead que no contestó.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Intentos máximos</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={retryMaxAttempts}
+                      onChange={(e) =>
+                        setRetryMaxAttempts(parseInt(e.target.value) || 3)
+                      }
+                    />
+                    <p className="text-[10px] text-muted-foreground leading-snug">
+                      Tras este número de intentos sin éxito, el lead se
+                      marca como fallido y deja de reintentarse.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </details>
             </>
             )}
           </div>
