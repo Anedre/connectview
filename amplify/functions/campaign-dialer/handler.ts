@@ -883,12 +883,13 @@ async function processCampaignLegacy(campaign: Campaign): Promise<void> {
 }
 
 // Maximum chain depth — each invocation can self-invoke up to this many
-// times before the EventBridge tick takes over again. With chain depth 6
-// the worst-case sub-second gap covers the first 6 contacts after a
-// terminal call; the 7th waits for the next minute tick. In practice we
-// only chain while we keep dialing, so the depth caps runaway not
-// throughput.
-const MAX_CHAIN_DEPTH = 6;
+// times before the EventBridge tick takes over again. We chain while ANY
+// pending contact remains (even if no new dial this tick) so single-
+// concurrency campaigns don't have to wait for the 60s EB tick after
+// each call. With depth=30 × delay=2s the chain runs for ~60s, enough
+// to span a typical voice call's full duration (ring + talk + ACW); if
+// a call lasts longer than 60s the EB tick picks back up automatically.
+const MAX_CHAIN_DEPTH = 30;
 // Tiny pause between chain links so DynamoDB has time to commit the
 // markAsDialing UpdateItem and so Connect's user data API reflects the
 // new state. Without this, the next chain link sees stale data and
@@ -934,10 +935,12 @@ export const handler: Handler<DialerEvent> = async (event) => {
       return { ok: true, campaignsProcessed: 0 };
     }
 
-    // Track whether this tick made progress AND still has more to do.
-    // If so, we chain ourselves so the next contact dials in seconds
-    // instead of waiting up to 60s for the next EventBridge tick.
-    let anyProgressInTick = false;
+    // Track whether any campaign still has pending work — that's enough
+    // reason to chain ourselves, even if THIS tick didn't actually dial
+    // anything (e.g. concurrency=1 and the previous dial is still in
+    // flight). Without this, sequential single-concurrency campaigns
+    // wait for the next 60s EventBridge tick after every call instead of
+    // dialing within a few seconds.
     let anyPendingLeft = false;
 
     for (const campaign of campaigns) {
@@ -951,8 +954,6 @@ export const handler: Handler<DialerEvent> = async (event) => {
       const useBuckets =
         campaign.dialMode !== "agentless" && assignedAgentIds.length > 0;
 
-      const before = await countPendingContacts(campaign.campaignId);
-
       if (useBuckets) {
         await processCampaignWithBuckets(campaign, assignedAgentIds);
       } else {
@@ -961,18 +962,15 @@ export const handler: Handler<DialerEvent> = async (event) => {
       }
 
       const after = await countPendingContacts(campaign.campaignId);
-      if (after < before) anyProgressInTick = true;
       if (after > 0) anyPendingLeft = true;
     }
 
-    // Chain ourselves if (a) we made progress (so the bottleneck is the
-    // 60s tick, not agent availability) and (b) there's still pending
-    // work and (c) we haven't exceeded the safety cap.
-    if (
-      anyProgressInTick &&
-      anyPendingLeft &&
-      chainDepth < MAX_CHAIN_DEPTH
-    ) {
+    // Chain ourselves while ANY campaign still has pending work. With
+    // CHAIN_DELAY_MS=2000 and MAX_CHAIN_DEPTH=6 the chain runs for ~12s
+    // before the next EventBridge tick takes over — that ~12s window
+    // covers the gap between an outbound call ending and the agent's
+    // state flipping back to Available in Connect's user-data API.
+    if (anyPendingLeft && chainDepth < MAX_CHAIN_DEPTH) {
       // Brief wait so DynamoDB writes propagate before the next link reads.
       await new Promise((r) => setTimeout(r, CHAIN_DELAY_MS));
       await selfInvoke(chainDepth + 1);
@@ -982,7 +980,7 @@ export const handler: Handler<DialerEvent> = async (event) => {
       ok: true,
       campaignsProcessed: campaigns.length,
       chainDepth,
-      chained: anyProgressInTick && anyPendingLeft,
+      chained: anyPendingLeft && chainDepth < MAX_CHAIN_DEPTH,
     };
   } catch (err) {
     console.error("dialer error", err);

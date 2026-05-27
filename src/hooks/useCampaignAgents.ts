@@ -69,8 +69,16 @@ export function useCampaignAgents(campaignId: string | null, refreshMs = 10000) 
     async (
       add: string[] = [],
       remove: string[] = [],
-      priority = 5,
-      delay = 0
+      opts: {
+        /** Per-agent queue assignment. When the campaign's flow routes
+         *  to multiple queues, the UI lets the admin pick which queue
+         *  each agent will service. Keys are userIds, values queueIds.
+         *  When absent for a user, backend falls back to the campaign's
+         *  campaignQueueId. */
+        queueByUserId?: Record<string, string>;
+        priority?: number;
+        delay?: number;
+      } = {}
     ) => {
       if (!campaignId) throw new Error("campaignId missing");
       const endpoints = getApiEndpoints();
@@ -81,8 +89,9 @@ export function useCampaignAgents(campaignId: string | null, refreshMs = 10000) 
           campaignId,
           add,
           remove,
-          priority,
-          delay,
+          queueByUserId: opts.queueByUserId,
+          priority: opts.priority ?? 5,
+          delay: opts.delay ?? 0,
           actor: user?.username || "unknown",
         });
         await refresh();

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useCampaignAgents } from "@/hooks/useCampaignAgents";
 import { useLiveQueue } from "@/hooks/useLiveQueue";
+import { useFlowQueues } from "@/hooks/useFlowQueues";
 import type { Campaign } from "@/hooks/useCampaigns";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
@@ -30,12 +31,37 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
     10000
   );
   const { data: liveQueue } = useLiveQueue(5000);
+  // Discover which queues THIS campaign's flow actually routes to.
+  // For UDEP-Outbound-Smart this returns Pregrado/Posgrado/Diplomados/
+  // Alumnos (lead-attribute routing). For UDEP-Campaign-Outbound it
+  // returns just Pregrado. The picker uses this list so we don't offer
+  // queues the campaign would never route to.
+  const { data: flowQueues, loading: flowQueuesLoading } = useFlowQueues(
+    campaign.contactFlowId || null
+  );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  /** Per-selected-agent queue choice. When the campaign's flow has
+   *  multiple literal queues, the picker shows a Select next to each
+   *  selected agent so the admin can pick which one. */
+  const [queueByUserId, setQueueByUserId] = useState<Record<string, string>>(
+    {}
+  );
 
   const campaignQueueId = (campaign as unknown as { campaignQueueId?: string })
     .campaignQueueId;
+
+  /** Queues the campaign's flow actually uses. Empty = fall back to
+   *  campaign.campaignQueueId (legacy behaviour). */
+  const flowLiteralQueues = useMemo(
+    () => flowQueues?.literalQueues || [],
+    [flowQueues]
+  );
+
+  /** When >1 queue, the picker MUST surface a selector (smart routing).
+   *  When 1 queue, default to it silently. When 0, use campaign fallback. */
+  const isMultiQueueCampaign = flowLiteralQueues.length > 1;
 
   const assignedIds = useMemo(
     () => new Set(agents.map((a) => a.userId)),
@@ -54,25 +80,83 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
       .sort((a, b) => a.username.localeCompare(b.username));
   }, [liveQueue?.agents, assignedIds, search]);
 
+  /** When an agent is selected/deselected, also seed/clear their queue
+   *  choice with a smart default:
+   *    - intersection with their routing-profile queues (matches what
+   *      they're already qualified for) → first match
+   *    - else the flow's primaryQueue
+   *    - else the campaign's fallback queue
+   */
+  const defaultQueueFor = (userId: string): string => {
+    if (flowLiteralQueues.length === 0) return campaignQueueId || "";
+    if (flowLiteralQueues.length === 1) return flowLiteralQueues[0].queueId;
+    const agent = liveQueue?.agents.find((a) => a.userId === userId);
+    const agentQueueIds = new Set(
+      (agent?.queues || []).map((q) => q.id)
+    );
+    const intersect = flowLiteralQueues.find((q) =>
+      agentQueueIds.has(q.queueId)
+    );
+    if (intersect) return intersect.queueId;
+    return flowQueues?.primaryQueue?.queueId || flowLiteralQueues[0].queueId;
+  };
+
   const toggleSelect = (userId: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
+      if (next.has(userId)) {
+        next.delete(userId);
+        setQueueByUserId((q) => {
+          const c = { ...q };
+          delete c[userId];
+          return c;
+        });
+      } else {
+        next.add(userId);
+        setQueueByUserId((q) => ({ ...q, [userId]: defaultQueueFor(userId) }));
+      }
       return next;
     });
   };
 
+  // When the campaign's flow changes (or first loads), re-seed any
+  // already-checked agents' queue choice so it isn't stuck on a stale
+  // value from the previous flow.
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    setQueueByUserId((prev) => {
+      const next = { ...prev };
+      for (const id of selectedIds) {
+        if (!next[id]) next[id] = defaultQueueFor(id);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowQueues?.contactFlowId]);
+
   const handleAddSelected = async () => {
     if (selectedIds.size === 0) return;
-    if (!campaignQueueId) {
+    // Validate that every selected agent has a resolvable queue. Either
+    // explicit (multi-queue smart flow) or via fallback (campaignQueueId).
+    const missing: string[] = [];
+    for (const uid of selectedIds) {
+      const q = queueByUserId[uid] || (flowLiteralQueues.length === 1
+        ? flowLiteralQueues[0].queueId
+        : campaignQueueId);
+      if (!q) missing.push(uid);
+    }
+    if (missing.length > 0) {
       toast.error(
-        "La campaña no tiene queue asignada. Edita la campaña y elige una queue primero."
+        flowLiteralQueues.length > 1
+          ? "Elige una cola para cada agente seleccionado."
+          : "La campaña no tiene cola asignada. Edita la campaña primero."
       );
       return;
     }
     try {
-      const res = await assign([...selectedIds], []);
+      const res = await assign([...selectedIds], [], {
+        queueByUserId: { ...queueByUserId },
+      });
       toast.success(
         `${res.added?.length || 0} agentes asignados${
           res.errors?.length ? ` · ${res.errors.length} errores` : ""
@@ -82,6 +166,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
         console.warn("assign errors:", res.errors);
       }
       setSelectedIds(new Set());
+      setQueueByUserId({});
       setPickerOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error asignando");
@@ -91,7 +176,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
   const handleRemove = async (userId: string, username: string) => {
     if (!confirm(`¿Desasignar ${username} de esta campaña?`)) return;
     try {
-      await assign([], [userId]);
+      await assign([], [userId], {});
       toast.success(`${username} desasignado`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error desasignando");
@@ -119,7 +204,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
         </button>
       </div>
       <CardBody>
-        {!campaignQueueId && (
+        {!campaignQueueId && flowLiteralQueues.length === 0 && (
           <div
             style={{
               padding: "8px 12px",
@@ -137,6 +222,33 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
             <span>
               Esta campaña no tiene queue asignada. Edita la campaña para elegir
               una queue antes de asignar agentes.
+            </span>
+          </div>
+        )}
+        {isMultiQueueCampaign && (
+          <div
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: "var(--accent-cyan-soft)",
+              color: "var(--accent-cyan)",
+              fontSize: 11.5,
+              marginBottom: 10,
+              display: "flex",
+              gap: 8,
+              alignItems: "flex-start",
+            }}
+          >
+            <Icon.Sparkles size={12} style={{ marginTop: 1 }} />
+            <span>
+              Esta campaña usa routing inteligente — su flow puede mandar los
+              leads a {flowLiteralQueues.length} colas distintas
+              {" ("}
+              {flowLiteralQueues
+                .map((q) => q.queueName.replace(/^UDEP-/i, ""))
+                .join(", ")}
+              {"). "}
+              Al asignar agentes vas a elegir cuál cola atiende cada uno.
             </span>
           </div>
         )}
@@ -360,12 +472,26 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
 
       {/* Picker modal */}
       <Dialog open={pickerOpen} onOpenChange={(o) => !o && setPickerOpen(false)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Asignar agentes a la campaña</DialogTitle>
             <DialogDescription>
-              Los seleccionados recibirán llamadas de esta campaña. Si su routing
-              profile no incluye la queue, se agregará automáticamente.
+              {isMultiQueueCampaign ? (
+                <>
+                  Esta campaña enruta por <strong>udep_nivel</strong> del lead.
+                  Para cada agente seleccionado, elige a qué cola va a atender
+                  (Pregrado, Posgrado, etc). Si su routing profile no incluye
+                  la cola, se le agrega automáticamente.
+                </>
+              ) : flowQueuesLoading ? (
+                "Detectando colas de la campaña…"
+              ) : (
+                <>
+                  Los seleccionados recibirán llamadas de esta campaña. Si su
+                  routing profile no incluye la queue, se agregará
+                  automáticamente.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -398,59 +524,97 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
             )}
             {availableUsers.map((u) => {
               const isSelected = selectedIds.has(u.userId);
+              const agentQueueIds = new Set(
+                (u.queues || []).map((q) => q.id)
+              );
               return (
-                <label
+                <div
                   key={u.userId}
-                  className={`flex cursor-pointer items-center gap-3 rounded px-2 py-1.5 transition-colors hover:bg-muted ${
+                  className={`flex items-start gap-3 rounded px-2 py-1.5 transition-colors hover:bg-muted ${
                     isSelected ? "bg-primary/10" : ""
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => toggleSelect(u.userId)}
-                    className="h-4 w-4"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium">{u.username}</div>
-                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
-                      <span className="chip" style={{ fontSize: 9.5 }}>
-                        {u.statusName || "Offline"}
-                      </span>
-                      {u.routingProfile && (
-                        <span className="truncate">{u.routingProfile}</span>
-                      )}
-                      {/* Queue tags — same UX as the assigned list so the
-                          manager can pick agents knowing what nivel they
-                          will handle. */}
-                      {u.queues && u.queues.length > 0 && (
-                        <span className="flex gap-1 flex-wrap">
-                          {u.queues.slice(0, 4).map((q) => (
-                            <span
-                              key={q.id}
-                              style={{
-                                fontSize: 9,
-                                padding: "1px 5px",
-                                borderRadius: 4,
-                                background: "var(--accent-cyan-soft)",
-                                color: "var(--accent-cyan)",
-                                fontWeight: 500,
-                                lineHeight: 1.3,
-                              }}
-                            >
-                              {q.name.replace(/^UDEP-/i, "")}
-                            </span>
-                          ))}
-                          {u.queues.length > 4 && (
-                            <span className="text-[9px] opacity-70">
-                              +{u.queues.length - 4}
-                            </span>
-                          )}
+                  <label className="flex flex-1 cursor-pointer items-center gap-3 min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(u.userId)}
+                      className="h-4 w-4"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">{u.username}</div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
+                        <span className="chip" style={{ fontSize: 9.5 }}>
+                          {u.statusName || "Offline"}
                         </span>
-                      )}
+                        {u.routingProfile && (
+                          <span className="truncate">{u.routingProfile}</span>
+                        )}
+                        {/* Queue tags — same UX as the assigned list so the
+                            manager can pick agents knowing what nivel they
+                            will handle. */}
+                        {u.queues && u.queues.length > 0 && (
+                          <span className="flex gap-1 flex-wrap">
+                            {u.queues.slice(0, 4).map((q) => (
+                              <span
+                                key={q.id}
+                                style={{
+                                  fontSize: 9,
+                                  padding: "1px 5px",
+                                  borderRadius: 4,
+                                  background: "var(--accent-cyan-soft)",
+                                  color: "var(--accent-cyan)",
+                                  fontWeight: 500,
+                                  lineHeight: 1.3,
+                                }}
+                              >
+                                {q.name.replace(/^UDEP-/i, "")}
+                              </span>
+                            ))}
+                            {u.queues.length > 4 && (
+                              <span className="text-[9px] opacity-70">
+                                +{u.queues.length - 4}
+                              </span>
+                            )}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </label>
+                  </label>
+                  {/* Smart-routing queue selector — only when the campaign's
+                      flow has multiple queues AND this agent is selected.
+                      Defaults to the queue intersection with their routing
+                      profile so it matches what they're already qualified
+                      for; falls back to the flow's primaryQueue. */}
+                  {isMultiQueueCampaign && isSelected && (
+                    <div className="flex flex-col items-end gap-1 min-w-[150px]">
+                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                        Cola asignada
+                      </span>
+                      <select
+                        value={queueByUserId[u.userId] || ""}
+                        onChange={(e) =>
+                          setQueueByUserId((q) => ({
+                            ...q,
+                            [u.userId]: e.target.value,
+                          }))
+                        }
+                        className="text-xs rounded border bg-background px-2 py-1 w-full"
+                        style={{ minWidth: 140 }}
+                      >
+                        {flowLiteralQueues.map((q) => {
+                          const inProfile = agentQueueIds.has(q.queueId);
+                          return (
+                            <option key={q.queueId} value={q.queueId}>
+                              {q.queueName.replace(/^UDEP-/i, "")}
+                              {inProfile ? " ✓" : " (se agrega)"}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

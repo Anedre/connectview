@@ -28,6 +28,12 @@ interface AssignBody {
   campaignId: string;
   add?: string[]; // userIds to add
   remove?: string[]; // userIds to remove
+  /** Per-agent queue assignment. When the campaign's flow routes to
+   *  multiple queues (e.g. UDEP-Outbound-Smart branches on udep_nivel),
+   *  the UI lets the admin pick a specific queue for each agent. When
+   *  absent for a given userId, falls back to campaign.campaignQueueId.
+   *  Keys are userIds, values are queueIds. */
+  queueByUserId?: Record<string, string>;
   priority?: number; // queue priority (default 5)
   delay?: number; // queue delay (default 0)
   actor?: string;
@@ -166,6 +172,7 @@ export const handler: Handler = async (event: any) => {
     const { campaignId } = body;
     const add = body.add || [];
     const remove = body.remove || [];
+    const queueByUserId = body.queueByUserId || {};
     const priority = body.priority ?? 5;
     const delay = body.delay ?? 0;
 
@@ -186,28 +193,31 @@ export const handler: Handler = async (event: any) => {
       };
     }
 
-    const queueId = campaign.campaignQueueId;
-    if (!queueId) {
-      return {
-        statusCode: 400,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          error:
-            "Campaign has no campaignQueueId set. Edit the campaign first to choose a queue.",
-        }),
-      };
-    }
+    // The campaign-level queue is now a FALLBACK; per-agent queue comes
+    // from queueByUserId. If neither is set for an agent, we reject the
+    // add for that agent with a clear error.
+    const fallbackQueueId = campaign.campaignQueueId;
 
     const results = {
       added: [] as string[],
       removed: [] as string[],
       errors: [] as string[],
-      queueId,
+      /** Map of userId -> queueId actually used (for the UI to confirm). */
+      assignedQueueByUserId: {} as Record<string, string>,
     };
 
     // ----- ADD -----
     for (const userId of add) {
       try {
+        // Per-agent queue resolution: explicit > campaign fallback > error.
+        const queueId = queueByUserId[userId] || fallbackQueueId;
+        if (!queueId) {
+          results.errors.push(
+            `${userId}: no queue specified and campaign has no fallback queue`
+          );
+          continue;
+        }
+
         // Check if already assigned (idempotent)
         const existing = await dynamo.send(
           new GetItemCommand({
@@ -221,6 +231,8 @@ export const handler: Handler = async (event: any) => {
         if (existing.Item) {
           // Already assigned — keep it a no-op, not an error.
           results.added.push(userId);
+          results.assignedQueueByUserId[userId] =
+            (unmarshall(existing.Item).queueId as string) || queueId;
           continue;
         }
 
@@ -264,6 +276,7 @@ export const handler: Handler = async (event: any) => {
           })
         );
         results.added.push(userId);
+        results.assignedQueueByUserId[userId] = queueId;
       } catch (err) {
         results.errors.push(
           `add ${userId}: ${err instanceof Error ? err.message : String(err)}`
