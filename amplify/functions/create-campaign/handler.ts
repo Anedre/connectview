@@ -36,7 +36,7 @@ interface CreateCampaignBody {
   contactFlowName?: string;
   campaignQueueId?: string;
   campaignQueueName?: string;
-  dialMode?: "progressive" | "power" | "agentless";
+  dialMode?: "progressive" | "power" | "agentless" | "manual";
   concurrency?: number;
   timezone?: string;
   windowStartHour?: number;

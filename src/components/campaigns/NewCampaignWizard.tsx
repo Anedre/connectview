@@ -68,6 +68,7 @@ interface WhatsAppTemplate {
 const DIAL_MODES = [
   { value: "progressive", label: "Progressive (1 llamada por agente libre)" },
   { value: "power", label: "Power (2 llamadas por agente libre)" },
+  { value: "manual", label: "Manual / Preview (el agente decide y marca)" },
   { value: "agentless", label: "Agentless (IVR sin agente)" },
 ];
 

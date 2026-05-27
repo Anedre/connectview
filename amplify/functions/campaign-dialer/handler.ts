@@ -781,6 +781,23 @@ async function processCampaignWithBuckets(
     }
   }
 
+  // 3.5. Manual / preview mode: stop here. We've assigned contacts to
+  //      agent buckets but we don't auto-dial — the agent's UI will
+  //      surface the bucket and call edit-campaign-contacts with action
+  //      manual-call (or manual-skip) per contact. This is the standard
+  //      "preview dialing" pattern from contact-center playbooks: give
+  //      the agent context BEFORE the call so they can decide whether to
+  //      call now, skip, or reschedule.
+  if (campaign.dialMode === "manual") {
+    console.log(
+      `[dialer] ${campaign.campaignId}: manual mode · buckets ready, no auto-dial`
+    );
+    if (allPending.length === 0) {
+      await maybeCompleteCampaign(campaign);
+    }
+    return;
+  }
+
   // 4. For each idle Available agent, dial the head of their bucket.
   //    "Idle" here is the conjunction of:
   //      a) Connect reports them as Available with no active contact

@@ -20,7 +20,7 @@ const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 
-type Action = "add" | "delete" | "update";
+type Action = "add" | "delete" | "update" | "manual-call" | "manual-skip";
 
 interface AddPayload {
   action: "add";
@@ -47,7 +47,29 @@ interface UpdatePayload {
   attributes?: Record<string, string>;
 }
 
-type Payload = AddPayload | DeletePayload | UpdatePayload;
+/** Manual / preview-dial actions issued by the agent's desktop. */
+interface ManualCallPayload {
+  action: "manual-call";
+  campaignId: string;
+  rowId: string;
+  userId: string;
+}
+
+interface ManualSkipPayload {
+  action: "manual-skip";
+  campaignId: string;
+  rowId: string;
+  userId: string;
+  /** Optional reason — recorded for analytics. */
+  reason?: string;
+}
+
+type Payload =
+  | AddPayload
+  | DeletePayload
+  | UpdatePayload
+  | ManualCallPayload
+  | ManualSkipPayload;
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -62,6 +84,7 @@ const STATUS_TO_COUNTER: Record<string, string> = {
   done: "doneCount",
   no_answer: "noAnswerCount",
   failed: "failedCount",
+  skipped: "skippedCount",
 };
 
 async function bumpCampaignCounters(
@@ -411,6 +434,152 @@ async function handleUpdate(body: UpdatePayload): Promise<any> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+/**
+ * Manual-mode dial action — the agent's UI calls this when they click
+ * "Llamar" on a preview lead. We:
+ *   1. Verify the row exists, is pending, and is assigned to this user
+ *      (guard against agents calling each other's leads)
+ *   2. Mark it as `dialing` with attempts++
+ *   3. Return the phone number for the frontend to feed into placeCall()
+ * Idempotent: if the row is already dialing/connected for the same user,
+ * just returns the phone again (no-op).
+ */
+async function handleManualCall(body: ManualCallPayload) {
+  if (!body.rowId || !body.userId) {
+    return { statusCode: 400, body: { error: "rowId and userId required" } };
+  }
+  const cur = await dynamo.send(
+    new GetItemCommand({
+      TableName: CONTACTS_TABLE,
+      Key: {
+        campaignId: { S: body.campaignId },
+        rowId: { S: body.rowId },
+      },
+    })
+  );
+  if (!cur.Item) {
+    return { statusCode: 404, body: { error: "Contact not found" } };
+  }
+  const row = unmarshall(cur.Item);
+  const assigned = (row.assignedAgentUserId as string) || "";
+  if (assigned && assigned !== body.userId) {
+    return {
+      statusCode: 403,
+      body: { error: "Contact assigned to a different agent" },
+    };
+  }
+  const phone = (row.phone as string) || "";
+  if (!phone) {
+    return { statusCode: 400, body: { error: "Contact has no phone" } };
+  }
+  const currentStatus = (row.status as string) || "pending";
+  if (
+    currentStatus !== "pending" &&
+    currentStatus !== "dialing" &&
+    currentStatus !== "connected"
+  ) {
+    return {
+      statusCode: 409,
+      body: { error: `Contact is in terminal state: ${currentStatus}` },
+    };
+  }
+  await dynamo.send(
+    new UpdateItemCommand({
+      TableName: CONTACTS_TABLE,
+      Key: {
+        campaignId: { S: body.campaignId },
+        rowId: { S: body.rowId },
+      },
+      UpdateExpression:
+        "SET #st = :d, lastAttemptAt = :now, attempts = if_not_exists(attempts, :z) + :one, assignedAgentUserId = :uid",
+      ExpressionAttributeNames: { "#st": "status" },
+      ExpressionAttributeValues: {
+        ":d": { S: "dialing" },
+        ":now": { S: new Date().toISOString() },
+        ":z": { N: "0" },
+        ":one": { N: "1" },
+        ":uid": { S: body.userId },
+      },
+    })
+  );
+  if (currentStatus === "pending") {
+    await bumpCampaignCounters(body.campaignId, {
+      pendingCount: -1,
+      dialingCount: 1,
+    });
+  }
+  return {
+    statusCode: 200,
+    body: {
+      ok: true,
+      phone,
+      rowId: body.rowId,
+      customerName: (row.customerName as string) || "",
+      attributes: (row.attributes as Record<string, string>) || {},
+    },
+  };
+}
+
+/**
+ * Manual-mode skip — agent decides not to call this lead now. We mark
+ * the row as `skipped` (a new terminal status that doesn't retry).
+ */
+async function handleManualSkip(body: ManualSkipPayload) {
+  if (!body.rowId || !body.userId) {
+    return { statusCode: 400, body: { error: "rowId and userId required" } };
+  }
+  const cur = await dynamo.send(
+    new GetItemCommand({
+      TableName: CONTACTS_TABLE,
+      Key: {
+        campaignId: { S: body.campaignId },
+        rowId: { S: body.rowId },
+      },
+    })
+  );
+  if (!cur.Item) {
+    return { statusCode: 404, body: { error: "Contact not found" } };
+  }
+  const row = unmarshall(cur.Item);
+  const assigned = (row.assignedAgentUserId as string) || "";
+  if (assigned && assigned !== body.userId) {
+    return {
+      statusCode: 403,
+      body: { error: "Contact assigned to a different agent" },
+    };
+  }
+  const currentStatus = (row.status as string) || "pending";
+  if (currentStatus !== "pending") {
+    return {
+      statusCode: 409,
+      body: { error: `Contact is not pending: ${currentStatus}` },
+    };
+  }
+  await dynamo.send(
+    new UpdateItemCommand({
+      TableName: CONTACTS_TABLE,
+      Key: {
+        campaignId: { S: body.campaignId },
+        rowId: { S: body.rowId },
+      },
+      UpdateExpression:
+        "SET #st = :s, skippedAt = :now, skippedBy = :uid, skippedReason = :r",
+      ExpressionAttributeNames: { "#st": "status" },
+      ExpressionAttributeValues: {
+        ":s": { S: "skipped" },
+        ":now": { S: new Date().toISOString() },
+        ":uid": { S: body.userId },
+        ":r": { S: body.reason || "" },
+      },
+    })
+  );
+  await bumpCampaignCounters(body.campaignId, {
+    pendingCount: -1,
+    skippedCount: 1,
+  });
+  return { statusCode: 200, body: { ok: true, rowId: body.rowId } };
+}
+
 export const handler: Handler = async (event: any) => {
   try {
     const body = JSON.parse(event.body || "{}") as Payload;
@@ -446,12 +615,16 @@ export const handler: Handler = async (event: any) => {
       result = await handleDelete(body as DeletePayload);
     } else if (action === "update") {
       result = await handleUpdate(body as UpdatePayload);
+    } else if (action === "manual-call") {
+      result = await handleManualCall(body as ManualCallPayload);
+    } else if (action === "manual-skip") {
+      result = await handleManualSkip(body as ManualSkipPayload);
     } else {
       return {
         statusCode: 400,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          error: `Unknown action: ${action as Action}. Use add | delete | update.`,
+          error: `Unknown action: ${action as Action}. Use add | delete | update | manual-call | manual-skip.`,
         }),
       };
     }

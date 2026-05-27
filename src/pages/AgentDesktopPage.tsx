@@ -14,6 +14,8 @@ import { CustomerProfilePanel } from "@/components/workspace/CustomerProfilePane
 import { LiveTranscriptPanel } from "@/components/workspace/LiveTranscriptPanel";
 import { ChatThreadPanel } from "@/components/workspace/ChatThreadPanel";
 import { EmailThreadPanel } from "@/components/workspace/EmailThreadPanel";
+import { MyCampaignLeadsPanel } from "@/components/workspace/MyCampaignLeadsPanel";
+import { useMyCampaignLeads } from "@/hooks/useMyCampaignLeads";
 import { AgentNotesPanel } from "@/components/workspace/AgentNotesPanel";
 import { AIAssistPanel } from "@/components/workspace/AIAssistPanel";
 import { AICoachPanel } from "@/components/workspace/AICoachPanel";
@@ -175,6 +177,12 @@ export function AgentDesktopPage() {
   // detecting ACW). For everything UI-facing we use `activeContact`
   // below, which filters out contacts the agent already dismissed.
   const rawContact = useActiveContact();
+
+  // Manual-mode preview leads: polled in the background so the idle
+  // panel (when no active contact) can swap from EmptyPanel →
+  // MyCampaignLeadsPanel when there's something pre-assigned to call.
+  const { leads: myLeads } = useMyCampaignLeads(5000);
+  const myLeadsCount = myLeads.length;
 
   // Contact Lens real-time transcript only exists for VOICE contacts (it's
   // an audio-analytics product). Skip the polling Lambda entirely for chat
@@ -1056,6 +1064,13 @@ export function AgentDesktopPage() {
                   contactId={activeContact.contactId}
                   isActive={!!isActive}
                 />
+              ) : myLeadsCount > 0 ? (
+                // Manual-mode campaigns leave the live-transcript pane
+                // empty (no call yet). Use the space to surface
+                // pre-assigned leads with Call / Skip buttons so the
+                // agent has something actionable instead of an empty
+                // state.
+                <MyCampaignLeadsPanel />
               ) : (
                 <EmptyPanel
                   icon={Icon.Activity}
