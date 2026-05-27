@@ -7,7 +7,11 @@ import {
   DescribeUserCommand,
   DescribeQueueCommand,
 } from "@aws-sdk/client-connect";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  GetObjectCommand,
+  ListObjectsV2Command,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   DynamoDBClient,
@@ -52,6 +56,9 @@ const connect = new ConnectClient({ maxAttempts: 1 });
 const s3 = new S3Client({});
 const dynamo = new DynamoDBClient({});
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+/** Connect instance alias used as the S3 prefix segment in
+ *  amazon-connect-*/connect/<alias>/... paths. */
+const INSTANCE_ALIAS = process.env.CONNECT_INSTANCE_ALIAS || "novasys";
 const CONTACTS_TABLE = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
 const PRESIGN_EXPIRES = 3600; // 1 hour
 
@@ -516,6 +523,9 @@ export const handler: Handler = async (event: any) => {
     // transcript JSON. We handle each.
     let recordingUrl: string | null = null;
     let transcript: Awaited<ReturnType<typeof fetchContactLensTranscript>> | Awaited<ReturnType<typeof fetchChatTranscript>> | null = null;
+    /** Remember the bucket we saw the audio in, so the fallback transcript
+     *  lookups below know where to ListObjectsV2 instead of guessing. */
+    let connectBucket: string | null = null;
     for (const r of c.Recordings || []) {
       if (!r.Location) continue;
       // MediaStreamType: AUDIO | VIDEO | CHAT. Audio = call recording,
@@ -541,10 +551,88 @@ export const handler: Handler = async (event: any) => {
 
       if (isAudio) {
         recordingUrl = await presignS3Location(r.Location);
+        // Capture bucket for later fallback lookups.
+        const parsed = parseS3Location(r.Location);
+        if (parsed) connectBucket = parsed.bucket;
       } else if (isChat || (looksLikeChat && !transcript)) {
         transcript = await fetchChatTranscript(r.Location);
       } else if (looksLikeAnalysis && !transcript) {
         transcript = await fetchContactLensTranscript(r.Location);
+      }
+    }
+
+    // Fallback transcript lookup. DescribeContact.Recordings often
+    // returns ONLY the audio entry — Contact Lens writes its analysis
+    // JSON to a separate prefix that Connect doesn't surface back. So
+    // when we have no transcript yet, we ListObjectsV2 the conventional
+    // prefixes for this contact.
+    //
+    //   VOICE  → s3://<bucket>/Analysis/Voice/YYYY/MM/DD/<contactId>_analysis_*.json
+    //   CHAT   → s3://<bucket>/connect/<instanceAlias>/ChatTranscripts/YYYY/MM/DD/<contactId>_*.json
+    if (!transcript && connectBucket) {
+      const initTs = c.InitiationTimestamp;
+      if (initTs) {
+        const dt =
+          typeof initTs === "string"
+            ? new Date(initTs)
+            : (initTs as Date);
+        const yyyy = String(dt.getUTCFullYear());
+        const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(dt.getUTCDate()).padStart(2, "0");
+
+        const tryPrefixes: Array<{
+          prefix: string;
+          kind: "contact-lens" | "chat";
+        }> = [];
+
+        if (channel === "VOICE" || channel === "TELEPHONY") {
+          // Contact Lens analysis
+          tryPrefixes.push({
+            prefix: `Analysis/Voice/${yyyy}/${mm}/${dd}/${contactId}_`,
+            kind: "contact-lens",
+          });
+          tryPrefixes.push({
+            prefix: `connect/${INSTANCE_ALIAS}/Analysis/Voice/${yyyy}/${mm}/${dd}/${contactId}_`,
+            kind: "contact-lens",
+          });
+        } else if (channel === "CHAT") {
+          tryPrefixes.push({
+            prefix: `connect/${INSTANCE_ALIAS}/ChatTranscripts/${yyyy}/${mm}/${dd}/${contactId}_`,
+            kind: "chat",
+          });
+          tryPrefixes.push({
+            prefix: `ChatTranscripts/${yyyy}/${mm}/${dd}/${contactId}_`,
+            kind: "chat",
+          });
+        }
+
+        for (const { prefix, kind } of tryPrefixes) {
+          try {
+            const res = await s3.send(
+              new ListObjectsV2Command({
+                Bucket: connectBucket,
+                Prefix: prefix,
+                MaxKeys: 5,
+              })
+            );
+            const obj = (res.Contents || [])[0];
+            if (!obj?.Key) continue;
+            const fullLoc = `${connectBucket}/${obj.Key}`;
+            console.log(
+              `[transcript-fallback] found ${kind} at s3://${fullLoc}`
+            );
+            transcript =
+              kind === "chat"
+                ? await fetchChatTranscript(fullLoc)
+                : await fetchContactLensTranscript(fullLoc);
+            if (transcript) break;
+          } catch (err) {
+            console.warn(
+              `[transcript-fallback] ListObjectsV2 prefix=${prefix} failed:`,
+              err
+            );
+          }
+        }
       }
     }
 
