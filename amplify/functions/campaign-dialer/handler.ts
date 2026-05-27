@@ -894,57 +894,99 @@ async function processCampaignLegacy(campaign: Campaign): Promise<void> {
 }
 
 /**
- * Self-chaining was removed: AWS Lambda Recursive Loop Detection flags
- * any function that invokes itself via the Invoke API, regardless of
- * the chain depth cap we set. The Health dashboard reported the dialer
- * on 2026-05-27 18:36 UTC and the function still has
- * `RecursiveLoop: Terminate` (default), which means future chained
- * invocations could start getting dropped.
+ * Sub-minute pacing without recursion. EventBridge fires the dialer
+ * every 1 minute (its floor). To dial faster than that, the handler
+ * runs MULTIPLE dial cycles per invocation with setTimeout between
+ * them — a single Lambda invocation lasting ~50s replaces what would
+ * have been 4 separate EB ticks. No self-invoke = no recursive-loop
+ * detector tripping.
  *
- * The pacing improvement now relies solely on EventBridge `rate(1
- * minute)`. The gap between sequential calls is up to ~60s, which we
- * accept as a tradeoff vs. tripping the recursion guardrail. Future
- * sub-minute pacing should use EventBridge Scheduler (rate as low as
- * 1 minute via cron is the floor for rate(); EventBridge Scheduler
- * supports seconds-level rates) or a workflow service like Step
- * Functions Express — none of which trigger the loop detector.
+ *   t=0    cycle 1 dispatches dials
+ *   t=15s  cycle 2 dispatches dials
+ *   t=30s  cycle 3 dispatches dials
+ *   t=45s  cycle 4 dispatches dials
+ *   t=50s  Lambda returns; next EB tick fires at t≈60
+ *
+ * Trade-off: one Lambda invocation now runs ~50s instead of ~3s. At
+ * 256MB and 1440 invocations/day that's ~500k GB-seconds/month,
+ * comfortably within the free tier (400k) plus ~$0.01/day after. Worth
+ * it for the 4× faster dispatch cadence.
+ *
+ * If no campaign has pending work, cycles short-circuit out of the
+ * sleep early so we don't burn duration time for nothing.
  */
+const SUB_TICK_COUNT = Number(process.env.SUB_TICK_COUNT) || 4;
+const SUB_TICK_INTERVAL_MS = Number(process.env.SUB_TICK_INTERVAL_MS) || 15_000;
+/** Hard cap on Lambda duration so we always finish before EB fires
+ *  again. EB fires every 60s; we cap at 55s for safety margin. */
+const HANDLER_BUDGET_MS = 55_000;
+
 interface DialerEvent {
   /** Reserved for future use. EventBridge ticks always arrive empty. */
   reserved?: never;
 }
 
+/** Run one dial cycle across all RUNNING campaigns. Extracted so the
+ *  handler can call it N times per invocation. Returns true when there
+ *  is still work pending (so we keep cycling) and false when every
+ *  campaign is drained (so we can exit early and save duration cost). */
+async function dialCycle(): Promise<{
+  campaignsProcessed: number;
+  anyPendingLeft: boolean;
+}> {
+  const campaigns = await listRunningCampaigns();
+  if (campaigns.length === 0) {
+    return { campaignsProcessed: 0, anyPendingLeft: false };
+  }
+  let anyPendingLeft = false;
+  for (const campaign of campaigns) {
+    if (!isWithinWindow(campaign)) {
+      console.log(`[dialer] ${campaign.campaignId} outside calling window`);
+      continue;
+    }
+    const assignedAgentIds = await getAssignedAgents(campaign.campaignId);
+    const useBuckets =
+      campaign.dialMode !== "agentless" && assignedAgentIds.length > 0;
+    if (useBuckets) {
+      await processCampaignWithBuckets(campaign, assignedAgentIds);
+    } else {
+      await processCampaignLegacy(campaign);
+    }
+    const pending = await countPendingContacts(campaign.campaignId);
+    if (pending > 0) anyPendingLeft = true;
+  }
+  return { campaignsProcessed: campaigns.length, anyPendingLeft };
+}
+
 export const handler: Handler<DialerEvent> = async () => {
+  const start = Date.now();
   try {
-    const campaigns = await listRunningCampaigns();
-    console.log(`[dialer] running campaigns: ${campaigns.length}`);
-
-    if (campaigns.length === 0) {
-      return { ok: true, campaignsProcessed: 0 };
-    }
-
-    for (const campaign of campaigns) {
-      // Check time window
-      if (!isWithinWindow(campaign)) {
-        console.log(`[dialer] ${campaign.campaignId} outside calling window`);
-        continue;
+    let cyclesRun = 0;
+    let lastProcessed = 0;
+    for (let i = 0; i < SUB_TICK_COUNT; i++) {
+      const { campaignsProcessed, anyPendingLeft } = await dialCycle();
+      cyclesRun++;
+      lastProcessed = campaignsProcessed;
+      console.log(
+        `[dialer] cycle ${i + 1}/${SUB_TICK_COUNT} · campaigns=${campaignsProcessed} · pending=${anyPendingLeft}`
+      );
+      // Exit early when there's nothing to do — no point burning
+      // duration time sleeping if every campaign is drained.
+      if (campaignsProcessed === 0 || !anyPendingLeft) break;
+      // Don't sleep after the LAST cycle.
+      if (i === SUB_TICK_COUNT - 1) break;
+      // Stop early if we're about to overflow our duration budget.
+      if (Date.now() - start + SUB_TICK_INTERVAL_MS > HANDLER_BUDGET_MS) {
+        console.log("[dialer] budget reached — skipping remaining cycles");
+        break;
       }
-
-      const assignedAgentIds = await getAssignedAgents(campaign.campaignId);
-      const useBuckets =
-        campaign.dialMode !== "agentless" && assignedAgentIds.length > 0;
-
-      if (useBuckets) {
-        await processCampaignWithBuckets(campaign, assignedAgentIds);
-      } else {
-        // No assigned agents or agentless mode → original behavior.
-        await processCampaignLegacy(campaign);
-      }
+      await new Promise((r) => setTimeout(r, SUB_TICK_INTERVAL_MS));
     }
-
     return {
       ok: true,
-      campaignsProcessed: campaigns.length,
+      campaignsProcessed: lastProcessed,
+      cyclesRun,
+      durationMs: Date.now() - start,
     };
   } catch (err) {
     console.error("dialer error", err);
