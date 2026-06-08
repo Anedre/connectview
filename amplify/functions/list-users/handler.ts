@@ -89,7 +89,8 @@ export const handler: Handler = async (event: any) => {
     // Admin (defensa en profundidad: el nav ya lo gatea en el front).
     if (method === "PUT" || method === "POST") {
       const identity = await getIdentity(event?.headers);
-      if (!identity?.groups?.includes("Admin")) {
+      // Grupo de Cognito de ARIA = "Admins" (plural), igual que los minRole del nav.
+      if (!identity?.groups?.includes("Admins")) {
         return {
           statusCode: 403,
           headers: JSON_HEADERS,

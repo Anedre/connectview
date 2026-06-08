@@ -54,7 +54,7 @@ export function ConnectUserRoleModal({ user, available, onClose, onSaved }: Prop
       const ep = getApiEndpoints();
       if (!ep?.listUsers) throw new Error("API no configurada");
       const r = await authedFetch(ep.listUsers, {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: user.userId,
