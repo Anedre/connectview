@@ -36,6 +36,22 @@ export const handler: APIGatewayProxyHandler = async (event) => {
   const s3: S3Client = r.s3 || legacyS3;
   const instanceId = r.instanceId;
 
+  // Anónimo / tenant bloqueado → instancia inválida ("blocked-*") → ni intentamos:
+  // devolvemos vacío 200 (no la grabación de nadie). Confirma además el corte del
+  // leak: si esto dispara para un no-autenticado, es que resolveConnect lo bloqueó.
+  if (!instanceId || instanceId.startsWith("blocked")) {
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contactId,
+        recordingUrl: "",
+        hasRecording: false,
+        duration: 0,
+      }),
+    };
+  }
+
   try {
     // Get contact details including recording location
     const contactDesc = await connect.send(
