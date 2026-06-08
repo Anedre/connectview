@@ -3,6 +3,7 @@ import {
   SocialMessagingClient,
   ListWhatsAppMessageTemplatesCommand,
   GetWhatsAppMessageTemplateCommand,
+  ListLinkedWhatsAppBusinessAccountsCommand,
 } from "@aws-sdk/client-socialmessaging";
 import { resolveWhatsAppWaba } from "../_shared/tenantConnect";
 
@@ -124,9 +125,29 @@ export const handler: Handler = async (event: any) => {
     };
   }
 
+  // El WABA_ID guardado puede ser el ID CRUDO de Meta (ej. "2370402863397858"),
+  // pero la API de AWS End User Messaging Social espera el ID de AWS ("waba-...")
+  // o el ARN. Si no viene en formato AWS, lo resolvemos vía las cuentas linkeadas.
+  let wabaForApi = WABA_ID;
+  if (!/^waba-/.test(WABA_ID) && !/^arn:/.test(WABA_ID)) {
+    try {
+      const linked = await client.send(
+        new ListLinkedWhatsAppBusinessAccountsCommand({})
+      );
+      const match = (linked.linkedAccounts || []).find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (a: any) => a.wabaId === WABA_ID || a.id === WABA_ID
+      );
+      if (match?.id) wabaForApi = match.id;
+      else if (match?.arn) wabaForApi = match.arn;
+    } catch {
+      /* si falla, seguimos con el original — el error será claro */
+    }
+  }
+
   try {
     const res = await client.send(
-      new ListWhatsAppMessageTemplatesCommand({ id: WABA_ID })
+      new ListWhatsAppMessageTemplatesCommand({ id: wabaForApi })
     );
 
     // For each template, fetch full definition so we get body + vars.
@@ -138,7 +159,7 @@ export const handler: Handler = async (event: any) => {
       try {
         const details = await client.send(
           new GetWhatsAppMessageTemplateCommand({
-            id: WABA_ID,
+            id: wabaForApi,
             metaTemplateId: t.metaTemplateId,
           })
         );
