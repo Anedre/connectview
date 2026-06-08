@@ -11,6 +11,25 @@ export interface LiveContact {
   status: string;
 }
 
+/** Monitoreo en vivo por agente (B): cuántos marcando/en llamada + a quién. */
+export interface CampaignAgentLive {
+  userId: string;
+  username: string;
+  queueId: string;
+  queueName: string;
+  dialing: number;
+  connected: number;
+  liveNames: string[];
+}
+/** Monitoreo en vivo por cola (B): agentes + actividad en vivo. */
+export interface CampaignQueueLive {
+  queueId: string;
+  queueName: string;
+  agents: number;
+  dialing: number;
+  connected: number;
+}
+
 export interface CampaignStatsData {
   campaign: Campaign;
   counts: {
@@ -22,6 +41,8 @@ export interface CampaignStatsData {
     failed: number;
   };
   liveContacts: LiveContact[];
+  byAgent?: CampaignAgentLive[];
+  byQueue?: CampaignQueueLive[];
 }
 
 export function useCampaignStats(

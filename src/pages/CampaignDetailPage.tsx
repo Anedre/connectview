@@ -16,6 +16,7 @@ import { EditContactDialog } from "@/components/campaigns/EditContactDialog";
 import { AssignedAgentsPanel } from "@/components/campaigns/AssignedAgentsPanel";
 import { CampaignCharts } from "@/components/campaigns/CampaignCharts";
 import { CampaignActivity } from "@/components/campaigns/CampaignActivity";
+import { CampaignMonitoringPanel } from "@/components/campaigns/CampaignMonitoringPanel";
 import { PacingControlCard } from "@/components/campaigns/PacingControlCard";
 import { WhatsAppTemplateSummary } from "@/components/campaigns/WhatsAppTemplateSummary";
 import { Card, CardBody } from "@/components/vox/primitives";
@@ -998,6 +999,9 @@ export function CampaignDetailPage() {
           })}
       </div>
       )}
+
+      {/* ── Monitoreo en vivo: pools por cola/agente + nombres ──────── */}
+      <CampaignMonitoringPanel byQueue={data.byQueue} byAgent={data.byAgent} />
 
       {/* ── Activity: live feed + agent leaderboard ──────────────── */}
       <CampaignActivity
