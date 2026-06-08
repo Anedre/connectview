@@ -172,7 +172,9 @@ export function CustomerBrowser() {
             .toLowerCase();
           const phoneDigits = (r.customerPhone || "").replace(/[^\d]/g, "");
           const nameHit = norm.length >= 2 && hay.includes(norm);
-          const phoneHit = qDigits.length >= 3 && phoneDigits.includes(qDigits);
+          // >=2 dígitos para que el código de país (ej. "+51" → "51") matchee y
+          // muestre los recientes de ese país. Con 1 dígito sería demasiado ruido.
+          const phoneHit = qDigits.length >= 2 && phoneDigits.includes(qDigits);
           return nameHit || phoneHit;
         })
         .map((r) => ({
