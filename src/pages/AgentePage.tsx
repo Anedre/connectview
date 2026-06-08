@@ -304,7 +304,7 @@ function AgentHero({ onCreate }: { onCreate: () => void }) {
   return (
     <>
       <div className="ag-hero">
-        <div className="ag-hero__badge"><Icon.Sparkles size={13} /> Agentes IA de Vox</div>
+        <div className="ag-hero__badge"><Icon.Sparkles size={13} /> Agentes IA de ARIA</div>
         <h2 className="ag-hero__title">Creá un empleado digital que trabaja solo</h2>
         <p className="ag-hero__sub">Dale una persona y un objetivo, elegí el modelo (Claude Opus/Sonnet/Haiku, Amazon Q o Lex), conectá herramientas reales y dejalo conversar hasta resolver o derivar.</p>
         <button className="btn btn--primary" style={{ marginTop: 20 }} onClick={onCreate}><Icon.Sparkles size={14} /> Crear mi primer agente</button>

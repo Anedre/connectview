@@ -391,7 +391,7 @@ function LoginScreen() {
           <div className="vox-login__tip">
             <span aria-hidden className="vox-login__tip-icon">i</span>
             <span className="vox-login__tip-text">
-              Mantén la pestaña de Amazon Connect abierta mientras usas Vox —
+              Mantén la pestaña de Amazon Connect abierta mientras usas ARIA —
               la sesión se comparte automáticamente.
             </span>
           </div>
