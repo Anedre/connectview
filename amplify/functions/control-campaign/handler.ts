@@ -16,6 +16,7 @@ import {
 } from "@aws-sdk/client-connectcampaignsv2";
 import { randomUUID } from "node:crypto";
 import { resolveDynamo } from "../_shared/tenantConnect";
+import { kickDialer } from "../_shared/invokeDialer";
 
 // BYO Data Plane (#46): DDB del tenant; ConnectCampaignsV2 queda legacy.
 const legacyDynamo = new DynamoDBClient({});
@@ -401,6 +402,12 @@ export const handler: Handler = async (event: any) => {
         ExpressionAttributeValues: exprVals,
       })
     );
+
+    // Disparo inmediato del dialer al arrancar/reanudar → la primera llamada
+    // sale en segundos, no en ~60s esperando el próximo tick de EventBridge.
+    if (newStatus === "RUNNING") {
+      await kickDialer();
+    }
 
     return {
       statusCode: 200,

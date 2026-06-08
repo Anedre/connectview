@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { bulkUpsertProfilesFromCsv } from "../_shared/upsertCustomerProfileFromCsv";
 import { bulkUpsertVoxLeads, setActiveDynamo } from "../_shared/leadSync";
+import { kickDialer } from "../_shared/invokeDialer";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
 
@@ -361,6 +362,12 @@ export const handler: Handler = async (event: any, context: any) => {
       console.log("lead funnel upsert:", leadFunnel);
     } catch (err) {
       console.warn("lead funnel upsert failed (non-fatal):", err);
+    }
+
+    // Si arranca ya (startNow → RUNNING), disparamos el dialer al instante para
+    // que la primera llamada salga en segundos, no al próximo tick de EB.
+    if (status === "RUNNING") {
+      await kickDialer();
     }
 
     return {
