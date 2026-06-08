@@ -836,11 +836,35 @@ function useActiveContactsState(): ActiveContactsContextValue {
   // "primary"). We still hit it as a corroborator for the focused
   // contact — useful when Streams IPC is wedged. It can't surface
   // additional contacts beyond what Streams sees.
+
+  // ─── Username REAL de Connect del agente (del CCP/Streams) ──────
+  // Fuente de verdad para los lookups de Connect. Puede ≠ el username de Cognito
+  // (ej. Cognito "anedre12345" vs Connect "Andre-Alata"), lo que hacía que el
+  // polling de contacto activo nunca encontrara al agente.
+  const [connectUsername, setConnectUsername] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof connect === "undefined") return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (connect as any).agent((agent: any) => {
+        try {
+          const uname = agent?.getConfiguration?.()?.username;
+          if (uname) setConnectUsername((prev) => (prev === uname ? prev : uname));
+        } catch {
+          /* noop */
+        }
+      });
+    } catch {
+      /* noop */
+    }
+  }, []);
+
   useEffect(() => {
     // En onboarding (tenant sin Connect conectado) no hay agente ni contacto
     // activo que consultar — saltamos el polling para no spamear 404s.
     if (isOnboarding) return;
-    const username = user?.username;
+    // Preferimos el username de CONNECT (del CCP); fallback al de Cognito.
+    const username = connectUsername || user?.username;
     if (!username) return;
 
     const endpoints = getApiEndpoints();
@@ -906,7 +930,7 @@ function useActiveContactsState(): ActiveContactsContextValue {
       cancelled = true;
       if (apiIntervalRef.current) clearInterval(apiIntervalRef.current);
     };
-  }, [user?.username, observeAllContacts, isOnboarding]);
+  }, [connectUsername, user?.username, observeAllContacts, isOnboarding]);
 
   // Stable callback for focus changes (used by the tab strip).
   const focus = useCallback((contactId: string | null) => {
