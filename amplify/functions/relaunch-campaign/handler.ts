@@ -13,8 +13,13 @@ import {
   ResumeCampaignCommand,
   PutOutboundRequestBatchCommand,
 } from "@aws-sdk/client-connectcampaignsv2";
+import { resolveDynamo } from "../_shared/tenantConnect";
 
-const dynamo = new DynamoDBClient({});
+// BYO Data Plane (#46): DDB del tenant (su tabla en su cuenta) primero;
+// fallback a Vox pooled. ConnectCampaignsV2 queda con cred legacy (AWS service
+// que opera a nivel instancia Connect, no se migra acá).
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const campaignsV2 = new ConnectCampaignsV2Client({ maxAttempts: 2 });
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
@@ -152,6 +157,8 @@ async function listContacts(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // BYO Data Plane (#46): tenant primero, fallback Vox.
+    ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
     const body: RelaunchBody = JSON.parse(event.body || "{}");
     const { campaignId } = body;
     const scope = body.scope || "all";

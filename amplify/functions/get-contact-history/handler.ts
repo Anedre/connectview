@@ -11,13 +11,19 @@ import {
   SearchProfilesCommand,
   ListProfileObjectsCommand,
 } from "@aws-sdk/client-customer-profiles";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-// maxAttempts: 1 → no SDK retries. The frontend will retry on next render.
-const connect = new ConnectClient({ maxAttempts: 1 });
-const profiles = new CustomerProfilesClient({ maxAttempts: 1 });
+// BYO (#43+#46): module-active. maxAttempts:1 → frontend reintenta en
+// próximo render.
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+let connect: ConnectClient = legacyConnect;
+const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 1 });
+let profiles: CustomerProfilesClient = legacyProfiles;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
-const CUSTOMER_PROFILES_DOMAIN =
+let instanceId = INSTANCE_ID;
+const LEGACY_CUSTOMER_PROFILES_DOMAIN =
   process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+let CUSTOMER_PROFILES_DOMAIN = LEGACY_CUSTOMER_PROFILES_DOMAIN;
 
 // In-memory caches so we don't DescribeUser/DescribeQueue on every request.
 const userCache = new Map<string, string>();
@@ -40,38 +46,40 @@ interface HistoricalContact {
 
 async function resolveAgentUsername(agentId: string): Promise<string> {
   if (!agentId) return "";
-  if (userCache.has(agentId)) return userCache.get(agentId)!;
+  const k = `${instanceId}:${agentId}`;
+  if (userCache.has(k)) return userCache.get(k)!;
   try {
     const res = await connect.send(
       new DescribeUserCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         UserId: agentId,
       })
     );
     const username = res.User?.Username || agentId;
-    userCache.set(agentId, username);
+    userCache.set(k, username);
     return username;
   } catch {
-    userCache.set(agentId, agentId);
+    userCache.set(k, agentId);
     return agentId;
   }
 }
 
 async function resolveQueueName(queueId: string): Promise<string> {
   if (!queueId) return "";
-  if (queueCache.has(queueId)) return queueCache.get(queueId)!;
+  const k = `${instanceId}:${queueId}`;
+  if (queueCache.has(k)) return queueCache.get(k)!;
   try {
     const res = await connect.send(
       new DescribeQueueCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         QueueId: queueId,
       })
     );
     const name = res.Queue?.Name || queueId;
-    queueCache.set(queueId, name);
+    queueCache.set(k, name);
     return name;
   } catch {
-    queueCache.set(queueId, queueId);
+    queueCache.set(k, queueId);
     return queueId;
   }
 }
@@ -208,7 +216,7 @@ async function searchContactsFallback(
 
   const result = await connect.send(
     new SearchContactsCommand({
-      InstanceId: INSTANCE_ID,
+      InstanceId: instanceId,
       TimeRange: {
         Type: "INITIATION_TIMESTAMP",
         StartTime: startTime,
@@ -235,7 +243,7 @@ async function searchContactsFallback(
       try {
         const detail = await connect.send(
           new DescribeContactCommand({
-            InstanceId: INSTANCE_ID,
+            InstanceId: instanceId,
             ContactId: c.Id!,
           })
         );
@@ -293,6 +301,18 @@ async function searchContactsFallback(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  // BYO (#43+#46): tenant primero, fallback Novasys.
+  {
+    const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    connect = r.client;
+    instanceId = r.instanceId;
+    profiles = r.customerProfiles || legacyProfiles;
+    // Fail-closed: tenant real sin CP resuelto → "" (Strategy 1 se saltea y
+    // cae a SearchContacts del Connect del tenant), NUNCA el dominio de Novasys.
+    CUSTOMER_PROFILES_DOMAIN = r.tenantScoped
+      ? r.customerProfilesDomain || ""
+      : LEGACY_CUSTOMER_PROFILES_DOMAIN;
+  }
   const phone = event.queryStringParameters?.phone;
   const maxDays = parseInt(event.queryStringParameters?.days || "90");
   // Cap pagination — defaults to 200 (enough for the heaviest active customer

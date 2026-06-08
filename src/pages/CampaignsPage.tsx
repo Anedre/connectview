@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useCampaigns, type Campaign } from "@/hooks/useCampaigns";
 import { useCampaignMutations } from "@/hooks/useCampaignMutations";
-import { NewCampaignWizard } from "@/components/campaigns/NewCampaignWizard";
 import { formatDistanceToNow } from "date-fns";
 import * as Icon from "@/components/vox/primitives";
 import {
@@ -12,6 +11,9 @@ import {
   CardBody,
   Kpi,
 } from "@/components/vox/primitives";
+import { PageHeader } from "@/components/vox/PageHeader";
+import { NotIntegrated } from "@/components/vox/NotIntegrated";
+import { useConnections } from "@/hooks/useConnections";
 
 const STATUS_CHIP: Record<string, string> = {
   DRAFT: "",
@@ -48,7 +50,10 @@ function progressPct(c: Campaign): number {
 export function CampaignsPage() {
   const navigate = useNavigate();
   const { campaigns, loading, error, refresh } = useCampaigns(5000);
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const { config } = useConnections();
+  // Las campañas/contactos persisten en la base de datos del tenant (BYO Data
+  // Plane). Sin ella, mostramos "no integrado" en vez del empty normal.
+  const dataPlaneEnabled = !!config?.connect?.dataPlaneEnabled;
   const [activeTab, setActiveTab] = useState<TabId>("active");
   const [query, setQuery] = useState("");
   const mutations = useCampaignMutations();
@@ -124,25 +129,32 @@ export function CampaignsPage() {
 
   return (
     <div className="view">
-      <div className="view__head">
-        <div>
-          <div className="view__crumb">
-            <span>Crecimiento</span>
-          </div>
-          <h1 className="view__title">Campañas outbound</h1>
-          <div className="view__sub">
+      <PageHeader
+        crumb="Crecimiento"
+        title="Campañas outbound"
+        filterPill="Todos"
+        count={`${campaigns.length} campañas`}
+        sub={
+          <>
             {tabCounts.active} activas · {totalReached.toLocaleString()} contactos alcanzados
-          </div>
-        </div>
-        <div className="view__actions">
-          <button className="btn">
-            <Icon.Megaphone size={14} /> Plantillas
-          </button>
-          <button className="btn btn--primary" onClick={() => setWizardOpen(true)}>
-            <Icon.Plus size={14} /> Nueva campaña
-          </button>
-        </div>
-      </div>
+          </>
+        }
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Buscar campaña…",
+        }}
+        actions={
+          <>
+            <button className="btn">
+              <Icon.Megaphone size={14} /> Plantillas
+            </button>
+            <button className="btn btn--primary" onClick={() => navigate("/campaigns/nueva")}>
+              <Icon.Plus size={14} /> Nueva campaña
+            </button>
+          </>
+        }
+      />
 
       <div className="kpi-grid">
         <Kpi
@@ -239,33 +251,41 @@ export function CampaignsPage() {
             </div>
           )}
 
-          {!loading && !error && visibleCampaigns.length === 0 && (
-            <div
-              style={{
-                padding: 48,
-                textAlign: "center",
-                color: "var(--text-3)",
-              }}
-            >
-              <Icon.Megaphone size={32} style={{ opacity: 0.4 }} />
-              <div style={{ marginTop: 12, fontSize: 13 }}>
-                {query
-                  ? `No hay campañas que coincidan con "${query}".`
-                  : campaigns.length === 0
-                  ? "Sin campañas todavía. Crea la primera para empezar."
-                  : "No hay campañas en este tab."}
+          {!loading && !error && visibleCampaigns.length === 0 &&
+            (campaigns.length === 0 && !dataPlaneEnabled ? (
+              <NotIntegrated
+                title="Todavía no integraste tu base de datos"
+                message="Tus campañas y sus contactos se guardan en TU cuenta AWS (BYO Data Plane). Activala en Integraciones para crear y correr campañas."
+                ctaLabel="Conectar base de datos"
+                icon={<Icon.Megaphone size={26} />}
+              />
+            ) : (
+              <div
+                style={{
+                  padding: 48,
+                  textAlign: "center",
+                  color: "var(--text-3)",
+                }}
+              >
+                <Icon.Megaphone size={32} style={{ opacity: 0.4 }} />
+                <div style={{ marginTop: 12, fontSize: 13 }}>
+                  {query
+                    ? `No hay campañas que coincidan con "${query}".`
+                    : campaigns.length === 0
+                    ? "Sin campañas todavía. Crea la primera para empezar."
+                    : "No hay campañas en este tab."}
+                </div>
+                {campaigns.length === 0 && (
+                  <button
+                    className="btn btn--primary"
+                    style={{ marginTop: 16 }}
+                    onClick={() => navigate("/campaigns/nueva")}
+                  >
+                    <Icon.Plus size={14} /> Crear primera campaña
+                  </button>
+                )}
               </div>
-              {campaigns.length === 0 && (
-                <button
-                  className="btn btn--primary"
-                  style={{ marginTop: 16 }}
-                  onClick={() => setWizardOpen(true)}
-                >
-                  <Icon.Plus size={14} /> Crear primera campaña
-                </button>
-              )}
-            </div>
-          )}
+            ))}
 
           {visibleCampaigns.map((c) => {
             const pct = progressPct(c);
@@ -414,14 +434,6 @@ export function CampaignsPage() {
         </CardBody>
       </Card>
 
-      <NewCampaignWizard
-        open={wizardOpen}
-        onOpenChange={setWizardOpen}
-        onCreated={() => {
-          setWizardOpen(false);
-          refresh();
-        }}
-      />
     </div>
   );
 }

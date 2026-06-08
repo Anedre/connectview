@@ -18,9 +18,14 @@ import {
   ScanCommand,
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const connect = new ConnectClient({ maxAttempts: 1 });
-const dynamo = new DynamoDBClient({});
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+// BYO Data Plane (#46): tabla del tenant (campaign-contacts + contacts) si
+// activó el data plane, sino la pooled de Vox. Se setea en el handler vía
+// el `dynamo` que devuelve resolveConnect.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 const CONTACTS_TABLE = process.env.CONTACTS_TABLE || "connectview-contacts";
 const CAMPAIGN_CONTACTS_TABLE =
@@ -28,81 +33,88 @@ const CAMPAIGN_CONTACTS_TABLE =
 const CAMPAIGNS_TABLE =
   process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 
+// Module-active: el handler las setea al inicio. Lambda procesa un evento a la
+// vez por contenedor → seguro. Los helpers (resolveUser/resolveQueue/getAgents/…)
+// leen estas en vez de las globales hardcodeadas. Cada tenant pega a SU Connect.
+let activeConnect = legacyConnect;
+let activeInstanceId = INSTANCE_ID;
+
 // How recently a contact must have been initiated to count as "ARRIVED"
 const ARRIVED_WINDOW_SEC = 10;
 // How long a disconnected contact stays visible in the "FINISHED" stage
 const FINISHED_WINDOW_MS = 10 * 60 * 1000;
 
-// Caches for metadata that doesn't change often.
+// Caches keyeados por `${instanceId}:${id}` para no mezclar tenants. Si dos
+// clientes comparten el mismo userId/queueId/routingProfileId (improbable
+// pero no imposible con UUIDs Connect-generated), el prefijo los aísla.
 const userCache = new Map<string, string>();
 const queueNameCache = new Map<string, string>();
-// routingProfileId → list of { id, name } queues. Cached across warm invokes.
 const routingProfileQueuesCache = new Map<
   string,
   { id: string; name: string }[]
 >();
-
-// routingProfileId → human-readable name. GetCurrentUserData often
-// returns `RoutingProfile.Name` as null even though the ID is present,
-// so we fan out to ListRoutingProfiles once and use the cache for the
-// rest of the warm invocation.
 const routingProfileNameCache = new Map<string, string>();
-let routingProfileCacheExpiry = 0;
+// Expiry de routingProfileNameCache por instancia (no global).
+const routingProfileCacheExpiryByInstance = new Map<string, number>();
+// Cache routingProfileId per userId — doesn't change often.
+const userRoutingProfileCache = new Map<string, string | null>();
 
 async function refreshRoutingProfileNameCache(): Promise<void> {
-  if (
-    Date.now() < routingProfileCacheExpiry &&
-    routingProfileNameCache.size > 0
-  ) {
-    return;
+  const exp = routingProfileCacheExpiryByInstance.get(activeInstanceId) || 0;
+  if (Date.now() < exp) return;
+  // Limpiar SÓLO entradas de esta instancia.
+  const prefix = `${activeInstanceId}:`;
+  for (const k of routingProfileNameCache.keys()) {
+    if (k.startsWith(prefix)) routingProfileNameCache.delete(k);
   }
-  routingProfileNameCache.clear();
   let nextToken: string | undefined;
   for (let i = 0; i < 10; i++) {
-    const res = await connect.send(
+    const res = await activeConnect.send(
       new ListRoutingProfilesCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: activeInstanceId,
         MaxResults: 100,
         NextToken: nextToken,
       })
     );
     for (const rp of res.RoutingProfileSummaryList ?? []) {
-      if (rp.Id && rp.Name) routingProfileNameCache.set(rp.Id, rp.Name);
+      if (rp.Id && rp.Name) routingProfileNameCache.set(`${activeInstanceId}:${rp.Id}`, rp.Name);
     }
     if (!res.NextToken) break;
     nextToken = res.NextToken;
   }
-  routingProfileCacheExpiry = Date.now() + 5 * 60 * 1000;
+  routingProfileCacheExpiryByInstance.set(activeInstanceId, Date.now() + 5 * 60 * 1000);
 }
 
 async function resolveUser(id: string): Promise<string> {
   if (!id) return "";
-  if (userCache.has(id)) return userCache.get(id)!;
+  const k = `${activeInstanceId}:${id}`;
+  if (userCache.has(k)) return userCache.get(k)!;
   try {
-    const r = await connect.send(
-      new DescribeUserCommand({ InstanceId: INSTANCE_ID, UserId: id })
+    const r = await activeConnect.send(
+      new DescribeUserCommand({ InstanceId: activeInstanceId, UserId: id })
     );
     const name = r.User?.Username || id;
-    userCache.set(id, name);
+    userCache.set(k, name);
     return name;
   } catch {
-    userCache.set(id, id);
+    userCache.set(k, id);
     return id;
   }
 }
 
 async function resolveQueue(id: string): Promise<string> {
   if (!id) return "";
-  if (queueNameCache.has(id)) return queueNameCache.get(id)!;
+  const k = `${activeInstanceId}:${id}`;
+  if (queueNameCache.has(k)) return queueNameCache.get(k)!;
   try {
-    const r = await connect.send(
-      new DescribeQueueCommand({ InstanceId: INSTANCE_ID, QueueId: id })
+    const r = await activeConnect.send(
+      new DescribeQueueCommand({ InstanceId: activeInstanceId, QueueId: id })
     );
     const name = r.Queue?.Name || id;
-    queueNameCache.set(id, name);
+    queueNameCache.set(k, name);
     return name;
   } catch {
-    queueNameCache.set(id, id);
+    queueNameCache.set(k, id);
     return id;
   }
 }
@@ -187,13 +199,14 @@ async function resolveRoutingProfileQueues(
   routingProfileId: string
 ): Promise<{ id: string; name: string }[]> {
   if (!routingProfileId) return [];
-  if (routingProfileQueuesCache.has(routingProfileId)) {
-    return routingProfileQueuesCache.get(routingProfileId)!;
+  const k = `${activeInstanceId}:${routingProfileId}`;
+  if (routingProfileQueuesCache.has(k)) {
+    return routingProfileQueuesCache.get(k)!;
   }
   try {
-    const res = await connect.send(
+    const res = await activeConnect.send(
       new ListRoutingProfileQueuesCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: activeInstanceId,
         RoutingProfileId: routingProfileId,
         MaxResults: 100,
       })
@@ -206,11 +219,11 @@ async function resolveRoutingProfileQueues(
       seen.add(q.QueueId);
       queues.push({ id: q.QueueId, name: q.QueueName || q.QueueId });
     }
-    routingProfileQueuesCache.set(routingProfileId, queues);
+    routingProfileQueuesCache.set(k, queues);
     return queues;
   } catch (err) {
     console.warn("ListRoutingProfileQueues failed:", err);
-    routingProfileQueuesCache.set(routingProfileId, []);
+    routingProfileQueuesCache.set(k, []);
     return [];
   }
 }
@@ -599,9 +612,6 @@ async function getAgentDailyStats(
   }
 }
 
-// Cache routingProfileId per userId — doesn't change often.
-const userRoutingProfileCache = new Map<string, string | null>();
-
 async function getAgents(): Promise<AgentView[]> {
   // Step 1 — list all users (for usernames)
   const users = new Map<
@@ -610,9 +620,9 @@ async function getAgents(): Promise<AgentView[]> {
   >();
   let nextToken: string | undefined;
   do {
-    const res = await connect.send(
+    const res = await activeConnect.send(
       new ListUsersCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: activeInstanceId,
         MaxResults: 100,
         NextToken: nextToken,
       })
@@ -625,22 +635,24 @@ async function getAgents(): Promise<AgentView[]> {
 
   // Step 1b — enrich every user with their routing profile ID. ListUsers
   // doesn't return it, and offline agents won't appear in GetCurrentUserData,
-  // so DescribeUser is the reliable source. Cache per warm container.
+  // so DescribeUser is the reliable source. Cache per warm container,
+  // keyeada por `${instanceId}:${userId}` para no mezclar tenants.
   await Promise.all(
     [...users.entries()].map(async ([userId, meta]) => {
-      if (userRoutingProfileCache.has(userId)) {
-        meta.routingProfileId = userRoutingProfileCache.get(userId)!;
+      const cacheKey = `${activeInstanceId}:${userId}`;
+      if (userRoutingProfileCache.has(cacheKey)) {
+        meta.routingProfileId = userRoutingProfileCache.get(cacheKey)!;
         return;
       }
       try {
-        const du = await connect.send(
+        const du = await activeConnect.send(
           new DescribeUserCommand({
-            InstanceId: INSTANCE_ID,
+            InstanceId: activeInstanceId,
             UserId: userId,
           })
         );
         const rid = du.User?.RoutingProfileId || null;
-        userRoutingProfileCache.set(userId, rid);
+        userRoutingProfileCache.set(cacheKey, rid);
         meta.routingProfileId = rid;
       } catch {
         meta.routingProfileId = null;
@@ -654,9 +666,9 @@ async function getAgents(): Promise<AgentView[]> {
   for (let i = 0; i < userIds.length; i += 100) {
     const batch = userIds.slice(i, i + 100);
     try {
-      const res = await connect.send(
+      const res = await activeConnect.send(
         new GetCurrentUserDataCommand({
-          InstanceId: INSTANCE_ID,
+          InstanceId: activeInstanceId,
           Filters: { Agents: batch },
         })
       );
@@ -699,7 +711,7 @@ async function getAgents(): Promise<AgentView[]> {
           routingProfile:
             ud.RoutingProfile?.Name ||
             (routingProfileId
-              ? routingProfileNameCache.get(routingProfileId) || null
+              ? routingProfileNameCache.get(`${activeInstanceId}:${routingProfileId}`) || null
               : null),
           routingProfileId,
           activeContact,
@@ -719,7 +731,7 @@ async function getAgents(): Promise<AgentView[]> {
       statusName: "Offline",
       statusStartTimestamp: null,
       routingProfile: meta.routingProfileId
-        ? routingProfileNameCache.get(meta.routingProfileId) || null
+        ? routingProfileNameCache.get(`${activeInstanceId}:${meta.routingProfileId}`) || null
         : null,
       routingProfileId: meta.routingProfileId || null,
       activeContact: null,
@@ -779,9 +791,9 @@ async function getQueuedAndFinishedContacts(): Promise<{
   const finishedCutoff = now.getTime() - FINISHED_WINDOW_MS;
 
   for (let i = 0; i < 3; i++) {
-    const res = await connect.send(
+    const res = await activeConnect.send(
       new SearchContactsCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: activeInstanceId,
         TimeRange: {
           Type: "INITIATION_TIMESTAMP",
           StartTime: startTime,
@@ -805,9 +817,9 @@ async function getQueuedAndFinishedContacts(): Promise<{
       if (discTs && discTs < finishedCutoff) continue;
 
       try {
-        const detail = await connect.send(
+        const detail = await activeConnect.send(
           new DescribeContactCommand({
-            InstanceId: INSTANCE_ID,
+            InstanceId: activeInstanceId,
             ContactId: c.Id,
           })
         );
@@ -949,16 +961,16 @@ async function getQueuedAndFinishedContacts(): Promise<{
 
 async function listQueuesAndStatuses() {
   const [queuesRes, statusesRes] = await Promise.all([
-    connect.send(
+    activeConnect.send(
       new ListQueuesCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: activeInstanceId,
         QueueTypes: ["STANDARD"],
         MaxResults: 100,
       })
     ),
-    connect.send(
+    activeConnect.send(
       new ListAgentStatusesCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: activeInstanceId,
         MaxResults: 100,
       })
     ),
@@ -978,8 +990,17 @@ async function listQueuesAndStatuses() {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const handler: Handler = async () => {
+export const handler: Handler = async (event: any) => {
   try {
+    // Connect del tenant (o legacy de Vox). Setea las vars module-active.
+    {
+      const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+      // #46: misma resolución → DDB del tenant (contacts + campaign-contacts).
+      dynamo = r.dynamo || legacyDynamo;
+      activeConnect = r.client;
+      activeInstanceId = r.instanceId;
+    }
+
     // Warm the routing-profile name cache in parallel with everything
     // else. Without this, agents in the live queue UI show their
     // routing profile as `null`.

@@ -1,10 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 
 export interface Campaign {
   campaignId: string;
   name: string;
   description?: string;
+  /** Canal de la campaña: "voice" (default) o "whatsapp". */
+  campaignType?: string;
   sourcePhoneNumber: string;
   contactFlowId: string;
   contactFlowName?: string;
@@ -48,7 +51,7 @@ export function useCampaigns(refreshIntervalMs = 5000) {
     const endpoints = getApiEndpoints();
     if (!endpoints?.listCampaigns) return;
     try {
-      const r = await fetch(endpoints.listCampaigns);
+      const r = await authedFetch(endpoints.listCampaigns);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = await r.json();
       setCampaigns(j.campaigns || []);

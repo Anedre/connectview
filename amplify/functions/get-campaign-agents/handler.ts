@@ -5,27 +5,35 @@ import {
 } from "@aws-sdk/client-connect";
 import { DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const connect = new ConnectClient({ maxAttempts: 1 });
-const dynamo = new DynamoDBClient({});
+// BYO Connect + Data Plane (#43+#46): module-active. El helper resolveUsername
+// lee `connect`/`instanceId`, el handler lee `dynamo`. Tres se setean del
+// mismo round-trip a resolveConnect.
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+let connect: ConnectClient = legacyConnect;
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+let instanceId = INSTANCE_ID;
 const AGENTS_TABLE =
   process.env.CAMPAIGN_AGENTS_TABLE || "connectview-campaign-agents";
 
-// Cache usernames to avoid DescribeUser on every invocation.
+// Cache usernames per-instance (clave incluye instanceId para no mezclar tenants).
 const userCache = new Map<string, string>();
 
 async function resolveUsername(userId: string): Promise<string> {
-  if (userCache.has(userId)) return userCache.get(userId)!;
+  const k = `${instanceId}:${userId}`;
+  if (userCache.has(k)) return userCache.get(k)!;
   try {
     const res = await connect.send(
-      new DescribeUserCommand({ InstanceId: INSTANCE_ID, UserId: userId })
+      new DescribeUserCommand({ InstanceId: instanceId, UserId: userId })
     );
     const name = res.User?.Username || userId;
-    userCache.set(userId, name);
+    userCache.set(k, name);
     return name;
   } catch {
-    userCache.set(userId, userId);
+    userCache.set(k, userId);
     return userId;
   }
 }
@@ -33,6 +41,13 @@ async function resolveUsername(userId: string): Promise<string> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // BYO Connect + Data Plane: setea las 3 vars module-active.
+    {
+      const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+      connect = r.client;
+      instanceId = r.instanceId;
+      dynamo = r.dynamo || legacyDynamo;
+    }
     const campaignId = event.queryStringParameters?.campaignId;
     if (!campaignId) {
       return {

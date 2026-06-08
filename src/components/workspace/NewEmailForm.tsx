@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useContactFlows } from "@/hooks/useContactFlows";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import * as Icon from "@/components/vox/primitives";
 
@@ -69,7 +70,7 @@ export function NewEmailForm({ onSent }: NewEmailFormProps) {
     const endpoints = getApiEndpoints();
     if (!endpoints?.listEmailAddresses) return;
     setAddressesLoading(true);
-    fetch(endpoints.listEmailAddresses)
+    authedFetch(endpoints.listEmailAddresses)
       .then((r) => r.json())
       .then((j) => setEmailAddresses(j.items || []))
       .catch(() => {

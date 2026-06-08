@@ -5,9 +5,11 @@ import {
 } from "@aws-sdk/client-connect";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { getTenantConnect } from "../_shared/tenantConnect";
+import { resolveTenantId } from "../_shared/cognitoAuth";
 
-const connect = new ConnectClient({});
-const s3 = new S3Client({});
+const legacyConnect = new ConnectClient({});
+const legacyS3 = new S3Client({});
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -20,11 +22,31 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     };
   }
 
+  // Connect + S3 del tenant (assume-role) o legacy si no está configurado.
+  // Las grabaciones viven en el bucket del Connect del cliente, así que el
+  // S3 también tiene que estar tenant-scoped (no alcanza con cambiar sólo
+  // Connect). Si el rol del cliente NO tiene s3:GetObject sobre su bucket,
+  // el presign sale OK pero el browser recibe 403 — el wizard avisa.
+  let connect: ConnectClient = legacyConnect;
+  let s3: S3Client = legacyS3;
+  let instanceId = INSTANCE_ID;
+  try {
+    const tenantId = await resolveTenantId(event?.headers);
+    const tc = await getTenantConnect(tenantId);
+    if (tc) {
+      connect = tc.client;
+      s3 = tc.s3;
+      instanceId = tc.instanceId;
+    }
+  } catch (e) {
+    console.error("resolveConnect en get-recording falló, uso legacy:", e);
+  }
+
   try {
     // Get contact details including recording location
     const contactDesc = await connect.send(
       new DescribeContactCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         ContactId: contactId,
       })
     );

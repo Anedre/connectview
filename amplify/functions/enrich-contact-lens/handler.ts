@@ -11,17 +11,23 @@ import {
   DynamoDBClient,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
+import { getTenantConnect } from "../_shared/tenantConnect";
 
-// maxAttempts: 1 — no retries on throttling. The 5s delay below gives Contact Lens enough time
-// to finalize analysis; if it's still not ready we'll just record sentiment=UNKNOWN and move on.
-const connect = new ConnectClient({ maxAttempts: 1 });
+// BYO (#43+#46): module-active. process-contact-event pasa { tenantId } en
+// el event y nos cambia el Connect + DDB al del cliente.
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+let connect: ConnectClient = legacyConnect;
 const contactLens = new ConnectContactLensClient({ maxAttempts: 1 });
-const dynamo = new DynamoDBClient({});
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "";
 
 interface EnrichEvent {
   contactId: string;
   instanceId: string;
+  /** #46: tenantId opcional pasado por process-contact-event. Si está,
+   *  resolvemos `connect`+`dynamo` del tenant; si no, legacy Vox. */
+  tenantId?: string;
 }
 
 type Sentiment = "POSITIVE" | "NEGATIVE" | "NEUTRAL" | "MIXED" | "UNKNOWN";
@@ -80,7 +86,16 @@ async function computeSentiment(
 }
 
 export const handler: Handler<EnrichEvent> = async (event) => {
-  const { contactId, instanceId } = event;
+  const { contactId, instanceId, tenantId } = event;
+
+  // BYO (#46): si el invoker pasó tenantId, usar el Connect+DDB del tenant.
+  if (tenantId) {
+    const tc = await getTenantConnect(tenantId);
+    if (tc) {
+      connect = tc.client;
+      dynamo = tc.dynamo;
+    }
+  }
 
   try {
     // Wait for Contact Lens analysis to finalize post-disconnect.

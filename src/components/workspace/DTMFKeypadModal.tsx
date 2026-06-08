@@ -78,25 +78,41 @@ export function DTMFKeypadModal({ open, onClose }: DTMFKeypadModalProps) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 300,
+          width: 340,
           background: "var(--bg-1)",
           border: "1px solid var(--border-1)",
-          borderRadius: 14,
-          boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
-          padding: 18,
+          borderRadius: 16,
+          boxShadow: "0 24px 60px rgba(0,0,0,0.55)",
+          overflow: "hidden",
         }}
       >
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 8,
-            marginBottom: 12,
+            gap: 10,
+            padding: "14px 16px",
+            borderBottom: "1px solid var(--border-1)",
           }}
         >
-          <Icon.Pad size={16} style={{ color: "var(--accent-cyan)" }} />
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
-            Teclado · enviar tonos
+          <span
+            style={{
+              display: "grid",
+              placeItems: "center",
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: "var(--accent-cyan-soft)",
+              color: "var(--accent-cyan)",
+            }}
+          >
+            <Icon.Pad size={14} />
+          </span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Teclado DTMF</div>
+            <div className="muted" style={{ fontSize: 11 }}>
+              Los tonos llegan en vivo al cliente
+            </div>
           </div>
           <button
             ref={closeBtnRef}
@@ -109,67 +125,66 @@ export function DTMFKeypadModal({ open, onClose }: DTMFKeypadModalProps) {
           </button>
         </div>
 
-        <div
-          className="mono"
-          style={{
-            background: "var(--bg-2)",
-            border: "1px solid var(--border-1)",
-            borderRadius: 8,
-            padding: "10px 12px",
-            fontSize: 18,
-            minHeight: 22,
-            letterSpacing: 4,
-            textAlign: "right",
-            color: history ? "var(--text-1)" : "var(--text-3)",
-            marginBottom: 12,
-            overflow: "hidden",
-            whiteSpace: "nowrap",
-            direction: "rtl",
-          }}
-        >
-          {history || "—"}
-        </div>
+        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Tone history display */}
+          <div
+            className="mono"
+            style={{
+              background: "var(--bg-2)",
+              border: "1px solid var(--border-1)",
+              borderRadius: 10,
+              padding: "12px 14px",
+              fontSize: 22,
+              fontWeight: 600,
+              minHeight: 50,
+              letterSpacing: 6,
+              textAlign: "right",
+              color: history ? "var(--text-1)" : "var(--text-4)",
+              overflow: "hidden",
+              whiteSpace: "nowrap",
+              direction: "rtl",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {history || "—"}
+          </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 6,
-          }}
-        >
-          {["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map(
-            (k) => (
+          {/* Circular pad — same look as the new SoftphoneDialer */}
+          <div className="vox-dial__pad">
+            {(
+              [
+                { d: "1", sub: "" },
+                { d: "2", sub: "ABC" },
+                { d: "3", sub: "DEF" },
+                { d: "4", sub: "GHI" },
+                { d: "5", sub: "JKL" },
+                { d: "6", sub: "MNO" },
+                { d: "7", sub: "PQRS" },
+                { d: "8", sub: "TUV" },
+                { d: "9", sub: "WXYZ" },
+                { d: "*", sub: "" },
+                { d: "0", sub: "+" },
+                { d: "#", sub: "" },
+              ] as Array<{ d: string; sub: string }>
+            ).map((k) => (
               <button
-                key={k}
+                key={k.d}
                 type="button"
-                className="btn"
-                style={{
-                  height: 44,
-                  justifyContent: "center",
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 16,
-                  fontWeight: 600,
-                }}
-                onClick={() => press(k)}
+                className="vox-dial__key"
+                onClick={() => press(k.d)}
               >
-                {k}
+                <span>{k.d}</span>
+                {k.sub && <span className="vox-dial__key-sub">{k.sub}</span>}
               </button>
-            )
-          )}
-        </div>
+            ))}
+          </div>
 
-        <div
-          className="muted"
-          style={{
-            fontSize: 11,
-            marginTop: 10,
-            textAlign: "center",
-            lineHeight: 1.5,
-          }}
-        >
-          Los tonos se envían en vivo al canal del cliente.
-          <br />
-          Usa el teclado físico (0-9, *, #) si prefieres.
+          <div
+            className="muted"
+            style={{ fontSize: 10.5, textAlign: "center", lineHeight: 1.5 }}
+          >
+            Usa el teclado físico (0-9, *, #) si prefieres
+          </div>
         </div>
       </div>
     </div>

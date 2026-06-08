@@ -101,7 +101,7 @@ export function traceChange(label: string, value: any) {
   };
   emit(ev);
   // Use console.debug so users can filter the noise out easily.
-  // eslint-disable-next-line no-console
+   
   console.debug(`[vox-debug] Δ ${label}`, diff);
 }
 
@@ -110,7 +110,7 @@ export function traceChange(label: string, value: any) {
 export function traceInfo(label: string, detail?: any) {
   if (!DEBUG_ON) return;
   emit({ ts: Date.now(), kind: "info", label, detail });
-  // eslint-disable-next-line no-console
+   
   console.debug(`[vox-debug] · ${label}`, detail ?? "");
 }
 

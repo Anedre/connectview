@@ -1,12 +1,13 @@
 /**
  * Disposition tree — the two-level taxonomy agents use during wrap-up to
- * tag the outcome of a contact. The default tree below is the UDEP
- * proposal (Stages + Sub Stages) for educational telemarketing, but
- * customers can override it via `amplify_outputs.json.custom.dispositionTree`
- * (raw JSON) to fit their own funnel.
+ * tag the outcome of a contact. The default tree below is a generic
+ * sales/telemarketing funnel (Stages + Sub Stages); customers override it
+ * via the DB-backed taxonomy (connectview-taxonomies) or
+ * `amplify_outputs.json.custom.dispositionTree` to fit their own funnel.
  */
 
 import outputs from "../../amplify_outputs.json";
+import { getApiEndpoints } from "./api";
 
 export type Valoracion = "positiva" | "negativa" | "cierre";
 
@@ -19,6 +20,9 @@ export interface DispositionStage {
   valoracion: Valoracion;
   /** Optional description shown next to the stage card. */
   description?: string;
+  /** Optional mapping to a Salesforce field value — used when syncing the
+   *  wrap-up OUT to SF so the single taxonomy drives the CRM (roadmap #23). */
+  salesforceValue?: string;
   /** Sub-stages the agent picks from after choosing this stage. */
   subStages: DispositionSubStage[];
 }
@@ -26,9 +30,20 @@ export interface DispositionStage {
 export interface DispositionSubStage {
   id: string;
   label: string;
+  salesforceValue?: string;
 }
 
-const UDEP_DEFAULT: DispositionStage[] = [
+/** A full taxonomy doc as stored in connectview-taxonomies. */
+export interface TaxonomyDoc {
+  taxonomyId: string;
+  name: string;
+  isDefault?: boolean;
+  stages: DispositionStage[];
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export const DEFAULT_DISPOSITIONS: DispositionStage[] = [
   {
     id: "gestionado",
     label: "Gestionado",
@@ -145,11 +160,23 @@ const UDEP_DEFAULT: DispositionStage[] = [
   },
 ];
 
-/**
- * Read the tree from amplify outputs if the customer configured one,
- * otherwise fall back to the UDEP default.
- */
-export function getDispositionTree(): DispositionStage[] {
+// ─── Unified taxonomy source of truth ──────────────────────────────────
+// The canonical taxonomy now lives in DynamoDB (connectview-taxonomies)
+// and is served by the manage-taxonomy Lambda. This replaces the 3 separate
+// taxonomies the client kept in Salesforce / Chattigo / Kommo — every
+// channel's wrap-up reads the SAME tree.
+//
+// We keep getDispositionTree() as a SYNC accessor (returns the in-memory
+// cache, or the static fallback before the first load) so existing callers
+// don't break, plus an async loader the useTaxonomy hook drives.
+
+/** In-memory cache of the active taxonomy, populated by loadTaxonomies(). */
+let cachedDefault: DispositionStage[] | null = null;
+let cachedDocs: TaxonomyDoc[] | null = null;
+
+/** Static fallback: amplify_outputs override → generic default. Used only
+ *  until the DB-backed taxonomy loads (or if the Lambda is unreachable). */
+function staticFallback(): DispositionStage[] {
   try {
     const custom = (outputs as Record<string, unknown>).custom as
       | Record<string, string>
@@ -162,9 +189,62 @@ export function getDispositionTree(): DispositionStage[] {
       }
     }
   } catch {
-    /* fall through to default */
+    /* fall through */
   }
-  return UDEP_DEFAULT;
+  return DEFAULT_DISPOSITIONS;
+}
+
+/** Sync accessor — cache if loaded, else static fallback. Back-compat. */
+export function getDispositionTree(): DispositionStage[] {
+  return cachedDefault ?? staticFallback();
+}
+
+/** Fetch all taxonomies from the manage-taxonomy Lambda. Caches the
+ *  default tree for getDispositionTree(). Never throws — returns the
+ *  static fallback as a single synthetic doc on failure. */
+export async function loadTaxonomies(
+  force = false
+): Promise<TaxonomyDoc[]> {
+  if (cachedDocs && !force) return cachedDocs;
+  const endpoints = getApiEndpoints();
+  if (!endpoints?.manageTaxonomy) {
+    return [
+      {
+        taxonomyId: "fallback",
+        name: "Default",
+        isDefault: true,
+        stages: staticFallback(),
+      },
+    ];
+  }
+  try {
+    const r = await fetch(endpoints.manageTaxonomy);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const docs: TaxonomyDoc[] = Array.isArray(data.taxonomies)
+      ? data.taxonomies
+      : [];
+    if (docs.length === 0) throw new Error("no taxonomies");
+    cachedDocs = docs;
+    const def = docs.find((d) => d.isDefault) ?? docs[0];
+    if (def?.stages?.length) cachedDefault = def.stages;
+    return docs;
+  } catch {
+    return [
+      {
+        taxonomyId: "fallback",
+        name: "Default",
+        isDefault: true,
+        stages: staticFallback(),
+      },
+    ];
+  }
+}
+
+/** Invalidate the cache (call after an admin edits a taxonomy). */
+export function invalidateTaxonomyCache(): void {
+  cachedDefault = null;
+  cachedDocs = null;
 }
 
 export const VALORACION_META: Record<

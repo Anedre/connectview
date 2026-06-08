@@ -1,8 +1,40 @@
 import type { Handler } from "aws-lambda";
-import {
-  SocialMessagingClient,
-  SendWhatsAppMessageCommand,
-} from "@aws-sdk/client-socialmessaging";
+import { SocialMessagingClient } from "@aws-sdk/client-socialmessaging";
+import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import { randomUUID } from "node:crypto";
+import { resolveDynamo, resolveWhatsApp } from "../_shared/tenantConnect";
+import { sendWhatsApp } from "../_shared/whatsappSend";
+
+// BYO Data Plane (#46): tabla del tenant. SocialMessaging queda con cred legacy.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
+const HSM_TABLE = process.env.HSM_SENDS_TABLE || "connectview-hsm-sends";
+
+/** Record an outbound HSM (template) send for the HSM Outbound report.
+ *  Status starts at "sent"; delivered/read/failed land later via status
+ *  events. */
+async function recordHsmSend(s: {
+  messageId?: string;
+  phone: string;
+  templateName: string;
+  language: string;
+  campaignId?: string;
+}): Promise<void> {
+  await dynamo.send(
+    new PutItemCommand({
+      TableName: HSM_TABLE,
+      Item: {
+        sendId: { S: s.messageId || randomUUID() },
+        phone: { S: s.phone },
+        templateName: { S: s.templateName },
+        language: { S: s.language },
+        campaignId: s.campaignId ? { S: s.campaignId } : { NULL: true },
+        status: { S: "sent" },
+        sentAt: { S: new Date().toISOString() },
+      },
+    })
+  );
+}
 
 /**
  * send-whatsapp-template — sends a single Meta-approved WhatsApp
@@ -22,14 +54,12 @@ import {
  *   { messageId, sent: true }   on success
  *   { error, sent: false }       on failure
  */
-const client = new SocialMessagingClient({});
-const PHONE_NUMBER_ID =
-  process.env.WHATSAPP_PHONE_NUMBER_ID ||
-  // Falls back to whichever Meta phone id is wired in env; the
-  // campaign Lambda passes it through environment so a single
-  // function can serve multiple senders if needed.
-  "";
-const ORIGINATION_IDENTITY = process.env.ORIGINATION_IDENTITY || PHONE_NUMBER_ID;
+// Cliente LEGACY de Vox (creds de la cuenta de Vox) — se usa SOLO para el tenant
+// fundador (Novasys) o como fallback. Los tenants reales mandan desde SU propio
+// número vía resolveWhatsApp (SocialMessaging con creds assumed + su phone id).
+const legacyClient = new SocialMessagingClient({});
+const LEGACY_PHONE_NUMBER_ID =
+  process.env.ORIGINATION_IDENTITY || process.env.WHATSAPP_PHONE_NUMBER_ID || "";
 
 const CORS: Record<string, string> = {
   "Content-Type": "application/json",
@@ -40,6 +70,10 @@ interface SendBody {
   templateName: string;
   language?: string;
   variables?: string[];
+  /** Tenant explícito para llamadas server-to-server (campaign-dialer no tiene
+   *  JWT pero sí el campaign.tenantId). Si falta, se resuelve del JWT. */
+  tenantId?: string;
+  campaignId?: string;
 }
 
 function normalisePhone(raw: string): string {
@@ -57,16 +91,8 @@ export const handler: Handler = async (event: any) => {
     return { statusCode: 200, headers: CORS, body: "" };
   }
 
-  if (!ORIGINATION_IDENTITY) {
-    return {
-      statusCode: 500,
-      headers: CORS,
-      body: JSON.stringify({
-        error:
-          "ORIGINATION_IDENTITY (WhatsApp phone number id) not configured",
-      }),
-    };
-  }
+  // BYO Data Plane (#46): tenant primero, fallback Vox.
+  ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
 
   let body: SendBody;
   try {
@@ -86,6 +112,26 @@ export const handler: Handler = async (event: any) => {
       statusCode: 400,
       headers: CORS,
       body: JSON.stringify({ error: "phone and templateName are required" }),
+    };
+  }
+
+  // WhatsApp BYO: resolvemos el End User Messaging del TENANT (su número). El
+  // campaign-dialer (server-to-server, sin JWT) pasa el tenant en body.tenantId.
+  const { client: waClient, phoneNumberId, mode, metaPhoneNumberId, tenantId } = await resolveWhatsApp(
+    event?.headers,
+    legacyClient,
+    LEGACY_PHONE_NUMBER_ID,
+    body.tenantId
+  );
+  const hasNumber = mode === "meta" ? !!metaPhoneNumberId : !!phoneNumberId;
+  if (!hasNumber) {
+    return {
+      statusCode: 400,
+      headers: CORS,
+      body: JSON.stringify({
+        error:
+          "WhatsApp no está configurado para esta organización. Cargá tu número en Configuración → Integraciones.",
+      }),
     };
   }
 
@@ -124,15 +170,21 @@ export const handler: Handler = async (event: any) => {
   };
 
   try {
-    const res = await client.send(
-      new SendWhatsAppMessageCommand({
-        originationPhoneNumberId: ORIGINATION_IDENTITY,
-        // Meta Graph API version. Required by socialmessaging API — if
-        // omitted the SDK rejects with a validation error.
-        metaApiVersion: process.env.META_API_VERSION || "v20.0",
-        message: new TextEncoder().encode(JSON.stringify(whatsappPayload)),
-      })
+    // Router: modo AWS (End User Messaging) o Meta (Cloud API directa).
+    const res = await sendWhatsApp(
+      { mode, awsClient: waClient, awsPhoneNumberId: phoneNumberId, metaPhoneNumberId, tenantId },
+      whatsappPayload
     );
+    // Track the send for the HSM Outbound report (roadmap #6). Best-effort:
+    // a tracking write must never fail the actual send. delivered/read/failed
+    // get filled later by the status events (roadmap #14).
+    await recordHsmSend({
+      messageId: res.messageId,
+      phone,
+      templateName: body.templateName,
+      language,
+      campaignId: (body as { campaignId?: string }).campaignId,
+    }).catch((e) => console.warn("hsm-send tracking failed:", e));
     return {
       statusCode: 200,
       headers: CORS,

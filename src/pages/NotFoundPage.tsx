@@ -43,7 +43,7 @@ export function NotFoundPage() {
             maxWidth: 320,
           }}
         >
-          La ruta que intentaste abrir no existe en Vox CRM.
+          La ruta que intentaste abrir no existe en ARIA.
         </p>
         <button
           className="btn btn--primary"

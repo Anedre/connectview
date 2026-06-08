@@ -1,6 +1,7 @@
 import type { Handler } from "aws-lambda";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "node:crypto";
+import { resolveDynamo } from "../_shared/tenantConnect";
 
 /**
  * schedule-callback — registers a follow-up the agent promised to a
@@ -41,7 +42,9 @@ import { randomUUID } from "node:crypto";
  *     templateVariables?: ["Andre", "Pregrado"],
  *   }
  */
-const dynamo = new DynamoDBClient({});
+// BYO Data Plane (#46): tenant primero (su tabla en su cuenta), fallback Vox.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const TABLE = process.env.CALLBACKS_TABLE || "connectview-callbacks";
 const CORS: Record<string, string> = { "Content-Type": "application/json" };
 
@@ -74,6 +77,8 @@ export const handler: Handler = async (event: any) => {
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
   }
+  // BYO Data Plane (#46): tenant primero, fallback Vox.
+  ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
   let body: Body;
   try {
     body = typeof event.body === "string" ? JSON.parse(event.body) : event.body;

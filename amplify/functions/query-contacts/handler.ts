@@ -5,12 +5,17 @@ import {
   QueryCommand,
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
+import { resolveDynamo } from "../_shared/tenantConnect";
 
-const dynamo = new DynamoDBClient({});
+// BYO Data Plane (#46): tenant primero, fallback Vox pooled.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "";
 
 export const handler: APIGatewayProxyHandler = async (event) => {
   try {
+    // BYO Data Plane (#46): tenant primero, fallback Vox.
+    ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
     const params = event.queryStringParameters || {};
     const {
       startDate,

@@ -16,6 +16,7 @@ import { AssignedAgentsPanel } from "@/components/campaigns/AssignedAgentsPanel"
 import { CampaignCharts } from "@/components/campaigns/CampaignCharts";
 import { CampaignActivity } from "@/components/campaigns/CampaignActivity";
 import { PacingControlCard } from "@/components/campaigns/PacingControlCard";
+import { WhatsAppTemplateSummary } from "@/components/campaigns/WhatsAppTemplateSummary";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
 
@@ -271,6 +272,37 @@ export function CampaignDetailPage() {
   const completed = counts.done + counts.failed + counts.no_answer;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
+  // ── Ventana de llamadas: avisar si está fuera de horario (causa #1 de "parece colgada") ──
+  const isWa = String(c.campaignType || "voice").toLowerCase() === "whatsapp";
+  const win = (() => {
+    try {
+      const tz = c.timezone || "America/Lima";
+      const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false, weekday: "short" }).formatToParts(new Date());
+      const hour = Number(parts.find((p) => p.type === "hour")?.value || "0") % 24;
+      const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      const day = dayMap[parts.find((p) => p.type === "weekday")?.value || ""] ?? new Date().getDay();
+      const days: number[] = JSON.parse(c.windowDaysOfWeek || "[1,2,3,4,5]");
+      const start = Number(c.windowStartHour ?? 9), end = Number(c.windowEndHour ?? 18);
+      return { within: days.includes(day) && hour >= start && hour < end, start, end };
+    } catch { return { within: true, start: 9, end: 18 }; }
+  })();
+  const dialingBlocked = c.status === "RUNNING" && counts.pending > 0 && !win.within;
+  // Voz en ventana con pendientes pero nada marcando ⇒ probablemente sin agente disponible.
+  const waitingAgent = c.status === "RUNNING" && !isWa && win.within && counts.pending > 0 && counts.dialing === 0;
+
+  const dialNow = async () => {
+    const ep = getApiEndpoints();
+    if (!ep?.updateCampaign) { toast.error("Endpoint no configurado"); return; }
+    try {
+      await fetch(ep.updateCampaign, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, windowStartHour: 0, windowEndHour: 24, windowDaysOfWeek: [0, 1, 2, 3, 4, 5, 6] }),
+      });
+      toast.success(isWa ? "Ventana 24h activada — enviará ahora" : "Ventana 24h activada — discará ahora");
+      refresh();
+    } catch { toast.error("No se pudo activar la ventana 24h"); }
+  };
+
   const toggleRowSelected = (rowId: string) => {
     setSelectedRowIds((prev) => {
       const next = new Set(prev);
@@ -425,14 +457,22 @@ export function CampaignDetailPage() {
     label: string;
     Icn: React.ElementType;
     color: string;
-  }> = [
-    { key: "pending",   label: "Pendientes",   Icn: Icon.Clock,    color: "var(--text-3)" },
-    { key: "dialing",   label: "Marcando",     Icn: Icon.Phone,    color: "var(--accent-cyan)" },
-    { key: "connected", label: "Conectados",   Icn: Icon.PhoneIn,  color: "var(--accent-green)" },
-    { key: "done",      label: "Completados",  Icn: Icon.Check,    color: "var(--accent-green)" },
-    { key: "no_answer", label: "Sin contestar",Icn: Icon.Phone,    color: "var(--accent-amber)" },
-    { key: "failed",    label: "Fallidos",     Icn: Icon.Close,    color: "var(--accent-red)" },
-  ];
+  }> = isWa
+    ? [
+        // WhatsApp: sin agentes ni "conectado/sin contestar" — sólo el ciclo de envío.
+        { key: "pending", label: "Pendientes", Icn: Icon.Clock,    color: "var(--text-3)" },
+        { key: "dialing", label: "Enviando",   Icn: Icon.WhatsApp, color: "var(--accent-cyan)" },
+        { key: "done",    label: "Enviados",   Icn: Icon.Check,    color: "var(--accent-green)" },
+        { key: "failed",  label: "Fallidos",   Icn: Icon.Close,    color: "var(--accent-red)" },
+      ]
+    : [
+        { key: "pending",   label: "Pendientes",   Icn: Icon.Clock,    color: "var(--text-3)" },
+        { key: "dialing",   label: "Marcando",     Icn: Icon.Phone,    color: "var(--accent-cyan)" },
+        { key: "connected", label: "Conectados",   Icn: Icon.PhoneIn,  color: "var(--accent-green)" },
+        { key: "done",      label: "Completados",  Icn: Icon.Check,    color: "var(--accent-green)" },
+        { key: "no_answer", label: "Sin contestar",Icn: Icon.Phone,    color: "var(--accent-amber)" },
+        { key: "failed",    label: "Fallidos",     Icn: Icon.Close,    color: "var(--accent-red)" },
+      ];
 
   return (
     <div className="view">
@@ -489,9 +529,28 @@ export function CampaignDetailPage() {
             >
               <span>{c.sourcePhoneNumber}</span>
               <span>·</span>
-              <span>{c.dialMode}</span>
-              <span>·</span>
-              <span>concurrencia {c.concurrency}</span>
+              {isWa ? (
+                <>
+                  <span className="row" style={{ gap: 4 }}><Icon.WhatsApp size={12} /> WhatsApp</span>
+                  {(c as unknown as { templateName?: string }).templateName && (
+                    <>
+                      <span>·</span>
+                      <span>
+                        {(c as unknown as { templateName?: string }).templateName}
+                        {(c as unknown as { templateLanguage?: string }).templateLanguage
+                          ? ` (${(c as unknown as { templateLanguage?: string }).templateLanguage})`
+                          : ""}
+                      </span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span>{c.dialMode}</span>
+                  <span>·</span>
+                  <span>concurrencia {c.concurrency}</span>
+                </>
+              )}
               {c.createdAt && (
                 <>
                   <span>·</span>
@@ -586,6 +645,48 @@ export function CampaignDetailPage() {
         </div>
       </div>
 
+      {/* ── Aviso de ventana fuera de horario (no está "colgada", solo esperando) ── */}
+      {dialingBlocked && (
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+            padding: "12px 16px", borderRadius: 14,
+            border: "1px solid color-mix(in srgb, var(--accent-amber) 40%, transparent)",
+            background: "color-mix(in srgb, var(--accent-amber) 12%, transparent)",
+          }}
+        >
+          <Icon.Clock size={18} style={{ color: "var(--accent-amber)", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+              Fuera de la ventana de {isWa ? "envío" : "llamadas"} ({String(win.start).padStart(2, "0")}:00–{String(win.end).padStart(2, "0")}:00)
+            </div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+              La campaña está activa con {counts.pending} pendiente{counts.pending === 1 ? "" : "s"}. {isWa ? "Se enviarán" : "Se discarán"} automáticamente al volver al horario, o podés forzar ahora.
+            </div>
+          </div>
+          <button className="btn btn--primary btn--sm" onClick={dialNow} disabled={controlling}>
+            <Icon.Play size={13} /> {isWa ? "Enviar ahora (24h)" : "Discar ahora (24h)"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Aviso voz: en ventana, con pendientes, pero sin nadie marcando (sin agente) ── */}
+      {waitingAgent && (
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+            padding: "10px 14px", borderRadius: 14,
+            border: "1px solid color-mix(in srgb, var(--accent-cyan) 30%, transparent)",
+            background: "color-mix(in srgb, var(--accent-cyan) 10%, transparent)",
+          }}
+        >
+          <Icon.PhoneIn size={16} style={{ color: "var(--accent-cyan)", flexShrink: 0 }} />
+          <div className="muted" style={{ fontSize: 12 }}>
+            En horario y con {counts.pending} pendiente{counts.pending === 1 ? "" : "s"}, pero todavía no hay llamadas en curso. En modo progresivo el discador espera a que haya un agente disponible; el siguiente ciclo marcará apenas se libere uno.
+          </div>
+        </div>
+      )}
+
       {/* ── Progress banner ──────────────────────────────────────── */}
       <Card>
         <CardBody>
@@ -643,7 +744,7 @@ export function CampaignDetailPage() {
                 {(counts.dialing + counts.connected) > 0 && (
                   <span className="chip chip--green">
                     <span className="dot pulse" />
-                    {counts.dialing + counts.connected} en vivo
+                    {counts.dialing + counts.connected} {isWa ? "enviando" : "en vivo"}
                   </span>
                 )}
                 {/* Finished-state outcome chips. Surface only the
@@ -761,20 +862,33 @@ export function CampaignDetailPage() {
           null
         }
         isFinished={c.status === "COMPLETED" || c.status === "CANCELLED"}
+        isWhatsApp={isWa}
       />
 
-      {/* ── Pacing controls (live tuning of concurrency) ─────────── */}
-      <PacingControlCard
-        campaignId={c.campaignId}
-        concurrency={Number(c.concurrency) || 1}
-        dialMode={c.dialMode}
-        onUpdated={() => refresh()}
-        disabled={
-          c.status === "COMPLETED" ||
-          c.status === "CANCELLED" ||
-          mutations.pending
-        }
-      />
+      {/* ── Pacing controls (live tuning of concurrency) ─────────────
+           Solo para voz: WhatsApp no usa concurrencia ni modo de marcado. */}
+      {!isWa && (
+        <PacingControlCard
+          campaignId={c.campaignId}
+          concurrency={Number(c.concurrency) || 1}
+          dialMode={c.dialMode}
+          onUpdated={() => refresh()}
+          disabled={
+            c.status === "COMPLETED" ||
+            c.status === "CANCELLED" ||
+            mutations.pending
+          }
+        />
+      )}
+
+      {/* ── WhatsApp: vista previa del mensaje real que se envía ───── */}
+      {isWa && (
+        <WhatsAppTemplateSummary
+          templateName={(c as unknown as { templateName?: string }).templateName}
+          templateLanguage={(c as unknown as { templateLanguage?: string }).templateLanguage}
+          templateVarColumns={(c as unknown as { templateVarColumns?: string }).templateVarColumns}
+        />
+      )}
 
       {/* ── Status tiles (clickable filters) ─────────────────────── */}
       {/*
@@ -877,22 +991,26 @@ export function CampaignDetailPage() {
         liveContacts={data.liveContacts}
         contacts={contacts}
         resolveAgentLabel={resolveAgentLabel}
+        isWhatsApp={isWa}
       />
 
-      {/* Assigned agents — routing profile auto-configured */}
-      <AssignedAgentsPanel
-        campaign={c}
-        // Bug #28: pass the number of distinct agents who answered any
-        // contact so the panel can disambiguate "no assignees" vs
-        // "no assignees AND nobody answered yet".
-        participatingAgentsCount={
-          new Set(
-            contacts
-              .map((r) => resolveAgentLabel(r.agentUsername))
-              .filter((n) => n && n !== "—")
-          ).size
-        }
-      />
+      {/* Assigned agents — routing profile auto-configured.
+           WhatsApp no usa agentes (es envío de templates), así que se omite. */}
+      {!isWa && (
+        <AssignedAgentsPanel
+          campaign={c}
+          // Bug #28: pass the number of distinct agents who answered any
+          // contact so the panel can disambiguate "no assignees" vs
+          // "no assignees AND nobody answered yet".
+          participatingAgentsCount={
+            new Set(
+              contacts
+                .map((r) => resolveAgentLabel(r.agentUsername))
+                .filter((n) => n && n !== "—")
+            ).size
+          }
+        />
+      )}
 
       <EditCampaignDialog
         campaign={c}

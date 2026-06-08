@@ -92,7 +92,7 @@ export function ContactActionsDialog({
   };
 
   const handleMonitor = async (
-    monitorMode: "SILENT_MONITOR" | "BARGE" | "WHISPER"
+    monitorMode: "SILENT_MONITOR" | "BARGE"
   ) => {
     if (!user?.userId) {
       toast.error("No se detectó tu userId");
@@ -103,9 +103,7 @@ export function ContactActionsDialog({
       toast.success(
         monitorMode === "SILENT_MONITOR"
           ? "Escucha iniciada (silent) — revisa tu CCP"
-          : monitorMode === "BARGE"
-          ? "Barge-in iniciado — revisa tu CCP"
-          : "Whisper iniciado — revisa tu CCP"
+          : "Barge-in iniciado — revisa tu CCP"
       );
       onClose();
     } catch (e) {
@@ -206,8 +204,8 @@ export function ContactActionsDialog({
         <div className="space-y-2 rounded-lg border p-3">
           <Label>Escuchar llamada (supervisión)</Label>
           <p className="text-xs text-muted-foreground">
-            La llamada aparecerá en tu CCP. Silent = solo escuchas. Whisper =
-            solo el agente te oye. Barge = los 3 hablan.
+            La llamada aparecerá en tu CCP. Silent = solo escuchas. Barge = los
+            3 hablan.
           </p>
           <div className="flex gap-2">
             <Button
@@ -218,14 +216,6 @@ export function ContactActionsDialog({
             >
               <Headphones className="mr-1 h-4 w-4" />
               Silent
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleMonitor("WHISPER")}
-              disabled={pending}
-            >
-              Whisper
             </Button>
             <Button
               variant="outline"

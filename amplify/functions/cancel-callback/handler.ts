@@ -1,5 +1,6 @@
 import type { Handler } from "aws-lambda";
 import { DynamoDBClient, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
+import { resolveDynamo } from "../_shared/tenantConnect";
 
 /**
  * cancel-callback — soft-cancels or completes a follow-up.
@@ -14,7 +15,9 @@ import { DynamoDBClient, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
  *
  * The row is kept for audit/history.
  */
-const dynamo = new DynamoDBClient({});
+// BYO Data Plane (#46): tenant primero (su tabla en su cuenta), fallback Vox.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const TABLE = process.env.CALLBACKS_TABLE || "connectview-callbacks";
 const CORS: Record<string, string> = { "Content-Type": "application/json" };
 
@@ -23,6 +26,8 @@ export const handler: Handler = async (event: any) => {
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
   }
+  // BYO Data Plane (#46): tenant primero, fallback Vox.
+  ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
   let body: {
     callbackId?: string;
     actor?: string;

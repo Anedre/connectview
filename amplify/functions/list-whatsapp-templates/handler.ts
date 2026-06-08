@@ -4,6 +4,7 @@ import {
   ListWhatsAppMessageTemplatesCommand,
   GetWhatsAppMessageTemplateCommand,
 } from "@aws-sdk/client-socialmessaging";
+import { resolveWhatsAppWaba } from "../_shared/tenantConnect";
 
 /**
  * list-whatsapp-templates — lists Meta-approved WhatsApp templates
@@ -13,9 +14,15 @@ import {
  *
  * Filters out PENDING / REJECTED templates by default — the wizard
  * only renders APPROVED ones the manager can actually send.
+ *
+ * WhatsApp BYO: las plantillas salen de la WABA del CLIENTE (resolveWhatsAppWaba
+ * lee el JWT → su socialMessaging + su wabaId). Sin WABA configurada → lista
+ * vacía (NO las plantillas de Vox, que llevarían a envíos que Meta rechaza).
  */
-const client = new SocialMessagingClient({});
-const WABA_ID = process.env.WABA_ID || "waba-5a7f5911ddc34005bc32620e8bd9e2f2";
+// Cliente + WABA LEGACY de Vox — solo para Novasys/fallback. Los tenants reales
+// listan SUS plantillas desde SU WABA vía resolveWhatsAppWaba.
+const legacyClient = new SocialMessagingClient({});
+const LEGACY_WABA_ID = process.env.WABA_ID || "waba-5a7f5911ddc34005bc32620e8bd9e2f2";
 
 const CORS: Record<string, string> = {
   "Content-Type": "application/json",
@@ -96,6 +103,26 @@ export const handler: Handler = async (event: any) => {
   const includeAll =
     event?.queryStringParameters?.includeAll === "true" ||
     event?.queryStringParameters?.includeAll === "1";
+
+  // WhatsApp BYO: resolvemos la WABA del TENANT (sus plantillas). El frontend va
+  // authed → tenant del JWT.
+  const { client, wabaId: WABA_ID } = await resolveWhatsAppWaba(
+    event?.headers,
+    legacyClient,
+    LEGACY_WABA_ID
+  );
+  if (!WABA_ID) {
+    // Tenant real sin WABA cargada → no mostramos plantillas ajenas.
+    return {
+      statusCode: 200,
+      headers: CORS,
+      body: JSON.stringify({
+        templates: [],
+        wabaId: "",
+        note: "WhatsApp no está configurado para esta organización. Cargá tu WABA ID en Configuración → Integraciones.",
+      }),
+    };
+  }
 
   try {
     const res = await client.send(

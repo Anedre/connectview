@@ -16,10 +16,16 @@ import {
   ScanCommand,
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const connect = new ConnectClient({ maxAttempts: 1 });
-const dynamo = new DynamoDBClient({});
+// BYO Connect + Data Plane (#43+#46): module-active. Los helpers de abajo
+// (getCampaign, deleteAssignments, etc.) leen `connect`/`dynamo`/`instanceId`.
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+let connect: ConnectClient = legacyConnect;
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+let instanceId = INSTANCE_ID;
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const AGENTS_TABLE =
   process.env.CAMPAIGN_AGENTS_TABLE || "connectview-campaign-agents";
@@ -58,7 +64,7 @@ async function getUserRoutingProfile(userId: string): Promise<string | null> {
   try {
     const res = await connect.send(
       new DescribeUserCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         UserId: userId,
       })
     );
@@ -78,7 +84,7 @@ async function routingProfileHasQueue(
     do {
       const res = await connect.send(
         new ListRoutingProfileQueuesCommand({
-          InstanceId: INSTANCE_ID,
+          InstanceId: instanceId,
           RoutingProfileId: routingProfileId,
           NextToken: nextToken,
           MaxResults: 100,
@@ -139,7 +145,7 @@ async function associateQueueToRoutingProfile(
 ): Promise<void> {
   await connect.send(
     new AssociateRoutingProfileQueuesCommand({
-      InstanceId: INSTANCE_ID,
+      InstanceId: instanceId,
       RoutingProfileId: routingProfileId,
       QueueConfigs: [
         {
@@ -158,7 +164,7 @@ async function disassociateQueueFromRoutingProfile(
 ): Promise<void> {
   await connect.send(
     new DisassociateRoutingProfileQueuesCommand({
-      InstanceId: INSTANCE_ID,
+      InstanceId: instanceId,
       RoutingProfileId: routingProfileId,
       QueueReferences: [{ QueueId: queueId, Channel: "VOICE" }],
     })
@@ -168,6 +174,13 @@ async function disassociateQueueFromRoutingProfile(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // BYO Connect + Data Plane: setea connect/instanceId/dynamo en un trip.
+    {
+      const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+      connect = r.client;
+      instanceId = r.instanceId;
+      dynamo = r.dynamo || legacyDynamo;
+    }
     const body: AssignBody = JSON.parse(event.body || "{}");
     const { campaignId } = body;
     const add = body.add || [];

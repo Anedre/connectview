@@ -7,6 +7,7 @@ import {
   ConnectContactLensClient,
   ListRealtimeContactAnalysisSegmentsCommand,
 } from "@aws-sdk/client-connect-contact-lens";
+import { resolveConnect } from "../_shared/tenantConnect";
 
 // maxAttempts: 1 → no retries on throttling. We'd rather return fast and let the
 // frontend's 5s polling pick up next time than waste the 10s Lambda budget on retry backoff.
@@ -17,12 +18,17 @@ const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 // Cache contact start timestamps so we don't DescribeContact on every poll.
 const startTsCache = new Map<string, string>();
 
-async function getContactStartTimestamp(contactId: string): Promise<string | null> {
-  if (startTsCache.has(contactId)) return startTsCache.get(contactId)!;
+async function getContactStartTimestamp(
+  connect: ConnectClient,
+  instanceId: string,
+  contactId: string
+): Promise<string | null> {
+  const ck = `${instanceId}:${contactId}`;
+  if (startTsCache.has(ck)) return startTsCache.get(ck)!;
   try {
-    const res = await connectClient.send(
+    const res = await connect.send(
       new DescribeContactCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         ContactId: contactId,
       })
     );
@@ -30,7 +36,7 @@ async function getContactStartTimestamp(contactId: string): Promise<string | nul
       res.Contact?.ConnectedToSystemTimestamp?.toISOString() ||
       res.Contact?.InitiationTimestamp?.toISOString() ||
       null;
-    if (ts) startTsCache.set(contactId, ts);
+    if (ts) startTsCache.set(ck, ts);
     return ts;
   } catch {
     return null;
@@ -45,6 +51,27 @@ export const handler: Handler = async (event: any) => {
       statusCode: 400,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ error: "contactId required" }),
+    };
+  }
+
+  // Auth + tenant: resuelve el Connect del tenant del JWT. Anónimo / tenant sin
+  // instancia → instancia bloqueada → cortamos (NO leakeamos las transcripciones
+  // EN VIVO de Novasys, que antes eran públicas por contactId). Contact Lens no
+  // tiene blocked-client, así que el corte es explícito acá.
+  const r = await resolveConnect(event.headers, connectClient, INSTANCE_ID);
+  const instanceId = r.instanceId;
+  if (!instanceId || instanceId.startsWith("blocked")) {
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contactId,
+        segments: [],
+        categories: [],
+        overallSentiment: "NEUTRAL",
+        sentimentCounts: { positive: 0, negative: 0, neutral: 0 },
+        totalSegments: 0,
+      }),
     };
   }
 
@@ -65,7 +92,7 @@ export const handler: Handler = async (event: any) => {
     // If a call ever exceeds 100 segments, we just lose the oldest ones — better than nothing.
     const result = await client.send(
       new ListRealtimeContactAnalysisSegmentsCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         ContactId: contactId,
         MaxResults: 100,
       })
@@ -105,7 +132,7 @@ export const handler: Handler = async (event: any) => {
 
     // Get the contact start timestamp so the frontend can render absolute clock times.
     // Cached after first lookup so this only adds ~150ms once per contactId.
-    const transcriptStartTimestamp = await getContactStartTimestamp(contactId);
+    const transcriptStartTimestamp = await getContactStartTimestamp(r.client, instanceId, contactId);
 
     // Sort transcript segments by time
     segments.sort((a, b) => a.beginOffsetMs - b.beginOffsetMs);

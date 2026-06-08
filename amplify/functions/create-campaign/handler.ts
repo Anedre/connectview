@@ -9,9 +9,23 @@ import {
   CreateCampaignCommand,
 } from "@aws-sdk/client-connectcampaignsv2";
 import { randomUUID } from "node:crypto";
+import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
+import { bulkUpsertProfilesFromCsv } from "../_shared/upsertCustomerProfileFromCsv";
+import { bulkUpsertVoxLeads, setActiveDynamo } from "../_shared/leadSync";
+import { resolveTenantId } from "../_shared/cognitoAuth";
+import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
 
-const dynamo = new DynamoDBClient({});
+// BYO Data Plane (#46): DynamoDB del tenant para campaigns + campaign-contacts
+// + bulkUpsertVoxLeads (vía setActiveDynamo). ConnectCampaignsV2 queda legacy
+// (es un AWS service que opera contra el InstanceId, no cross-account).
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const campaignsV2 = new ConnectCampaignsV2Client({ maxAttempts: 2 });
+// Customer Profiles para el enrichment del CSV. Fallback Novasys SOLO para el
+// tenant legacy — resolveCustomerProfiles bloquea a un tenant real sin CP.
+const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 2 });
+const LEGACY_PROFILES_DOMAIN =
+  process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
@@ -128,6 +142,16 @@ async function createNativeCampaign(params: {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any, context: any) => {
   try {
+    // Resolvemos el tenantId del JWT del usuario que crea la campaña. Lo
+    // guardamos en el registro para que campaign-dialer (disparado por
+    // EventBridge SIN token) sepa contra qué Connect tiene que pegar.
+    const tenantId = await resolveTenantId(event?.headers);
+    // BYO Data Plane (#46): DynamoDB del tenant + leadSync writes.
+    {
+      const r = await resolveDynamo(event?.headers, legacyDynamo);
+      dynamo = r.dynamo;
+      setActiveDynamo(r.tenantScoped ? r.dynamo : null);
+    }
     const body: CreateCampaignBody = JSON.parse(event.body || "{}");
     // Derive account ID from our own Lambda ARN:
     // arn:aws:lambda:REGION:ACCOUNT:function:NAME
@@ -207,6 +231,9 @@ export const handler: Handler = async (event: any, context: any) => {
         TableName: CAMPAIGNS_TABLE,
         Item: {
           campaignId: { S: campaignId },
+          // tenantId del JWT del creador. campaign-dialer lo lee para
+          // assume-role contra el Connect del cliente. "default" en transición.
+          tenantId: { S: tenantId },
           name: { S: body.name.trim() },
           description: { S: body.description || "" },
           sourcePhoneNumber: { S: body.sourcePhoneNumber },
@@ -294,6 +321,48 @@ export const handler: Handler = async (event: any, context: any) => {
       );
     }
 
+    // 4. Enrich Customer Profiles from CSV. The CSV is the source of
+    //    truth the moment a campaign is uploaded — names, emails,
+    //    documents and any other column the manager provides should be
+    //    reflected on the profile the agent sees when the call connects.
+    //    Best-effort: errors are counted but don't fail the campaign
+    //    creation. Bounded by a 20s soft deadline so the Lambda's 30s
+    //    timeout still has headroom for very large CSVs.
+    let profileEnrichment: Awaited<
+      ReturnType<typeof bulkUpsertProfilesFromCsv>
+    > | null = null;
+    try {
+      // CP tenant-scoped (fail-closed): un tenant real sin CP resuelto NO
+      // escribe estos contactos en el dominio de perfiles de Novasys.
+      const cp = await resolveCustomerProfiles(
+        event?.headers,
+        legacyProfiles,
+        LEGACY_PROFILES_DOMAIN
+      );
+      profileEnrichment = await bulkUpsertProfilesFromCsv(
+        validContacts,
+        { concurrency: 20, deadlineMs: 20_000 },
+        { profiles: cp.client, domainName: cp.domainName }
+      );
+      console.log("customer-profile enrichment:", profileEnrichment);
+    } catch (err) {
+      console.warn("customer-profile enrichment failed (non-fatal):", err);
+    }
+
+    // 5. Volcar los contactos al embudo de Leads (el hub). NO empuja a SF en
+    //    la subida (decisión de producto: a SF recién cuando se trabajan).
+    //    Best-effort + acotado, igual que el enrichment de perfiles.
+    let leadFunnel: Awaited<ReturnType<typeof bulkUpsertVoxLeads>> | null = null;
+    try {
+      leadFunnel = await bulkUpsertVoxLeads(validContacts, {
+        source: `Vox Campaña: ${body.name.trim()}`,
+        deadlineMs: 15_000,
+      });
+      console.log("lead funnel upsert:", leadFunnel);
+    } catch (err) {
+      console.warn("lead funnel upsert failed (non-fatal):", err);
+    }
+
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
@@ -304,6 +373,8 @@ export const handler: Handler = async (event: any, context: any) => {
         skipped: skippedCount,
         awsCampaignId,
         useNativeCampaign: !!awsCampaignId,
+        profileEnrichment,
+        leadFunnel,
       }),
     };
   } catch (err) {

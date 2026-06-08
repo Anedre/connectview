@@ -106,7 +106,9 @@ const connectMetricsPolicy = new iam.PolicyStatement({
   actions: [
     "connect:GetCurrentMetricData",
     "connect:GetCurrentUserData",
+    "connect:GetMetricDataV2",
     "connect:ListQueues",
+    "connect:ListUsers",
   ],
   resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
 });

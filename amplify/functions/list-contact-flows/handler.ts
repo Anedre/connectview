@@ -3,13 +3,16 @@ import {
   ConnectClient,
   ListContactFlowsCommand,
 } from "@aws-sdk/client-connect";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const connect = new ConnectClient({ maxAttempts: 1 });
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // Connect del tenant (o legacy de Vox si no está configurado / sin token).
+    const { client: connect, instanceId } = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
     const params = event.queryStringParameters || {};
     // Filter by type (default CONTACT_FLOW which includes outbound-capable flows)
     const types = (params.types || "CONTACT_FLOW").split(",");
@@ -19,7 +22,7 @@ export const handler: Handler = async (event: any) => {
     do {
       const res = await connect.send(
         new ListContactFlowsCommand({
-          InstanceId: INSTANCE_ID,
+          InstanceId: instanceId,
           ContactFlowTypes: types as never,
           NextToken: nextToken,
           MaxResults: 100,

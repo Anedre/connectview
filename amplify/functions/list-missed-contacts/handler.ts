@@ -5,6 +5,7 @@ import {
   DescribeContactCommand,
   DescribeQueueCommand,
 } from "@aws-sdk/client-connect";
+import { resolveConnect } from "../_shared/tenantConnect";
 
 /**
  * list-missed-contacts
@@ -32,8 +33,12 @@ import {
  *   500 { error, message } on failure
  */
 
-const connect = new ConnectClient({ maxAttempts: 1 });
+// BYO Connect (#43): module-active. resolveConnect del handler entry setea
+// `connect` e `instanceId` para tenant cross-account; fallback a Vox.
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+let connect: ConnectClient = legacyConnect;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+let instanceId = INSTANCE_ID;
 
 // Disconnect reasons Connect uses for contacts the agent didn't take.
 // We match a superset — different instances and AWS releases use
@@ -46,23 +51,25 @@ const MISSED_REASONS = new Set([
   "ABANDONED",
 ]);
 
+// queueId cache keyeada por `${instanceId}:${queueId}` para no mezclar tenants.
 const queueCache = new Map<string, string>();
 
 async function resolveQueueName(queueId: string): Promise<string> {
   if (!queueId) return "";
-  if (queueCache.has(queueId)) return queueCache.get(queueId)!;
+  const k = `${instanceId}:${queueId}`;
+  if (queueCache.has(k)) return queueCache.get(k)!;
   try {
     const res = await connect.send(
       new DescribeQueueCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         QueueId: queueId,
       })
     );
     const name = res.Queue?.Name || queueId;
-    queueCache.set(queueId, name);
+    queueCache.set(k, name);
     return name;
   } catch {
-    queueCache.set(queueId, queueId);
+    queueCache.set(k, queueId);
     return queueId;
   }
 }
@@ -96,7 +103,14 @@ export const handler: Handler = async (event: any) => {
     };
   }
 
-  if (!INSTANCE_ID) {
+  // BYO Connect (#43): tenant primero, fallback Vox.
+  {
+    const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    connect = r.client;
+    instanceId = r.instanceId;
+  }
+
+  if (!instanceId) {
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json" },
@@ -111,7 +125,7 @@ export const handler: Handler = async (event: any) => {
 
     const result = await connect.send(
       new SearchContactsCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         TimeRange: {
           Type: "INITIATION_TIMESTAMP",
           StartTime: startTime,
@@ -144,7 +158,7 @@ export const handler: Handler = async (event: any) => {
         try {
           const detail = await connect.send(
             new DescribeContactCommand({
-              InstanceId: INSTANCE_ID,
+              InstanceId: instanceId,
               ContactId: c.Id!,
             })
           );

@@ -5,20 +5,29 @@ import {
 } from "@aws-sdk/client-customer-profiles";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "node:crypto";
+import { ConnectClient } from "@aws-sdk/client-connect";
+import { resolveConnect } from "../_shared/tenantConnect";
 
 /**
  * update-customer-profile — Connect Customer Profiles writer. The agent
  * desktop's idle browser calls this after editing a profile to push
  * the changes back to the domain.
  *
+ * BYO (#43+#46): tanto el cliente de Customer Profiles como el dominio van
+ * tenant-scoped. Si no hay tenant configurado → legacy (Novasys).
+ *
  * Body: { profileId, fields: { FirstName, LastName, ... }, actor }
  * `fields` is whitelisted server-side so the UI can't ask us to PUT
  * arbitrary attributes that don't map to known profile columns.
  */
-const profiles = new CustomerProfilesClient({});
-const dynamo = new DynamoDBClient({});
-const DOMAIN_NAME =
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+const legacyProfiles = new CustomerProfilesClient({});
+let profiles: CustomerProfilesClient = legacyProfiles;
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
+const LEGACY_DOMAIN =
   process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+let DOMAIN_NAME = LEGACY_DOMAIN;
 const AUDIT_TABLE = process.env.ADMIN_AUDIT_TABLE || "connectview-admin-audit";
 
 // CORS is handled by the Function URL's own CORS config (duplicated
@@ -86,6 +95,17 @@ export const handler: Handler = async (event: any) => {
     return { statusCode: 200, headers: CORS_HEADERS, body: "" };
   }
 
+  // BYO (#43+#46): tenant primero, fallback Vox/Novasys.
+  {
+    const r = await resolveConnect(event?.headers, legacyConnect, "");
+    profiles = r.customerProfiles || legacyProfiles;
+    // Fail-closed: tenant real sin CP resuelto → "" → NO escribimos en Novasys.
+    DOMAIN_NAME = r.tenantScoped
+      ? r.customerProfilesDomain || ""
+      : LEGACY_DOMAIN;
+    dynamo = r.dynamo || legacyDynamo;
+  }
+
   let body: UpdateBody;
   try {
     body = JSON.parse(event.body || "{}");
@@ -102,6 +122,18 @@ export const handler: Handler = async (event: any) => {
       statusCode: 400,
       headers: CORS_HEADERS,
       body: JSON.stringify({ error: "profileId requerido" }),
+    };
+  }
+
+  // Fail-closed: tenant real sin Customer Profiles resuelto (DOMAIN_NAME "").
+  // NO escribimos contra el dominio de Novasys ni devolvemos un éxito falso.
+  if (!DOMAIN_NAME) {
+    return {
+      statusCode: 409,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({
+        error: "Customer Profiles no está configurado para esta organización",
+      }),
     };
   }
 

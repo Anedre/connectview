@@ -78,6 +78,70 @@ interface ApiEndpoints {
   // Cross-channel attachment grid — every file the customer shared (or we
   // sent) across all voice / chat / email contacts, with presigned URLs.
   getCustomerAttachments?: string;
+  // Unified disposition taxonomy — the single source of truth every
+  // channel's wrap-up reads. CRUD over connectview-taxonomies. Replaces
+  // the old hardcoded tree in lib/dispositions.ts.
+  manageTaxonomy?: string;
+  // Vox → Salesforce sync — fired after a wrap-up is saved. Upserts a
+  // Lead + logs a Task, mapping the unified tipificación to Lead Status.
+  salesforceSync?: string;
+  // HSM Outbound report — aggregates WhatsApp template sends by template
+  // (sent/delivered/read/failed). Chattigo's flagship report.
+  getHsmReport?: string;
+  // Custom Lists / Catálogos — arbitrary lookup tables (products, SKUs,
+  // price lists) referenceable from leads / bot / scripts.
+  manageCatalog?: string;
+  // Unified lead funnel — CRUD + move-stage over connectview-leads. Board
+  // columns are the canonical taxonomy stages.
+  manageLeads?: string;
+  // Native appointment scheduling — CRUD over connectview-appointments.
+  manageAppointment?: string;
+  // Granular RBAC matrix — capability → minimum role. useCan() checks it.
+  managePermissions?: string;
+  // Visual chat-flow builder (Salesbot equivalent #16) — CRUD over
+  // connectview-bots (list/get/save/delete bot graphs).
+  manageBot?: string;
+  // Bot runtime engine — runs a bot graph turn-by-turn (powers the in-builder
+  // "Probar bot" simulator + a Connect flow in production). ai_agent → Bedrock.
+  botRuntime?: string;
+  // ── SaaS multi-tenant: conexiones por organización ──────────────────
+  // Lee/escribe la config de integraciones del tenant (Connect / Salesforce /
+  // WhatsApp). Config NO sensible en DynamoDB; secretos en Secrets Manager.
+  manageConnections?: string;
+  // Verifica la conexión a Amazon Connect del tenant: asume el rol cross-account
+  // y hace un llamado de prueba (DescribeInstance / ListQueues).
+  verifyConnectConnection?: string;
+  // Provisiona el set canónico de contact flows de ARIA (ARIA-Inbound /
+  // -Outbound / -Disconnect) en la instancia del tenant. dryRun previsualiza.
+  provisionContactFlows?: string;
+  // Inicia el flujo OAuth web de Salesforce (devuelve la URL de autorización).
+  salesforceOAuthStart?: string;
+  // Callback del OAuth web de Salesforce. SF redirige acá con ?code=…&state=…
+  // intercambia el code por refresh_token y lo persiste en Secrets per-tenant.
+  // El frontend NO lo llama; el navegador del usuario lo abre vía redirect.
+  salesforceOAuthCallback?: string;
+  // Federación silenciosa del CCP (#45). El frontend lo llama antes de initCCP;
+  // si la instancia del tenant soporta SAML el Lambda devuelve un signInUrl que
+  // el iframe del CCP usa como loginUrl. Sin SAML, devuelve signInUrl=null y el
+  // frontend cae al popup login clásico (sin error visible).
+  getFederationToken?: string;
+  // Health-check completo de la integración: corre chequeos read-only contra
+  // el Connect del cliente (Contact Lens, grabaciones, Customer Profiles, S3,
+  // Data Plane, CloudFormation) y devuelve estado + remediación por cada uno.
+  // Lo consume el panel "Estado de la integración".
+  diagnoseConnection?: string;
+  // Provisión de organización en el primer login: crea el tenant, setea
+  // custom:tenantId en el usuario y lo hace Admin de su org.
+  provisionTenant?: string;
+  // Invita a un trabajador a la organización del admin: AdminCreateUser en
+  // Cognito atado al tenant del invitador + email con contraseña temporal.
+  inviteUser?: string;
+  // Lista los usuarios de Vox (Cognito) del tenant + sus roles. Distinto de
+  // listUsers (que lista los agentes de Amazon Connect que toman llamadas).
+  listTeam?: string;
+  // Vincula un usuario de Vox con un agente de Amazon Connect (capa 2):
+  // guarda custom:connectUser. Admin asigna a otros; usuario auto-confirma.
+  setConnectLink?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

@@ -15,6 +15,8 @@ interface Props {
   liveContacts: LiveContact[];
   contacts: CampaignContactRow[];
   resolveAgentLabel: (raw: string | undefined | null) => string;
+  /** WhatsApp: feed de envíos (sin agentes ni "conectado/sin contestar"). */
+  isWhatsApp?: boolean;
 }
 
 interface FeedEvent {
@@ -58,7 +60,16 @@ export function CampaignActivity({
   liveContacts,
   contacts,
   resolveAgentLabel,
+  isWhatsApp,
 }: Props) {
+  // Etiquetas/íconos del feed según canal (WhatsApp: envío, no marcado).
+  const metaFor = (t: FeedEvent["type"]) => {
+    const base = TYPE_META[t];
+    if (!isWhatsApp) return base;
+    if (t === "dialing") return { Icn: Icon.WhatsApp, color: base.color, label: "Enviando" };
+    if (t === "done") return { Icn: base.Icn, color: base.color, label: "Enviado" };
+    return base;
+  };
   const [events, setEvents] = useState<FeedEvent[]>([]);
   // Track previous status of each row so we can detect transitions.
   const prevStatusRef = useRef<Map<string, string>>(new Map());
@@ -159,7 +170,7 @@ export function CampaignActivity({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "1fr 1fr",
+        gridTemplateColumns: isWhatsApp ? "1fr" : "1fr 1fr",
         gap: 14,
       }}
     >
@@ -175,7 +186,7 @@ export function CampaignActivity({
           </div>
           <span className="card__sub">
             {liveContacts.length > 0
-              ? `${liveContacts.length} en vivo · `
+              ? `${liveContacts.length} ${isWhatsApp ? "enviando" : "en vivo"} · `
               : ""}
             {events.length} eventos
           </span>
@@ -191,7 +202,7 @@ export function CampaignActivity({
                   fontSize: 12.5,
                 }}
               >
-                Aún no hay actividad. Las llamadas y resultados aparecerán
+                Aún no hay actividad. {isWhatsApp ? "Los envíos" : "Las llamadas"} y resultados aparecerán
                 aquí en tiempo real.
               </div>
             ) : (
@@ -214,7 +225,7 @@ export function CampaignActivity({
                         marginBottom: 6,
                       }}
                     >
-                      En vivo ahora
+                      {isWhatsApp ? "Enviando ahora" : "En vivo ahora"}
                     </div>
                     <div className="col" style={{ gap: 4 }}>
                       {liveContacts.map((lc) => (
@@ -269,7 +280,7 @@ export function CampaignActivity({
                 )}
                 {/* Historical feed */}
                 {events.map((ev, i) => {
-                  const meta = TYPE_META[ev.type];
+                  const meta = metaFor(ev.type);
                   const Icn = meta.Icn;
                   return (
                     <div
@@ -337,7 +348,8 @@ export function CampaignActivity({
         </CardBody>
       </Card>
 
-      {/* ── Agent leaderboard ──────────────────────────────────── */}
+      {/* ── Agent leaderboard (solo voz: WhatsApp no usa agentes) ── */}
+      {!isWhatsApp && (
       <Card>
         <div className="card__head">
           <div className="card__title">
@@ -501,6 +513,7 @@ export function CampaignActivity({
           </div>
         </CardBody>
       </Card>
+      )}
     </div>
   );
 }

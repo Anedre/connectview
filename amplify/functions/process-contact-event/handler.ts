@@ -12,9 +12,14 @@ import {
   DescribeUserCommand,
 } from "@aws-sdk/client-connect";
 
-const dynamo = new DynamoDBClient({});
+// BYO Data Plane (#46): module-active. TODO: para multi-tenant real, hacer
+// reverse lookup instanceArn (del evento) → tenantId vía connectview-connections.
+// Por ahora legacy fallback funciona para Novasys.
+const legacyDynamo = new DynamoDBClient({});
+const dynamo: DynamoDBClient = legacyDynamo;
 const lambda = new LambdaClient({});
-const connect = new ConnectClient({ maxAttempts: 1 });
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+const connect: ConnectClient = legacyConnect;
 const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "";
 const ENRICH_FUNCTION_NAME = process.env.ENRICH_FUNCTION_NAME || "";
 const CAMPAIGNS_TABLE =

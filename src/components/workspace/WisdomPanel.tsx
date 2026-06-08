@@ -3,15 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Search, ExternalLink } from "lucide-react";
-import { CONNECT_INSTANCE_URL } from "@/lib/constants";
+import { useConnectAuth } from "@/context/ConnectAuthContext";
 
 export function WisdomPanel() {
   const [query, setQuery] = useState("");
+  const { instanceUrl } = useConnectAuth();
 
   const openInConnect = () => {
     const url = query
-      ? `${CONNECT_INSTANCE_URL}/connect/wisdom-v2/search?query=${encodeURIComponent(query)}`
-      : `${CONNECT_INSTANCE_URL}/connect/wisdom-v2`;
+      ? `${instanceUrl}/connect/wisdom-v2/search?query=${encodeURIComponent(query)}`
+      : `${instanceUrl}/connect/wisdom-v2`;
     window.open(url, "_blank");
   };
 

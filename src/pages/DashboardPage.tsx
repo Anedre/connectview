@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeMetrics } from "@/hooks/useRealtimeMetrics";
@@ -5,6 +6,9 @@ import { useRoles } from "@/hooks/useRoles";
 import { useCampaigns } from "@/hooks/useCampaigns";
 import { pluralES } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
+import { CustomWidgets } from "@/components/dashboard/CustomWidgets";
+import { InsightsPanel } from "@/components/dashboard/InsightsPanel";
+import { PageHeader } from "@/components/vox/PageHeader";
 import {
   Avatar,
   Card,
@@ -29,11 +33,61 @@ interface DashKpi {
   delta?: string;
   dir?: "up" | "down" | "flat";
   color?: string;
+  spark?: number[];
+}
+
+type MetricsHistory = {
+  queue: number[];
+  available: number[];
+  online: number[];
+  longest: number[];
+};
+
+const HISTORY_CAP = 12;
+
+function useMetricsHistory(
+  metrics: ReturnType<typeof useRealtimeMetrics>["metrics"]
+): MetricsHistory {
+  const ref = useRef<MetricsHistory>({
+    queue: [],
+    available: [],
+    online: [],
+    longest: [],
+  });
+  // El historial vive en state, NO en ref leído durante el render: leer
+  // ref.current en render no dispara re-render y deja los sparklines stale.
+  // El ref sólo acumula las muestras; el state es lo que la UI consume.
+  const [history, setHistory] = useState<MetricsHistory>({
+    queue: [],
+    available: [],
+    online: [],
+    longest: [],
+  });
+  const stamp = metrics?.timestamp;
+  useEffect(() => {
+    if (!metrics) return;
+    const push = (arr: number[], v: number) => {
+      arr.push(v);
+      if (arr.length > HISTORY_CAP) arr.shift();
+    };
+    push(ref.current.queue, metrics.summary.totalContactsInQueue);
+    push(ref.current.available, metrics.summary.totalAgentsAvailable);
+    push(ref.current.online, metrics.summary.totalAgentsOnline);
+    push(ref.current.longest, metrics.summary.longestWaitSeconds);
+    setHistory({
+      queue: [...ref.current.queue],
+      available: [...ref.current.available],
+      online: [...ref.current.online],
+      longest: [...ref.current.longest],
+    });
+  }, [stamp, metrics]);
+  return history;
 }
 
 function buildKpis(
   role: Role,
-  metrics: ReturnType<typeof useRealtimeMetrics>["metrics"]
+  metrics: ReturnType<typeof useRealtimeMetrics>["metrics"],
+  history: MetricsHistory
 ): DashKpi[] {
   const queue = metrics?.summary.totalContactsInQueue ?? 0;
   const online = metrics?.summary.totalAgentsOnline ?? 0;
@@ -72,12 +126,41 @@ function buildKpis(
       },
     ];
   }
-  // Agent view — no per-agent metrics endpoint yet
+  // Agent view — per-agent metrics endpoint is not wired yet, so we show
+  // the global realtime values as Kpi cards with sparklines built from
+  // recent samples (mirror of the design handoff's Inicio for agents).
   return [
-    { label: "Cola global", value: String(queue), delta: "Contactos esperando", dir: "flat", color: "var(--accent-cyan)" },
-    { label: "Agentes disponibles", value: String(available), delta: `de ${online} online`, dir: "flat", color: "var(--accent-green)" },
-    { label: "Espera más larga", value: fmtWait(longest), delta: "En tiempo real", dir: "flat", color: "var(--accent-amber)" },
-    { label: "Tu estado", value: "—", delta: "Cambia desde el topbar", dir: "flat", color: "var(--accent-violet)" },
+    {
+      label: "Cola global",
+      value: String(queue),
+      delta: queue === 0 ? "Sin contactos en espera" : `${queue} ${pluralES(queue, "esperando", "esperando")}`,
+      dir: queue > 5 ? "up" : "flat",
+      color: queue > 10 ? "var(--accent-red)" : "var(--accent-cyan)",
+      spark: history.queue.length > 1 ? history.queue : undefined,
+    },
+    {
+      label: "Agentes disponibles",
+      value: String(available),
+      delta: `de ${online} en línea`,
+      dir: "flat",
+      color: "var(--accent-green)",
+      spark: history.available.length > 1 ? history.available : undefined,
+    },
+    {
+      label: "Espera más larga",
+      value: fmtWait(longest),
+      delta: longest === 0 ? "Sin espera" : longest > 120 ? "Sobre meta" : "Bajo meta",
+      dir: longest > 120 ? "down" : "flat",
+      color: longest > 120 ? "var(--accent-red)" : "var(--accent-amber)",
+      spark: history.longest.length > 1 ? history.longest : undefined,
+    },
+    {
+      label: "Colas activas",
+      value: String(metrics?.queues.length ?? 0),
+      delta: "En tiempo real",
+      dir: "flat",
+      color: "var(--accent-violet)",
+    },
   ];
 }
 
@@ -147,7 +230,7 @@ function AgentDashSections({ navigate }: { navigate: (path: string) => void }) {
   );
 }
 
-function SupervisorDashSections({
+function LiveQueuesCard({
   navigate,
   metrics,
 }: {
@@ -155,82 +238,75 @@ function SupervisorDashSections({
   metrics: ReturnType<typeof useRealtimeMetrics>["metrics"];
 }) {
   const queues = (metrics?.queues ?? []).slice(0, 6);
+  return (
+    <Card>
+      <CardHead
+        title="Colas en tiempo real"
+        right={
+          <button className="btn btn--ghost btn--sm" onClick={() => navigate("/queue")}>
+            Abrir supervisión <Icon.ChevRight size={12} />
+          </button>
+        }
+      />
+      <CardBody flush>
+        {queues.length === 0 ? (
+          <EmptyCardBody
+            icon={Icon.Queue}
+            title="Sin colas reportadas"
+            body="Aparecerán cuando haya tráfico en Amazon Connect."
+          />
+        ) : (
+          queues.map((q) => {
+            const status =
+              q.contactsInQueue > 20 ? "alert" : q.contactsInQueue > 5 ? "warn" : "ok";
+            return (
+              <div
+                key={q.queueId}
+                className={`queue-row ${
+                  status === "alert" ? "queue-row--alert" : status === "warn" ? "queue-row--warn" : ""
+                }`}
+              >
+                <ChannelChip type="voice" />
+                <div className="grow truncate">{q.queueName}</div>
+                <div className="mono col-num">
+                  <span className="muted" style={{ fontSize: 11 }}>cola </span>
+                  {q.contactsInQueue}
+                </div>
+                <div className="mono col-num">
+                  <span className="muted" style={{ fontSize: 11 }}>libres </span>
+                  {q.agentsAvailable}
+                </div>
+                <div className="mono col-num">
+                  <span className="muted" style={{ fontSize: 11 }}>esp </span>
+                  {fmtWait(q.oldestContactAge ?? 0)}
+                </div>
+                <div>
+                  <StatusPill status={status === "alert" ? "En riesgo" : status === "warn" ? "Media" : "OK"} />
+                </div>
+              </div>
+            );
+          })
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function SupervisorDashSections({
+  navigate,
+  metrics,
+}: {
+  navigate: (path: string) => void;
+  metrics: ReturnType<typeof useRealtimeMetrics>["metrics"];
+}) {
   const agentsNeedingAttention = (metrics?.agents ?? []).filter(
     (a) => a.status === "AfterCallWork" || a.status === "MissedCallAgent"
   );
 
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Card>
-          <CardHead
-            title="Colas en tiempo real"
-            right={
-              <button
-                className="btn btn--ghost btn--sm"
-                onClick={() => navigate("/queue")}
-              >
-                Abrir supervisión <Icon.ChevRight size={12} />
-              </button>
-            }
-          />
-          <CardBody flush>
-            {queues.length === 0 ? (
-              <EmptyCardBody
-                icon={Icon.Queue}
-                title="Sin colas reportadas"
-                body="Aparecerán cuando haya tráfico en Amazon Connect."
-              />
-            ) : (
-              queues.map((q) => {
-                const status =
-                  q.contactsInQueue > 20
-                    ? "alert"
-                    : q.contactsInQueue > 5
-                    ? "warn"
-                    : "ok";
-                return (
-                  <div
-                    key={q.queueId}
-                    className={`queue-row ${
-                      status === "alert"
-                        ? "queue-row--alert"
-                        : status === "warn"
-                        ? "queue-row--warn"
-                        : ""
-                    }`}
-                  >
-                    <ChannelChip type="voice" />
-                    <div className="grow truncate">{q.queueName}</div>
-                    <div className="mono col-num">
-                      <span className="muted" style={{ fontSize: 11 }}>cola </span>
-                      {q.contactsInQueue}
-                    </div>
-                    <div className="mono col-num">
-                      <span className="muted" style={{ fontSize: 11 }}>libres </span>
-                      {q.agentsAvailable}
-                    </div>
-                    <div className="mono col-num">
-                      <span className="muted" style={{ fontSize: 11 }}>esp </span>
-                      {fmtWait(q.oldestContactAge ?? 0)}
-                    </div>
-                    <div>
-                      <StatusPill
-                        status={
-                          status === "alert"
-                            ? "En riesgo"
-                            : status === "warn"
-                            ? "Media"
-                            : "OK"
-                        }
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </CardBody>
-        </Card>
+      <div className="grid-2">
+        <LiveQueuesCard navigate={navigate} metrics={metrics} />
 
         <Card>
           <CardHead
@@ -281,8 +357,8 @@ function SupervisorDashSections({
                           : "Llamada perdida"}
                       </div>
                     </div>
-                    <button className="btn btn--sm">
-                      <Icon.Eye size={12} /> Whisper
+                    <button className="btn btn--sm" onClick={() => navigate("/queue")}>
+                      <Icon.Eye size={12} /> Ver
                     </button>
                   </div>
                 ))}
@@ -296,8 +372,10 @@ function SupervisorDashSections({
 }
 
 function ManagerDashSections({
+  navigate,
   metrics,
 }: {
+  navigate: (path: string) => void;
   metrics: ReturnType<typeof useRealtimeMetrics>["metrics"];
 }) {
   const { campaigns, loading } = useCampaigns(15000);
@@ -377,68 +455,9 @@ function ManagerDashSections({
           </CardBody>
         </Card>
 
-        <Card>
-          <CardHead title="Snapshot de operación" />
-          <CardBody>
-            <div className="col" style={{ gap: 14 }}>
-              <SnapshotRow
-                label="Contactos en cola"
-                value={String(metrics?.summary.totalContactsInQueue ?? 0)}
-                color="var(--accent-cyan)"
-              />
-              <SnapshotRow
-                label="Agentes online"
-                value={String(metrics?.summary.totalAgentsOnline ?? 0)}
-                color="var(--accent-green)"
-              />
-              <SnapshotRow
-                label="Agentes disponibles"
-                value={String(metrics?.summary.totalAgentsAvailable ?? 0)}
-                color="var(--accent-violet)"
-              />
-              <SnapshotRow
-                label="Campañas totales"
-                value={String(campaigns.length)}
-                color="var(--accent-amber)"
-              />
-            </div>
-            <div className="divider" />
-            <div className="muted" style={{ fontSize: 11.5 }}>
-              Refresca cada 15 s desde Amazon Connect.
-            </div>
-          </CardBody>
-        </Card>
+        <LiveQueuesCard navigate={navigate} metrics={metrics} />
       </div>
     </>
-  );
-}
-
-function SnapshotRow({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: string;
-  color: string;
-}) {
-  return (
-    <div className="spread">
-      <div className="row" style={{ gap: 8 }}>
-        <span
-          style={{
-            width: 6,
-            height: 24,
-            borderRadius: 999,
-            background: color,
-          }}
-        />
-        <span style={{ fontSize: 13 }}>{label}</span>
-      </div>
-      <span className="mono" style={{ fontSize: 16 }}>
-        {value}
-      </span>
-    </div>
   );
 }
 
@@ -456,82 +475,114 @@ export function DashboardPage() {
     ? "Agents"
     : "";
 
-  const kpis = buildKpis(role, metrics);
+  const history = useMetricsHistory(metrics);
+  const kpis = buildKpis(role, metrics, history);
+  // Friendlier first-name greeting for the agent home, matching the handoff.
+  const firstName = (user?.username || "").trim().split(/\s+/)[0] || "Agente";
   const greeting =
     role === "Admins"
       ? "Vista ejecutiva"
       : role === "Supervisors"
       ? "Centro de operaciones"
-      : `Hola, ${user?.username ?? "Agente"}`;
+      : `Hola, ${firstName}`;
   // Cross-page consistency: use pluralES + español puro (the rest of
   // the app says "agente activo", not "agente online").
   const agentsOnline = metrics?.summary.totalAgentsOnline ?? 0;
   const queueCount = metrics?.queues.length ?? 0;
   const contactsInQueue = metrics?.summary.totalContactsInQueue ?? 0;
+  const longestWait = metrics?.summary.longestWaitSeconds ?? 0;
+  const agentSub =
+    contactsInQueue === 0
+      ? "Sin contactos en cola · todo tranquilo por ahora."
+      : `Hay ${contactsInQueue} ${pluralES(contactsInQueue, "contacto", "contactos")} en cola${longestWait > 0 ? ` · espera más larga ${fmtWait(longestWait)}` : ""}.`;
   const sub =
     role === "Admins"
       ? `${agentsOnline} ${pluralES(agentsOnline, "agente conectado", "agentes conectados")} · ${queueCount} ${pluralES(queueCount, "cola activa", "colas activas")}`
       : role === "Supervisors"
       ? `${agentsOnline} ${pluralES(agentsOnline, "agente conectado", "agentes conectados")} · ${contactsInQueue} ${pluralES(contactsInQueue, "en cola", "en cola")}`
-      : `Conectado como ${user?.highestRole ?? "Agente"}`;
+      : agentSub;
+
+  const isExec = role === "Admins" || role === "Supervisors";
 
   return (
     <div className="view">
-      <div className="view__head">
-        <div>
-          <div className="view__crumb">
-            <span>Inicio</span>
-          </div>
-          <h1 className="view__title">{greeting}</h1>
-          <div className="view__sub">{sub}</div>
-        </div>
-        <div className="view__actions">
-          <span className="chip chip--green">
-            <span
-              className="pulse"
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: "currentColor",
-              }}
-            />
-            Live · {lastRefresh.toLocaleTimeString()}
-          </span>
-          <button className="btn" onClick={refresh}>
-            <Icon.Refresh size={14} /> Actualizar
-          </button>
-          {role === "Agents" && (
-            <button
-              className="btn btn--primary"
-              onClick={() => navigate("/agent")}
-            >
-              <Icon.PhoneIn size={14} /> Abrir Agent Desktop
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Agents keep the standard PageHeader. Admins/Supervisors get a single
+          fused Kommo-style header rendered INSIDE the InsightsPanel (title +
+          context chips + control bar), so we don't stack two headers. */}
+      {!isExec && (
+        <PageHeader
+          crumb="Inicio"
+          title={greeting}
+          sub={sub}
+          actions={
+            <>
+              <span className="chip chip--green">
+                <span
+                  className="pulse"
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: "currentColor",
+                  }}
+                />
+                Live · {lastRefresh.toLocaleTimeString()}
+              </span>
+              <button className="btn" onClick={refresh}>
+                <Icon.Refresh size={14} /> Actualizar
+              </button>
+              <button className="btn btn--primary" onClick={() => navigate("/agent")}>
+                <Icon.PhoneIn size={14} /> Abrir Agent Desktop
+              </button>
+            </>
+          }
+        />
+      )}
 
-      <div className="kpi-grid">
-        {kpis.map((k) => (
-          <Kpi
-            key={k.label}
-            label={k.label}
-            value={k.value}
-            delta={k.delta}
-            deltaDir={k.dir}
-            color={k.color}
-          />
-        ))}
-      </div>
+      {/* Inicio dashboard: Kommo-Insights dark panel + Chattigo-style
+          reporting for managers; the design-handoff Kpi cards (label, big
+          mono value, delta and inline sparkline) for agents. */}
+      {isExec ? (
+        <InsightsPanel
+          metrics={metrics}
+          title={greeting}
+          agentsOnline={agentsOnline}
+          queueCount={queueCount}
+          lastRefresh={lastRefresh}
+          onRefresh={refresh}
+        />
+      ) : (
+        <div className="kpi-grid">
+          {kpis.map((k) => (
+            <Kpi
+              key={k.label}
+              label={k.label}
+              value={k.value}
+              delta={k.delta}
+              deltaDir={k.dir}
+              spark={k.spark}
+              color={k.color}
+            />
+          ))}
+        </div>
+      )}
 
       <div style={{ height: 16 }} />
 
-      {role === "Agents" && <AgentDashSections navigate={navigate} />}
+      {role === "Agents" && (
+        <>
+          {/* Configurable real-data widgets (roadmap #8) — agents only;
+              managers/supervisors get the same data in the InsightsPanel. */}
+          <CustomWidgets />
+          <AgentDashSections navigate={navigate} />
+        </>
+      )}
       {role === "Supervisors" && (
         <SupervisorDashSections navigate={navigate} metrics={metrics} />
       )}
-      {role === "Admins" && <ManagerDashSections metrics={metrics} />}
+      {role === "Admins" && (
+        <ManagerDashSections navigate={navigate} metrics={metrics} />
+      )}
     </div>
   );
 }

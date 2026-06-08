@@ -12,14 +12,21 @@ import {
   ListProfileObjectsCommand,
 } from "@aws-sdk/client-customer-profiles";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const connect = new ConnectClient({ maxAttempts: 1 });
-const profiles = new CustomerProfilesClient({ maxAttempts: 1 });
-const s3 = new S3Client({});
+// BYO (#43+#46): module-active.
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+let connect: ConnectClient = legacyConnect;
+const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 1 });
+let profiles: CustomerProfilesClient = legacyProfiles;
+const legacyS3 = new S3Client({});
+let s3: S3Client = legacyS3;
 
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
-const CUSTOMER_PROFILES_DOMAIN =
+let instanceId = INSTANCE_ID;
+const LEGACY_CUSTOMER_PROFILES_DOMAIN =
   process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+let CUSTOMER_PROFILES_DOMAIN = LEGACY_CUSTOMER_PROFILES_DOMAIN;
 const REGION = process.env.AWS_REGION || "us-east-1";
 const ACCOUNT_ID = process.env.AWS_ACCOUNT_ID || "";
 const PRESIGN_EXPIRES = 3600;
@@ -128,7 +135,7 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
         nextToken = r.NextToken;
       }
       const out = items
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         .map((it) => {
           try {
             return JSON.parse(it.Object || "{}");
@@ -150,7 +157,7 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
     start.setDate(start.getDate() - 180);
     const sc = await connect.send(
       new SearchContactsCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         TimeRange: {
           Type: "INITIATION_TIMESTAMP",
           StartTime: start,
@@ -246,6 +253,19 @@ export const handler: Handler = async (event: any) => {
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
   }
+  // BYO (#43+#46): tenant primero.
+  {
+    const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    connect = r.client;
+    instanceId = r.instanceId;
+    s3 = r.s3 || legacyS3;
+    profiles = r.customerProfiles || legacyProfiles;
+    // Fail-closed: tenant real sin CP resuelto → "" (Strategy 1 se saltea y
+    // cae a SearchContacts del Connect del tenant), NUNCA el dominio de Novasys.
+    CUSTOMER_PROFILES_DOMAIN = r.tenantScoped
+      ? r.customerProfilesDomain || ""
+      : LEGACY_CUSTOMER_PROFILES_DOMAIN;
+  }
   const phone = event?.queryStringParameters?.phone;
   if (!phone) {
     return {
@@ -274,14 +294,14 @@ export const handler: Handler = async (event: any) => {
         try {
           const detail = await connect.send(
             new DescribeContactCommand({
-              InstanceId: INSTANCE_ID,
+              InstanceId: instanceId,
               ContactId: b.contactId,
             })
           );
           const c = detail.Contact;
           if (!c) return;
 
-          const arn = `arn:aws:connect:${REGION}:${ACCOUNT_ID}:instance/${INSTANCE_ID}/contact/${b.contactId}`;
+          const arn = `arn:aws:connect:${REGION}:${ACCOUNT_ID}:instance/${instanceId}/contact/${b.contactId}`;
           const channel = c.Channel || b.channel || "UNKNOWN";
           const subChannel = deriveSubChannel(
             c.InitiationMethod,
@@ -296,7 +316,7 @@ export const handler: Handler = async (event: any) => {
               try {
                 const r = await connect.send(
                   new GetAttachedFileCommand({
-                    InstanceId: INSTANCE_ID,
+                    InstanceId: instanceId,
                     FileId: inline.attachmentId,
                     AssociatedResourceArn: arn,
                     UrlExpiryInSeconds: PRESIGN_EXPIRES,
@@ -329,7 +349,7 @@ export const handler: Handler = async (event: any) => {
           try {
             const refs = await connect.send(
               new ListContactReferencesCommand({
-                InstanceId: INSTANCE_ID,
+                InstanceId: instanceId,
                 ContactId: b.contactId,
                 ReferenceTypes: ["ATTACHMENT"],
               })
@@ -349,7 +369,7 @@ export const handler: Handler = async (event: any) => {
               try {
                 const r = await connect.send(
                   new GetAttachedFileCommand({
-                    InstanceId: INSTANCE_ID,
+                    InstanceId: instanceId,
                     FileId: att.Name,
                     AssociatedResourceArn: arn,
                     UrlExpiryInSeconds: PRESIGN_EXPIRES,

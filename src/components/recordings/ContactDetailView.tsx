@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { getApiEndpoints } from "@/lib/api";
+import { explainIntegrationError } from "@/lib/integrationErrors";
 import { AudioPlayer } from "@/components/recordings/AudioPlayer";
 import { TranscriptViewer } from "@/components/recordings/TranscriptViewer";
 import { ChatTranscriptView } from "@/components/recordings/ChatTranscriptView";
@@ -127,6 +128,21 @@ export function ContactDetailView({ contactId }: Props) {
   }
 
   if (error || !data) {
+    // Traducir el error crudo a un hint accionable (Contact Lens apagado,
+    // sin permiso S3, Connect no conectado, etc.) en vez de un 500 críptico.
+    const hint = explainIntegrationError(error, "recording");
+    if (hint) {
+      const hintColor =
+        hint.severity === "error" ? "var(--accent-red)" : hint.severity === "warn" ? "var(--accent-amber)" : "var(--accent-cyan)";
+      const hintBg =
+        hint.severity === "error" ? "var(--accent-red-soft)" : hint.severity === "warn" ? "var(--accent-amber-soft)" : "var(--accent-cyan-soft)";
+      return (
+        <div style={{ margin: 16, padding: "14px 16px", background: hintBg, borderRadius: 10, border: `1px solid color-mix(in srgb, ${hintColor} 30%, transparent)` }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: hintColor }}>{hint.title}</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 4, lineHeight: 1.5 }}>{hint.body}</div>
+        </div>
+      );
+    }
     return (
       <div
         style={{

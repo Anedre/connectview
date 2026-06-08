@@ -3,6 +3,7 @@ import {
   ConnectClient,
   SearchEmailAddressesCommand,
 } from "@aws-sdk/client-connect";
+import { resolveConnect } from "../_shared/tenantConnect";
 
 /**
  * list-email-addresses — returns the Connect email addresses the
@@ -24,17 +25,15 @@ export const handler: Handler = async (event: any) => {
   if (event.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS_HEADERS, body: "" };
   }
-  if (!INSTANCE_ID) {
-    return {
-      statusCode: 500,
-      headers: CORS_HEADERS,
-      body: JSON.stringify({ error: "CONNECT_INSTANCE_ID no configurado" }),
-    };
-  }
+  // Auth + tenant: resuelve el Connect del tenant del JWT. Anónimo →
+  // blockedConnectClient → SearchEmailAddresses devuelve vacío (cierra el leak de
+  // las direcciones de email de Connect de Novasys, que antes eran públicas).
+  // Tenant real → SU instancia + SUS direcciones.
+  const r = await resolveConnect(event.headers, connect, INSTANCE_ID);
   try {
-    const out = await connect.send(
+    const out = await r.client.send(
       new SearchEmailAddressesCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: r.instanceId,
         MaxResults: 100,
       })
     );

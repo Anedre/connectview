@@ -8,33 +8,39 @@ import {
   ScanCommand,
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const dynamo = new DynamoDBClient({});
-const connect = new ConnectClient({ maxAttempts: 1 });
+// BYO Connect + Data Plane (#43+#46): module-active.
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+let connect: ConnectClient = legacyConnect;
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+let instanceId = INSTANCE_ID;
 
-// Cache userId → username so we don't DescribeUser every poll.
+// Cache userId → username keyeada por instanceId.
 const userCache = new Map<string, string>();
 
 async function resolveUsername(userId: string): Promise<string> {
   if (!userId) return "";
-  if (userCache.has(userId)) return userCache.get(userId)!;
+  const k = `${instanceId}:${userId}`;
+  if (userCache.has(k)) return userCache.get(k)!;
   // If it's already a human-readable username (not a UUID), keep it.
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
   if (!isUuid) {
-    userCache.set(userId, userId);
+    userCache.set(k, userId);
     return userId;
   }
   try {
     const res = await connect.send(
-      new DescribeUserCommand({ InstanceId: INSTANCE_ID, UserId: userId })
+      new DescribeUserCommand({ InstanceId: instanceId, UserId: userId })
     );
     const username = res.User?.Username || userId;
-    userCache.set(userId, username);
+    userCache.set(k, username);
     return username;
   } catch {
-    userCache.set(userId, userId);
+    userCache.set(k, userId);
     return userId;
   }
 }
@@ -110,6 +116,13 @@ function aggregate(rows: ContactRow[]): Map<string, AgentScore> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // BYO Connect + Data Plane: setea connect/instanceId/dynamo.
+    {
+      const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+      connect = r.client;
+      instanceId = r.instanceId;
+      dynamo = r.dynamo || legacyDynamo;
+    }
     const params = event.queryStringParameters || {};
     const rangeDays = parseInt(params.days || "7");
     const limit = parseInt(params.limit || "10");

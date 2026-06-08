@@ -8,12 +8,19 @@ import {
   CustomerProfilesClient,
   SearchProfilesCommand,
 } from "@aws-sdk/client-customer-profiles";
+import { ConnectClient } from "@aws-sdk/client-connect";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const dynamo = new DynamoDBClient({});
-const profiles = new CustomerProfilesClient({ maxAttempts: 1 });
+// BYO (#43+#46): module-active.
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
+const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 1 });
+let profiles: CustomerProfilesClient = legacyProfiles;
 const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
-const CUSTOMER_PROFILES_DOMAIN =
+const LEGACY_CUSTOMER_PROFILES_DOMAIN =
   process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+let CUSTOMER_PROFILES_DOMAIN = LEGACY_CUSTOMER_PROFILES_DOMAIN;
 
 interface ContactRow {
   contactId: string;
@@ -154,6 +161,17 @@ async function lookupProfileName(phone: string): Promise<string | null> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // BYO (#43+#46): tenant primero, fallback Novasys.
+    {
+      const r = await resolveConnect(event?.headers, legacyConnect, "");
+      dynamo = r.dynamo || legacyDynamo;
+      profiles = r.customerProfiles || legacyProfiles;
+      // Fail-closed: tenant real sin CP resuelto → "" → no enriquecemos nombres
+      // desde Novasys (la data ya viene del DDB tenant-scoped/bloqueado).
+      CUSTOMER_PROFILES_DOMAIN = r.tenantScoped
+        ? r.customerProfilesDomain || ""
+        : LEGACY_CUSTOMER_PROFILES_DOMAIN;
+    }
     const params = event.queryStringParameters || {};
     const days = parseInt(params.days || "30");
     const limit = parseInt(params.limit || "5");

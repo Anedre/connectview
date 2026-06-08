@@ -4,6 +4,9 @@ import * as Icon from "@/components/vox/primitives";
 import { useDebugRender } from "@/lib/debugTrace";
 import { TemplatesPopover } from "@/components/workspace/TemplatesPopover";
 import { EmojiPicker } from "@/components/workspace/EmojiPicker";
+import { RewriterButton } from "@/components/workspace/RewriterButton";
+import { SuggestedReplies } from "@/components/workspace/SuggestedReplies";
+import { WindowCountdown } from "@/components/workspace/WindowCountdown";
 import { PreviousChatsDrawer } from "@/components/workspace/PreviousChatsDrawer";
 
 interface ChatThreadPanelProps {
@@ -345,6 +348,26 @@ export function ChatThreadPanel({
           background: "var(--bg-1)",
         }}
       >
+        {/* WhatsApp 24h window countdown — only renders for WA channels. */}
+        <WindowCountdown
+          messages={messages}
+          channel={channel}
+          channelLabel={channelLabel}
+        />
+
+        {/* Proactive reply suggestions (when the customer just wrote and
+            the agent hasn't started typing). */}
+        <SuggestedReplies
+          messages={messages}
+          customerName={customerName}
+          disabled={status !== "connected"}
+          draftEmpty={!draft.trim()}
+          onPick={(text) => {
+            setDraft(text);
+            textareaRef.current?.focus();
+          }}
+        />
+
         {/* Toolbar row */}
         <div
           style={{
@@ -387,6 +410,11 @@ export function ChatThreadPanel({
             // still let the user try anything else so they can attach
             // PDFs/images/audios from WhatsApp without us mis-guessing.
             accept="image/*,application/pdf,audio/*,video/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+          />
+          <RewriterButton
+            draft={draft}
+            disabled={status !== "connected"}
+            onRewritten={(text) => setDraft(text)}
           />
         </div>
         <div

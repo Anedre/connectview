@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useCallbacks,
@@ -7,6 +7,43 @@ import {
 import { sanitizeText } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
 import { useDebugRender } from "@/lib/debugTrace";
+
+const POSITION_KEY = "vox.followups.position";
+
+interface WidgetPosition {
+  /** Distance from the right edge of the viewport, in px. */
+  right: number;
+  /** Distance from the bottom edge of the viewport, in px. */
+  bottom: number;
+}
+
+function loadPosition(): WidgetPosition {
+  try {
+    const raw = localStorage.getItem(POSITION_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (
+        typeof p?.right === "number" &&
+        typeof p?.bottom === "number" &&
+        Number.isFinite(p.right) &&
+        Number.isFinite(p.bottom)
+      ) {
+        return { right: p.right, bottom: p.bottom };
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return { right: 12, bottom: 12 };
+}
+
+function savePosition(p: WidgetPosition) {
+  try {
+    localStorage.setItem(POSITION_KEY, JSON.stringify(p));
+  } catch {
+    /* ignore */
+  }
+}
 
 interface FollowupsDrawerProps {
   /** External refresh counter — bumped by the parent (e.g. when the
@@ -100,8 +137,12 @@ export function CallbackHistoryDrawer({
     return { dueSoonCount: dueSoon, dueNowCount: dueNow };
   }, [callbacks]);
 
+  // Drawer starts collapsed by default — even when items are due, we
+  // surface urgency through the red/amber chips in the header bar so
+  // the agent notices without losing softphone real estate. They click
+  // to expand. `openManual` overrides this once the user interacts.
   const [openManual, setOpenManual] = useState<boolean | null>(null);
-  const open = openManual ?? dueSoonCount + dueNowCount > 0;
+  const open = openManual ?? false;
 
   useDebugRender("FollowupsDrawer", {
     open,
@@ -113,6 +154,104 @@ export function CallbackHistoryDrawer({
     available,
   });
 
+  // ─── Draggable widget plumbing ────────────────────────────────
+  // Position is stored as (right, bottom) px from the viewport edges
+  // so the widget stays anchored relative to wherever the user
+  // dropped it — including after window resizes that don't change the
+  // edge distances. Persisted to localStorage.
+  const [position, setPosition] = useState<WidgetPosition>(() => loadPosition());
+  // Mirror of `position` in a ref so the pointerUp handler can read
+  // the LATEST value without being trapped in its render-time closure
+  // (setState is async; the closure pointerUp captures may still hold
+  // the pre-drag position when pointerUp fires).
+  const positionRef = useRef<WidgetPosition>(position);
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
+  const dragStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startRight: number;
+    startBottom: number;
+    moved: boolean;
+  } | null>(null);
+  // Survives past pointerUp into the click event so the click handler
+  // can tell apart "user actually clicked" from "drag just ended".
+  const justDraggedRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
+
+  const onHeaderPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-followups-toggle]")) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragStateRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startRight: position.right,
+      startBottom: position.bottom,
+      moved: false,
+    };
+    justDraggedRef.current = false;
+  };
+  const onHeaderPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const s = dragStateRef.current;
+    if (!s || s.pointerId !== e.pointerId) return;
+    const dx = e.clientX - s.startX;
+    const dy = e.clientY - s.startY;
+    if (!s.moved && Math.abs(dx) + Math.abs(dy) < 3) return;
+    if (!s.moved) {
+      s.moved = true;
+      setDragging(true);
+    }
+    const margin = 4;
+    const widgetW = 340;
+    const widgetH = 280;
+    const right = Math.max(
+      margin,
+      Math.min(window.innerWidth - widgetW - margin, s.startRight - dx)
+    );
+    const bottom = Math.max(
+      margin,
+      Math.min(window.innerHeight - widgetH - margin, s.startBottom - dy)
+    );
+    const next = { right, bottom };
+    positionRef.current = next;
+    setPosition(next);
+  };
+  const onHeaderPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const s = dragStateRef.current;
+    if (!s || s.pointerId !== e.pointerId) return;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch { /* noop */ }
+    if (s.moved) {
+      // Read from the ref — `position` from this closure may be stale
+      // because setState is async and pointerUp can fire before the
+      // last setPosition has flushed.
+      savePosition(positionRef.current);
+      setDragging(false);
+      // Flag so the click event that fires next swallows the toggle.
+      justDraggedRef.current = true;
+    }
+    dragStateRef.current = null;
+  };
+
+  const onHeaderClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Swallow the click that always fires after a successful drag.
+    if (justDraggedRef.current) {
+      justDraggedRef.current = false;
+      e.stopPropagation();
+      return;
+    }
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-followups-noclick]")) return;
+    setOpenManual((o) => !(o ?? open));
+  };
+
   if (!available) return null;
   if (callbacks.length === 0 && openManual !== true && !loading && !error)
     return null;
@@ -121,125 +260,139 @@ export function CallbackHistoryDrawer({
     <div
       data-debug-component="FollowupsDrawer"
       style={{
-        borderTop: "1px solid var(--border-1)",
+        position: "fixed",
+        bottom: position.bottom,
+        right: position.right,
+        width: 340,
         background: "var(--bg-1)",
-        flexShrink: 0,
-        maxHeight: open ? "40vh" : "auto",
+        border: "1px solid var(--border-1)",
+        borderRadius: 12,
+        boxShadow: dragging
+          ? "0 24px 60px -12px rgba(0,0,0,0.7), 0 0 0 1px var(--accent-violet)"
+          : open
+          ? "0 20px 48px -16px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.35)"
+          : "0 6px 20px -8px rgba(0,0,0,0.45)",
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
+        zIndex: 90,
+        transition: dragging ? "none" : "box-shadow .2s ease",
+        userSelect: dragging ? "none" : "auto",
       }}
     >
-      <button
-        type="button"
-        onClick={() => setOpenManual((o) => !(o ?? open))}
+      <div
+        role="button"
+        tabIndex={0}
+        onPointerDown={onHeaderPointerDown}
+        onPointerMove={onHeaderPointerMove}
+        onPointerUp={onHeaderPointerUp}
+        onPointerCancel={onHeaderPointerUp}
+        onClick={onHeaderClick}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpenManual((o) => !(o ?? open));
+          }
+        }}
         style={{
-          all: "unset",
           display: "flex",
           alignItems: "center",
-          gap: 10,
-          padding: "8px 14px",
-          cursor: "pointer",
-          fontSize: 12,
+          gap: 8,
+          padding: "8px 12px",
+          cursor: dragging ? "grabbing" : "grab",
+          fontSize: 11.5,
           color: "var(--text-2)",
-          width: "100%",
-          boxSizing: "border-box",
+          height: 38,
+          flexShrink: 0,
+          touchAction: "none",
         }}
-        title={open ? "Cerrar follow-ups" : "Ver follow-ups pendientes"}
+        title={open ? "Cerrar · arrastra para mover" : "Abrir · arrastra para mover"}
       >
+        <Icon.More size={12} style={{ color: "var(--text-4)", opacity: 0.7 }} />
         <span
           style={{
             display: "grid",
             placeItems: "center",
             width: 22,
             height: 22,
-            borderRadius: 999,
-            background: "var(--accent-cyan-soft)",
-            color: "var(--accent-cyan)",
+            borderRadius: 7,
+            background: dueNowCount > 0
+              ? "var(--accent-red-soft)"
+              : dueSoonCount > 0
+              ? "var(--accent-amber-soft)"
+              : "var(--accent-cyan-soft)",
+            color: dueNowCount > 0
+              ? "var(--accent-red)"
+              : dueSoonCount > 0
+              ? "var(--accent-amber)"
+              : "var(--accent-cyan)",
             fontSize: 11,
           }}
         >
-          📅
+          <Icon.Calendar size={12} />
         </span>
         <span style={{ fontWeight: 600, color: "var(--text-1)" }}>
-          Mis follow-ups
+          Follow-ups
         </span>
         <span
-          className="chip chip--cyan"
-          style={{ fontSize: 10, padding: "1px 6px" }}
+          className="mono"
+          style={{ fontSize: 11, color: "var(--text-3)" }}
         >
           {callbacks.length}
         </span>
         {dueNowCount > 0 && (
           <span
             className="chip chip--red"
-            style={{ fontSize: 10, padding: "1px 6px", fontWeight: 600 }}
+            style={{ fontSize: 9.5, padding: "1px 6px", fontWeight: 700, height: 18 }}
             title="Follow-ups que necesitan tu acción ahora"
           >
-            🔴 {dueNowCount} ahora
+            {dueNowCount} ahora
           </span>
         )}
         {dueSoonCount > 0 && (
           <span
             className="chip chip--amber"
-            style={{ fontSize: 10, padding: "1px 6px" }}
-            title="Callbacks que se disparan en menos de 5 minutos"
+            style={{ fontSize: 9.5, padding: "1px 6px", height: 18 }}
+            title="Se disparan en menos de 5 min"
           >
-            ⏰ {dueSoonCount} pronto
+            {dueSoonCount} pronto
           </span>
         )}
         {loading && (
-          <span className="muted mono" style={{ fontSize: 10 }}>
-            actualizando…
+          <span className="muted mono" style={{ fontSize: 9.5 }}>
+            …
           </span>
         )}
-        {error && (
-          <span style={{ color: "var(--accent-red)", fontSize: 10 }}>
-            {error}
-          </span>
-        )}
-        <span style={{ marginLeft: "auto", color: "var(--text-3)" }}>
-          {open ? "▾" : "▸"}
+        <span
+          data-followups-toggle
+          style={{ marginLeft: "auto", color: "var(--text-3)", fontSize: 10 }}
+        >
+          {open ? "▾" : "▴"}
         </span>
-      </button>
+      </div>
 
       {open && (
         <div
           style={{
+            maxHeight: 280,
             overflowY: "auto",
-            padding: "4px 8px 10px 8px",
+            padding: "4px 8px 8px",
             display: "flex",
             flexDirection: "column",
             gap: 4,
+            borderTop: "1px solid var(--border-1)",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              padding: "0 6px 4px",
-            }}
-          >
-            <button
-              type="button"
-              onClick={refetch}
-              className="btn btn--ghost btn--sm"
-              style={{ fontSize: 10.5 }}
-              disabled={loading}
-            >
-              <Icon.Refresh size={11} /> Recargar
-            </button>
-          </div>
           {callbacks.length === 0 ? (
             <div
               style={{
-                padding: "12px 14px",
-                fontSize: 12,
+                padding: "10px 14px",
+                fontSize: 11.5,
                 color: "var(--text-3)",
                 textAlign: "center",
               }}
             >
-              No tienes follow-ups pendientes. Agéndalos durante una llamada
-              con el botón <span style={{ whiteSpace: "nowrap" }}>📅 Agendar</span>.
+              No tienes follow-ups pendientes.
             </div>
           ) : (
             callbacks.map((c) => (
@@ -354,13 +507,24 @@ function FollowupRow({
     }
   };
 
+  // Channel-specific detail line — subject for email, template for
+  // whatsapp, falls back to notes for voice (or any channel).
+  const detailText: string | null =
+    ch === "email" && record.emailSubject
+      ? sanitizeText(record.emailSubject)
+      : ch === "whatsapp" && record.templateName
+      ? `Template · ${record.templateName}`
+      : record.notes
+      ? sanitizeText(record.notes)
+      : null;
+
   return (
     <div
+      data-followups-noclick
       style={{
         display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 10px",
+        gap: 8,
+        padding: "6px 8px",
         background: isDue
           ? "var(--accent-red-soft)"
           : countdown.urgent
@@ -370,34 +534,45 @@ function FollowupRow({
           ? "1px solid var(--accent-red)"
           : countdown.urgent
           ? "1px solid var(--accent-amber)"
-          : "1px solid transparent",
-        borderRadius: 6,
-        fontSize: 12,
+          : "1px solid var(--border-1)",
+        borderRadius: 8,
+        fontSize: 11.5,
       }}
     >
       <span
         style={{
           display: "grid",
           placeItems: "center",
-          width: 26,
-          height: 26,
-          borderRadius: 999,
+          width: 22,
+          height: 22,
+          borderRadius: 7,
           background: meta.bg,
           color: meta.color,
           flexShrink: 0,
-          fontSize: 13,
+          fontSize: 11,
+          marginTop: 1,
         }}
         title={meta.label}
       >
         {meta.icon}
       </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 1,
+        }}
+      >
+        {/* Line 1 — name · destination · countdown */}
         <div
           style={{
             display: "flex",
+            alignItems: "center",
             gap: 6,
-            alignItems: "baseline",
-            flexWrap: "wrap",
+            overflow: "hidden",
+            whiteSpace: "nowrap",
           }}
         >
           <span
@@ -406,116 +581,112 @@ function FollowupRow({
               color: "var(--text-1)",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              maxWidth: 140,
-              whiteSpace: "nowrap",
+              maxWidth: 130,
+              fontSize: 12,
             }}
+            title={sanitizeText(record.customerName) || "Cliente"}
           >
             {sanitizeText(record.customerName) || "Cliente"}
           </span>
           <span
             className="mono"
-            style={{ color: "var(--text-2)", fontSize: 11 }}
+            style={{
+              color: "var(--text-3)",
+              fontSize: 10,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              flexShrink: 1,
+              minWidth: 0,
+            }}
+            title={
+              ch === "email" && record.emailToAddress
+                ? record.emailToAddress
+                : record.phone
+            }
           >
             {ch === "email" && record.emailToAddress
               ? record.emailToAddress
               : record.phone}
           </span>
-          {isDue ? (
-            <span
-              style={{
-                fontSize: 10.5,
-                color: "var(--accent-red)",
-                fontWeight: 600,
-              }}
-              title={localTime}
-            >
-              🔴 ACCIÓN AHORA · {localTime}
-            </span>
-          ) : (
-            <span
-              className={countdown.urgent ? "" : "muted"}
-              style={{
-                fontSize: 10.5,
-                color: countdown.urgent
-                  ? "var(--accent-amber)"
-                  : countdown.past
-                  ? "var(--accent-red)"
-                  : undefined,
-                fontWeight: countdown.urgent ? 600 : 400,
-              }}
-              title={localTime}
-            >
-              {countdown.past ? "⚠ " : "⏰ "}
-              {countdown.label} · {localTime}
-            </span>
-          )}
+          <span
+            style={{
+              fontSize: 10,
+              color: isDue
+                ? "var(--accent-red)"
+                : countdown.urgent
+                ? "var(--accent-amber)"
+                : countdown.past
+                ? "var(--accent-red)"
+                : "var(--text-3)",
+              fontWeight: isDue || countdown.urgent ? 700 : 500,
+              marginLeft: "auto",
+              flexShrink: 0,
+              letterSpacing: "0.02em",
+            }}
+            title={localTime}
+          >
+            {isDue ? "AHORA" : countdown.label}
+          </span>
         </div>
-        {/* Channel-specific second line */}
-        {ch === "email" && record.emailSubject && (
+        {/* Line 2 — detail (subject / template / notes) */}
+        {detailText && (
           <div
             style={{
               fontSize: 10.5,
               color: "var(--text-3)",
-              marginTop: 2,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
+              lineHeight: 1.35,
             }}
-            title={sanitizeText(record.emailSubject)}
+            title={detailText}
           >
-            📧 {sanitizeText(record.emailSubject)}
+            {ch === "email" ? "📧 " : ch === "whatsapp" ? "💬 " : "📝 "}
+            {detailText}
           </div>
         )}
-        {ch === "whatsapp" && record.templateName && (
-          <div
-            style={{
-              fontSize: 10.5,
-              color: "var(--text-3)",
-              marginTop: 2,
-            }}
-            title={record.templateName}
-          >
-            💬 Template: {record.templateName}
-          </div>
-        )}
-        {record.notes && (
-          <div
-            style={{
-              fontSize: 10.5,
-              color: "var(--text-3)",
-              marginTop: 2,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={sanitizeText(record.notes)}
-          >
-            📝 {sanitizeText(record.notes)}
-          </div>
-        )}
+        {/* Line 3 — exact local time */}
+        <div
+          style={{
+            fontSize: 9.5,
+            color: "var(--text-4)",
+            lineHeight: 1.3,
+          }}
+        >
+          {localTime}
+        </div>
       </div>
-      <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 3,
+          flexShrink: 0,
+          alignItems: "flex-end",
+        }}
+      >
         {isDue && (
           <button
             type="button"
             onClick={handleComplete}
             disabled={completing || cancelling}
             className="btn btn--success btn--sm"
-            style={{ fontSize: 10.5, padding: "4px 8px" }}
-            title="Marca este follow-up como ya enviado/atendido"
+            style={{ fontSize: 10, padding: "2px 7px", height: 22 }}
+            title="Marca como enviado"
           >
-            {completing ? "…" : "✅ Enviado"}
+            {completing ? "…" : "Enviado"}
           </button>
         )}
         <button
           type="button"
           onClick={handleCancel}
           disabled={cancelling || completing}
-          className="btn btn--ghost btn--sm"
-          style={{ fontSize: 10.5, padding: "4px 8px" }}
-          title="Cancelar este follow-up"
+          className="btn btn--ghost btn--sm btn--icon"
+          style={{ width: 22, height: 22 }}
+          title="Cancelar follow-up"
+          aria-label="Cancelar"
         >
-          {cancelling ? "…" : "Cancelar"}
+          <Icon.Close size={11} />
         </button>
       </div>
     </div>

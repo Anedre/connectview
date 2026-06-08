@@ -33,3 +33,24 @@ deploy.zip
 
 # Local experiments / one-off scripts and flow dumps
 .scratch/
+.sf-keys/
+
+# SECRETOS / credenciales — NUNCA commitear (el repo remoto es público)
+sf-creds.txt
+*-creds.txt
+s_*.json
+*test-connection*.json
+*externalid*.json
+*-snapshot.json
+*tenant-config-snapshot*
+infra/*.json
+infra/*.ps1
+salesforce/
+_sf_deploy/
+
+# Binarios / handoff / temporales (no van al repo)
+*.apk
+_design_handoff/
+_design_handoff*
+_tmp_preview/
+entregables/

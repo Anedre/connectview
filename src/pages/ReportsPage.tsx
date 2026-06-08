@@ -3,10 +3,14 @@ import { toast } from "sonner";
 import { useContacts } from "@/hooks/useContacts";
 import { ContactFilters } from "@/components/reports/ContactFilters";
 import { SentimentChart } from "@/components/reports/SentimentChart";
+import { AgentPerformanceReport } from "@/components/reports/AgentPerformanceReport";
+import { HsmOutboundReport } from "@/components/reports/HsmOutboundReport";
 import { ContactsTable } from "@/components/reports/ContactsTable";
+import { FeatureNotice } from "@/components/vox/FeatureNotice";
 import { formatDurationSec } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
 import { Card, CardBody, CardHead, Kpi } from "@/components/vox/primitives";
+import { PageHeader } from "@/components/vox/PageHeader";
 import type { ContactRecord } from "@/types/monitoring";
 
 type ChannelKey = "voice" | "wa" | "chat" | "email" | "sms" | "task";
@@ -338,34 +342,33 @@ export function ReportsPage() {
 
   return (
     <div className="view">
-      <div className="view__head">
-        <div>
-          <div className="view__crumb">
-            <span>Crecimiento</span>
-          </div>
-          <h1 className="view__title">Reportes</h1>
-          <div className="view__sub">
-            Periodo · últimos 7 días · Contact Lens · {contacts.length} contactos
-          </div>
-        </div>
-        <div className="view__actions">
-          <button className="btn">
-            <Icon.Calendar size={14} /> Últimos 7 días
-          </button>
-          <button
-            className="btn"
-            disabled={contacts.length === 0}
-            onClick={() => exportContactsToCsv(contacts)}
-            title={
-              contacts.length === 0
-                ? "No hay contactos para exportar"
-                : `Descargar ${contacts.length} contactos como CSV`
-            }
-          >
-            <Icon.Download size={14} /> Exportar
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        crumb="Crecimiento"
+        title="Reportes"
+        sub={`Periodo · últimos 7 días · Contact Lens · ${contacts.length} contactos`}
+        filterPill="Todos"
+        actions={
+          <>
+            <button className="btn">
+              <Icon.Calendar size={14} /> Últimos 7 días
+            </button>
+            <button
+              className="btn"
+              disabled={contacts.length === 0}
+              onClick={() => exportContactsToCsv(contacts)}
+              title={
+                contacts.length === 0
+                  ? "No hay contactos para exportar"
+                  : `Descargar ${contacts.length} contactos como CSV`
+              }
+            >
+              <Icon.Download size={14} /> Exportar
+            </button>
+          </>
+        }
+      />
+
+      <FeatureNotice feature="contactLens" />
 
       <div className="kpi-grid">
         <Kpi
@@ -425,6 +428,27 @@ export function ReportsPage() {
         <CardHead title="Análisis de sentiment · Contact Lens" />
         <CardBody>
           <SentimentChart contacts={contacts} />
+        </CardBody>
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <CardHead
+          title="Rendimiento de agente"
+          right={
+            <span className="muted" style={{ fontSize: 11 }}>
+              click en columna para ordenar
+            </span>
+          }
+        />
+        <CardBody flush>
+          <AgentPerformanceReport contacts={contacts} />
+        </CardBody>
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <CardHead title="WhatsApp · Reporte de plantillas (HSM Outbound)" />
+        <CardBody>
+          <HsmOutboundReport />
         </CardBody>
       </Card>
 

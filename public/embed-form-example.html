@@ -1,0 +1,59 @@
+<!--
+  Vox — formulario web embebible (reemplazo de "Sappier").
+  Pegá este bloque en cualquier landing/sitio. Al enviar, el lead entra
+  directo al CRM (Customer Profiles) y se fusiona por teléfono con sus
+  contactos de voz/WhatsApp. No requiere backend del lado del cliente.
+
+  El endpoint es público (Function URL del Lambda connectview-web-form-capture).
+  Campos: phone (requerido) + cualquier otro (email, empresa, etc.) → se
+  guardan como atributos del perfil. `formId` traza de qué landing vino.
+-->
+<form id="vox-lead-form" style="max-width:380px;font-family:system-ui,sans-serif;display:grid;gap:10px">
+  <h3 style="margin:0 0 4px">Solicita información</h3>
+  <input name="nombre" placeholder="Nombre completo" required
+         style="padding:10px;border:1px solid #ccc;border-radius:8px" />
+  <input name="phone" placeholder="Teléfono (ej. 987654321)" required
+         style="padding:10px;border:1px solid #ccc;border-radius:8px" />
+  <input name="email" type="email" placeholder="Email"
+         style="padding:10px;border:1px solid #ccc;border-radius:8px" />
+  <select name="programa_interes" style="padding:10px;border:1px solid #ccc;border-radius:8px">
+    <option value="">Programa de interés…</option>
+    <option>Pregrado</option>
+    <option>Maestría</option>
+    <option>Diplomado</option>
+  </select>
+  <input type="hidden" name="formId" value="landing-ejemplo" />
+  <input type="hidden" name="source" value="web_form" />
+  <button type="submit"
+          style="padding:11px;border:0;border-radius:8px;background:#6366f1;color:#fff;font-weight:600;cursor:pointer">
+    Enviar
+  </button>
+  <p id="vox-lead-msg" style="margin:0;font-size:13px;color:#555"></p>
+</form>
+
+<script>
+  (function () {
+    // ← Reemplazá por la Function URL del Lambda connectview-web-form-capture.
+    var VOX_ENDPOINT = "https://ewueot5u74raowbl3lusqit4qy0wiiyi.lambda-url.us-east-1.on.aws/";
+    var form = document.getElementById("vox-lead-form");
+    var msg = document.getElementById("vox-lead-msg");
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      msg.textContent = "Enviando…";
+      var data = Object.fromEntries(new FormData(form).entries());
+      fetch(VOX_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          msg.textContent = j.ok
+            ? "¡Gracias! Te contactaremos pronto."
+            : "No se pudo enviar, intenta de nuevo.";
+          if (j.ok) form.reset();
+        })
+        .catch(function () { msg.textContent = "Error de conexión."; });
+    });
+  })();
+</script>

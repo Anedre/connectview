@@ -13,14 +13,21 @@ import {
   ListProfileObjectsCommand,
 } from "@aws-sdk/client-customer-profiles";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const connect = new ConnectClient({ maxAttempts: 1 });
-const profiles = new CustomerProfilesClient({ maxAttempts: 1 });
-const s3 = new S3Client({});
+// BYO (#43+#46): module-active. Connect + S3 + Customer Profiles + domain.
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+let connect: ConnectClient = legacyConnect;
+const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 1 });
+let profiles: CustomerProfilesClient = legacyProfiles;
+const legacyS3 = new S3Client({});
+let s3: S3Client = legacyS3;
 
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
-const CUSTOMER_PROFILES_DOMAIN =
+let instanceId = INSTANCE_ID;
+const LEGACY_CUSTOMER_PROFILES_DOMAIN =
   process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+let CUSTOMER_PROFILES_DOMAIN = LEGACY_CUSTOMER_PROFILES_DOMAIN;
 const REGION = process.env.AWS_REGION || "us-east-1";
 const ACCOUNT_ID = process.env.AWS_ACCOUNT_ID || "";
 const PRESIGN_EXPIRES = 3600;
@@ -69,19 +76,20 @@ interface ThreadSession {
 
 async function resolveAgentUsername(agentId: string): Promise<string> {
   if (!agentId) return "";
-  if (userNameCache.has(agentId)) return userNameCache.get(agentId)!;
+  const k = `${instanceId}:${agentId}`;
+  if (userNameCache.has(k)) return userNameCache.get(k)!;
   try {
     const r = await connect.send(
       new DescribeUserCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         UserId: agentId,
       })
     );
     const name = r.User?.Username || agentId;
-    userNameCache.set(agentId, name);
+    userNameCache.set(k, name);
     return name;
   } catch {
-    userNameCache.set(agentId, agentId);
+    userNameCache.set(k, agentId);
     return agentId;
   }
 }
@@ -149,7 +157,7 @@ async function findChatContactIds(phone: string): Promise<
         nextToken = r.NextToken;
       }
       const ids = items
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         .map((it) => {
           try {
             return JSON.parse(it.Object || "{}");
@@ -182,7 +190,7 @@ async function findChatContactIds(phone: string): Promise<
     start.setDate(start.getDate() - 90);
     const sc = await connect.send(
       new SearchContactsCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         TimeRange: {
           Type: "INITIATION_TIMESTAMP",
           StartTime: start,
@@ -355,14 +363,14 @@ async function resolveAttachmentUrls(
     );
     if (attachmentMsgs.length === 0) continue;
 
-    const arn = `arn:aws:connect:${REGION}:${ACCOUNT_ID}:instance/${INSTANCE_ID}/contact/${contactId}`;
+    const arn = `arn:aws:connect:${REGION}:${ACCOUNT_ID}:instance/${instanceId}/contact/${contactId}`;
     // GetAttachedFile is serial per file — Connect doesn't accept a batch.
     // Cap at 50 per session to bound Lambda runtime.
     for (const m of attachmentMsgs.slice(0, 50)) {
       try {
         const r = await connect.send(
           new GetAttachedFileCommand({
-            InstanceId: INSTANCE_ID,
+            InstanceId: instanceId,
             FileId: m.attachment!.id,
             AssociatedResourceArn: arn,
             UrlExpiryInSeconds: PRESIGN_EXPIRES,
@@ -384,7 +392,7 @@ async function resolveAttachmentUrls(
     try {
       const refs = await connect.send(
         new ListContactReferencesCommand({
-          InstanceId: INSTANCE_ID,
+          InstanceId: instanceId,
           ContactId: contactId,
           ReferenceTypes: ["ATTACHMENT"],
         })
@@ -398,7 +406,7 @@ async function resolveAttachmentUrls(
         try {
           const r = await connect.send(
             new GetAttachedFileCommand({
-              InstanceId: INSTANCE_ID,
+              InstanceId: instanceId,
               FileId: att.Name,
               AssociatedResourceArn: arn,
               UrlExpiryInSeconds: PRESIGN_EXPIRES,
@@ -438,6 +446,19 @@ export const handler: Handler = async (event: any) => {
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
   }
+  // BYO (#43+#46): tenant primero, fallback Novasys.
+  {
+    const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    connect = r.client;
+    instanceId = r.instanceId;
+    s3 = r.s3 || legacyS3;
+    profiles = r.customerProfiles || legacyProfiles;
+    // Fail-closed: tenant real sin CP resuelto → "" (Strategy 1 se saltea y
+    // cae a SearchContacts del Connect del tenant), NUNCA el dominio de Novasys.
+    CUSTOMER_PROFILES_DOMAIN = r.tenantScoped
+      ? r.customerProfilesDomain || ""
+      : LEGACY_CUSTOMER_PROFILES_DOMAIN;
+  }
   const phone = event?.queryStringParameters?.phone;
   if (!phone) {
     return {
@@ -474,7 +495,7 @@ export const handler: Handler = async (event: any) => {
         try {
           const detail = await connect.send(
             new DescribeContactCommand({
-              InstanceId: INSTANCE_ID,
+              InstanceId: instanceId,
               ContactId: entry.contactId,
             })
           );

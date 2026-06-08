@@ -3,20 +3,26 @@ import {
   ConnectClient,
   ListQueuesCommand,
 } from "@aws-sdk/client-connect";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const connect = new ConnectClient({ maxAttempts: 1 });
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const handler: Handler = async () => {
+export const handler: Handler = async (event) => {
   try {
+    // Connect del tenant (o legacy de Vox si no está configurado / sin token).
+    const { client: connect, instanceId } = await resolveConnect(
+      (event as { headers?: Record<string, string | undefined> })?.headers,
+      legacyConnect,
+      INSTANCE_ID
+    );
     const queues: Array<{ id: string; name: string; type: string; arn: string }> =
       [];
     let nextToken: string | undefined;
     do {
       const res = await connect.send(
         new ListQueuesCommand({
-          InstanceId: INSTANCE_ID,
+          InstanceId: instanceId,
           QueueTypes: ["STANDARD"],
           NextToken: nextToken,
           MaxResults: 100,

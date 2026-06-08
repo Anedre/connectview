@@ -168,9 +168,9 @@ export function useChatSession(contactId: string | null | undefined, channel: st
                 scanDirection: "BACKWARD",
                 sortOrder: "ASCENDING",
               });
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+               
               const items = tx?.data?.Transcript || tx?.Transcript || [];
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+               
               const msgs = items
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 .map((it: any) => extractMessage({ data: it }))
@@ -239,9 +239,9 @@ export function useChatSession(contactId: string | null | undefined, channel: st
               scanDirection: "BACKWARD",
               sortOrder: "ASCENDING",
             });
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             const items = tx?.data?.Transcript || tx?.Transcript || [];
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             const msgs = items
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               .map((it: any) => extractMessage({ data: it }))

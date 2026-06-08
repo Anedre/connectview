@@ -8,8 +8,11 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { randomUUID } from "node:crypto";
+import { resolveDynamo } from "../_shared/tenantConnect";
 
-const dynamo = new DynamoDBClient({});
+// BYO Data Plane (#46): tenant primero, fallback Vox pooled.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
@@ -52,6 +55,8 @@ async function listContacts(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // BYO Data Plane (#46): tenant primero, fallback Vox.
+    ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
     const body: CloneBody = JSON.parse(event.body || "{}");
     const { campaignId } = body;
     const includeContacts = body.includeContacts !== false;

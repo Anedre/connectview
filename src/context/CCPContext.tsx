@@ -8,9 +8,23 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { toast } from "sonner";
 import type { AgentState } from "@/types/connect";
+import { useConnectAuth } from "@/context/ConnectAuthContext";
+import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+/** Despedida genérica (sin marca) que el agente envía al cerrar un chat/WhatsApp
+ *  cuando el tenant no configuró la suya (config.messaging.chatFarewell). Antes
+ *  acá vivía un texto hardcodeado de la Universidad de Piura — movido a config
+ *  por tenant para des-acoplar el producto del primer cliente. */
+const DEFAULT_CHAT_FAREWELL =
+  "👋 ¡Gracias por escribirnos!\n\n" +
+  "Esperamos haber resuelto tu consulta. Si necesitás algo más, " +
+  "escribí *hola* para empezar de nuevo. 🙌\n\n" +
+  "¡Que tengas un excelente día! ✨";
 
 export interface ConnectAgentState {
   name: string;
@@ -60,6 +74,24 @@ interface CCPContextValue {
     queueArn: string,
     contactId?: string
   ) => Promise<void>;
+  /** Add a 3rd party leg to the contact by phone number. The agent
+   *  stays connected to both customer + 3rd party (3-way conference).
+   *  Use `dropAgentLeg` afterwards to finalize a warm transfer once
+   *  the agent finishes briefing the 3rd party. */
+  addParticipantByPhone: (
+    phoneNumber: string,
+    contactId?: string
+  ) => Promise<void>;
+  /** Add a queue (or 3rd-party queue) leg without dropping the agent —
+   *  the warm-transfer half-step. Pair with `dropAgentLeg` to complete. */
+  addParticipantByQueue: (
+    queueArn: string,
+    contactId?: string
+  ) => Promise<void>;
+  /** Drop the agent's own connection on the contact without killing
+   *  the other legs. Completes a warm transfer; also exits an active
+   *  conference, leaving the 3rd party + customer connected. */
+  dropAgentLeg: (contactId?: string) => void;
   /** Push key/value attributes onto the currently-attached contact (sent
    *  via streams `contact.addAttributes` so they land on the CTR). */
   setContactAttributes: (attrs: Record<string, string>) => void;
@@ -77,6 +109,25 @@ interface CCPContextValue {
    *  the one you'd get back from `getQuickConnects()`. Wraps
    *  `agent.connect(endpoint)`. */
   connectToEndpoint: (endpoint: unknown) => Promise<void>;
+  /** Active supervisor monitoring session, if the CCP is currently
+   *  monitoring another agent's contact (detected via the Streams
+   *  monitor status on the delivered monitor contact). null otherwise. */
+  monitorSession: MonitorSession | null;
+  /** Switch the live monitor session between silent listen and barge.
+   *  No-op if there's no active monitor session. */
+  setMonitorState: (mode: "SILENT_MONITOR" | "BARGE") => void;
+  /** Leave the monitor session (destroys the supervisor's monitor leg). */
+  endMonitor: () => void;
+}
+
+/** What the supervisor is currently monitoring. `mode` reflects the live
+ *  Streams monitor status (SILENT_MONITOR while listening, BARGE while
+ *  intervening). */
+export interface MonitorSession {
+  contactId: string;
+  mode: "SILENT_MONITOR" | "BARGE";
+  /** Capabilities granted to this session (what it can switch to). */
+  capabilities: string[];
 }
 
 /** Minimal projection of a Streams endpoint used by the Quick Connects
@@ -111,50 +162,123 @@ export function CCPProvider({ children }: { children: ReactNode }) {
   const [muted, setMuted] = useState(false);
   const [onHold, setOnHold] = useState(false);
   const [recording, setRecording] = useState(true);
+  const [monitorSession, setMonitorSession] = useState<MonitorSession | null>(
+    null
+  );
   const agentRef = useRef<any>(null);
   const contactRef = useRef<any>(null);
+  // Guard: auto-confirmamos el vínculo Vox↔Connect (capa 2) una sola vez por
+  // sesión, la primera vez que el agente se loguea al softphone.
+  const linkConfirmedRef = useRef(false);
+  // The supervisor's own monitor contact (set when a monitor session is
+  // delivered to this CCP). Kept separate from contactRef so monitoring
+  // never clobbers the agent's own active contact.
+  const monitorContactRef = useRef<any>(null);
 
-  const attachToContact = useCallback((contact: any) => {
-    if (!contact) return;
-    contactRef.current = contact;
-    const refreshHold = () => {
-      try {
-        const activeConn = contact.getActiveInitialConnection?.();
-        const hold = activeConn?.isOnHold?.();
-        if (typeof hold === "boolean") setOnHold(hold);
-      } catch {
-        /* noop */
+  /** Detect / refresh whether `contact` is a supervisor monitor session.
+   *  The supervisor's agent connection on a monitored contact exposes
+   *  getMonitorStatus() (SILENT_MONITOR | BARGE) — present only for the
+   *  supervisor, undefined for a normal agent contact. */
+  const refreshMonitor = useCallback((contact: any) => {
+    try {
+      const conn =
+        contact.getAgentConnection?.() ||
+        contact.getActiveInitialConnection?.();
+      const status: string | undefined = conn?.getMonitorStatus?.();
+      if (status === "SILENT_MONITOR" || status === "BARGE") {
+        monitorContactRef.current = contact;
+        const caps: string[] = conn?.getMonitorCapabilities?.() ?? [];
+        setMonitorSession({
+          contactId: contact.getContactId?.() || "",
+          mode: status,
+          capabilities: caps,
+        });
+      } else if (monitorContactRef.current === contact) {
+        // Was a monitor session, no longer reporting a status → clear.
+        monitorContactRef.current = null;
+        setMonitorSession(null);
       }
-    };
-    refreshHold();
-    try { contact.onConnecting?.(refreshHold); } catch { /* noop */ }
-    try { contact.onAccepted?.(refreshHold); } catch { /* noop */ }
-    try { contact.onConnected?.(refreshHold); } catch { /* noop */ }
-    try { contact.onRefresh?.(refreshHold); } catch { /* noop */ }
-    try { contact.onACW?.(refreshHold); } catch { /* noop */ }
-    try {
-      contact.onEnded?.(() => {
-        if (contactRef.current === contact) {
-          contactRef.current = null;
-          setOnHold(false);
-          setMuted(false);
-        }
-      });
-    } catch {
-      /* noop */
-    }
-    try {
-      contact.onDestroy?.(() => {
-        if (contactRef.current === contact) {
-          contactRef.current = null;
-        }
-      });
     } catch {
       /* noop */
     }
   }, []);
 
+  const attachToContact = useCallback(
+    (contact: any) => {
+      if (!contact) return;
+      // Monitor sessions are tracked separately — don't let them take the
+      // agent's own contact slot.
+      const isMonitor = (() => {
+        try {
+          const conn =
+            contact.getAgentConnection?.() ||
+            contact.getActiveInitialConnection?.();
+          const st = conn?.getMonitorStatus?.();
+          return st === "SILENT_MONITOR" || st === "BARGE";
+        } catch {
+          return false;
+        }
+      })();
+      if (!isMonitor) contactRef.current = contact;
+
+      const refreshHold = () => {
+        try {
+          const activeConn = contact.getActiveInitialConnection?.();
+          const hold = activeConn?.isOnHold?.();
+          if (typeof hold === "boolean") setOnHold(hold);
+        } catch {
+          /* noop */
+        }
+        // Re-evaluate monitor status on every lifecycle tick — the status
+        // is only populated once the monitor leg connects/refreshes.
+        refreshMonitor(contact);
+      };
+      refreshHold();
+      try { contact.onConnecting?.(refreshHold); } catch { /* noop */ }
+      try { contact.onAccepted?.(refreshHold); } catch { /* noop */ }
+      try { contact.onConnected?.(refreshHold); } catch { /* noop */ }
+      try { contact.onRefresh?.(refreshHold); } catch { /* noop */ }
+      try { contact.onACW?.(refreshHold); } catch { /* noop */ }
+      try {
+        contact.onEnded?.(() => {
+          if (contactRef.current === contact) {
+            contactRef.current = null;
+            setOnHold(false);
+            setMuted(false);
+          }
+          if (monitorContactRef.current === contact) {
+            monitorContactRef.current = null;
+            setMonitorSession(null);
+          }
+        });
+      } catch {
+        /* noop */
+      }
+      try {
+        contact.onDestroy?.(() => {
+          if (contactRef.current === contact) {
+            contactRef.current = null;
+          }
+          if (monitorContactRef.current === contact) {
+            monitorContactRef.current = null;
+            setMonitorSession(null);
+          }
+        });
+      } catch {
+        /* noop */
+      }
+    },
+    [refreshMonitor]
+  );
+
+  // Onboarding (#46/47): si el tenant todavía no conectó su Connect,
+  // ConnectAuthContext salta el initCCP iframe. Acá hacemos lo mismo →
+  // no nos suscribimos a connect.agent / connect.contact (esos throws son
+  // los que aparecen como "Cannot read properties of undefined" en el chip).
+  const { isOnboarding, chatFarewell } = useConnectAuth();
+
   useEffect(() => {
+    if (isOnboarding) return;
     if (typeof (globalThis as any).connect === "undefined") return;
     const conn = (globalThis as any).connect;
 
@@ -211,58 +335,142 @@ export function CCPProvider({ children }: { children: ReactNode }) {
     }, 250);
     setTimeout(() => clearInterval(chatRegionPoller), 30_000);
 
-    try {
-      conn.agent((agent: any) => {
-        agentRef.current = agent;
-        setAgentName(agent.getName());
-        setIsInitialized(true);
+    // La suscripción al agente/contactos DEBE correr después de que initCCP
+    // (ConnectAuthContext) haya creado connect.core + el event bus. Con la
+    // identidad Vox-first, este provider monta apenas hay sesión de Cognito —
+    // potencialmente ANTES de que initCCP (async, espera el federation token)
+    // termine. Si nos suscribimos antes, conn.agent hace getEventBus().subscribe
+    // sobre un bus inexistente → "Cannot read properties of undefined (reading
+    // 'subscribe')". Por eso gateamos en readiness y reintentamos.
+    const subscribeAgentAndContact = (): boolean => {
+      try {
+        if (!conn.core?.getEventBus?.()) return false; // bus todavía no creado
+        conn.agent((agent: any) => {
+          agentRef.current = agent;
+          setAgentName(agent.getName());
+          setIsInitialized(true);
 
-        const currentState = agent.getState();
-        setAgentState(currentState.name as AgentState);
-
-        try {
-          const states = agent.getAgentStates?.() ?? [];
-          setAvailableStates(
-            states.map((s: any) => ({
-              name: s.name,
-              type: s.type,
-              agentStateARN: s.agentStateARN,
-            }))
-          );
-        } catch {
-          /* noop */
-        }
-
-        agent.onStateChange((stateChange: any) => {
-          setAgentState(stateChange.newState as AgentState);
-        });
-        agent.onMuteToggle?.(({ muted: m }: { muted: boolean }) => setMuted(m));
-        agent.onError(() => {
-          setError("Agent connection error");
-          setAgentState("Error");
-        });
-
-        // Attach to ANY contact already on the agent (the global
-        // `connect.contact()` subscription only fires for *new* contacts,
-        // so without this the softphone buttons stay inert if the call
-        // arrived before this provider mounted).
-        try {
-          const existing = agent.getContacts?.() ?? [];
-          for (const c of existing) {
-            attachToContact(c);
+          // Auto-confirmación del vínculo Vox↔Connect (capa 2): la primera vez
+          // que el agente se loguea al softphone, guardamos su username REAL de
+          // Connect en su usuario de Vox (custom:connectUser). Esto "prueba" la
+          // identidad (pudo loguearse a ese agente). Idempotente + 1 vez/sesión.
+          if (!linkConfirmedRef.current) {
+            try {
+              const connectUsername = agent.getConfiguration?.()?.username;
+              if (connectUsername) {
+                linkConfirmedRef.current = true;
+                const ep = getApiEndpoints();
+                if (ep?.setConnectLink) {
+                  void authedFetch(ep.setConnectLink, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ connectUser: connectUsername }),
+                  })
+                    .then((r) => r.json().catch(() => ({})))
+                    .then((j: { ok?: boolean; code?: string; confirmed?: string; error?: string }) => {
+                      // Si el agente con el que entró NO es el que su admin le
+                      // asignó, se lo avisamos (el backend rechaza la confirmación).
+                      if (j?.code === "mismatch") {
+                        toast.error(j.error || "El agente de Connect con el que entraste no coincide con el que te asignaron.");
+                      } else if (j?.ok && j?.confirmed) {
+                        toast.success(`Tu agente de Connect quedó confirmado: ${j.confirmed}`);
+                      }
+                      // code === "no_assignment" → silencio (el admin todavía no asignó).
+                    })
+                    .catch(() => { /* no fatal: el admin igual puede asignar a mano */ });
+                }
+              }
+            } catch {
+              /* noop */
+            }
           }
-        } catch {
-          /* noop */
-        }
-      });
 
-      conn.contact?.((contact: any) => {
-        attachToContact(contact);
-      });
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to subscribe to agent"
-      );
+          // Snapshot helper: lee estado actual + lista de estados disponibles.
+          // Streams a veces entrega el agente ANTES de que el routing profile
+          // esté hidratado → getAgentStates() viene vacío. Si solo leyéramos una
+          // vez acá, el pill de disponibilidad quedaría disabled para siempre
+          // (canChange = availableStates.length > 0). Por eso re-sincronizamos en
+          // cada onRefresh y en cada cambio de estado: el pill se auto-recupera.
+          const syncAgentSnapshot = () => {
+            try {
+              const st = agent.getState?.();
+              if (st?.name) setAgentState(st.name as AgentState);
+            } catch {
+              /* noop */
+            }
+            try {
+              const states = agent.getAgentStates?.() ?? [];
+              // Solo pisamos la lista si vino con contenido — nunca la borramos
+              // con un snapshot transitorio vacío.
+              if (Array.isArray(states) && states.length > 0) {
+                setAvailableStates(
+                  states.map((s: any) => ({
+                    name: s.name,
+                    type: s.type,
+                    agentStateARN: s.agentStateARN,
+                  }))
+                );
+              }
+            } catch {
+              /* noop */
+            }
+          };
+
+          syncAgentSnapshot();
+
+          agent.onStateChange((stateChange: any) => {
+            setAgentState(stateChange.newState as AgentState);
+            // Re-leemos por si los estados recién ahora se poblaron.
+            syncAgentSnapshot();
+          });
+          // CRÍTICO para el bug del pill: onRefresh dispara cada vez que Streams
+          // actualiza el snapshot del agente (incluido el momento en que el
+          // routing profile / los estados terminan de cargar).
+          agent.onRefresh?.(() => {
+            try {
+              const n = agent.getName?.();
+              if (n) setAgentName(n);
+            } catch {
+              /* noop */
+            }
+            syncAgentSnapshot();
+          });
+          agent.onMuteToggle?.(({ muted: m }: { muted: boolean }) => setMuted(m));
+          agent.onError(() => {
+            setError("Agent connection error");
+            setAgentState("Error");
+          });
+
+          // Attach to ANY contact already on the agent (the global
+          // `connect.contact()` subscription only fires for *new* contacts,
+          // so without this the softphone buttons stay inert if the call
+          // arrived before this provider mounted).
+          try {
+            const existing = agent.getContacts?.() ?? [];
+            for (const c of existing) {
+              attachToContact(c);
+            }
+          } catch {
+            /* noop */
+          }
+        });
+
+        conn.contact?.((contact: any) => {
+          attachToContact(contact);
+        });
+        return true;
+      } catch {
+        return false; // bus a medio crear → reintentamos
+      }
+    };
+
+    if (!subscribeAgentAndContact()) {
+      const poll = setInterval(() => {
+        if (subscribeAgentAndContact()) clearInterval(poll);
+      }, 300);
+      // Tope: si en 30s el CCP no levantó (sin sesión / origen no aprobado),
+      // dejamos de reintentar. La app sigue; el softphone queda no-disponible.
+      setTimeout(() => clearInterval(poll), 30_000);
     }
   }, [attachToContact]);
 
@@ -281,7 +489,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       if (targetId && a) {
         try {
           const list = a.getContacts?.() ?? [];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           const target = list.find(
             (c: any) => c.getContactId?.() === targetId
           );
@@ -297,7 +505,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       if (!a) return null;
       try {
         const list = a.getContacts?.() ?? [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const live = list.find((c: any) => {
           const st = c.getState?.()?.type;
           return st && st !== "ended" && st !== "destroyed";
@@ -356,17 +564,11 @@ export function CCPProvider({ children }: { children: ReactNode }) {
    * again" the moment the agent ends the contact — Connect's own
    * disconnect-flow trigger doesn't reliably fire for WhatsApp.
    *
-   * Kept here as a constant so it stays in sync with the equivalent
-   * text in the UDEP-Disconnect contact flow.
+   * Sale de la config del tenant (`messaging.chatFarewell`, vía ConnectAuthContext);
+   * si el tenant no la configuró, usamos el default genérico del producto. El
+   * fundador conserva su texto UDEP porque vive en SU config, no en el código.
    */
-  const CHAT_FAREWELL_TEMPLATE =
-    "👋 ¡Gracias por contactarte con la *Universidad de Piura*! 🎓\n\n" +
-    "💙 Esperamos haber resuelto tu consulta.\n\n" +
-    "📝 Si necesitas algo más:\n" +
-    "✍️ Escríbenos *hola* para empezar de nuevo 🔁\n" +
-    "🌐 Visítanos en udep.edu.pe\n\n" +
-    "🎉 ¡Que tengas un excelente día! ✨\n" +
-    "🚀 ¡Te esperamos en la UDEP! 🎓💙";
+  const CHAT_FAREWELL_TEMPLATE = chatFarewell || DEFAULT_CHAT_FAREWELL;
 
   // Best-effort: send a message on the agent's chat session for a
   // given contact. Returns a promise that resolves whether the send
@@ -449,12 +651,12 @@ export function CCPProvider({ children }: { children: ReactNode }) {
   // We hard-mute every <audio>/<video> element on the page after the
   // action, then unmute non-ringtone elements so the actual softphone /
   // chat audio still works.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const stopRingtone = useCallback(() => {
     try {
       // 1) Try the streams API path first — agent.mute() on the ringtone
       //    sub-system. The exact symbol differs across versions of streams.
-      //    eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const conn = (globalThis as any).connect;
       const core = conn?.core;
       // Stop currently-playing ringtone media if streams exposes it.
@@ -627,7 +829,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
     async (queueArn: string, contactId?: string) => {
       return new Promise<void>((resolve, reject) => {
         const c = currentContact(contactId);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const conn = (globalThis as any).connect;
         if (!c || !conn?.Endpoint) {
           reject(new Error("Streams no listo"));
@@ -663,6 +865,115 @@ export function CCPProvider({ children }: { children: ReactNode }) {
           );
         }
       });
+    },
+    [currentContact]
+  );
+
+  /**
+   * Add a 3rd-party leg by phone number. Unlike `transferToQueue`,
+   * this DOES NOT drop the agent leg — the result is a 3-way bridge
+   * (agent + customer + 3rd party). The caller can later finalize a
+   * warm transfer by invoking `dropAgentLeg`.
+   */
+  const addParticipantByPhone = useCallback(
+    async (phoneNumber: string, contactId?: string) => {
+      return new Promise<void>((resolve, reject) => {
+        const c = currentContact(contactId);
+        const conn = (globalThis as any).connect;
+        if (!c || !conn?.Endpoint) {
+          reject(new Error("Streams no listo"));
+          return;
+        }
+        const num = phoneNumber.trim();
+        if (!/^\+\d{7,15}$/.test(num)) {
+          reject(new Error("Número inválido (usa formato E.164 con +)"));
+          return;
+        }
+        try {
+          const endpoint = conn.Endpoint.byPhoneNumber(num);
+          c.addConnection?.(endpoint, {
+            success: () => resolve(),
+            failure: (err: unknown) => {
+              const msg =
+                err instanceof Error
+                  ? err.message
+                  : typeof err === "string"
+                  ? err
+                  : "No se pudo añadir el participante";
+              reject(new Error(msg));
+            },
+          });
+        } catch (err) {
+          reject(
+            err instanceof Error
+              ? err
+              : new Error("No se pudo añadir el participante")
+          );
+        }
+      });
+    },
+    [currentContact]
+  );
+
+  /**
+   * Warm-transfer half-step: opens the queue leg WITHOUT dropping the
+   * agent. The agent ends up in a 3-way bridge with whichever agent
+   * picks the contact up from the destination queue, can brief them,
+   * then finalizes via `dropAgentLeg`.
+   */
+  const addParticipantByQueue = useCallback(
+    async (queueArn: string, contactId?: string) => {
+      return new Promise<void>((resolve, reject) => {
+        const c = currentContact(contactId);
+        const conn = (globalThis as any).connect;
+        if (!c || !conn?.Endpoint) {
+          reject(new Error("Streams no listo"));
+          return;
+        }
+        try {
+          const endpoint = conn.Endpoint.byQueueARN(queueArn);
+          c.addConnection?.(endpoint, {
+            success: () => resolve(),
+            failure: (err: unknown) => {
+              const msg =
+                err instanceof Error
+                  ? err.message
+                  : typeof err === "string"
+                  ? err
+                  : "No se pudo añadir el participante";
+              reject(new Error(msg));
+            },
+          });
+        } catch (err) {
+          reject(
+            err instanceof Error
+              ? err
+              : new Error("No se pudo añadir el participante")
+          );
+        }
+      });
+    },
+    [currentContact]
+  );
+
+  /**
+   * Drop the agent's own leg without ending the other connections.
+   * Completes a warm transfer; if used while a conference is active,
+   * leaves customer + 3rd party connected (Streams keeps the bridge
+   * up via the contact's outbound whisper flow). Silent no-op when
+   * the streams contact / connection is missing.
+   */
+  const dropAgentLeg = useCallback(
+    (contactId?: string) => {
+      const c = currentContact(contactId);
+      if (!c) return;
+      try {
+        const agentConn =
+          c.getAgentConnection?.() || c.getActiveInitialConnection?.();
+        agentConn?.destroy?.();
+      } catch {
+        /* swallow — best-effort */
+      }
     },
     [currentContact]
   );
@@ -897,6 +1208,55 @@ export function CCPProvider({ children }: { children: ReactNode }) {
   // and forces every consumer of `useCCP()` to re-render even when
   // none of the fields actually changed. That re-render cascade is a
   // big contributor to the parpadeo on the agent desktop.
+  // Switch the live monitor session listen↔barge via the Streams
+  // convenience methods on the monitor contact. Optimistically updates the
+  // local mode; refreshMonitor reconciles when Streams fires onRefresh.
+  const setMonitorState = useCallback(
+    (mode: "SILENT_MONITOR" | "BARGE") => {
+      const mc = monitorContactRef.current;
+      if (!mc) return;
+      try {
+        const cb = {
+          success: () => refreshMonitor(mc),
+          failure: () => refreshMonitor(mc),
+        };
+        if (mode === "BARGE") {
+          if (mc.bargeIn) mc.bargeIn(cb);
+          else mc.updateMonitorParticipantState?.("BARGE", cb);
+        } else {
+          if (mc.silentMonitor) mc.silentMonitor(cb);
+          else mc.updateMonitorParticipantState?.("SILENT_MONITOR", cb);
+        }
+        setMonitorSession((s) => (s ? { ...s, mode } : s));
+      } catch {
+        /* noop */
+      }
+    },
+    [refreshMonitor]
+  );
+
+  // Leave the monitor session — destroy the supervisor's leg on the
+  // monitored contact. Connect tears down the monitor contact afterward.
+  const endMonitor = useCallback(() => {
+    const mc = monitorContactRef.current;
+    if (!mc) return;
+    try {
+      const conn = mc.getAgentConnection?.() || mc.getActiveInitialConnection?.();
+      conn?.destroy?.({
+        success: () => {
+          /* onDestroy clears state */
+        },
+        failure: () => {
+          /* best-effort */
+        },
+      });
+    } catch {
+      /* noop */
+    }
+    monitorContactRef.current = null;
+    setMonitorSession(null);
+  }, []);
+
   const value = useMemo<CCPContextValue>(
     () => ({
       agentState,
@@ -918,8 +1278,14 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       placeCall,
       sendDigits,
       transferToQueue,
+      addParticipantByPhone,
+      addParticipantByQueue,
+      dropAgentLeg,
       getQuickConnects,
       connectToEndpoint,
+      monitorSession,
+      setMonitorState,
+      endMonitor,
     }),
     [
       agentState,
@@ -941,8 +1307,14 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       placeCall,
       sendDigits,
       transferToQueue,
+      addParticipantByPhone,
+      addParticipantByQueue,
+      dropAgentLeg,
       getQuickConnects,
       connectToEndpoint,
+      monitorSession,
+      setMonitorState,
+      endMonitor,
     ]
   );
 
@@ -973,9 +1345,15 @@ export function useCCP(): CCPContextValue {
       setContactAttributes: () => {},
       sendDigits: () => {},
       transferToQueue: async () => {},
+      addParticipantByPhone: async () => {},
+      addParticipantByQueue: async () => {},
+      dropAgentLeg: () => {},
       placeCall: async () => {},
       getQuickConnects: async () => [],
       connectToEndpoint: async () => {},
+      monitorSession: null,
+      setMonitorState: () => {},
+      endMonitor: () => {},
     };
   }
   return ctx;

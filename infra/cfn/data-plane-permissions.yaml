@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Vox CRM — Solo permisos del Data Plane. Usalo cuando las 14 tablas
+  connectview-* YA EXISTEN en tu cuenta. Extiende el rol VoxCrmConnectAccess
+  con permisos DynamoDB sobre ellas, SIN crear ni tocar las tablas. Seguro de
+  re-aplicar (no toca datos).
+Resources:
+  VoxCrmDataPlanePolicy:
+    Type: AWS::IAM::RolePolicy
+    Properties:
+      RoleName: VoxCrmConnectAccess
+      PolicyName: VoxCrmDataPlaneAccess
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:BatchGetItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:BatchWriteItem
+              - dynamodb:DescribeTable
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-admin-audit"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-admin-audit/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-ai-conversations"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-ai-conversations/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-appointments"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-appointments/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-bots"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-bots/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-callbacks"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-callbacks/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-campaign-agents"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-campaign-agents/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-campaign-contacts"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-campaign-contacts/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-campaigns"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-campaigns/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-catalogs"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-catalogs/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-contacts"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-contacts/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-hsm-sends"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-hsm-sends/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-leads"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-leads/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-taxonomies"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-taxonomies/index/*"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-wrapup-history"
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/connectview-wrapup-history/index/*"
+Outputs:
+  Done:
+    Description: Permisos del Data Plane otorgados. Volvé a Vox y refrescá.
+    Value: "ok"

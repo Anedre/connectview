@@ -7,6 +7,14 @@ export interface QueueMetrics {
   agentsOnline: number;
   agentsOnCall: number;
   agentsACW: number;
+  // Today's aggregated figures (GetMetricDataV2). Optional: absent on older
+  // backend versions / when the daily call has no data for this queue.
+  handledToday?: number;
+  abandonedToday?: number;
+  queuedToday?: number;
+  serviceLevelToday?: number | null;
+  abandonRateToday?: number;
+  avgHandleTimeToday?: number;
 }
 
 export interface AgentStatus {
@@ -25,6 +33,16 @@ export interface RealtimeMetrics {
     totalAgentsAvailable: number;
     totalAgentsOnline: number;
     longestWaitSeconds: number;
+    // Today's aggregated KPIs (GetMetricDataV2). Optional for backward compat.
+    today?: {
+      handled: number;
+      abandoned: number;
+      queued: number;
+      abandonRate: number;
+      serviceLevel: number | null;
+      avgHandleTime: number;
+      avgAcw: number;
+    };
   };
   queues: QueueMetrics[];
   agents: AgentStatus[];

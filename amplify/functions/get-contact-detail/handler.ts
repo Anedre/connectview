@@ -19,6 +19,7 @@ import {
   QueryCommand,
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
+import { resolveConnect } from "../_shared/tenantConnect";
 
 /**
  * get-contact-detail — returns everything needed to render a contact
@@ -52,10 +53,16 @@ import { unmarshall } from "@aws-sdk/util-dynamodb";
  *     references — these are the agent-attached files (e.g. PDFs sent
  *     via outbound email).
  */
-const connect = new ConnectClient({ maxAttempts: 1 });
-const s3 = new S3Client({});
-const dynamo = new DynamoDBClient({});
+// BYO Connect + Data Plane (#43+#46): module-active. S3 también tenant-scoped
+// porque las grabaciones viven en el bucket de Connect del cliente.
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+let connect: ConnectClient = legacyConnect;
+const legacyS3 = new S3Client({});
+let s3: S3Client = legacyS3;
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+let instanceId = INSTANCE_ID;
 /** Connect instance alias used as the S3 prefix segment in
  *  amazon-connect-*/connect/<alias>/... paths. */
 const INSTANCE_ALIAS = process.env.CONNECT_INSTANCE_ALIAS || "novasys";
@@ -64,21 +71,23 @@ const PRESIGN_EXPIRES = 3600; // 1 hour
 
 const CORS: Record<string, string> = { "Content-Type": "application/json" };
 
+// Caches keyeados por `${instanceId}:${id}` para no mezclar tenants.
 const userNameCache = new Map<string, string>();
 const queueNameCache = new Map<string, string>();
 
 async function resolveAgentUsername(agentId: string): Promise<string> {
   if (!agentId) return "";
-  if (userNameCache.has(agentId)) return userNameCache.get(agentId)!;
+  const k = `${instanceId}:${agentId}`;
+  if (userNameCache.has(k)) return userNameCache.get(k)!;
   try {
     const r = await connect.send(
       new DescribeUserCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         UserId: agentId,
       })
     );
     const name = r.User?.Username || agentId;
-    userNameCache.set(agentId, name);
+    userNameCache.set(k, name);
     return name;
   } catch {
     return agentId;
@@ -87,16 +96,17 @@ async function resolveAgentUsername(agentId: string): Promise<string> {
 
 async function resolveQueueName(queueId: string): Promise<string> {
   if (!queueId) return "";
-  if (queueNameCache.has(queueId)) return queueNameCache.get(queueId)!;
+  const k = `${instanceId}:${queueId}`;
+  if (queueNameCache.has(k)) return queueNameCache.get(k)!;
   try {
     const r = await connect.send(
       new DescribeQueueCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         QueueId: queueId,
       })
     );
     const name = r.Queue?.Name || queueId;
-    queueNameCache.set(queueId, name);
+    queueNameCache.set(k, name);
     return name;
   } catch {
     return queueId;
@@ -365,7 +375,7 @@ async function fetchEmailBody(
   try {
     const refs = await connect.send(
       new ListContactReferencesCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         ContactId: contactId,
         ReferenceTypes: ["EMAIL_MESSAGE"],
       })
@@ -379,7 +389,7 @@ async function fetchEmailBody(
     // let the API default kick in.
     const att = await connect.send(
       new GetAttachedFileCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         FileId: fileId,
         AssociatedResourceArn: associatedResourceArn,
       })
@@ -422,7 +432,7 @@ async function fetchAttachments(
   try {
     const refs = await connect.send(
       new ListContactReferencesCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         ContactId: contactId,
         ReferenceTypes: ["ATTACHMENT"],
       })
@@ -449,7 +459,7 @@ async function fetchAttachments(
       try {
         const getRes = await connect.send(
           new GetAttachedFileCommand({
-            InstanceId: INSTANCE_ID,
+            InstanceId: instanceId,
             FileId: fileId,
             AssociatedResourceArn: associatedResourceArn,
             UrlExpiryInSeconds: PRESIGN_EXPIRES,
@@ -484,6 +494,14 @@ export const handler: Handler = async (event: any) => {
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
   }
+  // BYO Connect + Data Plane: setea connect/instanceId/dynamo/s3.
+  {
+    const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    connect = r.client;
+    instanceId = r.instanceId;
+    dynamo = r.dynamo || legacyDynamo;
+    s3 = r.s3 || legacyS3;
+  }
   const contactId = event?.queryStringParameters?.contactId;
   if (!contactId) {
     return {
@@ -496,7 +514,7 @@ export const handler: Handler = async (event: any) => {
   try {
     const desc = await connect.send(
       new DescribeContactCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         ContactId: contactId,
       })
     );
@@ -638,7 +656,7 @@ export const handler: Handler = async (event: any) => {
 
     // Fetch attachments — exists for any channel that supports them
     // (most commonly EMAIL).
-    const associatedResourceArn = `arn:aws:connect:${process.env.AWS_REGION || "us-east-1"}:${process.env.AWS_ACCOUNT_ID || ""}:instance/${INSTANCE_ID}/contact/${contactId}`;
+    const associatedResourceArn = `arn:aws:connect:${process.env.AWS_REGION || "us-east-1"}:${process.env.AWS_ACCOUNT_ID || ""}:instance/${instanceId}/contact/${contactId}`;
     const attachments = await fetchAttachments(contactId, associatedResourceArn);
 
     // For EMAIL channel, fetch the message body from the EMAIL_MESSAGE

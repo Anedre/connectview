@@ -1,0 +1,169 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Rol cross-account para que Vox CRM acceda a tu Amazon Connect. Vox solo puede
+  ASUMIR este rol (con tu ExternalId) — nunca tiene tus credenciales y podés
+  revocar el acceso borrando este stack.
+# FUENTE DE VERDAD: el wizard de la app (Configuracion -> Integraciones) genera el
+# CFN actualizado desde src/components/admin/cfnTemplates.ts. Esta copia standalone
+# se mantiene en sync a mano — ante dudas, usa el wizard.
+Parameters:
+  ExternalId:
+    Type: String
+    Description: >-
+      Codigo unico anti-confused-deputy que te dio Vox. Vox debe presentarlo
+      para asumir el rol. (Pre-cargado por el boton "Crear rol" de Vox.)
+  InstanceArn:
+    Type: String
+    Default: "*"
+    Description: >-
+      ARN de TU instancia de Amazon Connect. Las acciones que originan llamadas
+      o escuchan contactos quedan restringidas SOLO a esta instancia.
+  RecordingBucket:
+    Type: String
+    Default: amazon-connect-*
+    Description: >-
+      Nombre EXACTO del bucket S3 de grabaciones (sin "s3://"). Recomendado:
+      el nombre exacto en vez del patron, para que Vox solo lea ESE bucket.
+Resources:
+  VoxCrmConnectRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: VoxCrmConnectAccess
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: "arn:aws:iam::731736972577:root" }
+            Action: "sts:AssumeRole"
+            Condition: { StringEquals: { "sts:ExternalId": !Ref ExternalId } }
+      Policies:
+        - PolicyName: VoxCrmConnectReadOnly
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - connect:GetMetricData
+                  - connect:GetMetricDataV2
+                  - connect:GetCurrentMetricData
+                  - connect:GetCurrentUserData
+                  - connect:ListQueues
+                  - connect:ListUsers
+                  - connect:DescribeUser
+                  - connect:DescribeQueue
+                  - connect:ListContactFlows
+                  - connect:DescribeContactFlow
+                  - connect:CreateContactFlow
+                  - connect:UpdateContactFlowContent
+                  - connect:ListRoutingProfiles
+                  - connect:ListRoutingProfileQueues
+                  - connect:AssociateRoutingProfileQueues
+                  - connect:DisassociateRoutingProfileQueues
+                  - connect:ListPhoneNumbers
+                  - connect:ListPhoneNumbersV2
+                  - connect:ListAgentStatuses
+                  - connect:DescribeInstance
+                  - connect:DescribeInstanceAttribute
+                  - connect:ListInstanceStorageConfigs
+                  - connect:ListIntegrationAssociations
+                  - connect:SearchContacts
+                  - connect:DescribeContact
+                  - connect:ListContactReferences
+                Resource: "*"
+        - PolicyName: VoxCrmCustomerProfiles
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Cliente 360: leer + escribir perfiles (upsert de campanas + edicion
+              # del Cliente 360). Customer Profiles no soporta scoping por instancia
+              # a nivel IAM -> Resource "*".
+              - Effect: Allow
+                Action:
+                  - profile:GetDomain
+                  - profile:SearchProfiles
+                  - profile:ListDomains
+                  - profile:GetProfileObjectType
+                  - profile:CreateProfile
+                  - profile:UpdateProfile
+                  - profile:PutProfileObject
+                  - profile:AddProfileKey
+                Resource: "*"
+        - PolicyName: VoxCrmConnectOutbound
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - connect:StartOutboundVoiceContact
+                  - connect:StartTaskContact
+                  - connect:StartOutboundEmailContact
+                  - connect:CreateContact
+                  - connect:StartAttachedFileUpload
+                  - connect:CompleteAttachedFileUpload
+                  - connect:BatchGetAttachedFileMetadata
+                  - connect:StopContact
+                  - connect:UpdateContactAttributes
+                  - connect:TransferContact
+                  - connect:MonitorContact
+                  - connect:GetFederationToken
+                Resource:
+                  - !Ref InstanceArn
+                  - !Sub "${InstanceArn}/contact/*"
+        - PolicyName: VoxCrmRecordingAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${RecordingBucket}/*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: !Sub "arn:aws:s3:::${RecordingBucket}"
+        - PolicyName: VoxCrmDiagnostics
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStacks
+                Resource: !Sub "arn:aws:cloudformation:*:${AWS::AccountId}:stack/VoxCrmConnectAccess/*"
+        - PolicyName: VoxCrmWhatsApp
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # WhatsApp BYO: Vox manda plantillas y respuestas del Agente IA
+              # DESDE TU numero (AWS End User Messaging Social conectado a tu
+              # WhatsApp Business). Sin esto, las campanas/bots de WhatsApp y las
+              # respuestas del agente en chat vivo no pueden enviar nada.
+              - Effect: Allow
+                Action:
+                  - social-messaging:SendWhatsAppMessage
+                  - social-messaging:ListLinkedWhatsAppBusinessAccounts
+                  - social-messaging:GetLinkedWhatsAppBusinessAccount
+                  - social-messaging:GetLinkedWhatsAppBusinessAccountPhoneNumber
+                Resource: "*"
+        - PolicyName: VoxCrmBedrock
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Bedrock BYO: los bots / Agente IA, los resumenes de llamada y el
+              # copiloto corren contra TU Bedrock (tu quota, tus modelos, tu
+              # factura de tokens) — no la de Vox. Incluye foundation models +
+              # inference profiles (Claude 3.5+ se invoca via perfiles
+              # cross-region us.anthropic*).
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - !Sub "arn:aws:bedrock:*::foundation-model/*"
+                  - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+                  - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:application-inference-profile/*"
+Outputs:
+  RoleArn:
+    Description: Pega este ARN en Vox (Configuracion -> Integraciones).
+    Value: !GetAtt VoxCrmConnectRole.Arn

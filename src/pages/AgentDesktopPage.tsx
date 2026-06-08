@@ -6,6 +6,7 @@ import { useActiveContact } from "@/hooks/useActiveContact";
 import { useLiveTranscript } from "@/hooks/useLiveTranscript";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import { useDebugRender, traceChange } from "@/lib/debugTrace";
+import { getApiEndpoints } from "@/lib/api";
 import { ActiveContactsTabStrip } from "@/components/workspace/ActiveContactsTabStrip";
 import { OmnichannelNotifierProvider } from "@/context/OmnichannelNotifierContext";
 import { MissedCallBanner } from "@/components/workspace/MissedCallBanner";
@@ -35,22 +36,28 @@ import {
   colorFromName,
 } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import { AgentStatePill } from "@/components/vox/AgentStatePill";
+import { ConferenceModal } from "@/components/workspace/ConferenceModal";
+import { ContactHistoryPanel } from "@/components/workspace/ContactHistoryPanel";
+import { displayCustomerName } from "@/lib/customerName";
 
-const STATE_STYLE: Record<string, { fg: string; bg: string; label: string }> = {
-  Init:             { fg: "var(--text-3)",      bg: "var(--bg-3)",             label: "Inicio" },
-  Available:        { fg: "var(--accent-green)",bg: "var(--accent-green-soft)",label: "Disponible" },
-  Busy:             { fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)", label: "En llamada" },
-  AfterCallWork:    { fg: "var(--accent-amber)",bg: "var(--accent-amber-soft)",label: "ACW" },
-  CallingCustomer:  { fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)", label: "Marcando" },
-  Offline:          { fg: "var(--text-3)",      bg: "var(--bg-3)",             label: "Offline" },
-  Error:            { fg: "var(--accent-red)",  bg: "var(--accent-red-soft)",  label: "Error" },
-  // Connect moves the agent into one of these state names after a
-  // missed routed contact. They all mean "blocked from receiving new
-  // contacts until the agent manually returns to Available."
-  MissedCallAgent:  { fg: "var(--accent-red)",  bg: "var(--accent-red-soft)",  label: "Contacto perdido" },
-  MissedCall:       { fg: "var(--accent-red)",  bg: "var(--accent-red-soft)",  label: "Contacto perdido" },
-  "Missed Call Agent": { fg: "var(--accent-red)", bg: "var(--accent-red-soft)", label: "Contacto perdido" },
-};
+/** CSS color token for the channel-coded glow ring behind the caller
+ *  avatar in the softphone hero. Each channel gets its own accent so
+ *  the agent can read "what kind of contact this is" at a glance. */
+function channelAccent(channel: string | null | undefined): string {
+  const c = (channel || "VOICE").toUpperCase();
+  if (c === "CHAT") return "var(--accent-cyan-soft)";
+  if (c === "EMAIL") return "var(--accent-amber-soft)";
+  if (c === "TASK") return "var(--accent-violet-soft)";
+  return "var(--accent-green-soft)";
+}
+function channelAccentSolid(channel: string | null | undefined): string {
+  const c = (channel || "VOICE").toUpperCase();
+  if (c === "CHAT") return "var(--accent-cyan)";
+  if (c === "EMAIL") return "var(--accent-amber)";
+  if (c === "TASK") return "var(--accent-violet)";
+  return "var(--accent-green)";
+}
 
 function fmtElapsed(s: number) {
   const m = Math.floor(s / 60);
@@ -80,7 +87,7 @@ const CallTimerInner = ({
   active,
   resetKey,
   startedAtMs,
-  onTick,
+  onTickRef,
 }: {
   active: boolean;
   resetKey: string;
@@ -88,7 +95,7 @@ const CallTimerInner = ({
    *  is derived as `floor((now - startedAtMs) / 1000)` so switching
    *  tabs doesn't reset the displayed time. */
   startedAtMs?: number | null;
-  onTick?: React.MutableRefObject<number>;
+  onTickRef?: React.MutableRefObject<number>;
 }) => {
   const [elapsed, setElapsed] = useState(() => {
     if (!active) return 0;
@@ -100,7 +107,7 @@ const CallTimerInner = ({
   useEffect(() => {
     if (!active) {
       setElapsed(0);
-      if (onTick) onTick.current = 0;
+      if (onTickRef) onTickRef.current = 0;
       return;
     }
     const initial =
@@ -108,19 +115,19 @@ const CallTimerInner = ({
         ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000))
         : 0;
     setElapsed(initial);
-    if (onTick) onTick.current = initial;
+    if (onTickRef) onTickRef.current = initial;
     const id = setInterval(() => {
       setElapsed(() => {
         const next =
           startedAtMs && startedAtMs > 0
             ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000))
             : 0;
-        if (onTick) onTick.current = next;
+        if (onTickRef) onTickRef.current = next;
         return next;
       });
     }, 1000);
     return () => clearInterval(id);
-  }, [active, resetKey, startedAtMs, onTick]);
+  }, [active, resetKey, startedAtMs, onTickRef]);
   return <>{active ? fmtElapsed(elapsed) : "--:--"}</>;
 };
 const CallTimer = memo(CallTimerInner);
@@ -282,7 +289,7 @@ export function AgentDesktopPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const c = (globalThis as any).connect;
       if (c) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const ag = new c.Agent();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const target = (ag.getContacts?.() || []).find((x: any) => x.getContactId?.() === cid);
@@ -306,6 +313,7 @@ export function AgentDesktopPage() {
   // dispatch closes them all if the agent navigates away.
   const [dtmfOpen, setDtmfOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [conferenceOpen, setConferenceOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [quickNoteOpen, setQuickNoteOpen] = useState(false);
   // "📅 Agendar callback" — agent promises to call the customer back at a
@@ -315,6 +323,26 @@ export function AgentDesktopPage() {
   // Bumped each time the modal successfully schedules a callback so
   // the drawer below re-fetches without waiting for the next 60s poll.
   const [callbackRefreshKey, setCallbackRefreshKey] = useState(0);
+
+  // Right-rail tab: 'cliente' (Customer 360°) | 'coach' (Claude Coach) |
+  // 'historial' (previous contacts of this customer). All three panels
+  // stay MOUNTED across switches so transcript-driven fetches don't
+  // stop when the agent flips between them.
+  const [rightRailTab, setRightRailTab] = useState<"cliente" | "coach" | "historial">("cliente");
+  const [coachBlockCount, setCoachBlockCount] = useState(0);
+  const [coachPulse, setCoachPulse] = useState(false);
+  const prevCoachCountRef = useRef(0);
+  const handleCoachBlocksChange = (count: number) => {
+    setCoachBlockCount(count);
+    // Pulse the tab badge when new blocks arrive (count increases) and
+    // we're NOT already on the Coach tab — no point pulsing what the
+    // agent is already looking at.
+    if (count > prevCoachCountRef.current && rightRailTab !== "coach") {
+      setCoachPulse(true);
+      setTimeout(() => setCoachPulse(false), 1800);
+    }
+    prevCoachCountRef.current = count;
+  };
 
   // Hide the CCP iframe — we drive everything via streams API
   useEffect(() => {
@@ -330,6 +358,68 @@ export function AgentDesktopPage() {
       if (reset) reset.setAttribute("style", "");
     };
   }, []);
+
+  // Guard against accidental refresh during a connected voice call —
+  // the WebRTC peer dies with the page and Streams' first few snapshots
+  // can leave the agent silently muted while audio renegotiates. The
+  // user has to acknowledge this with the browser's native dialog.
+  useEffect(() => {
+    const hasLiveAudio =
+      !!rawContact &&
+      (rawContact.channel || "VOICE").toUpperCase() === "VOICE" &&
+      (rawContact.state === "connected" || rawContact.state === "onhold");
+    if (!hasLiveAudio) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Chrome ignores the custom message but still shows the prompt
+      // when this is set.
+      e.returnValue = "Tienes una llamada en curso. ¿Cerrar?";
+      return e.returnValue;
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [rawContact]);
+
+  // Mic reconnect probe — after a refresh during a live call, Streams
+  // re-attaches but the WebRTC peer is brand new. Toast the agent once
+  // so they know to verify audio is flowing (and offer a manual mute
+  // toggle as a cheap "kick the tires" reset).
+  const reconnectToastFiredRef = useRef(false);
+  useEffect(() => {
+    if (reconnectToastFiredRef.current) return;
+    const inCall =
+      rawContact?.state === "connected" &&
+      (rawContact.channel || "VOICE").toUpperCase() === "VOICE";
+    if (!inCall) return;
+    // Only fire if the page just loaded and there was a stored timer for
+    // this contact — i.e. this is a post-refresh restoration, not a
+    // fresh call. Cheap check: sessionStorage has the contactId already.
+    let isRestoration = false;
+    try {
+      const raw = sessionStorage.getItem("vox.callTimers");
+      if (raw) {
+        const obj = JSON.parse(raw) as Record<string, number>;
+        if (rawContact?.contactId && obj[rawContact.contactId]) {
+          const storedAt = obj[rawContact.contactId];
+          // If we know the contact connected more than 10s ago AND the
+          // page just loaded, this is a restoration.
+          if (Date.now() - storedAt > 10_000) isRestoration = true;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!isRestoration) return;
+    reconnectToastFiredRef.current = true;
+    // Lazy import to keep this side-effect out of the main bundle path.
+    import("sonner").then(({ toast }) => {
+      toast.warning("Reconectando audio…", {
+        description:
+          "Recargaste durante una llamada. Prueba el micrófono dándole Mute → Mute off.",
+        duration: 7000,
+      });
+    });
+  }, [rawContact?.contactId, rawContact?.state, rawContact?.channel]);
 
   // Previously we filtered `rawContact` by `wrapDismissedIds` so an
   // agent who finished the wrap-up wouldn't keep seeing the ghost
@@ -359,7 +449,9 @@ export function AgentDesktopPage() {
   // ACW state needs the raw contact so the wrap-up screen still appears
   // the very first time the contact ends (before any dismiss has happened).
   const isACW = rawContact?.state === "ended" || agentState === "AfterCallWork";
-  const stateToken = STATE_STYLE[agentState] ?? STATE_STYLE.Init;
+  // Channel-color token used by the new softphone hero glow ring.
+  const channelGlow = channelAccent(activeContact?.channel);
+  const channelSolid = channelAccentSolid(activeContact?.channel);
 
   // ─── Channel awareness ─────────────────────────────────────────
   // The desktop UI was originally built around voice (mute / hold /
@@ -397,11 +489,21 @@ export function AgentDesktopPage() {
   const sentScore =
     (sentimentCounts.pos - sentimentCounts.neg) / Math.max(1, sentTotal);
 
-  // Caller display
-  const profileFullName =
-    profile?.businessName ||
-    [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() ||
-    null;
+  // Caller display — uses the smart resolver: person name first, then
+  // BusinessName only if it doesn't look like a Salesforce-synced
+  // account number (e.g. "70498978"), then email / phone.
+  const profileFullName = profile
+    ? displayCustomerName(
+        {
+          firstName: profile.firstName,
+          lastName: profile.lastName,
+          businessName: profile.businessName,
+          email: profile.email,
+          phoneNumber: profile.phoneNumber,
+        },
+        ""
+      ) || null
+    : null;
   const callerName =
     profileFullName ||
     activeContact?.customerPhone ||
@@ -460,6 +562,32 @@ export function AgentDesktopPage() {
       setPendingWrap(null);
     }
   }, [lastContactId, pendingWrap, isACW]);
+
+  // Auto-registra la interacción en el lead apenas el contacto entra en ACW
+  // (terminó), SIN depender de que el agente tipifique → toda llamada/chat cuenta
+  // como "última interacción". Una vez por contacto. Si luego tipifica, esa gestión
+  // queda como la última y el timeline deduplica por contactId.
+  const loggedInteractionRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!pendingWrap || !pendingWrap.customerPhone) return;
+    if (loggedInteractionRef.current.has(pendingWrap.contactId)) return;
+    loggedInteractionRef.current.add(pendingWrap.contactId);
+    const ep = getApiEndpoints();
+    if (!ep?.salesforceSync) return;
+    fetch(ep.salesforceSync, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customerPhone: pendingWrap.customerPhone,
+        channel: pendingWrap.channel === "CHAT" ? "WhatsApp" : pendingWrap.channel,
+        contactId: pendingWrap.contactId,
+        durationSeconds: pendingWrap.duration,
+        untyped: true,
+      }),
+    }).catch(() => {
+      /* best-effort — el registro de la interacción no debe romper el flujo */
+    });
+  }, [pendingWrap]);
 
   const showWrapUp =
     !!pendingWrap &&
@@ -530,274 +658,397 @@ export function AgentDesktopPage() {
       <ActiveContactsTabStrip />
       <div className="call" style={{ flex: 1, minHeight: 0 }}>
       {/* ──────────────────────────────────────────────────────────
-         LEFT — Softphone (always rendered)
+         LEFT — Softphone v2 (modernized)
       ────────────────────────────────────────────────────────── */}
-      <div className="call__panel" data-debug-component="SoftphonePanel">
-        <div className="softphone__caller">
+      <div className="call__panel call__panel--v2" data-debug-component="SoftphonePanel">
+        {/* Agent identity strip — always on top with quick state pill */}
+        <div className="vox-sp__agentbar">
           <Avatar
-            name={activeContact ? callerName : agentName || user?.username || "Agente"}
-            size="lg"
-            color={
-              activeContact ? callerAvatarColor : colorFromName(agentName || user?.username || "Vox")
-            }
+            name={agentName || user?.username || "Agente"}
+            size="sm"
+            color={colorFromName(agentName || user?.username || "Vox")}
           />
-          <div className="softphone__name">
-            {activeContact ? callerName : agentName || user?.username || "Agente"}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="vox-sp__agentbar-name">
+              {agentName || user?.username || "Agente"}
+            </div>
+            <div className="vox-sp__agentbar-role">
+              {roleLabelOf(user?.highestRole)}
+            </div>
           </div>
-          <div className="softphone__num mono">
-            {activeContact ? callerSecondary : `Listo · ${roleLabelOf(user?.highestRole)}`}
-          </div>
+          <AgentStatePill />
+        </div>
+
+        {/* Hero — caller or idle */}
+        {activeContact || isIncoming ? (
           <div
-            className="row"
-            style={{ gap: 6, marginTop: 4, flexWrap: "wrap", justifyContent: "center" }}
+            className="vox-sp__hero"
+            style={{ ["--ch" as string]: channelGlow }}
           >
-            {profileAccountType && (
-              <span className="chip chip--violet">{profileAccountType}</span>
-            )}
-            <span
-              className="chip"
-              style={{
-                background: stateToken.bg,
-                color: stateToken.fg,
-                borderColor: "transparent",
-              }}
-            >
-              <span className="dot" /> {stateToken.label}
-            </span>
-          </div>
-          <div style={{ textAlign: "center", marginTop: 10 }}>
-            <div className="softphone__timer">
-              <CallTimer
-                active={isConnected}
-                resetKey={rawContact?.contactId || ""}
-                startedAtMs={rawContact?.connectedAtMs ?? null}
-                onTick={elapsedRef}
+            <div className="vox-sp__avatar-wrap">
+              <span
+                className={`vox-sp__avatar-ring ${
+                  isIncoming || isDialing
+                    ? "vox-sp__avatar-ring--pulse"
+                    : ""
+                }`}
+                style={{ ["--ch" as string]: channelSolid }}
+              />
+              <Avatar
+                name={callerName}
+                size="lg"
+                color={callerAvatarColor}
               />
             </div>
-            <div className="lbl">
-              {isActive ? (
-                <>
-                  Duración ·{" "}
-                  {isChat ? (
-                    <span style={{ color: "var(--accent-cyan)" }}>
-                      💬 {channelLabel}
-                    </span>
-                  ) : isEmail ? (
-                    <span style={{ color: "var(--accent-amber)" }}>
-                      📧 {channelLabel}
-                    </span>
-                  ) : isTask ? (
-                    <span style={{ color: "var(--accent-violet)" }}>
-                      📋 {channelLabel}
-                    </span>
-                  ) : recording ? (
-                    <span style={{ color: "var(--accent-red)" }}>● Grabando</span>
-                  ) : (
-                    <span className="muted">Sin grabación</span>
-                  )}
-                </>
-              ) : isIncoming ? (
-                <span style={{ color: "var(--accent-green)" }}>
-                  {isChat ? `${channelLabel} entrante` : "Llamada entrante"}
-                </span>
-              ) : isDialing ? (
-                <span style={{ color: "var(--accent-cyan)" }}>Marcando…</span>
-              ) : (
-                <span className="muted">
-                  {activeContact
-                    ? `Sin ${channelLabel.toLowerCase()} activo`
-                    : "Sin contacto activo"}
+            <div className="vox-sp__name">{callerName}</div>
+            <div className="vox-sp__sub">{callerSecondary}</div>
+            <div className="vox-sp__pills">
+              {profileAccountType && (
+                <span className="chip chip--violet">{profileAccountType}</span>
+              )}
+              <span
+                className="chip"
+                style={{
+                  background: channelGlow,
+                  color: channelSolid,
+                  borderColor: "transparent",
+                }}
+              >
+                {isChat
+                  ? "💬 Chat"
+                  : isEmail
+                  ? "📧 Email"
+                  : isTask
+                  ? "📋 Tarea"
+                  : "📞 Voz"}
+              </span>
+              {isActive && !isChat && !isEmail && !isTask && (
+                <span
+                  className="chip"
+                  title="Calidad de conexión"
+                  style={{ background: "var(--bg-2)", borderColor: "var(--border-1)" }}
+                >
+                  <span className="vox-sp__quality">
+                    <span /><span /><span />
+                  </span>
+                  HD
                 </span>
               )}
             </div>
+            <div className="vox-sp__timerwrap">
+              <div className="vox-sp__timer">
+                <CallTimer
+                  active={isConnected}
+                  resetKey={rawContact?.contactId || ""}
+                  startedAtMs={rawContact?.connectedAtMs ?? null}
+                  onTickRef={elapsedRef}
+                />
+              </div>
+              <div className="vox-sp__timerlbl">
+                {isActive ? (
+                  <>
+                    {isChat || isEmail || isTask ? (
+                      <span>Duración</span>
+                    ) : (
+                      <>
+                        <span>Duración</span>
+                        <span
+                          className={`vox-sp__audio ${muted ? "vox-sp__audio--muted" : ""}`}
+                          aria-hidden="true"
+                        >
+                          <span /><span /><span /><span /><span />
+                        </span>
+                        {recording && (
+                          <span style={{ color: "var(--accent-red)", fontWeight: 600 }}>
+                            ● REC
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </>
+                ) : isIncoming ? (
+                  <span style={{ color: "var(--accent-green)", fontWeight: 600 }}>
+                    {isChat ? `${channelLabel} entrante` : "Llamada entrante"}
+                  </span>
+                ) : isDialing ? (
+                  <span style={{ color: "var(--accent-cyan)", fontWeight: 600 }}>
+                    Marcando…
+                  </span>
+                ) : (
+                  <span className="muted">
+                    {activeContact
+                      ? `Sin ${channelLabel.toLowerCase()} activo`
+                      : "Sin contacto"}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-
-        {/* Voice-only controls — only render for VOICE channel AND when
-            there's an active contact. We deliberately don't show a
-            "ghost" toolbar of disabled Mute/Hold/Teclado buttons when
-            there's no call — that read as broken UI. The dialer takes
-            over the same vertical space instead. CHAT controls live
-            inside the ChatThreadPanel composer in the center. */}
-        {!isChat && !isEmail && !isTask && !!activeContact && (
-          <>
-            <div className="softphone__controls">
-              <button
-                className={`softphone__btn ${muted ? "softphone__btn--on" : ""}`}
-                onClick={() => mute()}
-                disabled={!isActive}
-              >
-                {muted ? <Icon.MicOff /> : <Icon.Mic />}
-                <span>{muted ? "Mute on" : "Mute"}</span>
-              </button>
-              <button
-                className={`softphone__btn ${onHold ? "softphone__btn--on" : ""}`}
-                onClick={() => toggleHold()}
-                disabled={!isActive}
-              >
-                <Icon.Pause />
-                <span>{onHold ? "En espera" : "Espera"}</span>
-              </button>
-              <button
-                className={`softphone__btn ${dtmfOpen ? "softphone__btn--on" : ""}`}
-                onClick={() => setDtmfOpen(true)}
-                disabled={!isActive}
-                title="Enviar tonos DTMF (0-9, *, #)"
-              >
-                <Icon.Pad />
-                <span>Teclado</span>
-              </button>
-              <button
-                className="softphone__btn"
-                onClick={() => setTransferOpen(true)}
-                disabled={!isActive}
-                title="Transferir a otra cola"
-              >
-                <Icon.Transfer />
-                <span>Transferir</span>
-              </button>
-              <button
-                className="softphone__btn"
-                disabled
-                title="Conferencia · próximamente"
-                aria-disabled="true"
-              >
-                <Icon.Users />
-                <span>Conferencia</span>
-              </button>
-              <button
-                className={`softphone__btn ${recording ? "softphone__btn--on" : ""}`}
-                onClick={toggleRecording}
-                disabled={!isActive}
-              >
-                <Icon.Record />
-                <span>{recording ? "Grabando" : "Pausada"}</span>
-              </button>
+        ) : (
+          /* Idle hero — agent identity surfaced as the focus when no
+             contact is attached. Color the glow amber to signal "open
+             for business" without competing with the call channels. */
+          <div
+            className="vox-sp__hero"
+            style={{ ["--ch" as string]: "var(--accent-amber-soft)" }}
+          >
+            <div className="vox-sp__avatar-wrap">
+              <span
+                className="vox-sp__avatar-ring"
+                style={{ ["--ch" as string]: "var(--accent-amber)" }}
+              />
+              <Avatar
+                name={agentName || user?.username || "Vox"}
+                size="lg"
+                color={colorFromName(agentName || user?.username || "Vox")}
+              />
             </div>
-            {/* Schedule callback — full-width prominent action below the
-                voice controls. Available during an active voice call so
-                the agent can promise to call back at a future time
-                without leaving the call. */}
-            {activeContact?.customerPhone && (
-              <div style={{ padding: "0 14px 14px" }}>
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={() => setScheduleCallbackOpen(true)}
-                  disabled={!isActive}
-                  style={{
-                    width: "100%",
-                    height: 38,
-                    justifyContent: "center",
-                    fontSize: 12.5,
-                  }}
-                  title="Prometer un follow-up para más tarde (llamada / email / WhatsApp)"
-                >
-                  📅 Agendar follow-up
-                </button>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Chat-specific quick actions (only for CHAT contacts). */}
-        {isChat && isActive && (
-          <>
-            <div className="softphone__controls" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <button
-                className="softphone__btn"
-                onClick={() => setTransferOpen(true)}
-                title="Transferir el chat a otra cola"
-              >
-                <Icon.Transfer />
-                <span>Transferir</span>
-              </button>
-              <button
-                className="softphone__btn"
-                onClick={() => setQuickNoteOpen(true)}
-                title="Añadir nota rápida"
-              >
-                <Icon.Note />
-                <span>Nota</span>
-              </button>
+            <div className="vox-sp__name">
+              {agentName || user?.username || "Agente"}
             </div>
-            {/* Agenda callback also from chat — common when a WhatsApp
-                lead asks "¿me llaman más tarde?". Needs a phone, which
-                the chat contact may not always carry (e.g. webchat) so
-                we hide it when there's none. */}
-            {activeContact?.customerPhone && (
-              <div style={{ padding: "0 14px 14px" }}>
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={() => setScheduleCallbackOpen(true)}
-                  style={{
-                    width: "100%",
-                    height: 38,
-                    justifyContent: "center",
-                    fontSize: 12.5,
-                  }}
-                  title="Prometer un follow-up para más tarde"
-                >
-                  📅 Agendar follow-up
-                </button>
-              </div>
-            )}
-          </>
-        )}
-
-        {!activeContact && !isIncoming && (
-          <>
-            {/* Empty-state hint above the outbound actions menu — gives
-                the column a clear purpose when there's no call: "this
-                is where you start one". The pill buttons below mirror
-                the native Amazon Connect CCP outbound menu. */}
-            <div
-              style={{
-                padding: "12px 14px 0",
-                fontSize: 11.5,
-                color: "var(--text-3)",
-                textAlign: "center",
-                lineHeight: 1.5,
-              }}
-            >
+            <div className="vox-sp__sub">
               {agentState === "Available"
-                ? "Listo para recibir contactos · inicia uno manualmente abajo"
+                ? "Listo para recibir contactos"
                 : agentState === "Offline"
-                ? "Cambia tu estado a Available para recibir contactos"
+                ? "Estás offline"
                 : "Sin contacto activo"}
             </div>
-            <OutboundActionsMenu />
-          </>
+          </div>
         )}
 
-        {/* Contact Lens sentiment — voice-only, and only while there's
-            an active contact. Without a call there's nothing to score,
-            so showing an empty "Aparecerá cuando…" placeholder reads as
-            dead chrome. */}
-        {!isChat && !isEmail && !isTask && !!activeContact && (
-        <div style={{ padding: 14, borderTop: "1px solid var(--border-1)" }}>
-          <div className="section-title">Sentiment en vivo</div>
-          {sentTotal > 0 && (sentimentCounts.pos + sentimentCounts.neu + sentimentCounts.neg) > 0 ? (
-            <>
-              <div className="sentiment-bar">
-                <div className="pos" style={{ width: `${(sentimentCounts.pos / sentTotal) * 100}%` }} />
-                <div className="neu" style={{ width: `${(sentimentCounts.neu / sentTotal) * 100}%` }} />
-                <div className="neg" style={{ width: `${(sentimentCounts.neg / sentTotal) * 100}%` }} />
-              </div>
-              <div className="row" style={{ justifyContent: "space-between", marginTop: 8 }}>
-                <span className="mono" style={{ fontSize: 11, color: "var(--accent-green)" }}>
-                  ● Pos {sentimentCounts.pos}
-                </span>
-                <span className="mono muted" style={{ fontSize: 11 }}>
-                  ● Neu {sentimentCounts.neu}
-                </span>
-                <span className="mono" style={{ fontSize: 11, color: "var(--accent-red)" }}>
-                  ● Neg {sentimentCounts.neg}
-                </span>
-              </div>
-              <div className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>
-                Score actual:{" "}
+        {/* Primary controls — hierarchy: 3 circular buttons for the
+            agent's most-used actions. End is the central red anchor.
+            Hidden when there's no contact (the empty state shows the
+            outbound actions grid instead). */}
+        {isIncoming ? (
+          <div className="vox-sp__primary">
+            <button
+              type="button"
+              className="vox-sp__pbtn"
+              onClick={() => reject(activeContact?.contactId)}
+              title="Rechazar"
+              style={{ color: "var(--accent-red)" }}
+            >
+              <Icon.Hangup size={22} />
+              <span className="vox-sp__pbtn-lbl">Rechazar</span>
+            </button>
+            <button
+              type="button"
+              className="vox-sp__pbtn vox-sp__pbtn--accept"
+              onClick={() => accept(activeContact?.contactId)}
+              title="Atender"
+            >
+              <Icon.PhoneIn size={26} />
+              <span
+                className="vox-sp__pbtn-lbl"
+                style={{ color: "var(--accent-green)", fontWeight: 600 }}
+              >
+                Atender
+              </span>
+            </button>
+          </div>
+        ) : isActive && !isChat && !isEmail && !isTask ? (
+          <div className="vox-sp__primary">
+            <button
+              type="button"
+              className={`vox-sp__pbtn ${muted ? "vox-sp__pbtn--on" : ""}`}
+              onClick={() => mute()}
+              title={muted ? "Activar mic" : "Silenciar"}
+            >
+              {muted ? <Icon.MicOff /> : <Icon.Mic />}
+              <span className="vox-sp__pbtn-lbl">{muted ? "Mic off" : "Mute"}</span>
+            </button>
+            <button
+              type="button"
+              className="vox-sp__pbtn vox-sp__pbtn--end"
+              onClick={() => hangup(activeContact?.contactId)}
+              title="Colgar"
+            >
+              <Icon.Hangup size={26} />
+              <span
+                className="vox-sp__pbtn-lbl"
+                style={{ color: "var(--accent-red)", fontWeight: 600 }}
+              >
+                Colgar
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`vox-sp__pbtn ${onHold ? "vox-sp__pbtn--on" : ""}`}
+              onClick={() => toggleHold()}
+              title={onHold ? "Reanudar" : "Poner en espera"}
+            >
+              <Icon.Pause />
+              <span className="vox-sp__pbtn-lbl">
+                {onHold ? "En espera" : "Espera"}
+              </span>
+            </button>
+          </div>
+        ) : isDialing ? (
+          <div className="vox-sp__primary">
+            <button
+              type="button"
+              className="vox-sp__pbtn vox-sp__pbtn--end"
+              onClick={() => hangup(activeContact?.contactId)}
+              title="Cancelar marcado"
+            >
+              <Icon.Hangup size={22} />
+              <span
+                className="vox-sp__pbtn-lbl"
+                style={{ color: "var(--accent-red)", fontWeight: 600 }}
+              >
+                Cancelar
+              </span>
+            </button>
+          </div>
+        ) : activeContact && (isChat || isEmail || isTask) ? (
+          <div className="vox-sp__primary">
+            <button
+              type="button"
+              className="vox-sp__pbtn vox-sp__pbtn--end"
+              onClick={() => {
+                hangup(activeContact.contactId);
+                if (isChat && activeContact.contactId) {
+                  dismissWrap(activeContact.contactId);
+                }
+              }}
+              title={`Cerrar ${channelLabel.toLowerCase()}`}
+            >
+              <Icon.Hangup size={22} />
+              <span
+                className="vox-sp__pbtn-lbl"
+                style={{ color: "var(--accent-red)", fontWeight: 600 }}
+              >
+                {isChat ? "Finalizar" : "Cerrar"}
+              </span>
+            </button>
+          </div>
+        ) : null}
+
+        {/* Secondary controls — voice 3x2 grid */}
+        {isActive && !isChat && !isEmail && !isTask && (
+          <div className="vox-sp__secondary">
+            <button
+              type="button"
+              className={`vox-sp__sbtn ${dtmfOpen ? "vox-sp__sbtn--on" : ""}`}
+              onClick={() => setDtmfOpen(true)}
+              title="Enviar DTMF"
+            >
+              <Icon.Pad />
+              <span>Teclado</span>
+            </button>
+            <button
+              type="button"
+              className="vox-sp__sbtn"
+              onClick={() => setTransferOpen(true)}
+              title="Transferir a otra cola"
+            >
+              <Icon.Transfer />
+              <span>Transferir</span>
+            </button>
+            <button
+              type="button"
+              className="vox-sp__sbtn"
+              onClick={() => setConferenceOpen(true)}
+              title="Añadir un 3er participante (conferencia)"
+            >
+              <Icon.Users />
+              <span>Conferencia</span>
+            </button>
+            <button
+              type="button"
+              className={`vox-sp__sbtn ${recording ? "vox-sp__sbtn--rec" : ""}`}
+              onClick={toggleRecording}
+              title={recording ? "Pausar grabación" : "Reanudar grabación"}
+            >
+              <Icon.Record />
+              <span>{recording ? "Grabando" : "Pausada"}</span>
+            </button>
+            <button
+              type="button"
+              className="vox-sp__sbtn"
+              onClick={() => setSummaryOpen(true)}
+              title="Resumen IA de la llamada"
+            >
+              <Icon.Sparkles />
+              <span>Resumen IA</span>
+            </button>
+            <button
+              type="button"
+              className="vox-sp__sbtn"
+              onClick={() =>
+                activeContact?.customerPhone && setScheduleCallbackOpen(true)
+              }
+              disabled={!activeContact?.customerPhone}
+              title="Programar follow-up para más tarde"
+            >
+              <Icon.Calendar />
+              <span>Follow-up</span>
+            </button>
+          </div>
+        )}
+
+        {/* Chat secondary — 2 or 3 columns depending on phone availability */}
+        {isChat && isActive && (
+          <div
+            className="vox-sp__secondary"
+            style={{
+              gridTemplateColumns: activeContact?.customerPhone
+                ? "repeat(3, 1fr)"
+                : "repeat(2, 1fr)",
+            }}
+          >
+            <button
+              type="button"
+              className="vox-sp__sbtn"
+              onClick={() => setTransferOpen(true)}
+              title="Transferir el chat"
+            >
+              <Icon.Transfer />
+              <span>Transferir</span>
+            </button>
+            <button
+              type="button"
+              className="vox-sp__sbtn"
+              onClick={() => setQuickNoteOpen(true)}
+              title="Nota rápida"
+            >
+              <Icon.Note />
+              <span>Nota</span>
+            </button>
+            {activeContact?.customerPhone && (
+              <button
+                type="button"
+                className="vox-sp__sbtn"
+                onClick={() => setScheduleCallbackOpen(true)}
+                title="Programar follow-up"
+              >
+                <Icon.Calendar />
+                <span>Follow-up</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Sentiment — slim, voice-only, requires data */}
+        {!isChat && !isEmail && !isTask && !!activeContact &&
+          sentTotal > 1 &&
+          sentimentCounts.pos + sentimentCounts.neu + sentimentCounts.neg > 0 && (
+            <div className="vox-sp__sentiment">
+              <div
+                style={{
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.07em",
+                  color: "var(--text-3)",
+                  fontWeight: 600,
+                  marginBottom: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>Sentiment en vivo</span>
                 <span
                   className="mono"
                   style={{
@@ -807,89 +1058,79 @@ export function AgentDesktopPage() {
                         : sentScore < -0.1
                         ? "var(--accent-red)"
                         : "var(--text-2)",
+                    fontSize: 11,
+                    letterSpacing: 0,
                   }}
                 >
                   {sentScore >= 0 ? "+" : ""}
                   {sentScore.toFixed(2)}
                 </span>
               </div>
-            </>
-          ) : (
-            <div className="muted" style={{ fontSize: 11.5 }}>
-              Aparecerá cuando Contact Lens detecte segmentos.
+              <div className="vox-sp__sentiment-bar">
+                <div
+                  className="pos"
+                  style={{
+                    width: `${(sentimentCounts.pos / sentTotal) * 100}%`,
+                    background: "var(--accent-green)",
+                  }}
+                />
+                <div
+                  className="neu"
+                  style={{
+                    width: `${(sentimentCounts.neu / sentTotal) * 100}%`,
+                    background: "var(--text-3)",
+                  }}
+                />
+                <div
+                  className="neg"
+                  style={{
+                    width: `${(sentimentCounts.neg / sentTotal) * 100}%`,
+                    background: "var(--accent-red)",
+                  }}
+                />
+              </div>
+              <div className="vox-sp__sentiment-row">
+                <span style={{ color: "var(--accent-green)" }}>
+                  ● {sentimentCounts.pos}
+                </span>
+                <span style={{ color: "var(--text-3)" }}>
+                  ● {sentimentCounts.neu}
+                </span>
+                <span style={{ color: "var(--accent-red)" }}>
+                  ● {sentimentCounts.neg}
+                </span>
+              </div>
             </div>
           )}
-        </div>
-        )}
 
-        {/* Bottom action bar — only render when there's an actual
-            contact to act on. If the agent has nothing going, the
-            dialer above is the affordance to start something; a
-            standalone disabled "Colgar llamada" button at the bottom
-            was misleading. */}
-        {(isIncoming || !!activeContact) && (
-        <div
-          style={{
-            marginTop: "auto",
-            padding: 14,
-            borderTop: "1px solid var(--border-1)",
-            display: "flex",
-            gap: 8,
-          }}
-        >
-          {isIncoming ? (
-            <>
-              <button
-                className="btn btn--danger"
-                style={{ flex: 1, height: 44, justifyContent: "center" }}
-                onClick={() => reject(activeContact?.contactId)}
-              >
-                Rechazar
-              </button>
-              <button
-                className="btn btn--success"
-                style={{ flex: 1, height: 44, justifyContent: "center" }}
-                onClick={() => accept(activeContact?.contactId)}
-              >
-                <Icon.PhoneIn size={14} /> Atender
-              </button>
-            </>
-          ) : (
-            <button
-              className="btn btn--danger"
-              style={{ width: "100%", height: 44, justifyContent: "center" }}
-              onClick={() => {
-                // For chat we can also be stuck in "connecting" with a stale
-                // contact (e.g. server-side stop-contact already happened).
-                // hangup() still works, plus we dismiss locally so the panel
-                // doesn't keep showing the ghost contact.
-                hangup(activeContact?.contactId);
-                if (isChat && activeContact?.contactId) {
-                  dismissWrap(activeContact.contactId);
-                }
-              }}
-              // For chat / email / task, enable the end button whenever
-              // there is a contact at all (not only when connected) so the
-              // agent can always exit a stuck wire-up.
-              disabled={
-                isChat || isEmail || isTask
-                  ? !activeContact
-                  : !isActive && !isDialing
-              }
-            >
-              <Icon.Hangup size={14} />{" "}
-              {isDialing
-                ? "Cancelar marcado"
-                : isChat
-                ? "Finalizar chat"
-                : isEmail
-                ? "Cerrar email"
-                : isTask
-                ? "Cerrar tarea"
-                : "Colgar llamada"}
-            </button>
-          )}
-        </div>
+        {/* Empty state — stats + outbound actions grid */}
+        {!activeContact && !isIncoming && (
+          <>
+            <div className="vox-start" style={{ paddingBottom: 0 }}>
+              <div className="vox-start__stats">
+                <div className="vox-start__stat">
+                  <div className="vox-start__stat-label">Mis leads</div>
+                  <div className="vox-start__stat-value">{myLeadsCount}</div>
+                </div>
+                <div className="vox-start__stat">
+                  <div className="vox-start__stat-label">Estado</div>
+                  <div
+                    className="vox-start__stat-value"
+                    style={{ fontSize: 14, fontFamily: "var(--font-ui)" }}
+                  >
+                    {agentState === "Available"
+                      ? "Listo"
+                      : agentState === "Offline"
+                      ? "Offline"
+                      : agentState === "AfterCallWork"
+                      ? "ACW"
+                      : agentState}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <OutboundActionsMenu />
+          </>
         )}
       </div>
 
@@ -1082,27 +1323,22 @@ export function AgentDesktopPage() {
           </>
         )}
 
-        {/* AI panels (Coach + Assist) rely on the Contact Lens voice
-            transcript. Hide them for chat AND email — their own panels
-            already occupy the full center, and Q has nothing useful
-            to add to an email thread anyway. */}
+        {/* Asistente Q · knowledge-base search. The Coach moved to the
+            right rail as a tab next to Cliente 360°, so the agent's
+            transcript area is no longer pushed down by 6-block coach
+            cards. The Assist panel stays here because it's small
+            (single search row + N cards), and the search-then-read
+            workflow benefits from being directly below the transcript
+            it's reacting to. Hide for chat / email — their own panels
+            already occupy the full center. */}
         {!isChat && !isEmail && (
           <div style={{ borderTop: "1px solid var(--border-1)", padding: 14 }}>
             {activeContact ? (
-              <>
-                <AICoachPanel
-                  contactId={activeContact.contactId}
-                  transcriptSegmentCount={liveData?.totalSegments || 0}
-                  isActive={!!isActive}
-                  sentiment={liveData?.overallSentiment}
-                />
-                <div style={{ height: 10 }} />
-                <AIAssistPanel
-                  contactId={activeContact.contactId}
-                  customerPhone={activeContact.customerPhone}
-                  latestCustomerUtterance={latestCustomerUtterance}
-                />
-              </>
+              <AIAssistPanel
+                contactId={activeContact.contactId}
+                customerPhone={activeContact.customerPhone}
+                latestCustomerUtterance={latestCustomerUtterance}
+              />
             ) : (
               <div className="q-card">
                 <div className="q-card__head">
@@ -1119,64 +1355,129 @@ export function AgentDesktopPage() {
       </div>
 
       {/* ──────────────────────────────────────────────────────────
-         RIGHT — Customer 360° (always rendered)
+         RIGHT — Customer 360° + Coach (tabbed, always rendered)
       ────────────────────────────────────────────────────────── */}
-      <div className="call__panel" data-debug-component="Customer360Panel">
-        <div className="call__panel-head">
-          <Icon.User size={16} />
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
-            Cliente 360°
-          </div>
-          {activeContact && (
-            <Customer360MoreMenu
-              customerPhone={activeContact.customerPhone}
-              contactId={activeContact.contactId}
-              onRefreshProfile={() => setProfileRefreshKey((k) => k + 1)}
-            />
+      <div className="call__panel call__panel--v2" data-debug-component="Customer360Panel">
+        {/* Pill-style tabs — Cliente · Coach · Historial. All three
+            panels stay MOUNTED across switches so transcript-driven
+            fetches keep going while the agent looks at a different tab. */}
+        <div className="vox-tabs" style={{ paddingRight: 6 }}>
+          <button
+            type="button"
+            onClick={() => setRightRailTab("cliente")}
+            className={`vox-tab ${rightRailTab === "cliente" ? "vox-tab--active" : ""}`}
+          >
+            <Icon.User size={13} /> Cliente
+          </button>
+          <button
+            type="button"
+            onClick={() => setRightRailTab("coach")}
+            className={`vox-tab ${rightRailTab === "coach" ? "vox-tab--active" : ""}`}
+          >
+            <Icon.Sparkles size={13} /> Coach
+            {coachBlockCount > 0 && (
+              <span
+                className={`vox-tab__badge ${coachPulse ? "coach-tab-badge--pulse" : ""}`}
+              >
+                {coachBlockCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setRightRailTab("historial")}
+            className={`vox-tab ${rightRailTab === "historial" ? "vox-tab--active" : ""}`}
+            title="Contactos previos del cliente"
+          >
+            <Icon.Clock size={13} /> Historial
+          </button>
+          {rightRailTab === "cliente" && activeContact && (
+            <div style={{ display: "flex", alignItems: "center", paddingLeft: 4 }}>
+              <Customer360MoreMenu
+                customerPhone={activeContact.customerPhone}
+                contactId={activeContact.contactId}
+                onRefreshProfile={() => setProfileRefreshKey((k) => k + 1)}
+              />
+            </div>
           )}
         </div>
         <div className="call__panel-body">
-          <div className="c360">
-            {activeContact ? (
-              <>
-                {/* The Vox-style 360° panel: hero + 2x2 stats + contacto +
-                    productos (si hay attribute) + interacciones recientes
-                    timeline. */}
-                <CustomerProfilePanel
-                  phone={activeContact.customerPhone}
-                  isActive={!!isActive}
-                  refreshKey={profileRefreshKey}
-                />
-
-                <div>
-                  <div className="section-title">Casos · Amazon Connect</div>
-                  <CasesPanel
-                    contactId={activeContact.contactId}
-                    customerPhone={activeContact.customerPhone}
+          {/* Cliente 360° */}
+          <div style={{ display: rightRailTab === "cliente" ? "block" : "none" }}>
+            <div className="c360">
+              {activeContact ? (
+                <>
+                  <CustomerProfilePanel
+                    phone={activeContact.customerPhone}
+                    isActive={!!isActive}
+                    refreshKey={profileRefreshKey}
                   />
-                </div>
 
-                <div>
-                  <div className="section-title">Notas del agente</div>
-                  <AgentNotesPanel
-                    contactId={activeContact.contactId}
-                    agentUsername={user?.username || ""}
-                  />
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Idle browser: when there's no active contact the agent
-                    can still search Connect Customer Profiles by phone /
-                    email / name, view a profile, and edit its fields.
-                    Keeps the right column useful between calls instead
-                    of showing a static "aparece al recibir una llamada"
-                    placeholder. */}
+                  <div>
+                    <div className="section-title">Casos · Amazon Connect</div>
+                    <CasesPanel
+                      contactId={activeContact.contactId}
+                      customerPhone={activeContact.customerPhone}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="section-title">Notas del agente</div>
+                    <AgentNotesPanel
+                      contactId={activeContact.contactId}
+                      agentUsername={user?.username || ""}
+                    />
+                  </div>
+                </>
+              ) : (
                 <CustomerBrowser />
-              </>
+              )}
+            </div>
+          </div>
+
+          {/* Coach */}
+          <div
+            style={{
+              display: rightRailTab === "coach" ? "block" : "none",
+              padding: 14,
+            }}
+          >
+            {!isChat && !isEmail ? (
+              <AICoachPanel
+                contactId={activeContact?.contactId ?? null}
+                customerPhone={activeContact?.customerPhone ?? null}
+                transcriptSegmentCount={liveData?.totalSegments || 0}
+                isActive={!!isActive}
+                sentiment={liveData?.overallSentiment}
+                inline
+                onBlocksChange={handleCoachBlocksChange}
+              />
+            ) : (
+              <div
+                className="muted"
+                style={{ fontSize: 12.5, textAlign: "center", padding: 20 }}
+              >
+                El coach solo está disponible durante llamadas de voz.
+              </div>
             )}
           </div>
+
+          {/* Historial — previous contacts for this customer */}
+          <div
+            style={{ display: rightRailTab === "historial" ? "block" : "none" }}
+          >
+            <ContactHistoryPanel phone={activeContact?.customerPhone ?? null} />
+          </div>
         </div>
+        <style>{`
+          @keyframes coach-tab-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.6); }
+            50% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0); }
+          }
+          .coach-tab-badge--pulse {
+            animation: coach-tab-pulse 1s ease-in-out 2;
+          }
+        `}</style>
       </div>
 
       </div>
@@ -1211,6 +1512,11 @@ export function AgentDesktopPage() {
         customerName={callerName}
         assignedAgentUserId={user?.userId || ""}
         onScheduled={() => setCallbackRefreshKey((k) => k + 1)}
+      />
+      <ConferenceModal
+        open={conferenceOpen}
+        onClose={() => setConferenceOpen(false)}
+        contactId={activeContact?.contactId ?? null}
       />
     </div>
     </OmnichannelNotifierProvider>

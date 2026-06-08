@@ -37,8 +37,13 @@ import {
  * Concurrency safety: ConditionExpression ensures only one dispatcher
  * grabs each row.
  */
-const dynamo = new DynamoDBClient({});
-const connect = new ConnectClient({ maxAttempts: 2 });
+// BYO Data Plane (#46): module-active. TODO: como campaign-dialer, el discovery
+// inicial usa la tabla pooled de Vox; para multi-tenant real hay que escanear
+// connectview-connections + iterar por tenant. Para Novasys legacy funciona OK.
+const legacyDynamo = new DynamoDBClient({});
+const dynamo: DynamoDBClient = legacyDynamo;
+const legacyConnect = new ConnectClient({ maxAttempts: 2 });
+const connect: ConnectClient = legacyConnect;
 const TABLE = process.env.CALLBACKS_TABLE || "connectview-callbacks";
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 const DEFAULT_FLOW_ID =

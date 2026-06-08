@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import type { ContactRecord, ContactFilters } from "@/types/monitoring";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 
 export function useContacts() {
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
@@ -24,7 +25,7 @@ export function useContacts() {
         if (filters.queueName) params.set("queueName", filters.queueName);
         if (filters.sentiment) params.set("sentiment", filters.sentiment);
 
-        const response = await fetch(
+        const response = await authedFetch(
           `${endpoints.queryContacts}?${params.toString()}`
         );
         if (!response.ok) throw new Error(`HTTP ${response.status}`);

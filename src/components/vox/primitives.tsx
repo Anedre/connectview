@@ -520,6 +520,9 @@ export const Tag = makeIcon(
     <circle cx="8" cy="8" r="1.5" />
   </>
 );
+export const Cloud = makeIcon(
+  <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+);
 export const Star = makeIcon(
   <path d="M12 3l2.7 5.6L21 9.5l-4.5 4.4L17.5 21 12 17.8 6.5 21 7.5 13.9 3 9.5l6.3-.9z" />
 );

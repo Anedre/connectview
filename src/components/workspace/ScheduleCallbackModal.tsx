@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import * as Icon from "@/components/vox/primitives";
 
 type Channel = "voice" | "email" | "whatsapp";
@@ -49,10 +50,39 @@ function presetLabel(min: number) {
   return `${min / 1440} día${min === 1440 ? "" : "s"}`;
 }
 
-const CHANNELS: { id: Channel; label: string; icon: string; help: string }[] = [
-  { id: "voice", label: "Llamada", icon: "📞", help: "El sistema te llamará automáticamente al cliente y a ti" },
-  { id: "email", label: "Email", icon: "📧", help: "Te recordamos enviar el correo a la hora pactada" },
-  { id: "whatsapp", label: "WhatsApp", icon: "💬", help: "Te recordamos enviar el template a la hora pactada" },
+const CHANNELS: {
+  id: Channel;
+  label: string;
+  icon: string;
+  help: string;
+  /** CSS color token used to tint the active card and submit button */
+  color: string;
+  colorSoft: string;
+}[] = [
+  {
+    id: "voice",
+    label: "Llamada",
+    icon: "📞",
+    help: "El sistema te llamará automáticamente al cliente y a ti",
+    color: "var(--accent-green)",
+    colorSoft: "var(--accent-green-soft)",
+  },
+  {
+    id: "email",
+    label: "Email",
+    icon: "📧",
+    help: "Te recordamos enviar el correo a la hora pactada",
+    color: "var(--accent-amber)",
+    colorSoft: "var(--accent-amber-soft)",
+  },
+  {
+    id: "whatsapp",
+    label: "WhatsApp",
+    icon: "💬",
+    help: "Te recordamos enviar el template a la hora pactada",
+    color: "var(--accent-cyan)",
+    colorSoft: "var(--accent-cyan-soft)",
+  },
 ];
 
 /**
@@ -131,7 +161,7 @@ export function ScheduleFollowupModal({
     if (!open || channel !== "email" || emailAddresses.length > 0) return;
     const endpoints = getApiEndpoints();
     if (!endpoints?.listEmailAddresses) return;
-    fetch(endpoints.listEmailAddresses)
+    authedFetch(endpoints.listEmailAddresses)
       .then((r) => r.json())
       .then((j) => {
         const items = (j.items || []) as EmailAddressEntry[];
@@ -321,23 +351,46 @@ export function ScheduleFollowupModal({
           overflowY: "auto",
           background: "var(--bg-1)",
           border: "1px solid var(--border-1)",
-          borderRadius: 14,
-          boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
-          padding: 16,
+          borderRadius: 16,
+          boxShadow: "0 24px 60px rgba(0,0,0,0.55)",
+          overflow: "hidden",
           fontFamily: "var(--font-ui)",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
+        {/* Header */}
         <div
           style={{
+            padding: "14px 16px",
+            borderBottom: "1px solid var(--border-1)",
             display: "flex",
             alignItems: "center",
-            gap: 8,
-            marginBottom: 12,
+            gap: 10,
+            flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: 18 }}>📅</span>
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
-            Agendar follow-up
+          <span
+            style={{
+              display: "grid",
+              placeItems: "center",
+              width: 32,
+              height: 32,
+              borderRadius: 9,
+              background: channelMeta.colorSoft,
+              color: channelMeta.color,
+              fontSize: 16,
+            }}
+          >
+            <Icon.Calendar size={15} />
+          </span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+              Agendar follow-up
+            </div>
+            <div className="muted" style={{ fontSize: 11 }}>
+              {channelMeta.help}
+            </div>
           </div>
           <button
             type="button"
@@ -350,72 +403,102 @@ export function ScheduleFollowupModal({
           </button>
         </div>
 
-        {/* Channel picker — 3 pill buttons */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 6,
-            marginBottom: 10,
-          }}
-        >
-          {CHANNELS.map((c) => {
-            const active = channel === c.id;
-            return (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setChannel(c.id)}
-                disabled={submitting}
+        <div style={{ padding: 16, overflowY: "auto", flex: 1, minHeight: 0 }}>
+          {/* Recipient chip — avatar + name + phone */}
+          {phone && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 12px",
+                background: "var(--bg-2)",
+                border: "1px solid var(--border-1)",
+                borderRadius: 10,
+                marginBottom: 12,
+              }}
+            >
+              <span
                 style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 2,
-                  padding: "8px 4px",
+                  display: "grid",
+                  placeItems: "center",
+                  width: 32,
+                  height: 32,
                   borderRadius: 8,
-                  border: active
-                    ? "1px solid var(--accent-cyan)"
-                    : "1px solid var(--border-1)",
-                  background: active ? "var(--accent-cyan-soft)" : "var(--bg-2)",
-                  color: active ? "var(--accent-cyan)" : "var(--text-2)",
-                  cursor: submitting ? "not-allowed" : "pointer",
-                  fontSize: 11,
-                  fontWeight: active ? 600 : 400,
+                  background: channelMeta.color,
+                  color: "white",
+                  fontSize: 12,
+                  fontWeight: 700,
                 }}
               >
-                <span style={{ fontSize: 16 }}>{c.icon}</span>
-                <span>{c.label}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div
-          className="muted"
-          style={{ fontSize: 10.5, marginBottom: 10, lineHeight: 1.45 }}
-        >
-          {channelMeta.help}
-        </div>
+                {(customerName || "C").slice(0, 2).toUpperCase()}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>
+                  {customerName || "Cliente"}
+                </div>
+                <div
+                  className="mono"
+                  style={{ fontSize: 11.5, color: "var(--text-3)" }}
+                >
+                  {phone}
+                </div>
+              </div>
+            </div>
+          )}
 
-        {phone && (
+          {/* Channel picker — 3 colored cards */}
           <div
-            className="mono"
             style={{
-              fontSize: 12,
-              padding: "8px 10px",
-              background: "var(--bg-2)",
-              border: "1px solid var(--border-1)",
-              borderRadius: 6,
-              marginBottom: 10,
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: "0.07em",
+              color: "var(--text-3)",
+              fontWeight: 600,
+              marginBottom: 6,
             }}
           >
-            <span style={{ color: "var(--text-3)" }}>Para</span>{" "}
-            <span style={{ color: "var(--text-1)", fontWeight: 500 }}>
-              {customerName || "Cliente"}
-            </span>{" "}
-            · {phone}
+            Canal
           </div>
-        )}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 8,
+              marginBottom: 14,
+            }}
+          >
+            {CHANNELS.map((c) => {
+              const active = channel === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setChannel(c.id)}
+                  disabled={submitting}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 5,
+                    padding: "12px 6px",
+                    borderRadius: 10,
+                    border: "1px solid",
+                    borderColor: active ? c.color : "var(--border-1)",
+                    background: active ? c.colorSoft : "var(--bg-2)",
+                    color: active ? c.color : "var(--text-2)",
+                    cursor: submitting ? "not-allowed" : "pointer",
+                    fontSize: 12,
+                    fontWeight: active ? 600 : 500,
+                    transition: "background .15s, border-color .15s, color .15s",
+                  }}
+                >
+                  <span style={{ fontSize: 22 }}>{c.icon}</span>
+                  <span>{c.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
         {/* Cuándo */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
@@ -689,18 +772,36 @@ export function ScheduleFollowupModal({
           />
         </div>
 
-        <div
-          className="muted"
-          style={{ fontSize: 10.5, marginBottom: 10, lineHeight: 1.5 }}
-        >
-          {channel === "voice"
-            ? "🤝 Te lo asignamos a ti automáticamente — el sistema te llamará al cliente y a ti a la hora pactada."
-            : "🔔 A la hora pactada aparecerá en tu drawer de pendientes para que envíes el " +
-              (channel === "email" ? "correo" : "WhatsApp") +
-              " manualmente."}
+          <div
+            style={{
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: channelMeta.colorSoft,
+              color: channelMeta.color,
+              fontSize: 11.5,
+              lineHeight: 1.5,
+              marginBottom: 4,
+            }}
+          >
+            {channel === "voice"
+              ? "Te lo asignamos a ti automáticamente — el sistema te llamará al cliente y a ti a la hora pactada."
+              : "A la hora pactada aparecerá en tu drawer de pendientes para que envíes el " +
+                (channel === "email" ? "correo" : "WhatsApp") +
+                " manualmente."}
+          </div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        {/* Footer */}
+        <div
+          style={{
+            padding: "12px 16px",
+            borderTop: "1px solid var(--border-1)",
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 8,
+            flexShrink: 0,
+          }}
+        >
           <button
             type="button"
             className="btn btn--ghost"
@@ -711,11 +812,18 @@ export function ScheduleFollowupModal({
           </button>
           <button
             type="button"
-            className="btn btn--success"
+            className="btn"
             onClick={submit}
             disabled={submitting || !phone || !assignedAgentUserId}
+            style={{
+              background: channelMeta.color,
+              borderColor: channelMeta.color,
+              color: "white",
+              fontWeight: 600,
+            }}
           >
-            {submitting ? "Agendando…" : `${channelMeta.icon} Agendar`}
+            <Icon.Calendar size={12} />
+            {submitting ? "Agendando…" : "Agendar follow-up"}
           </button>
         </div>
       </div>

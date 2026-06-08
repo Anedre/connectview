@@ -3,6 +3,8 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { getApiEndpoints } from "@/lib/api";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
+import { useCustomerNamesByPhone } from "@/hooks/useCustomerNamesByPhone";
+import { useLeadNamesByPhone } from "@/hooks/useLeadNamesByPhone";
 import { Avatar, colorFromName } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
 
@@ -140,12 +142,19 @@ export function CustomerListSidebar({ selectedKey, onSelect }: Props) {
     inputRef.current?.focus();
   }, []);
 
-  const composeName = (r: { firstName?: string; lastName?: string; businessName?: string; phoneNumber?: string; email?: string }) =>
-    r.businessName ||
-    [r.firstName, r.lastName].filter(Boolean).join(" ").trim() ||
-    r.email ||
-    r.phoneNumber ||
-    "(sin nombre)";
+  const composeName = (r: { firstName?: string; lastName?: string; businessName?: string; phoneNumber?: string; email?: string }) => {
+    const person = [r.firstName, r.lastName].filter(Boolean).join(" ").trim();
+    const biz = r.businessName && r.businessName !== "Lead sin empresa" ? r.businessName : "";
+    return person || biz || r.email || r.phoneNumber || "(sin nombre)";
+  };
+
+  // Resolver el NOMBRE de cada teléfono reciente para mostrar nombres (no números).
+  // Fuente primaria: la tabla de Leads (nombre autoritativo). Fallback: Customer Profiles.
+  const leadNames = useLeadNamesByPhone();
+  const recentPhones = recents
+    .map((r) => r.customerPhone)
+    .filter((p) => p && !p.includes("@"));
+  const recentNames = useCustomerNamesByPhone(recentPhones);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -322,16 +331,21 @@ export function CustomerListSidebar({ selectedKey, onSelect }: Props) {
                     : r.lastChannel === "TASK"
                     ? "📝"
                     : "📞";
+                // Nombre resuelto: lead (autoritativo) → perfil → teléfono. El
+                // teléfono pasa a la línea secundaria (conectado al nombre, no como título).
+                const resolvedName = leadNames[r.customerPhone] || recentNames[r.customerPhone];
+                const displayName = resolvedName || r.customerPhone;
                 return (
                   <CustomerRow
                     key={r.customerPhone}
-                    name={r.customerPhone}
+                    name={displayName}
                     primary={`${channelIcon} ${relTime}${r.contactCount > 1 ? ` · ${r.contactCount} contactos` : ""}`}
-                    secondary={r.lastQueueName || ""}
+                    secondary={resolvedName && !isEmail ? r.customerPhone : r.lastQueueName || ""}
                     selected={isSelected}
                     onClick={() =>
                       onSelect({
                         profileId: r.customerPhone,
+                        firstName: resolvedName || undefined,
                         phoneNumber: isEmail ? undefined : r.customerPhone,
                         email: isEmail ? r.customerPhone : undefined,
                         lastContactAt: r.lastContactTime,

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 import * as Icon from "@/components/vox/primitives";
 import {
   Avatar,
@@ -9,6 +11,14 @@ import {
   Kpi,
   StatusPill,
 } from "@/components/vox/primitives";
+import { TaxonomyEditor } from "@/components/admin/TaxonomyEditor";
+import { CatalogEditor } from "@/components/admin/CatalogEditor";
+import { AuditLogViewer } from "@/components/admin/AuditLogViewer";
+import { PermissionsEditor } from "@/components/admin/PermissionsEditor";
+import { IntegrationsManager } from "@/components/admin/IntegrationsManager";
+import { TeamManager } from "@/components/admin/TeamManager";
+import { PageHeader } from "@/components/vox/PageHeader";
+import { useConnectAuth } from "@/context/ConnectAuthContext";
 
 interface ConnectUser {
   username: string;
@@ -29,35 +39,68 @@ const PROFILE_CHIP: Record<string, string> = {
 };
 
 export function AdminPage() {
+  // Instancia de Connect del TENANT (no más hardcode a novasys.my.connect.aws):
+  // los links "Gestionar en Connect" abren la consola de SU instancia.
+  const { instanceUrl } = useConnectAuth();
   const [users, setUsers] = useState<ConnectUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [section, setSection] = useState("users");
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchUsers = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const endpoints = getApiEndpoints();
-      if (endpoints?.listUsers) {
-        const response = await fetch(endpoints.listUsers);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-        setUsers(data.users || []);
-      } else {
-        throw new Error("API no configurada");
-      }
+      if (!endpoints?.listUsers) throw new Error("API no configurada");
+      const response = await fetch(endpoints.listUsers);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      setUsers(data.users || []);
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error cargando usuarios");
-      setUsers([]);
+      // En refetch silencioso (focus) mantenemos el último estado bueno en vez
+      // de vaciar la lista por un blip de red.
+      if (!silent) {
+        setError(err instanceof Error ? err.message : "Error cargando usuarios");
+        setUsers([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  // Re-sincroniza la lista al volver el foco a la pestaña (p.ej. tras conectar/
+  // desconectar Connect por fuera), sin parpadear el spinner.
+  useRefetchOnFocus(useCallback(() => fetchUsers({ silent: true }), [fetchUsers]));
+
+  // OAuth callback de Salesforce (#44): salesforce-oauth-callback redirige
+  // a /admin?sf=ok o /admin?sf=err&reason=... — convertimos a toast y
+  // limpiamos la URL para que un refresh no re-dispare la notificación.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const sf = url.searchParams.get("sf");
+    if (!sf) return;
+    if (sf === "ok") {
+      toast.success("Salesforce conectado correctamente");
+      setSection("integrations");
+    } else if (sf === "err") {
+      const reason = url.searchParams.get("reason") || "razón desconocida";
+      toast.error(`Salesforce no se pudo conectar: ${reason}`);
+      setSection("integrations");
+    }
+    url.searchParams.delete("sf");
+    url.searchParams.delete("reason");
+    window.history.replaceState({}, "", url.toString());
+  }, []);
 
   const stats = {
     total: users.length,
@@ -68,6 +111,8 @@ export function AdminPage() {
 
   const sections = [
     { id: "users", label: "Usuarios y roles", icon: Icon.Users },
+    { id: "tipificacion", label: "Tipificación", icon: Icon.Tag },
+    { id: "catalogos", label: "Catálogos", icon: Icon.Pad },
     { id: "channels", label: "Canales", icon: Icon.Globe },
     { id: "queues", label: "Colas", icon: Icon.Queue },
     { id: "integrations", label: "Integraciones", icon: Icon.Lightning },
@@ -77,32 +122,33 @@ export function AdminPage() {
 
   return (
     <div className="view" style={{ maxWidth: 1500 }}>
-      <div className="view__head">
-        <div>
-          <div className="view__crumb">
-            <span>Sistema</span>
-          </div>
-          <h1 className="view__title">Configuración</h1>
-          <div className="view__sub">
+      <PageHeader
+        crumb="Sistema"
+        title="Configuración"
+        filterPill="Todos"
+        sub={
+          <>
             {/* Inconsistencia cross-página: el resto de subtítulos están
                 en español puro, este mezclaba "Workspace · Connect users". */}
             Sistema · Usuarios de Connect · {stats.total} en total
-          </div>
-        </div>
-        <div className="view__actions">
-          <button
-            className="btn"
-            onClick={() =>
-              window.open("https://novasys.my.connect.aws/connect/users", "_blank")
-            }
-          >
-            Abrir en Connect
-          </button>
-          <button className="btn" onClick={fetchUsers} disabled={loading}>
-            <Icon.Refresh size={14} /> Actualizar
-          </button>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <button
+              className="btn"
+              onClick={() =>
+                window.open(`${instanceUrl}/connect/users`, "_blank")
+              }
+            >
+              Abrir en Connect
+            </button>
+            <button className="btn" onClick={() => fetchUsers()} disabled={loading}>
+              <Icon.Refresh size={14} /> Actualizar
+            </button>
+          </>
+        }
+      />
 
       <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 18 }}>
         <Card style={{ height: "fit-content" }}>
@@ -127,6 +173,22 @@ export function AdminPage() {
         <div>
           {section === "users" && (
             <div className="col" style={{ gap: 16 }}>
+              {/* Equipo de Vox (Cognito) — la gente que se loguea a la app +
+                  el flujo de invitación. Es lo que un admin gestiona. */}
+              <TeamManager />
+
+              {/* Agentes de Amazon Connect (telefonía) — capa separada: los que
+                  toman llamadas/chats. Acá solo se ven; se crean/gestionan en la
+                  consola de Connect. La separación enseña el modelo de 2 capas. */}
+              <div style={{ borderTop: "1px solid var(--border-1)", paddingTop: 18, marginTop: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-2)" }}>
+                  Agentes de Amazon Connect · telefonía
+                </div>
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+                  Los que toman llamadas y chats. Se crean y gestionan en la consola de Amazon Connect.
+                </div>
+              </div>
+
               <div className="kpi-grid">
                 <Kpi label="Usuarios totales" value={String(stats.total)} deltaDir="flat" />
                 {/* Mantenemos el español puro para alinear con el resto
@@ -162,8 +224,13 @@ export function AdminPage() {
                 <CardHead
                   title="Usuarios de Amazon Connect"
                   right={
-                    <button className="btn btn--primary btn--sm">
-                      <Icon.Plus size={12} /> Invitar usuario
+                    <button
+                      className="btn btn--sm"
+                      onClick={() =>
+                        window.open(`${instanceUrl}/connect/users`, "_blank", "noopener")
+                      }
+                    >
+                      Gestionar en Connect <Icon.ChevRight size={12} />
                     </button>
                   }
                 />
@@ -240,7 +307,17 @@ export function AdminPage() {
             </div>
           )}
 
-          {section !== "users" && (
+          {section === "tipificacion" && <TaxonomyEditor />}
+          {section === "catalogos" && <CatalogEditor />}
+          {section === "integrations" && <IntegrationsManager />}
+          {section === "security" && (
+            <div className="col" style={{ gap: 16 }}>
+              <PermissionsEditor />
+              <AuditLogViewer />
+            </div>
+          )}
+
+          {section !== "users" && section !== "tipificacion" && section !== "catalogos" && section !== "security" && section !== "integrations" && (
             <Card>
               <CardBody
                 style={{
@@ -261,7 +338,7 @@ export function AdminPage() {
                   style={{ marginTop: 14 }}
                   onClick={() =>
                     window.open(
-                      "https://novasys.my.connect.aws/connect",
+                      `${instanceUrl}/connect`,
                       "_blank",
                       "noopener"
                     )

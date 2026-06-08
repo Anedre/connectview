@@ -43,12 +43,14 @@ async function fetchName(
           nameCache.set(phone, null);
           return null;
         }
+        // Preferir el nombre de PERSONA; ignorar la empresa default basura.
+        const biz = p.businessName && p.businessName !== "Lead sin empresa" ? p.businessName : "";
         const name =
-          p.businessName ||
           [p.firstName, p.middleName, p.lastName]
             .filter(Boolean)
             .join(" ")
             .trim() ||
+          biz ||
           null;
         nameCache.set(phone, name);
         return name;

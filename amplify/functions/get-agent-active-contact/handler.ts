@@ -5,20 +5,25 @@ import {
   GetCurrentUserDataCommand,
   ListUsersCommand,
 } from "@aws-sdk/client-connect";
+import { resolveConnect } from "../_shared/tenantConnect";
 
 const client = new ConnectClient({});
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 
 // Enrich missing CustomerEndpoint via DescribeContact — GetCurrentUserData doesn't always
 // populate the customer endpoint while the call is still in early CONNECTING state.
-async function describeContactSafe(contactId: string): Promise<{
+async function describeContactSafe(
+  connect: ConnectClient,
+  instanceId: string,
+  contactId: string
+): Promise<{
   customerPhone: string | null;
   customerEndpointType: string | null;
 } | null> {
   try {
-    const res = await client.send(
+    const res = await connect.send(
       new DescribeContactCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         ContactId: contactId,
       })
     );
@@ -33,28 +38,34 @@ async function describeContactSafe(contactId: string): Promise<{
   }
 }
 
-// Cache username -> userId lookups
+// Cache username -> userId lookups. Clave por INSTANCIA (`${instanceId}:${username}`)
+// para no mezclar usernames entre tenants (dos tenants pueden tener "juan").
 const userIdCache = new Map<string, string>();
 
-async function resolveUserId(username: string): Promise<string | null> {
-  if (userIdCache.has(username)) return userIdCache.get(username)!;
+async function resolveUserId(
+  connect: ConnectClient,
+  instanceId: string,
+  username: string
+): Promise<string | null> {
+  const ck = `${instanceId}:${username}`;
+  if (userIdCache.has(ck)) return userIdCache.get(ck)!;
   try {
     let nextToken: string | undefined;
     do {
-      const res = await client.send(
+      const res = await connect.send(
         new ListUsersCommand({
-          InstanceId: INSTANCE_ID,
+          InstanceId: instanceId,
           MaxResults: 100,
           NextToken: nextToken,
         })
       );
       for (const u of res.UserSummaryList || []) {
         if (u.Username && u.Id) {
-          userIdCache.set(u.Username, u.Id);
+          userIdCache.set(`${instanceId}:${u.Username}`, u.Id);
         }
       }
       nextToken = res.NextToken;
-      if (userIdCache.has(username)) return userIdCache.get(username)!;
+      if (userIdCache.has(ck)) return userIdCache.get(ck)!;
     } while (nextToken);
     return null;
   } catch (err) {
@@ -66,6 +77,15 @@ async function resolveUserId(username: string): Promise<string | null> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // Multi-tenant + auth: resuelve el Connect del TENANT del JWT. Anónimo (sin
+    // token) → blockedConnectClient (devuelve vacío) → cierra el leak de datos en
+    // vivo (teléfono del cliente, estado de llamada) de la instancia de Novasys.
+    // Tenant real → SU instancia. (Antes pegaba directo a la instancia hardcodeada
+    // sin auth → cualquiera en internet leía contactos activos de Novasys.)
+    const r = await resolveConnect(event.headers, client, INSTANCE_ID);
+    const connect = r.client;
+    const instanceId = r.instanceId;
+
     const params = event.queryStringParameters || {};
     const username = params.username as string | undefined;
     const userId = params.userId as string | undefined;
@@ -80,7 +100,7 @@ export const handler: Handler = async (event: any) => {
 
     let resolvedUserId = userId;
     if (!resolvedUserId && username) {
-      resolvedUserId = (await resolveUserId(username)) || undefined;
+      resolvedUserId = (await resolveUserId(connect, instanceId, username)) || undefined;
       if (!resolvedUserId) {
         return {
           statusCode: 404,
@@ -94,9 +114,9 @@ export const handler: Handler = async (event: any) => {
       }
     }
 
-    const res = await client.send(
+    const res = await connect.send(
       new GetCurrentUserDataCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         Filters: {
           Agents: [resolvedUserId!],
         },
@@ -130,7 +150,7 @@ export const handler: Handler = async (event: any) => {
     // Fallback: GetCurrentUserData often returns null CustomerEndpoint —
     // ask DescribeContact for the real endpoint.
     if (!customerPhone && active.ContactId) {
-      const enriched = await describeContactSafe(active.ContactId);
+      const enriched = await describeContactSafe(connect, instanceId, active.ContactId);
       if (enriched) {
         customerPhone = enriched.customerPhone;
         customerEndpointType = enriched.customerEndpointType;

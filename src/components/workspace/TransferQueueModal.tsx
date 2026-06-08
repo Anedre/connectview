@@ -12,12 +12,17 @@ interface TransferQueueModalProps {
 }
 
 /**
- * Blind transfer-to-queue modal. Lists every queue exposed by the
+ * Transfer-to-queue modal. Lists every queue exposed by the
  * `listQueues` endpoint, lets the agent filter by name, and on click
- * triggers `transferToQueue(queueArn)` from the CCP context. We use
- * blind transfer (drop the agent leg after `addConnection` succeeds)
- * which is the simplest UX — the agent doesn't have to wait for the
- * receiving queue to pick up.
+ * triggers a transfer in one of two modes:
+ *
+ * - **Blind (default):** addConnection to the queue endpoint then drop
+ *   the agent leg immediately — fastest UX for "I know exactly where
+ *   this goes".
+ * - **Warm ("Consultar primero"):** addConnection without dropping
+ *   the agent — the agent ends up briefing the receiving queue's
+ *   agent in a 3-way bridge, then completes the handoff via the
+ *   floating "Completar transferencia" button.
  */
 export function TransferQueueModal({
   open,
@@ -25,10 +30,11 @@ export function TransferQueueModal({
   contactId,
   channelLabel = "contacto",
 }: TransferQueueModalProps) {
-  const { transferToQueue } = useCCP();
+  const { transferToQueue, addParticipantByQueue, dropAgentLeg } = useCCP();
   const { queues, loading, error } = useQueues();
   const [filter, setFilter] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [warmMode, setWarmMode] = useState(false);
   const filterInputRef = useRef<HTMLInputElement>(null);
 
   // Reset state on open/close + focus the filter on open
@@ -36,6 +42,7 @@ export function TransferQueueModal({
     if (!open) {
       setFilter("");
       setSubmitting(false);
+      setWarmMode(false);
       return;
     }
     setTimeout(() => filterInputRef.current?.focus(), 50);
@@ -66,8 +73,21 @@ export function TransferQueueModal({
     if (submitting) return;
     setSubmitting(true);
     try {
-      await transferToQueue(queueArn, contactId || undefined);
-      toast.success(`Transferido a ${queueName}`);
+      if (warmMode) {
+        await addParticipantByQueue(queueArn, contactId || undefined);
+        toast.success(`Conectando con ${queueName}…`, {
+          description:
+            "Tu llamada queda activa. Cuelga manualmente cuando termines la consulta para completar la transferencia.",
+          duration: 7000,
+          action: {
+            label: "Completar ahora",
+            onClick: () => dropAgentLeg(contactId || undefined),
+          },
+        });
+      } else {
+        await transferToQueue(queueArn, contactId || undefined);
+        toast.success(`Transferido a ${queueName}`);
+      }
       onClose();
     } catch (err) {
       toast.error(
@@ -125,7 +145,9 @@ export function TransferQueueModal({
               Transferir {channelLabel}
             </div>
             <div className="muted" style={{ fontSize: 11 }}>
-              Selecciona la cola destino — transferencia ciega
+              {warmMode
+                ? "Warm transfer — consultas primero y luego cuelgas"
+                : "Blind transfer — la cola recibe el contacto al instante"}
             </div>
           </div>
           <button
@@ -139,7 +161,38 @@ export function TransferQueueModal({
           </button>
         </div>
 
-        <div style={{ padding: 12, borderBottom: "1px solid var(--border-1)" }}>
+        <div style={{ padding: 12, borderBottom: "1px solid var(--border-1)", display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Mode toggle: blind (default) vs warm transfer */}
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 10px",
+              borderRadius: 8,
+              background: warmMode ? "var(--accent-violet-soft)" : "var(--bg-2)",
+              border: "1px solid",
+              borderColor: warmMode ? "transparent" : "var(--border-1)",
+              cursor: "pointer",
+              transition: "background .15s, border-color .15s",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={warmMode}
+              onChange={(e) => setWarmMode(e.target.checked)}
+              style={{ accentColor: "var(--accent-violet)" }}
+            />
+            <span style={{ flex: 1 }}>
+              <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: warmMode ? "var(--accent-violet)" : "var(--text-1)" }}>
+                Consultar primero (warm transfer)
+              </span>
+              <span style={{ display: "block", fontSize: 11, color: "var(--text-3)", marginTop: 2, lineHeight: 1.4 }}>
+                Conversas con el agente destino antes de soltar la llamada.
+              </span>
+            </span>
+          </label>
+
           <div
             style={{
               display: "flex",

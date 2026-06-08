@@ -59,7 +59,7 @@ function newContactBody(c: ActiveContact): string {
 // session (the focus click that opened the desktop).
 function playDing(kind: "incoming" | "message") {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const AC: typeof AudioContext | undefined =
       (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AC) return;
@@ -213,7 +213,7 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
           // We read focusedContactId via the closure-captured ref so this
           // listener stays correct as the focus changes.
           // We don't reset to zero here — that happens in the focus effect.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           const focus = (focusRef as React.MutableRefObject<string | null>)
             .current;
           if (focus === contact.contactId) return;

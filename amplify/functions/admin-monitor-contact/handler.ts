@@ -5,13 +5,22 @@ import {
 } from "@aws-sdk/client-connect";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "node:crypto";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const connect = new ConnectClient({ maxAttempts: 1 });
-const dynamo = new DynamoDBClient({});
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+// BYO Data Plane (#46): module-active; el helper audit lee este `dynamo`.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 const AUDIT_TABLE = process.env.ADMIN_AUDIT_TABLE || "connectview-admin-audit";
 
-type MonitorMode = "SILENT_MONITOR" | "BARGE" | "WHISPER";
+// Amazon Connect's MonitorContact API + Streams 2.25 support exactly two
+// programmatic modes: SILENT_MONITOR and BARGE. There is NO whisper/coaching
+// mode in the Streams monitor API (Connect's "manager coaching" lives only
+// in the native Agent Workspace, not in amazon-connect-streams). So we expose
+// the two real modes and let the supervisor switch between them live via the
+// CCP. `allowBarge` controls whether the session may escalate to barge.
+type MonitorMode = "SILENT_MONITOR" | "BARGE";
 
 async function audit(
   actor: string,
@@ -46,11 +55,16 @@ export const handler: Handler = async (event: any) => {
     contactId,
     supervisorUserId,
     mode = "SILENT_MONITOR",
+    allowBarge = true,
     actor,
   } = body as {
     contactId: string;
     supervisorUserId: string;
     mode?: MonitorMode;
+    /** Whether the supervisor may escalate from listen to barge during
+     *  this session. Default true so the live Escuchar↔Intervenir toggle
+     *  in the control bar works. Set false to lock a session to listen-only. */
+    allowBarge?: boolean;
     actor?: string;
   };
 
@@ -64,18 +78,20 @@ export const handler: Handler = async (event: any) => {
     };
   }
 
-  // Map friendly mode names to Connect's AllowedMonitorCapabilities
-  const capabilities: string[] =
-    mode === "BARGE"
-      ? ["SILENT_MONITOR", "BARGE"]
-      : mode === "WHISPER"
-      ? ["SILENT_MONITOR"]
-      : ["SILENT_MONITOR"];
+  // Grant both capabilities (unless barge is explicitly disallowed) so the
+  // supervisor can switch listen↔barge live via the Streams API without
+  // re-invoking MonitorContact. The session STARTS in silent monitor
+  // regardless; `mode` is recorded for the audit trail.
+  const capabilities: string[] = allowBarge
+    ? ["SILENT_MONITOR", "BARGE"]
+    : ["SILENT_MONITOR"];
 
   try {
+    const { client: connect, instanceId, dynamo: tenantDynamo } = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    dynamo = tenantDynamo || legacyDynamo;
     const res = await connect.send(
       new MonitorContactCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         ContactId: contactId,
         UserId: supervisorUserId,
         AllowedMonitorCapabilities: capabilities as never,

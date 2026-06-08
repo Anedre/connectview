@@ -1,15 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import { useLiveTranscript } from "@/hooks/useLiveTranscript";
 import { useCCP } from "@/hooks/useCCP";
 import { getApiEndpoints } from "@/lib/api";
-import {
-  getDispositionTree,
-  VALORACION_META,
-  type DispositionStage,
-} from "@/lib/dispositions";
+import { VALORACION_META, type DispositionStage } from "@/lib/dispositions";
+import { useTaxonomy } from "@/hooks/useTaxonomy";
 import * as Icon from "@/components/vox/primitives";
 import { ScheduleFollowupModal } from "@/components/workspace/ScheduleCallbackModal";
 
@@ -34,6 +31,47 @@ function followupChannelFor(
   return null;
 }
 
+/** Tolerant parse of the wrap-up-suggest result. Claude may wrap the JSON
+ *  in fences or add a stray sentence; we strip and slice the first object. */
+function parseSuggestion(raw: unknown): {
+  stageId: string;
+  subStageId: string;
+  valoracion: string;
+  confidence: number;
+  reason: string;
+} | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  let text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end > start) text = text.slice(start, end + 1);
+  try {
+    const o = JSON.parse(text);
+    if (!o || typeof o.stageId !== "string" || typeof o.subStageId !== "string") {
+      return null;
+    }
+    return {
+      stageId: o.stageId,
+      subStageId: o.subStageId,
+      valoracion: typeof o.valoracion === "string" ? o.valoracion : "",
+      confidence:
+        typeof o.confidence === "number"
+          ? Math.max(0, Math.min(100, Math.round(o.confidence)))
+          : 0,
+      reason: typeof o.reason === "string" ? o.reason : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Color for the confidence chip: green ≥75, amber 50-74, red <50. */
+function confidenceColor(c: number): string {
+  if (c >= 75) return "var(--accent-green)";
+  if (c >= 50) return "var(--accent-amber)";
+  return "var(--accent-red)";
+}
+
 interface WrapUpViewProps {
   contactId: string;
   customerPhone: string | null;
@@ -43,6 +81,16 @@ interface WrapUpViewProps {
    *  title and copy ("Cierre de chat" vs. "Cierre de llamada"). */
   channel?: string | null;
   onFinish: () => void;
+  /** Demo / smoke-test escape hatch: seed the AI suggestion directly and
+   *  skip the Lambda fetch. Used by /wrapup-demo to QA the suggestion UI
+   *  without a live call. Production never sets this. */
+  initialSuggestion?: {
+    stageId: string;
+    subStageId: string;
+    valoracion: string;
+    confidence: number;
+    reason: string;
+  };
 }
 
 const SUGGESTED_TAGS = ["FCR", "Reclamo", "Consulta", "Cobranza", "Soporte L1"];
@@ -71,6 +119,7 @@ export function WrapUpView({
   durationSeconds,
   channel,
   onFinish,
+  initialSuggestion,
 }: WrapUpViewProps) {
   const channelKey = (channel || "VOICE").toUpperCase();
   const isChat = channelKey === "CHAT";
@@ -88,7 +137,9 @@ export function WrapUpView({
   const { data: transcript } = useLiveTranscript(contactId);
   const { agentName, setContactAttributes } = useCCP();
 
-  const tree = useMemo(() => getDispositionTree(), []);
+  // Unified taxonomy from DynamoDB (single source of truth across all
+  // channels). Falls back to the static default while loading.
+  const { tree, loading: treeLoading } = useTaxonomy();
 
   const [summary, setSummary] = useState<string>("");
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -96,6 +147,18 @@ export function WrapUpView({
   const [notes, setNotes] = useState("");
   const [stageId, setStageId] = useState<string | null>(null);
   const [subStageId, setSubStageId] = useState<string | null>(null);
+  // AI-suggested tipificación (mode="wrap-up-suggest"). Auto-applied on
+  // arrival if the agent hasn't picked anything yet; the agent can
+  // override by clicking another stage, or re-apply from the banner.
+  const [suggestion, setSuggestion] = useState<{
+    stageId: string;
+    subStageId: string;
+    valoracion: string;
+    confidence: number;
+    reason: string;
+  } | null>(initialSuggestion ?? null);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [followUps, setFollowUps] = useState({
     task24h: true,
@@ -169,6 +232,85 @@ export function WrapUpView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactId]);
 
+  // ── AI auto-classification ────────────────────────────────────────────
+  // Ship the active taxonomy + ask Claude to pick the best stage/subStage.
+  // We auto-apply the pick only if the agent hasn't selected anything yet,
+  // so we never overwrite a manual choice.
+  const fetchSuggestion = async () => {
+    const endpoints = getApiEndpoints();
+    if (!endpoints?.generateCallSummary || !contactId) return;
+    setSuggestionLoading(true);
+    try {
+      const compactTaxonomy = tree.map((s) => ({
+        id: s.id,
+        label: s.label,
+        valoracion: s.valoracion,
+        description: s.description,
+        subStages: s.subStages.map((ss) => ({ id: ss.id, label: ss.label })),
+      }));
+      const r = await fetch(endpoints.generateCallSummary, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactId,
+          mode: "wrap-up-suggest",
+          taxonomy: compactTaxonomy,
+        }),
+      });
+      if (!r.ok) return;
+      const data = await r.json().catch(() => ({}));
+      const parsed = parseSuggestion(data.result);
+      if (!parsed) return;
+      // Validate the pick against the real tree — guard against a model
+      // hallucinating an id that doesn't exist.
+      const stage = tree.find((s) => s.id === parsed.stageId);
+      const sub = stage?.subStages.find((ss) => ss.id === parsed.subStageId);
+      if (!stage || !sub) return;
+      setSuggestion(parsed);
+      // Auto-apply only if the agent hasn't touched the picker.
+      setStageId((curr) => {
+        if (curr === null) {
+          setSubStageId(parsed.subStageId);
+          return parsed.stageId;
+        }
+        return curr;
+      });
+    } catch {
+      /* silent — suggestion is best-effort */
+    } finally {
+      setSuggestionLoading(false);
+    }
+  };
+
+  // Fire the suggestion ONCE, and only after the taxonomy has loaded — so
+  // the tree we ship to the Lambda is the real canonical one, not the
+  // transient fallback.
+  const suggestFiredRef = useRef(false);
+  useEffect(() => {
+    // Demo seed: auto-apply the injected suggestion, skip the Lambda.
+    if (initialSuggestion) {
+      setStageId((curr) => {
+        if (curr === null) {
+          setSubStageId(initialSuggestion.subStageId);
+          return initialSuggestion.stageId;
+        }
+        return curr;
+      });
+      return;
+    }
+    if (treeLoading || suggestFiredRef.current) return;
+    suggestFiredRef.current = true;
+    fetchSuggestion();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactId, treeLoading]);
+
+  const applySuggestion = () => {
+    if (!suggestion) return;
+    setStageId(suggestion.stageId);
+    setSubStageId(suggestion.subStageId);
+    setSuggestionDismissed(false);
+  };
+
   const addTag = (t: string) => {
     if (!tags.includes(t)) setTags((curr) => [...curr, t]);
   };
@@ -211,6 +353,9 @@ export function WrapUpView({
       tags,
       followUps,
       customerPhone,
+      // Channel of the contact being wrapped up — lets reports slice
+      // tipificación by voice/chat/whatsapp/email under ONE taxonomy.
+      channel: channelKey,
     };
     try {
       if (endpoints?.saveAgentNotes) {
@@ -235,6 +380,36 @@ export function WrapUpView({
         tags: tags.join(", "),
         wrapUpAgent: user?.username || "",
       });
+
+      // Vox → Salesforce: push the gestión to SF (upsert Lead + Task),
+      // mapping this stage's salesforceValue to Lead Status. Fire-and-forget
+      // so a slow/unconfigured SF never blocks closing the contact.
+      if (endpoints?.salesforceSync) {
+        const sfBody = {
+          customerPhone,
+          customerName,
+          email: profile?.email ?? undefined,
+          company: profile?.businessName ?? undefined,
+          leadStatus: selectedStage.salesforceValue || undefined,
+          stageLabel: selectedStage.label,
+          subStageLabel: selectedSubStage.label,
+          valoracion: selectedStage.valoracion,
+          notes,
+          summary,
+          agentUsername: user?.username || "",
+          contactId,
+          // Canal del contacto → cómo se registra la actividad en SF (CHAT aquí = WhatsApp).
+          channel: channelKey === "CHAT" ? "WhatsApp" : channelKey,
+        };
+        fetch(endpoints.salesforceSync, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sfBody),
+        }).catch(() => {
+          /* best-effort — SF sync failures must not affect wrap-up */
+        });
+      }
+
       toast.success("Wrap-up enviado");
       // If the sub-stage commits to a follow-up, open the schedule
       // modal instead of finishing — the agent still needs to pick
@@ -252,6 +427,9 @@ export function WrapUpView({
     }
   };
 
+  // Nota: la interacción "sin tipificar" se registra AUTOMÁTICAMENTE al terminar
+  // el contacto (en el escritorio), así que acá solo cerramos — no re-registramos.
+
   return (
     <div className="view" style={{ maxWidth: 1200 }}>
       <div className="view__head">
@@ -267,12 +445,21 @@ export function WrapUpView({
             {" · "}
             {summaryLoading
               ? "Q está generando el resumen…"
-              : "Q ya generó un borrador del resumen"}
+              : "Q ya generó el resumen (editable)"}
           </div>
         </div>
-        <div className="view__actions">
-          <button className="btn" onClick={onFinish}>
-            Guardar borrador
+        <div className="view__actions" style={{ alignItems: "center", gap: 10 }}>
+          <span className="muted" style={{ fontSize: 11.5, flex: 1, textAlign: "left", minWidth: 0 }}>
+            Tipificá para registrar la gestión. Si cerrás sin tipificar, la llamada queda como{" "}
+            <strong style={{ color: "var(--accent-amber)" }}>sin tipificar</strong> (pendiente de seguimiento).
+          </span>
+          <button
+            className="btn"
+            onClick={onFinish}
+            title="Cierra sin tipificar — la llamada ya quedó registrada como 'sin tipificar' (pendiente) en el lead"
+            style={{ borderColor: "var(--accent-amber)", color: "var(--accent-amber)" }}
+          >
+            Cerrar sin tipificar
           </button>
           <button
             className="btn btn--primary"
@@ -413,14 +600,92 @@ export function WrapUpView({
           <div className="card">
             <div className="card__head">
               <div className="card__title">Tipificación · Stage</div>
-              {selectedStage && (
+              {suggestionLoading && !suggestion ? (
+                <span className="chip chip--violet" style={{ height: 18, fontSize: 10 }}>
+                  <Icon.Sparkles size={10} /> IA analizando…
+                </span>
+              ) : selectedStage ? (
                 <span className={`chip ${VALORACION_META[selectedStage.valoracion].chip}`}>
                   <span className="dot" />
                   {VALORACION_META[selectedStage.valoracion].label}
                 </span>
-              )}
+              ) : null}
             </div>
             <div className="card__body" style={{ display: "grid", gap: 6 }}>
+              {/* AI suggestion banner — shows the pick + confidence + reason.
+                  Auto-applied on arrival; banner lets the agent re-apply or
+                  dismiss. Stays visible (even after manual override) so the
+                  agent can always fall back to the AI pick. */}
+              {suggestion && !suggestionDismissed && (() => {
+                const sgStage = tree.find((s) => s.id === suggestion.stageId);
+                const sgSub = sgStage?.subStages.find(
+                  (ss) => ss.id === suggestion.subStageId
+                );
+                const matches =
+                  stageId === suggestion.stageId &&
+                  subStageId === suggestion.subStageId;
+                return (
+                  <div
+                    style={{
+                      border: "1px solid var(--accent-violet)",
+                      background: "var(--accent-violet-soft)",
+                      borderRadius: 8,
+                      padding: "9px 10px",
+                      marginBottom: 4,
+                    }}
+                  >
+                    <div className="row" style={{ gap: 6, alignItems: "center" }}>
+                      <Icon.Sparkles size={13} style={{ color: "var(--accent-violet)" }} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)" }}>
+                        IA sugiere
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          color: confidenceColor(suggestion.confidence),
+                          border: `1px solid ${confidenceColor(suggestion.confidence)}`,
+                          borderRadius: 999,
+                          padding: "1px 7px",
+                        }}
+                      >
+                        {suggestion.confidence}%
+                      </span>
+                      <Icon.Close
+                        size={13}
+                        style={{ marginLeft: "auto", opacity: 0.5, cursor: "pointer" }}
+                        onClick={() => setSuggestionDismissed(true)}
+                      />
+                    </div>
+                    <div style={{ fontSize: 12.5, marginTop: 5, color: "var(--text-1)" }}>
+                      <strong>{sgStage?.label}</strong>
+                      {sgSub ? <> › {sgSub.label}</> : null}
+                      {matches && (
+                        <span
+                          className="chip chip--green"
+                          style={{ height: 16, fontSize: 9.5, marginLeft: 6 }}
+                        >
+                          aplicado
+                        </span>
+                      )}
+                    </div>
+                    {suggestion.reason && (
+                      <div className="muted" style={{ fontSize: 11, marginTop: 4, lineHeight: 1.45 }}>
+                        “{suggestion.reason}”
+                      </div>
+                    )}
+                    {!matches && (
+                      <button
+                        className="btn btn--sm btn--primary"
+                        style={{ marginTop: 8 }}
+                        onClick={applySuggestion}
+                      >
+                        <Icon.Check size={11} /> Aplicar sugerencia
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               {tree.map((stage) => {
                 const isSelected = stage.id === stageId;
                 const valChip = VALORACION_META[stage.valoracion].chip;
@@ -460,6 +725,15 @@ export function WrapUpView({
                         </div>
                       )}
                     </div>
+                    {suggestion?.stageId === stage.id && (
+                      <span
+                        className="chip chip--violet"
+                        style={{ height: 18, fontSize: 9.5 }}
+                        title="Sugerido por IA"
+                      >
+                        <Icon.Sparkles size={9} /> IA
+                      </span>
+                    )}
                     <span
                       className={`chip ${valChip}`}
                       style={{ height: 18, fontSize: 10 }}
@@ -516,6 +790,16 @@ export function WrapUpView({
                         style={{ accentColor: "var(--accent-amber)" }}
                       />
                       <span style={{ flex: 1, fontSize: 13 }}>{sub.label}</span>
+                      {suggestion?.subStageId === sub.id &&
+                        suggestion?.stageId === stageId && (
+                          <span
+                            className="chip chip--violet"
+                            style={{ height: 18, fontSize: 9.5 }}
+                            title="Sugerido por IA"
+                          >
+                            <Icon.Sparkles size={9} /> IA
+                          </span>
+                        )}
                       {chipIcon && (
                         <span
                           className="chip chip--cyan"

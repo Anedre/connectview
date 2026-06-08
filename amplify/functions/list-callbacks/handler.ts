@@ -5,6 +5,7 @@ import {
   ScanCommand,
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
+import { resolveDynamo } from "../_shared/tenantConnect";
 
 /**
  * list-callbacks — returns follow-ups (callbacks + email/whatsapp
@@ -18,7 +19,9 @@ import { unmarshall } from "@aws-sdk/util-dynamodb";
  *
  * Always sorted oldest-scheduled-first.
  */
-const dynamo = new DynamoDBClient({});
+// BYO Data Plane (#46): tenant primero (su tabla en su cuenta), fallback Vox.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const TABLE = process.env.CALLBACKS_TABLE || "connectview-callbacks";
 const CORS: Record<string, string> = { "Content-Type": "application/json" };
 
@@ -27,6 +30,8 @@ export const handler: Handler = async (event: any) => {
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
   }
+  // BYO Data Plane (#46): tenant primero, fallback Vox.
+  ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
   const p = event?.queryStringParameters || {};
   const agentUserId: string | undefined = p.agentUserId;
   const status: string | undefined = p.status;

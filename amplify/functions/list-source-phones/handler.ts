@@ -3,14 +3,22 @@ import {
   ConnectClient,
   ListPhoneNumbersV2Command,
 } from "@aws-sdk/client-connect";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const connect = new ConnectClient({ maxAttempts: 1 });
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 const INSTANCE_ARN = `arn:aws:connect:us-east-1:731736972577:instance/${INSTANCE_ID}`;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const handler: Handler = async () => {
+export const handler: Handler = async (event: any) => {
   try {
+    // Connect del tenant (o legacy de Vox). Phones usa el ARN de la instancia.
+    const { client: connect, instanceArn } = await resolveConnect(
+      event?.headers,
+      legacyConnect,
+      INSTANCE_ID,
+      INSTANCE_ARN
+    );
     const phones: Array<{
       phoneNumber: string;
       phoneNumberId: string;
@@ -22,7 +30,7 @@ export const handler: Handler = async () => {
     do {
       const res = await connect.send(
         new ListPhoneNumbersV2Command({
-          TargetArn: INSTANCE_ARN,
+          TargetArn: instanceArn,
           NextToken: nextToken,
           MaxResults: 100,
         })

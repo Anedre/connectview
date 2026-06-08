@@ -27,10 +27,10 @@ export function OutboundActionsMenu() {
   const { agentState } = useCCP();
   const [view, setView] = useState<View>("menu");
 
-  const canOutbound =
-    agentState === "Available" ||
-    agentState === "Busy" ||
-    agentState === "AfterCallWork";
+  // Only allow outbound when idle and available. While Busy/ACW the agent
+  // is in or wrapping up a contact — placing a fresh outbound from here
+  // would create a confusing parallel leg.
+  const canOutbound = agentState === "Available";
 
   // ───────────────────────── Sub-view router ─────────────────────
   if (view !== "menu") {
@@ -117,82 +117,71 @@ export function OutboundActionsMenu() {
   }
 
   // ───────────────────────── Menu (default) ──────────────────────
-  const pills: Array<{
+  const cards: Array<{
     key: Exclude<View, "menu">;
     label: string;
+    sub: string;
+    color: string;
     icon: React.ReactNode;
   }> = [
-    { key: "quick-connects", label: "Quick connects", icon: <Icon.User size={14} /> },
-    { key: "number-pad", label: "Number pad", icon: <Icon.Pad size={14} /> },
-    { key: "create-task", label: "Create Task", icon: <Icon.Note size={14} /> },
-    { key: "new-email", label: "New Email", icon: <Icon.Mail size={14} /> },
+    {
+      key: "number-pad",
+      label: "Marcador",
+      sub: "Llamar a un número",
+      color: "var(--accent-green)",
+      icon: <Icon.Pad size={16} />,
+    },
+    {
+      key: "quick-connects",
+      label: "Quick connects",
+      sub: "Colas y agentes",
+      color: "var(--accent-cyan)",
+      icon: <Icon.User size={16} />,
+    },
+    {
+      key: "create-task",
+      label: "Tarea",
+      sub: "Crear seguimiento",
+      color: "var(--accent-violet)",
+      icon: <Icon.Note size={16} />,
+    },
+    {
+      key: "new-email",
+      label: "Email",
+      sub: "Enviar correo",
+      color: "var(--accent-amber)",
+      icon: <Icon.Mail size={16} />,
+    },
   ];
 
   return (
-    <div
-      style={{
-        padding: "14px 16px 18px",
-        borderTop: "1px solid var(--border-1)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}
-    >
-      <div
-        className="muted"
-        style={{
-          fontSize: 10.5,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          textAlign: "center",
-          marginBottom: 2,
-        }}
-      >
-        Iniciar contacto
+    <div className="vox-start">
+      <div className="vox-start__title">Iniciar contacto</div>
+      <div className="vox-start__grid">
+        {cards.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => setView(c.key)}
+            className="vox-start__card"
+            style={{ ["--vsa" as string]: c.color }}
+          >
+            <span className="vox-start__card-icon">{c.icon}</span>
+            <div>
+              <div className="vox-start__card-label">{c.label}</div>
+              <div className="vox-start__card-sub">{c.sub}</div>
+            </div>
+          </button>
+        ))}
       </div>
-      {pills.map((p) => (
-        <button
-          key={p.key}
-          type="button"
-          onClick={() => setView(p.key)}
-          className="pill-btn"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            padding: "10px 16px",
-            borderRadius: 999,
-            background: "transparent",
-            border: "1px solid var(--accent-cyan-soft, rgba(34, 184, 217, 0.35))",
-            color: "var(--accent-cyan, #5DD4F0)",
-            fontSize: 13,
-            fontWeight: 500,
-            fontFamily: "var(--font-ui)",
-            cursor: "pointer",
-            transition: "background 120ms ease, border-color 120ms ease",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background =
-              "var(--accent-cyan-soft, rgba(34, 184, 217, 0.12))";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background =
-              "transparent";
-          }}
-        >
-          {p.icon}
-          <span>{p.label}</span>
-        </button>
-      ))}
       {!canOutbound && (
         <div
           className="muted"
           style={{
-            fontSize: 10.5,
+            fontSize: 11,
             textAlign: "center",
-            marginTop: 4,
             lineHeight: 1.5,
+            padding: "6px 0 2px",
           }}
         >
           Cambia tu estado a Available para Quick connects

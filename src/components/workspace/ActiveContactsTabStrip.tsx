@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   useAllActiveContacts,
@@ -13,11 +13,12 @@ import * as Icon from "@/components/vox/primitives";
 import { useDebugRender } from "@/lib/debugTrace";
 
 /**
- * Channel meta for tabs. Each entry maps the contact channel to:
- *  - the icon component
- *  - an accent color (mainly used for the chip background tint
- *    and the active-tab border)
- *  - a fallback label shown when the contact has no customer name
+ * Channel meta — icon + accent CSS tokens for each Connect channel.
+ * The CSS tokens land on the tab via the `--ch` / `--ch-soft` custom
+ * properties; the rest of the styling lives in index.css under
+ * `.vox-ct*`. Keeping it data-driven lets us colour the channel rail,
+ * icon background, and inline channel label from a single source of
+ * truth.
  */
 const CHANNEL_META: Record<
   string,
@@ -32,7 +33,7 @@ const CHANNEL_META: Record<
     Icn: Icon.Phone,
     accent: "var(--accent-green)",
     accentSoft: "var(--accent-green-soft)",
-    label: "Llamada",
+    label: "Voz",
   },
   CHAT: {
     Icn: Icon.Chat,
@@ -54,12 +55,9 @@ const CHANNEL_META: Record<
   },
 };
 
-function metaFor(contact: ActiveContact) {
-  const key = (contact.channel || "VOICE").toUpperCase();
-  if (
-    key === "CHAT" &&
-    contact.attributes?.udep_source === "whatsapp"
-  ) {
+function metaFor(channel: string, attributes?: Record<string, string>) {
+  const key = (channel || "VOICE").toUpperCase();
+  if (key === "CHAT" && attributes?.udep_source === "whatsapp") {
     return {
       ...CHANNEL_META.CHAT,
       Icn: Icon.WhatsApp,
@@ -84,16 +82,17 @@ function customerLabel(contact: ActiveContact): string {
 function stateBadge(contact: ActiveContact): {
   label: string;
   color: string;
+  pulse?: boolean;
 } | null {
   const s = contact.state;
   if (isRingingState(s)) {
-    return { label: "Suena", color: "var(--accent-amber)" };
+    return { label: "Suena", color: "var(--accent-amber)", pulse: true };
   }
   if (s === "connected") {
-    return { label: "Activo", color: "var(--accent-green)" };
+    return { label: "Activo", color: "var(--accent-green)", pulse: true };
   }
   if (s === "onhold") {
-    return { label: "En espera", color: "var(--accent-cyan)" };
+    return { label: "Espera", color: "var(--accent-cyan)" };
   }
   if (s === "acw") {
     return { label: "Wrap-up", color: "var(--accent-violet)" };
@@ -107,8 +106,21 @@ function stateBadge(contact: ActiveContact): {
   return null;
 }
 
-function isMissedState(s: string) {
-  return s === "missed";
+/** Per-tab live duration leaf. Recomputes every second based on
+ *  `connectedAtMs` so the timer stays accurate across re-renders of
+ *  the parent (re-mounting would reset the local clock; this avoids
+ *  that by deriving from the wall-clock anchor). */
+function LiveDuration({ startedAtMs }: { startedAtMs: number | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!startedAtMs) return null;
+  const elapsed = Math.max(0, Math.floor((now - startedAtMs) / 1000));
+  const m = Math.floor(elapsed / 60);
+  const s = elapsed % 60;
+  return <>{`${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`}</>;
 }
 
 interface TabProps {
@@ -119,85 +131,41 @@ interface TabProps {
 }
 
 function ContactTab({ contact, focused, unread, onClick }: TabProps) {
-  const meta = metaFor(contact);
+  const meta = metaFor(contact.channel, contact.attributes);
   const Icn = meta.Icn;
   const ringing = isRingingState(contact.state);
-  const missed = isMissedState(contact.state);
+  const missed = contact.state === "missed";
   const badge = stateBadge(contact);
-  // Missed contacts get the same red treatment as the
-  // historical-missed pill — they're alive but blocked, and the
-  // agent has to close them explicitly.
-  const tabBorder = missed
-    ? "var(--accent-red)"
-    : focused
-    ? meta.accent
-    : "var(--border-1)";
-  const tabBg = missed
-    ? "var(--accent-red-soft)"
-    : focused
-    ? meta.accentSoft
-    : "var(--bg-1)";
+  const channelKey = (contact.channel || "VOICE").toUpperCase();
+  const isVoice = channelKey === "VOICE";
+
+  const classNames = [
+    "vox-ct",
+    focused && "vox-ct--focused",
+    ringing && "vox-ct--ringing",
+    missed && "vox-ct--missed",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`contact-tab${focused ? " contact-tab--focused" : ""}${
-        ringing ? " contact-tab--ringing" : ""
-      }${missed ? " contact-tab--missed-live" : ""}`}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "6px 10px 6px 8px",
-        minHeight: 36,
-        borderRadius: 8,
-        border: `1px solid ${tabBorder}`,
-        background: tabBg,
-        color: "var(--text-1)",
-        cursor: "pointer",
-        fontFamily: "inherit",
-        fontSize: 12,
-        transition: "background 0.12s ease, border-color 0.12s ease",
-        maxWidth: 240,
-        position: "relative",
-      }}
+      className={classNames}
+      style={
+        {
+          "--ch": meta.accent,
+          "--ch-soft": meta.accentSoft,
+        } as React.CSSProperties
+      }
       title={`${meta.label} · ${customerLabel(contact)} · ${contact.state || "—"}`}
     >
-      {/* Channel icon — colored circle. Renders an unread-message badge
-          on top-right when the agent has new customer messages on a chat
-          tab they're NOT currently viewing. */}
-      <span
-        style={{
-          position: "relative",
-          display: "grid",
-          placeItems: "center",
-          width: 22,
-          height: 22,
-          borderRadius: 999,
-          background: meta.accentSoft,
-          color: meta.accent,
-          flexShrink: 0,
-        }}
-      >
-        <Icn size={12} />
+      <span className="vox-ct__icon">
+        <Icn />
         {unread > 0 && (
           <span
-            style={{
-              position: "absolute",
-              top: -4,
-              right: -6,
-              minWidth: 16,
-              height: 16,
-              padding: "0 4px",
-              borderRadius: 999,
-              background: "var(--accent-red)",
-              color: "white",
-              fontSize: 9.5,
-              fontWeight: 700,
-              lineHeight: "16px",
-              textAlign: "center",
-              boxShadow: "0 0 0 2px var(--bg-1)",
-            }}
+            className="vox-ct__unread"
             title={`${unread} mensaje${unread === 1 ? "" : "s"} sin leer`}
           >
             {unread > 9 ? "9+" : unread}
@@ -205,68 +173,46 @@ function ContactTab({ contact, focused, unread, onClick }: TabProps) {
         )}
       </span>
 
-      {/* Main label */}
-      <span
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          minWidth: 0,
-          alignItems: "flex-start",
-          lineHeight: 1.2,
-        }}
-      >
-        <span
-          style={{
-            fontWeight: 600,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            maxWidth: 160,
-          }}
-        >
-          {customerLabel(contact)}
+      <div className="vox-ct__body">
+        <span className="vox-ct__name">{customerLabel(contact)}</span>
+        <span className="vox-ct__meta">
+          <span className="vox-ct__meta-channel">{meta.label}</span>
+          {/* Live timer — voice connected only. Chat / email get a
+              state badge instead since duration is less meaningful. */}
+          {isVoice && contact.state === "connected" && contact.connectedAtMs && (
+            <>
+              <span className="vox-ct__meta-sep">·</span>
+              <span className="vox-ct__meta-time">
+                <LiveDuration startedAtMs={contact.connectedAtMs} />
+              </span>
+            </>
+          )}
+          {badge && (
+            <>
+              <span className="vox-ct__meta-sep">·</span>
+              <span
+                className="vox-ct__state"
+                style={{ color: badge.color }}
+              >
+                <span
+                  className={`vox-ct__state-dot${
+                    badge.pulse ? " vox-ct__state-dot--pulse" : ""
+                  }`}
+                />
+                {badge.label}
+              </span>
+            </>
+          )}
         </span>
-        {badge && (
-          <span
-            style={{
-              fontSize: 10,
-              color: badge.color,
-              fontWeight: 500,
-              whiteSpace: "nowrap",
-            }}
-          >
-            <span
-              className={ringing ? "pulse" : ""}
-              style={{
-                display: "inline-block",
-                width: 5,
-                height: 5,
-                borderRadius: "50%",
-                background: badge.color,
-                marginRight: 4,
-                verticalAlign: "middle",
-              }}
-            />
-            {badge.label}
-          </span>
-        )}
-      </span>
+      </div>
     </button>
   );
 }
 
 /**
- * Tab for a missed contact (state="missed"). Distinct red styling so
- * it doesn't get confused with active tabs. Auto-disappears after 30 s
- * (TTL controlled by the provider), or when the agent dismisses via
- * the X / callback buttons.
- *
- * Actions:
- *   📞 Devolver — places an outbound call back to the missed customer
- *                 (voice channel only — chat/email outbound is more
- *                  involved and lives in a different flow).
- *   👁 Ver perfil — opens the Customer 360° drawer for this phone.
- *   ✕ Descartar — removes the tab from the strip immediately.
+ * Missed-contact tab — distinct red theming so it can't be confused
+ * with active ones. Auto-expires after 30s (TTL in the provider) or
+ * when dismissed via the X / accepted via callback.
  */
 function MissedTab({
   missed,
@@ -277,25 +223,11 @@ function MissedTab({
 }) {
   const { placeCall } = useCCP();
   const [callingBack, setCallingBack] = useState(false);
-
-  const meta = metaFor({
-    contactId: missed.contactId,
-    channel: missed.channel,
-    state: "missed",
-    customerPhone: missed.customerPhone,
-    queueName: missed.queueName,
-    direction: "inbound",
-    attributes: missed.attributes,
-    lastSeenTs: missed.missedAt,
-    connectedAtMs: null,
-  });
+  const meta = metaFor(missed.channel, missed.attributes);
   const Icn = meta.Icn;
   const elapsed = Math.max(0, Math.floor((Date.now() - missed.missedAt) / 1000));
   const channel = (missed.channel || "VOICE").toUpperCase();
   const isVoice = channel === "VOICE";
-  // For voice we can place a callback. For chat/email outbound is a
-  // different flow we don't have yet — disable the button and explain
-  // via tooltip.
   const canCallback = isVoice && !!missed.customerPhone;
 
   const handleCallback = async () => {
@@ -306,7 +238,7 @@ function MissedTab({
       toast.success("Llamando…", {
         description: `Devolviendo llamada a ${missed.customerPhone}`,
       });
-      onDismiss(); // remove the tab — the new outbound contact takes over
+      onDismiss();
     } catch (err) {
       toast.error("No se pudo iniciar la llamada", {
         description: err instanceof Error ? err.message : "Error desconocido",
@@ -318,120 +250,50 @@ function MissedTab({
 
   return (
     <div
-      className="contact-tab contact-tab--missed"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 4px 6px 8px",
-        minHeight: 36,
-        borderRadius: 8,
-        border: "1px solid var(--accent-red)",
-        background: "var(--accent-red-soft)",
-        color: "var(--text-1)",
-        fontFamily: "inherit",
-        fontSize: 12,
-        maxWidth: 320,
-      }}
+      className="vox-ct vox-ct--missed"
+      style={
+        {
+          "--ch": "var(--accent-red)",
+          "--ch-soft": "var(--accent-red-soft)",
+          cursor: "default",
+          maxWidth: 320,
+        } as React.CSSProperties
+      }
       title={`Contacto perdido · ${missed.customerPhone || missed.queueName || "—"} · hace ${elapsed}s`}
     >
-      <span
-        style={{
-          display: "grid",
-          placeItems: "center",
-          width: 22,
-          height: 22,
-          borderRadius: 999,
-          background: "var(--accent-red)",
-          color: "white",
-          flexShrink: 0,
-        }}
-      >
-        <Icn size={12} />
+      <span className="vox-ct__icon" style={{ background: "var(--accent-red)", color: "white" }}>
+        <Icn />
       </span>
-      <span
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          minWidth: 0,
-          alignItems: "flex-start",
-          lineHeight: 1.2,
-        }}
-      >
-        <span
-          style={{
-            fontWeight: 600,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            maxWidth: 160,
-          }}
-        >
+      <div className="vox-ct__body">
+        <span className="vox-ct__name">
           {missed.customerPhone || missed.queueName || "Cliente"}
         </span>
-        <span
-          style={{
-            fontSize: 10,
-            color: "var(--accent-red)",
-            fontWeight: 500,
-            whiteSpace: "nowrap",
-          }}
-        >
-          Perdida · hace {elapsed}s
+        <span className="vox-ct__meta">
+          <span style={{ color: "var(--accent-red)", fontWeight: 600 }}>
+            Perdida
+          </span>
+          <span className="vox-ct__meta-sep">·</span>
+          <span>hace {elapsed}s</span>
         </span>
-      </span>
-      {/* Callback button (voice only) */}
-      <button
-        type="button"
-        onClick={handleCallback}
-        disabled={!canCallback || callingBack}
-        title={
-          isVoice
-            ? canCallback
-              ? "Devolver llamada"
-              : "Sin teléfono asociado"
-            : "Devolución solo disponible para voz"
-        }
-        style={{
-          marginLeft: 2,
-          padding: "3px 6px",
-          background: canCallback ? "var(--accent-green)" : "transparent",
-          border: canCallback
-            ? "1px solid var(--accent-green)"
-            : "1px solid var(--border-1)",
-          color: canCallback ? "white" : "var(--text-3)",
-          cursor: canCallback && !callingBack ? "pointer" : "not-allowed",
-          borderRadius: 4,
-          display: "flex",
-          alignItems: "center",
-          gap: 3,
-          fontSize: 10,
-          fontWeight: 500,
-          opacity: canCallback ? 1 : 0.45,
-        }}
-      >
-        <Icon.PhoneIn size={10} />
-        {callingBack ? "…" : "Devolver"}
-      </button>
-      {/* Dismiss */}
+      </div>
+      {canCallback && (
+        <button
+          type="button"
+          onClick={handleCallback}
+          disabled={callingBack}
+          className="vox-ct__cb"
+          title="Devolver la llamada"
+        >
+          <Icon.PhoneIn size={11} />
+          {callingBack ? "…" : "Devolver"}
+        </button>
+      )}
       <button
         type="button"
         onClick={onDismiss}
         title="Descartar"
-        style={{
-          marginLeft: 2,
-          padding: 2,
-          background: "transparent",
-          border: "none",
-          color: "var(--accent-red)",
-          cursor: "pointer",
-          borderRadius: 4,
-          display: "grid",
-          placeItems: "center",
-          opacity: 0.7,
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-        onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
+        className="vox-ct__close"
+        aria-label="Descartar"
       >
         <Icon.Close size={12} />
       </button>
@@ -440,25 +302,17 @@ function MissedTab({
 }
 
 /**
- * Horizontal-wrap strip of every contact the agent currently has.
- * Click a tab → that contact becomes the focused one (the rest of the
- * desktop re-points to it). Ringing tabs pulse to signal a new contact
- * needing attention without stealing focus.
- *
- * The strip wraps to multiple rows when there are too many tabs to fit
- * on one — per the user's preference we never hide a contact behind a
- * "+N más" overflow chip.
+ * Horizontal strip of all the agent's current contacts + missed
+ * tabs. Click a tab → focus that contact (rest of desktop re-points).
+ * Scrolls horizontally when there are more tabs than fit.
  */
 export function ActiveContactsTabStrip() {
   const contacts = useAllActiveContacts();
   const { focusedContactId, focus } = useContactFocus();
   const { missedContacts, dismissMissed } = useMissedContacts();
-  // Per-contact unread badges fed by the omnichannel notifier. When
-  // outside the provider (e.g. a unit test) we get an empty map.
   const { unreadCount } = useOmnichannelNotifierContext();
 
-  // Sort so the focused tab stays first, then ringing, then by channel.
-  // Stable order so tabs don't jump around mid-conversation.
+  // Sort: focused first, ringing next, then by channel order.
   const sorted = useMemo(() => {
     const channelOrder: Record<string, number> = {
       VOICE: 0,
@@ -485,48 +339,20 @@ export function ActiveContactsTabStrip() {
     focusedContactId,
   });
 
-  // Render nothing when there's literally nothing to show.
   if (contacts.length === 0 && missedContacts.length === 0) return null;
 
-  // Header label switches based on what's in the strip.
-  let header: string;
-  if (contacts.length === 0) {
-    header =
-      missedContacts.length === 1
-        ? "1 perdida"
-        : `${missedContacts.length} perdidas`;
-  } else if (missedContacts.length === 0) {
-    header = contacts.length === 1 ? "1 atención" : `${contacts.length} atenciones`;
-  } else {
-    header = `${contacts.length} ${contacts.length === 1 ? "atención" : "atenciones"} · ${missedContacts.length} perdida${missedContacts.length === 1 ? "" : "s"}`;
-  }
+  // Only show the count label when there are 2+ tabs — a single tab
+  // doesn't need a "1 atención" prefix that just clutters the bar.
+  const total = contacts.length + missedContacts.length;
+  const showCount = total >= 2;
 
   return (
-    <div
-      data-debug-component="ActiveContactsTabStrip"
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: 6,
-        padding: "8px 12px",
-        borderBottom: "1px solid var(--border-1)",
-        background: "var(--bg-1)",
-        maxHeight: 100,
-        overflowY: "auto",
-      }}
-    >
-      <div
-        className="muted mono"
-        style={{
-          fontSize: 10,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          alignSelf: "center",
-          marginRight: 4,
-        }}
-      >
-        {header}
-      </div>
+    <div className="vox-strip" data-debug-component="ActiveContactsTabStrip">
+      {showCount && (
+        <div className="vox-strip__count">
+          {total} {total === 1 ? "atención" : "atenciones"}
+        </div>
+      )}
       {sorted.map((c) => (
         <ContactTab
           key={c.contactId}
@@ -536,16 +362,8 @@ export function ActiveContactsTabStrip() {
           onClick={() => focus(c.contactId)}
         />
       ))}
-      {/* Dedup: if a missed contact is also alive in the active list
-          (typical for chat / WhatsApp / email — they stay attached
-          until cleared), only render the active tab. The notifier
-          + banner still fire from the missedContacts feed. We only
-          render a standalone MissedTab here for missed contacts
-          that Streams already dropped from the active list (voice). */}
       {missedContacts
-        .filter(
-          (m) => !contacts.some((c) => c.contactId === m.contactId)
-        )
+        .filter((m) => !contacts.some((c) => c.contactId === m.contactId))
         .map((m) => (
           <MissedTab
             key={`missed-${m.contactId}`}

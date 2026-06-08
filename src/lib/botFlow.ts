@@ -1,0 +1,812 @@
+/**
+ * botFlow.ts — data model + node catalog for the visual chat-flow builder
+ * (roadmap #16, the Kommo "Salesbot" equivalent). A bot is a graph of steps
+ * (nodes) + transitions (edges), stored as JSON in `connectview-bots` and
+ * edited on a react-flow canvas.
+ *
+ * NODE_KINDS is the single source of truth: it drives the palette, each
+ * node's rendering (icon / accent / inline summary / outlets) and the config
+ * panel's fields. Adding a new step type = one catalog entry, nothing else —
+ * which is exactly what makes this easy to push past Kommo over time.
+ */
+
+export type NodeKind =
+  | "start"
+  | "message"
+  | "list"
+  | "question"
+  | "condition"
+  | "template"
+  | "delay"
+  | "set_field"
+  | "handoff"
+  | "internal_note"
+  | "ai_agent"
+  | "webhook"
+  | "jump"
+  | "stop";
+
+export interface BotNode {
+  id: string;
+  kind: NodeKind;
+  position: { x: number; y: number };
+  data: Record<string, unknown>;
+}
+
+export interface BotEdge {
+  id: string;
+  source: string;
+  sourceHandle?: string | null;
+  target: string;
+  targetHandle?: string | null;
+}
+
+export interface Bot {
+  botId: string;
+  name: string;
+  status: "draft" | "active" | "paused";
+  trigger: string;
+  nodes: BotNode[];
+  edges: BotEdge[];
+  updatedAt?: string;
+}
+
+export type FieldType =
+  | "text"
+  | "textarea"
+  | "select"
+  | "number"
+  | "buttons"
+  | "varlist"
+  | "listrows"
+  | "var"
+  | "node-ref";
+
+export interface FieldDef {
+  key: string;
+  label: string;
+  type: FieldType;
+  placeholder?: string;
+  options?: string[];
+  help?: string;
+}
+
+export interface Outlet {
+  id: string;
+  label?: string;
+}
+
+export interface NodeKindDef {
+  kind: NodeKind;
+  label: string;
+  group: "Inicio" | "Mensajes" | "Lógica" | "Acciones" | "IA" | "Fin";
+  /** Hex accent — used for the node stripe AND the minimap dot. */
+  accent: string;
+  /** lucide icon key, mapped to a component in StepNode.tsx. */
+  icon: string;
+  blurb: string;
+  fields: FieldDef[];
+  /** Source handles this node exposes (drives branching). */
+  outlets: (data: Record<string, unknown>) => Outlet[];
+  defaultData: () => Record<string, unknown>;
+  /** One-line body shown inside the node card. */
+  summary: (data: Record<string, unknown>) => string;
+}
+
+export type ButtonKind = "reply" | "url" | "phone";
+export interface ButtonDef {
+  id: string;
+  label: string;
+  type?: ButtonKind;
+  /** URL or phone number for non-reply buttons. */
+  value?: string;
+}
+export interface ListRow {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+/** Reply buttons branch the flow; URL/phone buttons are terminal actions. */
+export function replyButtons(buttons: unknown): ButtonDef[] {
+  return (Array.isArray(buttons) ? (buttons as ButtonDef[]) : []).filter(
+    (b) => !b.type || b.type === "reply"
+  );
+}
+
+const str = (v: unknown, fallback = ""): string =>
+  typeof v === "string" && v.length > 0 ? v : fallback;
+
+const OP_LABEL: Record<string, string> = {
+  equals: "es igual a",
+  contains: "contiene",
+  exists: "tiene algún valor",
+  gt: "mayor que",
+  lt: "menor que",
+  regex: "coincide (regex)",
+};
+
+const UNIT_LABEL: Record<string, string> = {
+  minutes: "minutos",
+  hours: "horas",
+  days: "días",
+};
+
+/**
+ * The catalog. Order matters — it's the order shown in the palette, grouped.
+ */
+export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
+  start: {
+    kind: "start",
+    label: "Inicio",
+    group: "Inicio",
+    accent: "#1FAE6C",
+    icon: "play",
+    blurb: "Punto de entrada del bot",
+    fields: [
+      {
+        key: "trigger",
+        label: "Se dispara cuando",
+        type: "select",
+        options: [
+          "Mensaje entrante (WhatsApp)",
+          "Nuevo lead",
+          "Palabra clave",
+          "Manual / prueba",
+        ],
+      },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ trigger: "Mensaje entrante (WhatsApp)" }),
+    summary: (d) => str(d.trigger, "Inicio"),
+  },
+
+  message: {
+    kind: "message",
+    label: "Enviar mensaje",
+    group: "Mensajes",
+    accent: "#22B8D9",
+    icon: "message",
+    blurb: "Texto + botones (respuesta, enlace o llamada)",
+    fields: [
+      {
+        key: "text",
+        label: "Mensaje",
+        type: "textarea",
+        placeholder: "Escribe lo que el bot dirá…",
+      },
+      { key: "buttons", label: "Botones", type: "buttons" },
+    ],
+    outlets: (d) => {
+      const reply = replyButtons(d.buttons);
+      return reply.length > 0
+        ? reply.map((b) => ({ id: `b:${b.id}`, label: b.label || "Botón" }))
+        : [{ id: "out" }];
+    },
+    defaultData: () => ({ text: "", buttons: [] as ButtonDef[] }),
+    summary: (d) => str(d.text, "Mensaje vacío"),
+  },
+
+  list: {
+    kind: "list",
+    label: "Lista (WhatsApp)",
+    group: "Mensajes",
+    accent: "#17A2B8",
+    icon: "list",
+    blurb: "Menú de hasta 10 opciones con descripción",
+    fields: [
+      { key: "header", label: "Encabezado", type: "text", placeholder: "Programas UDEP" },
+      {
+        key: "body",
+        label: "Mensaje",
+        type: "textarea",
+        placeholder: "Elegí una opción para continuar:",
+      },
+      { key: "buttonLabel", label: "Texto del botón", type: "text", placeholder: "Ver opciones" },
+      { key: "rows", label: "Opciones de la lista", type: "listrows" },
+    ],
+    outlets: (d) => {
+      const rows = Array.isArray(d.rows) ? (d.rows as ListRow[]) : [];
+      return rows.length > 0
+        ? rows.map((r) => ({ id: `r:${r.id}`, label: r.title || "Opción" }))
+        : [{ id: "out" }];
+    },
+    defaultData: () => ({ header: "", body: "", buttonLabel: "Ver opciones", rows: [] as ListRow[] }),
+    summary: (d) => str(d.body, str(d.header, "Lista de opciones")),
+  },
+
+  question: {
+    kind: "question",
+    label: "Preguntar y guardar",
+    group: "Mensajes",
+    accent: "#8B7EE8",
+    icon: "help",
+    blurb: "Pregunta y guarda la respuesta en una variable",
+    fields: [
+      {
+        key: "prompt",
+        label: "Pregunta",
+        type: "textarea",
+        placeholder: "¿Cuál es tu nombre completo?",
+      },
+      {
+        key: "saveAs",
+        label: "Guardar en variable",
+        type: "var",
+        placeholder: "nombre",
+      },
+      {
+        key: "validate",
+        label: "Validar como",
+        type: "select",
+        options: ["ninguna", "email", "teléfono", "número"],
+      },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ prompt: "", saveAs: "", validate: "ninguna" }),
+    summary: (d) => str(d.prompt, "Pregunta…"),
+  },
+
+  condition: {
+    kind: "condition",
+    label: "Condición",
+    group: "Lógica",
+    accent: "#E0A23B",
+    icon: "branch",
+    blurb: "Ramifica según una variable o respuesta",
+    fields: [
+      { key: "variable", label: "Variable", type: "var", placeholder: "carrera" },
+      {
+        key: "op",
+        label: "Operador",
+        type: "select",
+        options: ["equals", "contains", "exists", "gt", "lt", "regex"],
+      },
+      { key: "value", label: "Valor", type: "text", placeholder: "Ingeniería" },
+    ],
+    outlets: () => [
+      { id: "true", label: "Sí" },
+      { id: "false", label: "No" },
+    ],
+    defaultData: () => ({ variable: "", op: "equals", value: "" }),
+    summary: (d) =>
+      `${str(d.variable, "var")} ${OP_LABEL[str(d.op, "equals")] || ""} ${str(
+        d.value
+      )}`.trim(),
+  },
+
+  template: {
+    kind: "template",
+    label: "Plantilla HSM",
+    group: "Mensajes",
+    accent: "#2BA8C7",
+    icon: "template",
+    blurb: "Envía una plantilla de WhatsApp aprobada",
+    fields: [
+      {
+        key: "templateName",
+        label: "Nombre de plantilla",
+        type: "text",
+        placeholder: "udep_info_pregrado",
+      },
+      { key: "language", label: "Idioma", type: "select", options: ["es", "en"] },
+      {
+        key: "variables",
+        label: "Variables",
+        type: "varlist",
+        help: "Cada valor llena {{1}}, {{2}}… en orden. Dejalo vacío si la plantilla no tiene.",
+      },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ templateName: "", language: "es", variables: [] as string[] }),
+    summary: (d) => {
+      const n = Array.isArray(d.variables) ? (d.variables as string[]).filter(Boolean).length : 0;
+      const name = str(d.templateName, "(sin plantilla)");
+      return n > 0 ? `${name} · ${n} var.` : name;
+    },
+  },
+
+  delay: {
+    kind: "delay",
+    label: "Esperar",
+    group: "Lógica",
+    accent: "#6B7A99",
+    icon: "clock",
+    blurb: "Pausa antes del siguiente paso",
+    fields: [
+      { key: "amount", label: "Cantidad", type: "number", placeholder: "30" },
+      {
+        key: "unit",
+        label: "Unidad",
+        type: "select",
+        options: ["minutes", "hours", "days"],
+      },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ amount: 30, unit: "minutes" }),
+    summary: (d) =>
+      `Esperar ${str(String(d.amount), "0")} ${UNIT_LABEL[str(d.unit, "minutes")]}`,
+  },
+
+  set_field: {
+    kind: "set_field",
+    label: "Asignar campo",
+    group: "Acciones",
+    accent: "#8B7EE8",
+    icon: "tag",
+    blurb: "Actualiza un campo del lead/perfil",
+    fields: [
+      { key: "field", label: "Campo", type: "text", placeholder: "etapa" },
+      { key: "value", label: "Valor", type: "text", placeholder: "Interesado" },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ field: "", value: "" }),
+    summary: (d) => `${str(d.field, "campo")} = ${str(d.value, "—")}`,
+  },
+
+  handoff: {
+    kind: "handoff",
+    label: "Derivar a agente",
+    group: "Acciones",
+    accent: "#1FAE6C",
+    icon: "agent",
+    blurb: "Pasa la conversación a una persona",
+    fields: [
+      { key: "queue", label: "Cola / equipo", type: "text", placeholder: "Admisión" },
+      {
+        key: "priority",
+        label: "Prioridad",
+        type: "select",
+        options: ["normal", "alta", "urgente"],
+      },
+      { key: "assignTo", label: "Asignar a (opcional)", type: "text", placeholder: "usuario o vacío" },
+      {
+        key: "note",
+        label: "Nota para el agente",
+        type: "textarea",
+        placeholder: "Contexto del lead…",
+      },
+    ],
+    outlets: () => [{ id: "out", label: "Tras derivar" }],
+    defaultData: () => ({ queue: "", priority: "normal", assignTo: "", note: "" }),
+    summary: (d) => (str(d.queue) ? `Cola: ${str(d.queue)}` : "A cualquier agente"),
+  },
+
+  internal_note: {
+    kind: "internal_note",
+    label: "Nota interna",
+    group: "Acciones",
+    accent: "#6B7A99",
+    icon: "note",
+    blurb: "Aviso solo para el equipo",
+    fields: [
+      {
+        key: "text",
+        label: "Texto",
+        type: "textarea",
+        placeholder: "Lead caliente — llamar hoy",
+      },
+      { key: "to", label: "Para (usuario)", type: "text", placeholder: "supervisor" },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ text: "", to: "" }),
+    summary: (d) => str(d.text, "Nota interna"),
+  },
+
+  webhook: {
+    kind: "webhook",
+    label: "Webhook",
+    group: "Acciones",
+    accent: "#8B7EE8",
+    icon: "webhook",
+    blurb: "Llama a un servicio externo (HTTP)",
+    fields: [
+      { key: "method", label: "Método", type: "select", options: ["POST", "GET"] },
+      {
+        key: "url",
+        label: "URL",
+        type: "text",
+        placeholder: "https://api.tu-sistema.com/lead",
+      },
+      {
+        key: "body",
+        label: "Cuerpo (JSON)",
+        type: "textarea",
+        placeholder: '{ "phone": "{{phone}}" }',
+      },
+    ],
+    outlets: () => [
+      { id: "ok", label: "OK" },
+      { id: "error", label: "Error" },
+    ],
+    defaultData: () => ({ method: "POST", url: "", body: "" }),
+    summary: (d) => `${str(d.method, "POST")} ${str(d.url, "—")}`,
+  },
+
+  ai_agent: {
+    kind: "ai_agent",
+    label: "Agente IA",
+    group: "IA",
+    accent: "#9B6DFF",
+    icon: "bot",
+    blurb: "Una IA conduce la conversación hacia un objetivo",
+    fields: [
+      {
+        key: "model",
+        label: "¿Qué IA / agente usar?",
+        type: "select",
+        options: [
+          "Claude Opus 4.8 (Bedrock)",
+          "Claude Sonnet 4.6 (Bedrock)",
+          "Claude Haiku 4.5 (Bedrock)",
+          "Amazon Q in Connect",
+          "Amazon Lex (bot existente)",
+        ],
+      },
+      {
+        key: "objective",
+        label: "Objetivo",
+        type: "textarea",
+        placeholder: "Calificar al lead: presupuesto, plazo y carrera de interés.",
+      },
+      {
+        key: "instructions",
+        label: "Instrucciones / persona",
+        type: "textarea",
+        placeholder: "Sos un asesor de admisión cordial. Respondé corto, en español…",
+      },
+      {
+        key: "handoffWhen",
+        label: "Derivar a humano cuando",
+        type: "text",
+        placeholder: "el cliente lo pida o se frustre",
+      },
+      { key: "maxTurns", label: "Máx. de turnos", type: "number", placeholder: "6" },
+    ],
+    outlets: () => [
+      { id: "resolved", label: "Resuelto" },
+      { id: "handoff", label: "Derivar a humano" },
+    ],
+    defaultData: () => ({
+      model: "Claude Sonnet 4.6 (Bedrock)",
+      objective: "",
+      instructions: "",
+      handoffWhen: "",
+      maxTurns: 6,
+    }),
+    summary: (d) => {
+      const m = str(d.model, "IA").replace(" (Bedrock)", "");
+      const o = str(d.objective);
+      return o ? `${m} · ${o}` : m;
+    },
+  },
+
+  jump: {
+    kind: "jump",
+    label: "Ir a paso",
+    group: "Lógica",
+    accent: "#6B7A99",
+    icon: "jump",
+    blurb: "Salta a otro paso sin duplicar",
+    fields: [{ key: "targetNodeId", label: "Ir a", type: "node-ref" }],
+    outlets: () => [],
+    defaultData: () => ({ targetNodeId: "" }),
+    summary: () => "Ir a otro paso",
+  },
+
+  stop: {
+    kind: "stop",
+    label: "Fin",
+    group: "Fin",
+    accent: "#E5484D",
+    icon: "stop",
+    blurb: "Termina el bot",
+    fields: [],
+    outlets: () => [],
+    defaultData: () => ({}),
+    summary: () => "Fin del bot",
+  },
+};
+
+/** Palette grouping order. */
+export const PALETTE_GROUPS: NodeKindDef["group"][] = [
+  "Mensajes",
+  "Lógica",
+  "Acciones",
+  "IA",
+  "Fin",
+];
+
+let _seq = 0;
+function uid(prefix = "n"): string {
+  _seq += 1;
+  const rand =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().slice(0, 6)
+      : Math.floor(Math.random() * 1e6).toString(36);
+  return `${prefix}_${rand}${_seq}`;
+}
+
+/** Build a fresh node of a given kind at a position. */
+export function makeNode(kind: NodeKind, position: { x: number; y: number }): BotNode {
+  return { id: uid(), kind, position, data: NODE_KINDS[kind].defaultData() };
+}
+
+/** Lightweight validation surfaced in the builder (non-blocking warnings). */
+export function validateBot(bot: Bot): string[] {
+  const issues: string[] = [];
+  const starts = bot.nodes.filter((n) => n.kind === "start");
+  if (starts.length === 0) issues.push("Falta un paso de Inicio.");
+  if (starts.length > 1) issues.push("Hay más de un paso de Inicio.");
+
+  const targets = new Set(bot.edges.map((e) => e.target));
+  const sources = new Set(bot.edges.map((e) => e.source));
+  for (const n of bot.nodes) {
+    if (n.kind === "start") continue;
+    if (!targets.has(n.id)) issues.push(`«${NODE_KINDS[n.kind].label}» no está conectado.`);
+  }
+  for (const n of bot.nodes) {
+    const hasOutlets = NODE_KINDS[n.kind].outlets(n.data).length > 0;
+    if (hasOutlets && n.kind !== "stop" && !sources.has(n.id)) {
+      issues.push(`«${NODE_KINDS[n.kind].label}» no lleva a ningún lado.`);
+    }
+  }
+  return issues;
+}
+
+/** A realistic seed flow (UDEP admisión) — also powers the standalone demo. */
+export function defaultBot(): Bot {
+  return {
+    botId: "demo",
+    name: "Admisión UDEP · bienvenida",
+    status: "draft",
+    trigger: "Mensaje entrante (WhatsApp)",
+    nodes: [
+      { id: "start", kind: "start", position: { x: 240, y: 0 }, data: { trigger: "Mensaje entrante (WhatsApp)" } },
+      {
+        id: "msg1",
+        kind: "message",
+        position: { x: 180, y: 120 },
+        data: {
+          text: "¡Hola! 👋 Soy el asistente de Admisión UDEP. ¿En qué te puedo ayudar?",
+          buttons: [
+            { id: "pre", label: "Pregrado" },
+            { id: "pos", label: "Posgrado" },
+            { id: "ase", label: "Hablar con asesor" },
+          ],
+        },
+      },
+      {
+        id: "q1",
+        kind: "question",
+        position: { x: -120, y: 470 },
+        data: { prompt: "¡Genial! ¿Qué carrera de pregrado te interesa?", saveAs: "carrera", validate: "ninguna" },
+      },
+      {
+        id: "tpl1",
+        kind: "template",
+        position: { x: -120, y: 690 },
+        data: { templateName: "udep_info_pregrado", language: "es", variables: ["carrera"] },
+      },
+      { id: "stop1", kind: "stop", position: { x: -120, y: 910 }, data: {} },
+      {
+        id: "msgpos",
+        kind: "message",
+        position: { x: 240, y: 470 },
+        data: { text: "Tenemos maestrías y diplomados. Te paso el catálogo y un asesor te contactará.", buttons: [] },
+      },
+      { id: "stoppos", kind: "stop", position: { x: 240, y: 690 }, data: {} },
+      {
+        id: "hand1",
+        kind: "handoff",
+        position: { x: 560, y: 470 },
+        data: { queue: "Admisión", note: "Lead pidió hablar con un asesor desde el bot." },
+      },
+      { id: "stopase", kind: "stop", position: { x: 560, y: 690 }, data: {} },
+    ],
+    edges: [
+      { id: "e0", source: "start", sourceHandle: "out", target: "msg1" },
+      { id: "e1", source: "msg1", sourceHandle: "b:pre", target: "q1" },
+      { id: "e2", source: "msg1", sourceHandle: "b:pos", target: "msgpos" },
+      { id: "e3", source: "msg1", sourceHandle: "b:ase", target: "hand1" },
+      { id: "e4", source: "q1", sourceHandle: "out", target: "tpl1" },
+      { id: "e5", source: "tpl1", sourceHandle: "out", target: "stop1" },
+      { id: "e6", source: "msgpos", sourceHandle: "out", target: "stoppos" },
+      { id: "e7", source: "hand1", sourceHandle: "out", target: "stopase" },
+    ],
+  };
+}
+
+/* ─────────────────────── Predefined templates ───────────────────────
+ * Kommo-style starter flows. Each `build()` returns a ready-to-edit Bot
+ * (botId "" so saving creates a new one). Surfaced in the "Nuevo bot"
+ * picker so users start from a real flow, not a blank canvas.
+ */
+export interface BotTemplate {
+  id: string;
+  name: string;
+  description: string;
+  /** lucide icon key handled in the picker. */
+  icon: string;
+  accent: string;
+  build: () => Bot;
+}
+
+const blankStart = (): BotNode => ({
+  id: "start",
+  kind: "start",
+  position: { x: 260, y: 0 },
+  data: { trigger: "Mensaje entrante (WhatsApp)" },
+});
+
+export const BOT_TEMPLATES: BotTemplate[] = [
+  {
+    id: "blank",
+    name: "En blanco",
+    description: "Empezá desde cero con solo el paso de Inicio.",
+    icon: "plus",
+    accent: "#6B7A99",
+    build: () => ({
+      botId: "",
+      name: "Nuevo bot",
+      status: "draft",
+      trigger: "Mensaje entrante (WhatsApp)",
+      nodes: [blankStart()],
+      edges: [],
+    }),
+  },
+  {
+    id: "welcome",
+    name: "Bienvenida + menú",
+    description: "Saluda y ofrece opciones (Pregrado / Posgrado / Asesor).",
+    icon: "message",
+    accent: "#22B8D9",
+    build: () => defaultBot(),
+  },
+  {
+    id: "qualify",
+    name: "Calificación de lead",
+    description: "Pide nombre, interés y presupuesto, y deriva a un asesor.",
+    icon: "help",
+    accent: "#8B7EE8",
+    build: () => ({
+      botId: "",
+      name: "Calificación de lead",
+      status: "draft",
+      trigger: "Mensaje entrante (WhatsApp)",
+      nodes: [
+        blankStart(),
+        { id: "q1", kind: "question", position: { x: 240, y: 120 }, data: { prompt: "¡Hola! Para ayudarte mejor, ¿cuál es tu nombre completo?", saveAs: "nombre", validate: "ninguna" } },
+        { id: "q2", kind: "question", position: { x: 240, y: 300 }, data: { prompt: "Gracias {{nombre}}. ¿Qué programa te interesa?", saveAs: "interes", validate: "ninguna" } },
+        { id: "set1", kind: "set_field", position: { x: 240, y: 480 }, data: { field: "etapa", value: "Interesado" } },
+        { id: "hand1", kind: "handoff", position: { x: 240, y: 620 }, data: { queue: "Admisión", priority: "alta", assignTo: "", note: "Lead calificado por el bot: {{nombre}} — interés: {{interes}}" } },
+        { id: "stop1", kind: "stop", position: { x: 240, y: 800 }, data: {} },
+      ],
+      edges: [
+        { id: "e0", source: "start", sourceHandle: "out", target: "q1" },
+        { id: "e1", source: "q1", sourceHandle: "out", target: "q2" },
+        { id: "e2", source: "q2", sourceHandle: "out", target: "set1" },
+        { id: "e3", source: "set1", sourceHandle: "out", target: "hand1" },
+        { id: "e4", source: "hand1", sourceHandle: "out", target: "stop1" },
+      ],
+    }),
+  },
+  {
+    id: "faq",
+    name: "Preguntas frecuentes",
+    description: "Menú tipo lista de WhatsApp con respuestas automáticas.",
+    icon: "list",
+    accent: "#17A2B8",
+    build: () => ({
+      botId: "",
+      name: "Preguntas frecuentes",
+      status: "draft",
+      trigger: "Mensaje entrante (WhatsApp)",
+      nodes: [
+        blankStart(),
+        {
+          id: "list1",
+          kind: "list",
+          position: { x: 220, y: 120 },
+          data: {
+            header: "¿En qué te ayudamos?",
+            body: "Elegí un tema y te respondo al instante:",
+            buttonLabel: "Ver temas",
+            rows: [
+              { id: "pagos", title: "Pagos y becas", description: "Costos, financiamiento" },
+              { id: "horario", title: "Horarios", description: "Turnos y modalidad" },
+              { id: "asesor", title: "Hablar con un asesor" },
+            ],
+          },
+        },
+        { id: "mp", kind: "message", position: { x: -80, y: 380 }, data: { text: "Tenemos planes de pago y becas por mérito. Te envío el detalle. 💸", buttons: [] } },
+        { id: "mh", kind: "message", position: { x: 240, y: 380 }, data: { text: "Hay turnos mañana y noche, presencial y virtual. 📅", buttons: [] } },
+        { id: "ha", kind: "handoff", position: { x: 560, y: 380 }, data: { queue: "Admisión", priority: "normal", assignTo: "", note: "Pidió asesor desde FAQ." } },
+        { id: "s1", kind: "stop", position: { x: -80, y: 560 }, data: {} },
+        { id: "s2", kind: "stop", position: { x: 240, y: 560 }, data: {} },
+        { id: "s3", kind: "stop", position: { x: 560, y: 560 }, data: {} },
+      ],
+      edges: [
+        { id: "e0", source: "start", sourceHandle: "out", target: "list1" },
+        { id: "e1", source: "list1", sourceHandle: "r:pagos", target: "mp" },
+        { id: "e2", source: "list1", sourceHandle: "r:horario", target: "mh" },
+        { id: "e3", source: "list1", sourceHandle: "r:asesor", target: "ha" },
+        { id: "e4", source: "mp", sourceHandle: "out", target: "s1" },
+        { id: "e5", source: "mh", sourceHandle: "out", target: "s2" },
+        { id: "e6", source: "ha", sourceHandle: "out", target: "s3" },
+      ],
+    }),
+  },
+  {
+    id: "ai",
+    name: "Agente IA",
+    description: "Una IA conduce la conversación y deriva si hace falta.",
+    icon: "bot",
+    accent: "#9B6DFF",
+    build: () => ({
+      botId: "",
+      name: "Agente IA · admisión",
+      status: "draft",
+      trigger: "Mensaje entrante (WhatsApp)",
+      nodes: [
+        blankStart(),
+        {
+          id: "ai1",
+          kind: "ai_agent",
+          position: { x: 230, y: 140 },
+          data: {
+            model: "Claude Sonnet 4.6 (Bedrock)",
+            objective: "Resolver dudas de admisión y agendar una cita si hay interés.",
+            instructions: "Sos un asesor de admisión UDEP cordial y conciso. Respondé en español.",
+            handoffWhen: "el cliente pida un humano o se frustre",
+            maxTurns: 6,
+          },
+        },
+        { id: "hand1", kind: "handoff", position: { x: 480, y: 360 }, data: { queue: "Admisión", priority: "alta", assignTo: "", note: "Derivado por el Agente IA." } },
+        { id: "stopOk", kind: "stop", position: { x: 60, y: 360 }, data: {} },
+        { id: "stopH", kind: "stop", position: { x: 480, y: 540 }, data: {} },
+      ],
+      edges: [
+        { id: "e0", source: "start", sourceHandle: "out", target: "ai1" },
+        { id: "e1", source: "ai1", sourceHandle: "resolved", target: "stopOk" },
+        { id: "e2", source: "ai1", sourceHandle: "handoff", target: "hand1" },
+        { id: "e3", source: "hand1", sourceHandle: "out", target: "stopH" },
+      ],
+    }),
+  },
+  {
+    id: "reactivate",
+    name: "Reactivación",
+    description: "Plantilla de seguimiento para leads inactivos + espera.",
+    icon: "clock",
+    accent: "#E0A23B",
+    build: () => ({
+      botId: "",
+      name: "Reactivación de lead",
+      status: "draft",
+      trigger: "Lead sin actividad",
+      nodes: [
+        { id: "start", kind: "start", position: { x: 260, y: 0 }, data: { trigger: "Lead sin actividad" } },
+        { id: "tpl1", kind: "template", position: { x: 240, y: 130 }, data: { templateName: "udep_reactivacion", language: "es", variables: ["nombre"] } },
+        { id: "wait1", kind: "delay", position: { x: 240, y: 300 }, data: { amount: 2, unit: "days" } },
+        {
+          id: "msg1",
+          kind: "message",
+          position: { x: 220, y: 440 },
+          data: { text: "¿Seguís interesado? Estoy para ayudarte 😊", buttons: [{ id: "si", label: "Sí, cuéntame", type: "reply" }, { id: "no", label: "Ahora no", type: "reply" }] },
+        },
+        { id: "hand1", kind: "handoff", position: { x: -40, y: 660 }, data: { queue: "Admisión", priority: "normal", assignTo: "", note: "Reactivado: quiere info." } },
+        { id: "s1", kind: "stop", position: { x: -40, y: 840 }, data: {} },
+        { id: "s2", kind: "stop", position: { x: 460, y: 660 }, data: {} },
+      ],
+      edges: [
+        { id: "e0", source: "start", sourceHandle: "out", target: "tpl1" },
+        { id: "e1", source: "tpl1", sourceHandle: "out", target: "wait1" },
+        { id: "e2", source: "wait1", sourceHandle: "out", target: "msg1" },
+        { id: "e3", source: "msg1", sourceHandle: "b:si", target: "hand1" },
+        { id: "e4", source: "msg1", sourceHandle: "b:no", target: "s2" },
+        { id: "e5", source: "hand1", sourceHandle: "out", target: "s1" },
+      ],
+    }),
+  },
+];

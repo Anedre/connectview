@@ -126,7 +126,7 @@ export function ContactDetailDrawer({
   };
 
   const handleMonitor = async (
-    monitorMode: "SILENT_MONITOR" | "BARGE" | "WHISPER"
+    monitorMode: "SILENT_MONITOR" | "BARGE"
   ) => {
     if (!user?.userId) {
       toast.error("No se detectó tu userId");
@@ -137,9 +137,7 @@ export function ContactDetailDrawer({
       toast.success(
         monitorMode === "SILENT_MONITOR"
           ? "Escucha iniciada — revisa tu CCP"
-          : monitorMode === "BARGE"
-            ? "Barge-in iniciado — revisa tu CCP"
-            : "Whisper iniciado — revisa tu CCP"
+          : "Barge-in iniciado — revisa tu CCP"
       );
       onClose();
     } catch (e) {
@@ -340,9 +338,9 @@ export function ContactDetailDrawer({
                   <Label className="text-xs">Supervisar llamada</Label>
                   <p className="text-[10px] text-muted-foreground">
                     La llamada aparece en tu CCP. Silent = solo escuchas ·
-                    Whisper = solo el agente te oye · Barge = los 3 hablan.
+                    Barge = los 3 hablan.
                   </p>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -351,14 +349,6 @@ export function ContactDetailDrawer({
                     >
                       <Headphones className="mr-1 h-3 w-3" />
                       Silent
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleMonitor("WHISPER")}
-                      disabled={pending}
-                    >
-                      Whisper
                     </Button>
                     <Button
                       variant="outline"

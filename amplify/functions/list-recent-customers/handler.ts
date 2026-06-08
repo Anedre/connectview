@@ -9,6 +9,11 @@ import {
   QueryCommand,
   type AttributeValue,
 } from "@aws-sdk/client-dynamodb";
+import {
+  CustomerProfilesClient,
+  SearchProfilesCommand,
+} from "@aws-sdk/client-customer-profiles";
+import { resolveConnect } from "../_shared/tenantConnect";
 
 /**
  * list-recent-customers — surfaces the agent's recently-contacted
@@ -23,10 +28,22 @@ import {
  *
  * Uses the existing connectview-contacts schema (see processContactEvent).
  */
-const connect = new ConnectClient({ maxAttempts: 2 });
-const dynamo = new DynamoDBClient({});
+// BYO (#43+#46): module-active. Connect + DDB + Customer Profiles + domain
+// vienen del mismo resolveConnect.
+const legacyConnect = new ConnectClient({ maxAttempts: 2 });
+let connect: ConnectClient = legacyConnect;
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
+const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 2 });
+let profiles: CustomerProfilesClient = legacyProfiles;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+let instanceId = INSTANCE_ID;
 const TABLE = process.env.CONTACTS_TABLE || "connectview-contacts";
+const LEGACY_PROFILES_DOMAIN =
+  process.env.CUSTOMER_PROFILES_DOMAIN ||
+  process.env.CUSTOMER_PROFILES_DOMAIN_NAME ||
+  "amazon-connect-novasys";
+let PROFILES_DOMAIN = LEGACY_PROFILES_DOMAIN;
 
 // CORS is handled by the Function URL's own CORS config (created with
 // `aws lambda create-function-url-config --cors ...`). Adding the
@@ -54,7 +71,7 @@ async function refreshQueueCache(): Promise<void> {
   for (let i = 0; i < 10; i++) {
     const res = await connect.send(
       new ListQueuesCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         QueueTypes: ["STANDARD"],
         MaxResults: 100,
         NextToken: nextToken,
@@ -77,7 +94,7 @@ async function resolveAgentUserId(username: string): Promise<string | null> {
   for (let i = 0; i < 10; i++) {
     const res = await connect.send(
       new ListUsersCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         MaxResults: 100,
         NextToken: nextToken,
       })
@@ -111,12 +128,92 @@ interface RecentCustomer {
   lastDuration?: number;
   lastContactId: string;
   contactCount: number;
+  // Enriched from Customer Profiles SearchProfiles. Optional — if the
+  // lookup fails for one customer we just leave them with phone only.
+  firstName?: string;
+  lastName?: string;
+  businessName?: string;
+  email?: string;
+  partyType?: string;
+}
+
+// Profile lookups are slow individually (~150-300 ms each) but parallelize
+// well. We cap concurrent calls so the Lambda doesn't burst-trigger
+// throttling on the Customer Profiles API.
+const PROFILE_LOOKUP_CONCURRENCY = 8;
+
+async function enrichWithProfile(
+  customer: RecentCustomer
+): Promise<RecentCustomer> {
+  if (!PROFILES_DOMAIN) return customer;
+  try {
+    const res = await profiles.send(
+      new SearchProfilesCommand({
+        DomainName: PROFILES_DOMAIN,
+        KeyName: "_phone",
+        Values: [customer.customerPhone],
+        MaxResults: 1,
+      })
+    );
+    const p = res.Items?.[0];
+    if (!p) return customer;
+    return {
+      ...customer,
+      firstName: p.FirstName || undefined,
+      lastName: p.LastName || undefined,
+      businessName: p.BusinessName || undefined,
+      email: p.EmailAddress || undefined,
+      partyType: p.PartyType || undefined,
+    };
+  } catch (err) {
+    // Soft-fail — log but return unenriched record so the UI keeps
+    // working even if Profiles is temporarily unavailable.
+    console.warn(
+      "Profile enrichment failed for",
+      customer.customerPhone,
+      err instanceof Error ? err.message : err
+    );
+    return customer;
+  }
+}
+
+/** Run enrichment in parallel batches so we don't blow past the
+ *  Customer Profiles per-second quota on a 30-customer payload. */
+async function enrichAll(items: RecentCustomer[]): Promise<RecentCustomer[]> {
+  const out: RecentCustomer[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from(
+    { length: Math.min(PROFILE_LOOKUP_CONCURRENCY, items.length) },
+    async () => {
+      while (true) {
+        const i = cursor++;
+        if (i >= items.length) return;
+        out[i] = await enrichWithProfile(items[i]);
+      }
+    }
+  );
+  await Promise.all(workers);
+  return out;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   if (event.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS_HEADERS, body: "" };
+  }
+
+  // BYO (#43+#46): tenant primero, fallback Novasys.
+  {
+    const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    connect = r.client;
+    instanceId = r.instanceId;
+    dynamo = r.dynamo || legacyDynamo;
+    profiles = r.customerProfiles || legacyProfiles;
+    // Fail-closed: solo el tenant legacy (Novasys) cae al dominio del env. Un
+    // tenant real sin CP resuelto → "" (skip enrichment), NUNCA amazon-connect-novasys.
+    PROFILES_DOMAIN = r.tenantScoped
+      ? r.customerProfilesDomain || ""
+      : LEGACY_PROFILES_DOMAIN;
   }
 
   const params = event.queryStringParameters || {};
@@ -130,7 +227,7 @@ export const handler: Handler = async (event: any) => {
       body: JSON.stringify({ error: "agentUsername requerido" }),
     };
   }
-  if (!INSTANCE_ID) {
+  if (!instanceId) {
     return {
       statusCode: 500,
       headers: CORS_HEADERS,
@@ -202,11 +299,15 @@ export const handler: Handler = async (event: any) => {
       if (dedup.size >= limit) break;
     }
 
+    // Enrich each deduped customer with their Profile (name/business).
+    // Parallelized + soft-fails so a Profiles outage degrades gracefully.
+    const enriched = await enrichAll(Array.from(dedup.values()));
+
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
       body: JSON.stringify({
-        items: Array.from(dedup.values()),
+        items: enriched,
         scanned: q.Items?.length ?? 0,
       }),
     };

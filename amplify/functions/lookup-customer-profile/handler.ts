@@ -4,9 +4,17 @@ import {
   SearchProfilesCommand,
   ListProfileObjectsCommand,
 } from "@aws-sdk/client-customer-profiles";
+import { resolveCustomerProfiles } from "../_shared/tenantConnect";
 
-const client = new CustomerProfilesClient({});
-const DOMAIN_NAME = process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+// BYO (#43): Customer Profiles del CLIENTE (cross-account); fallback Novasys.
+// Antes este Lambda NO resolvía tenant → SIEMPRE leía los perfiles de Novasys
+// (leak cross-tenant para cualquier tenant real). Ahora resolveCustomerProfiles
+// devuelve el CP del tenant (o bloqueado fail-closed) y solo Novasys cae al env.
+const legacyClient = new CustomerProfilesClient({});
+let client: CustomerProfilesClient = legacyClient;
+const LEGACY_DOMAIN =
+  process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+let DOMAIN_NAME = LEGACY_DOMAIN;
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -264,6 +272,17 @@ function computeMetrics(ctrs: CtrObject[]) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  // BYO (#43): tenant primero, fallback Novasys (solo el tenant legacy).
+  {
+    const cp = await resolveCustomerProfiles(
+      event?.headers,
+      legacyClient,
+      LEGACY_DOMAIN
+    );
+    client = cp.client;
+    DOMAIN_NAME = cp.domainName;
+  }
+
   const params = event.queryStringParameters || {};
   const phone = params.phone;
   const email = params.email;
@@ -278,6 +297,16 @@ export const handler: Handler = async (event: any) => {
         body: JSON.stringify({
           error: "phone, email, or profileId parameter required",
         }),
+      };
+    }
+
+    // Fail-closed: tenant real sin Customer Profiles resuelto (DOMAIN_NAME "")
+    // → perfil vacío. NUNCA consultamos el dominio de Novasys.
+    if (!DOMAIN_NAME) {
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile: null }),
       };
     }
 

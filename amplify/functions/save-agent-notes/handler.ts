@@ -11,9 +11,13 @@ import {
   ConnectClient,
   StartTaskContactCommand,
 } from "@aws-sdk/client-connect";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const dynamo = new DynamoDBClient({});
-const connect = new ConnectClient({ maxAttempts: 1 });
+// BYO Connect + Data Plane (#43+#46): module-active.
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+let connect: ConnectClient = legacyConnect;
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
 /**
  * Append-only history of every wrap-up save. PK=contactId, SK=savedAt.
@@ -25,6 +29,7 @@ const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
 const HISTORY_TABLE =
   process.env.WRAPUP_HISTORY_TABLE || "connectview-wrapup-history";
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+let instanceId = INSTANCE_ID;
 // The contact flow we route the follow-up task to. Defaults to the same
 // inbound-handling flow so it shows in the agent's task queue.
 const FOLLOWUP_FLOW_ID = process.env.FOLLOWUP_FLOW_ID || "";
@@ -35,6 +40,14 @@ const FOLLOWUP_QUEUE_ID = process.env.FOLLOWUP_QUEUE_ID || "";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   const method = event.requestContext?.http?.method || event.httpMethod || "GET";
+
+  // BYO Connect + Data Plane: setea connect/instanceId/dynamo en un trip.
+  {
+    const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    connect = r.client;
+    instanceId = r.instanceId;
+    dynamo = r.dynamo || legacyDynamo;
+  }
 
   try {
     if (method === "GET") {
@@ -120,6 +133,9 @@ export const handler: Handler = async (event: any) => {
         valoracion,
         tags,
         followUps,
+        // Channel of the wrapped-up contact (voice/chat/whatsapp/email).
+        // Stored so analytics can slice the unified taxonomy by channel.
+        channel,
         // Optional context the follow-up creation needs
         customerPhone,
         followUpQueueId,
@@ -149,6 +165,7 @@ export const handler: Handler = async (event: any) => {
       if (subStage !== undefined) item.subStage = subStage;
       if (subStageLabel !== undefined) item.subStageLabel = subStageLabel;
       if (valoracion !== undefined) item.valoracion = valoracion;
+      if (channel !== undefined) item.channel = channel;
       if (Array.isArray(tags)) item.tags = tags;
       if (followUps && typeof followUps === "object") item.followUps = followUps;
 
@@ -156,7 +173,7 @@ export const handler: Handler = async (event: any) => {
       // (when followUpTaskIds isn't already populated) so re-saving a
       // wrap-up doesn't spam the agent's queue with duplicates.
       const followUpTaskIds: string[] = [];
-      if (followUps?.task24h && INSTANCE_ID) {
+      if (followUps?.task24h && instanceId) {
         // Connect TASK contact, scheduled for +24h from now, routed to the
         // follow-up queue. The agent will see it in their tasks tab.
         const queueId = followUpQueueId || FOLLOWUP_QUEUE_ID;
@@ -165,7 +182,7 @@ export const handler: Handler = async (event: any) => {
             const scheduledTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
             const task = await connect.send(
               new StartTaskContactCommand({
-                InstanceId: INSTANCE_ID,
+                InstanceId: instanceId,
                 ContactFlowId: FOLLOWUP_FLOW_ID,
                 Name: `Follow-up ${
                   subStageLabel || stageLabel || "wrap-up"
@@ -228,6 +245,7 @@ export const handler: Handler = async (event: any) => {
       if (subStage !== undefined) historyRow.subStage = subStage;
       if (subStageLabel !== undefined) historyRow.subStageLabel = subStageLabel;
       if (valoracion !== undefined) historyRow.valoracion = valoracion;
+      if (channel !== undefined) historyRow.channel = channel;
       if (Array.isArray(tags)) historyRow.tags = tags;
       if (followUps && typeof followUps === "object")
         historyRow.followUps = followUps;

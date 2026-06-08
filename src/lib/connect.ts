@@ -67,14 +67,28 @@ function patchChatJsRegion(CS: any): boolean {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 patchChatJsRegion((connect as any).ChatSession);
 
+/** Opciones extra de `initCCP`. `federationSignInUrl` se obtiene del Lambda
+ *  `get-federation-token` y, si está presente, reemplaza el loginUrl normal
+ *  + apaga el popup → el iframe se autentica solo (silent SSO). Si está
+ *  ausente, caemos al popup login clásico (Connect-hosted credentials). */
+export interface InitCCPOptions {
+  federationSignInUrl?: string;
+}
+
 // Embed the full Agent Workspace (CCP + Customer Profiles + Cases + Wisdom)
 // instead of just the CCP. The Agent Workspace URL is /connect/agent-app-v2
 // and includes additional apps that integrate automatically when they are
 // associated with the instance (in our case: Cases, Wisdom, Customer Profiles).
-export function initCCP(containerEl: HTMLElement, instanceUrl: string) {
+export function initCCP(
+  containerEl: HTMLElement,
+  instanceUrl: string,
+  opts: InitCCPOptions = {}
+) {
   // Re-apply chatjs region on every CCP init. Idempotent.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   patchChatJsRegion((connect as any).ChatSession);
+
+  const useFederation = !!opts.federationSignInUrl;
 
   connect.core.initCCP(containerEl, {
     ccpUrl: `${instanceUrl}/connect/ccp-v2`,
@@ -82,9 +96,17 @@ export function initCCP(containerEl: HTMLElement, instanceUrl: string) {
     // sessions; without it streams defaults to 'us-west-2' and every chat
     // API call 403s on our us-east-1 instance.
     region: CONNECT_REGION,
-    loginPopup: true,
-    loginPopupAutoClose: true,
-    loginUrl: `${instanceUrl}/connect/login`,
+    // Federación: el iframe abre el signInUrl (auth silencioso vía SAML del
+    // tenant) → setea cookie → redirige al CCP. Sin popup.
+    // SIN federación: NO auto-abrimos el popup de login. Era molesto (saltaba
+    // solo al cargar) y lo bloquean los popup-blockers. El agente/admin decide
+    // CUÁNDO loguearse con el botón del SoftphoneBanner ("Iniciar sesión en
+    // Connect"), que abre el CCP en una pestaña. Por eso loginPopup=false.
+    loginPopup: false,
+    loginPopupAutoClose: false,
+    loginUrl: useFederation
+      ? opts.federationSignInUrl!
+      : `${instanceUrl}/connect/login`,
     softphone: {
       allowFramedSoftphone: true,
       disableRingtone: false,

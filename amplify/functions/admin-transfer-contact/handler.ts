@@ -6,9 +6,12 @@ import {
 } from "@aws-sdk/client-connect";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "node:crypto";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const connect = new ConnectClient({ maxAttempts: 1 });
-const dynamo = new DynamoDBClient({});
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+// BYO Data Plane (#46): module-active; el helper audit lee este `dynamo`.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 const AUDIT_TABLE = process.env.ADMIN_AUDIT_TABLE || "connectview-admin-audit";
 
@@ -61,6 +64,8 @@ export const handler: Handler = async (event: any) => {
   }
 
   try {
+    const { client: connect, instanceId, dynamo: tenantDynamo } = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    dynamo = tenantDynamo || legacyDynamo;
     // TransferContact requires a ContactFlowId; if not supplied, use the default outbound flow
     // of the instance by describing the contact and reusing its current flow.
     let flowId = targetContactFlowId;
@@ -68,7 +73,7 @@ export const handler: Handler = async (event: any) => {
       try {
         const desc = await connect.send(
           new DescribeContactCommand({
-            InstanceId: INSTANCE_ID,
+            InstanceId: instanceId,
             ContactId: contactId,
           })
         );
@@ -94,7 +99,7 @@ export const handler: Handler = async (event: any) => {
 
     const res = await connect.send(
       new TransferContactCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         ContactId: contactId,
         UserId: targetUserId,
         QueueId: targetQueueId,

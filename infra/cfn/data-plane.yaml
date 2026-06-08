@@ -1,0 +1,331 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Vox CRM — BYO Data Plane. Crea las tablas DynamoDB del producto en TU cuenta
+  AWS y extiende el rol VoxCrmConnectAccess para que Vox las pueda leer/escribir
+  vía assume-role. Tus datos nunca se escriben en la cuenta de Vox.
+Resources:
+  # ── 14 tablas pagas por request (sin capacidad provisionada) ──────────────
+  ConnectviewAdminAudit:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-admin-audit
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: auditId, AttributeType: S }
+        - { AttributeName: action, AttributeType: S }
+        - { AttributeName: timestamp, AttributeType: S }
+      KeySchema:
+        - { AttributeName: auditId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: action-timestamp-index
+          KeySchema:
+            - { AttributeName: action, KeyType: HASH }
+            - { AttributeName: timestamp, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: timestamp-index
+          KeySchema:
+            - { AttributeName: timestamp, KeyType: HASH }
+          Projection: { ProjectionType: ALL }
+
+  ConnectviewAiConversations:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-ai-conversations
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: botId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: botId, KeyType: HASH }
+
+  ConnectviewAppointments:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-appointments
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: apptId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: apptId, KeyType: HASH }
+
+  ConnectviewBots:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-bots
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: botId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: botId, KeyType: HASH }
+
+  ConnectviewCallbacks:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-callbacks
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: callbackId, AttributeType: S }
+        - { AttributeName: status, AttributeType: S }
+        - { AttributeName: scheduledAt, AttributeType: S }
+        - { AttributeName: assignedAgentUserId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: callbackId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: status-scheduledAt-index
+          KeySchema:
+            - { AttributeName: status, KeyType: HASH }
+            - { AttributeName: scheduledAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: agent-scheduledAt-index
+          KeySchema:
+            - { AttributeName: assignedAgentUserId, KeyType: HASH }
+            - { AttributeName: scheduledAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  ConnectviewCampaignAgents:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-campaign-agents
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: campaignId, AttributeType: S }
+        - { AttributeName: userId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: campaignId, KeyType: HASH }
+        - { AttributeName: userId, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: userId-index
+          KeySchema:
+            - { AttributeName: userId, KeyType: HASH }
+          Projection: { ProjectionType: ALL }
+
+  ConnectviewCampaignContacts:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-campaign-contacts
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: campaignId, AttributeType: S }
+        - { AttributeName: rowId, AttributeType: S }
+        - { AttributeName: status, AttributeType: S }
+        - { AttributeName: nextRetryAt, AttributeType: S }
+        - { AttributeName: connectContactId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: campaignId, KeyType: HASH }
+        - { AttributeName: rowId, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: campaignId-nextRetryAt-index
+          KeySchema:
+            - { AttributeName: campaignId, KeyType: HASH }
+            - { AttributeName: nextRetryAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: campaignId-status-index
+          KeySchema:
+            - { AttributeName: campaignId, KeyType: HASH }
+            - { AttributeName: status, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: connectContactId-index
+          KeySchema:
+            - { AttributeName: connectContactId, KeyType: HASH }
+          Projection: { ProjectionType: ALL }
+
+  ConnectviewCampaigns:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-campaigns
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: campaignId, AttributeType: S }
+        - { AttributeName: status, AttributeType: S }
+        - { AttributeName: createdAt, AttributeType: S }
+      KeySchema:
+        - { AttributeName: campaignId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: status-createdAt-index
+          KeySchema:
+            - { AttributeName: status, KeyType: HASH }
+            - { AttributeName: createdAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  ConnectviewCatalogs:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-catalogs
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: catalogId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: catalogId, KeyType: HASH }
+
+  ConnectviewContacts:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-contacts
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: contactId, AttributeType: S }
+        - { AttributeName: agentUsername, AttributeType: S }
+        - { AttributeName: initiationTimestamp, AttributeType: S }
+      KeySchema:
+        - { AttributeName: contactId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: agentUsername-initiationTimestamp-index
+          KeySchema:
+            - { AttributeName: agentUsername, KeyType: HASH }
+            - { AttributeName: initiationTimestamp, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  ConnectviewHsmSends:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-hsm-sends
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: sendId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: sendId, KeyType: HASH }
+
+  ConnectviewLeads:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-leads
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: leadId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: leadId, KeyType: HASH }
+
+  ConnectviewTaxonomies:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-taxonomies
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: taxonomyId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: taxonomyId, KeyType: HASH }
+
+  ConnectviewWrapupHistory:
+    Type: AWS::DynamoDB::Table
+    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # datos NO se borran. Evita perder leads/campañas por un error de stack.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: connectview-wrapup-history
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: contactId, AttributeType: S }
+        - { AttributeName: savedAt, AttributeType: S }
+      KeySchema:
+        - { AttributeName: contactId, KeyType: HASH }
+        - { AttributeName: savedAt, KeyType: RANGE }
+
+  # ── Extender el rol existente con permisos sobre estas tablas ─────────────
+  VoxCrmDataPlanePolicy:
+    Type: AWS::IAM::RolePolicy
+    Properties:
+      RoleName: VoxCrmConnectAccess
+      PolicyName: VoxCrmDataPlaneAccess
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:BatchGetItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:BatchWriteItem
+              - dynamodb:DescribeTable
+            # SEGURIDAD: enumeramos EXACTAMENTE las 14 tablas que este template
+            # crea (vía !GetAtt a sus ARNs reales), en vez de un wildcard
+            # connectview-* que podría matchear otras tablas del cliente con
+            # ese prefijo. Scope exacto = mínimo privilegio.
+            Resource:
+              - !GetAtt ConnectviewAdminAudit.Arn
+              - !Sub "${ConnectviewAdminAudit.Arn}/index/*"
+              - !GetAtt ConnectviewAiConversations.Arn
+              - !Sub "${ConnectviewAiConversations.Arn}/index/*"
+              - !GetAtt ConnectviewAppointments.Arn
+              - !Sub "${ConnectviewAppointments.Arn}/index/*"
+              - !GetAtt ConnectviewBots.Arn
+              - !Sub "${ConnectviewBots.Arn}/index/*"
+              - !GetAtt ConnectviewCallbacks.Arn
+              - !Sub "${ConnectviewCallbacks.Arn}/index/*"
+              - !GetAtt ConnectviewCampaignAgents.Arn
+              - !Sub "${ConnectviewCampaignAgents.Arn}/index/*"
+              - !GetAtt ConnectviewCampaignContacts.Arn
+              - !Sub "${ConnectviewCampaignContacts.Arn}/index/*"
+              - !GetAtt ConnectviewCampaigns.Arn
+              - !Sub "${ConnectviewCampaigns.Arn}/index/*"
+              - !GetAtt ConnectviewCatalogs.Arn
+              - !Sub "${ConnectviewCatalogs.Arn}/index/*"
+              - !GetAtt ConnectviewContacts.Arn
+              - !Sub "${ConnectviewContacts.Arn}/index/*"
+              - !GetAtt ConnectviewHsmSends.Arn
+              - !Sub "${ConnectviewHsmSends.Arn}/index/*"
+              - !GetAtt ConnectviewLeads.Arn
+              - !Sub "${ConnectviewLeads.Arn}/index/*"
+              - !GetAtt ConnectviewTaxonomies.Arn
+              - !Sub "${ConnectviewTaxonomies.Arn}/index/*"
+              - !GetAtt ConnectviewWrapupHistory.Arn
+              - !Sub "${ConnectviewWrapupHistory.Arn}/index/*"
+Outputs:
+  DataPlaneEnabled:
+    Description: BYO Data Plane habilitado. Volvé a Vox y refrescá Integraciones.
+    Value: "ok"

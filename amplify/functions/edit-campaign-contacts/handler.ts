@@ -2,7 +2,6 @@ import type { Handler } from "aws-lambda";
 import {
   DynamoDBClient,
   GetItemCommand,
-  PutItemCommand,
   UpdateItemCommand,
   DeleteItemCommand,
   BatchWriteItemCommand,
@@ -13,9 +12,24 @@ import {
   PutOutboundRequestBatchCommand,
 } from "@aws-sdk/client-connectcampaignsv2";
 import { randomUUID } from "node:crypto";
+import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
+import { bulkUpsertProfilesFromCsv } from "../_shared/upsertCustomerProfileFromCsv";
+import { bulkUpsertVoxLeads, setActiveDynamo } from "../_shared/leadSync";
+import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
 
-const dynamo = new DynamoDBClient({});
+// BYO Data Plane (#46): DDB del tenant + leadSync writes. CampaignsV2 legacy.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const campaignsV2 = new ConnectCampaignsV2Client({ maxAttempts: 2 });
+// Customer Profiles tenant-scoped para el enrichment del CSV (handleAdd). El
+// handler lo resuelve por request y handleAdd lo lee. Fallback Novasys SOLO
+// para el tenant legacy — resolveCustomerProfiles bloquea a un tenant real sin CP.
+const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 2 });
+const LEGACY_PROFILES_DOMAIN =
+  process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+let csvProfilesCtx:
+  | { profiles: CustomerProfilesClient; domainName: string }
+  | undefined;
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
@@ -279,6 +293,31 @@ async function handleAdd(body: AddPayload): Promise<any> {
     pushed = await pushToAws(awsCampaignId, insertedRows);
   }
 
+  // Same Customer Profiles enrichment as create-campaign — any CSV column
+  // the manager attaches via AddContactsDialog should land on the profile.
+  let profileEnrichment: Awaited<
+    ReturnType<typeof bulkUpsertProfilesFromCsv>
+  > | null = null;
+  try {
+    profileEnrichment = await bulkUpsertProfilesFromCsv(
+      validContacts,
+      { concurrency: 20, deadlineMs: 20_000 },
+      csvProfilesCtx
+    );
+    console.log("customer-profile enrichment:", profileEnrichment);
+  } catch (err) {
+    console.warn("customer-profile enrichment failed (non-fatal):", err);
+  }
+
+  // Volcar al embudo de Leads (hub). No empuja a SF en la subida.
+  let leadFunnel: Awaited<ReturnType<typeof bulkUpsertVoxLeads>> | null = null;
+  try {
+    leadFunnel = await bulkUpsertVoxLeads(validContacts, { deadlineMs: 15_000 });
+    console.log("lead funnel upsert:", leadFunnel);
+  } catch (err) {
+    console.warn("lead funnel upsert failed (non-fatal):", err);
+  }
+
   return {
     statusCode: 200,
     body: {
@@ -286,6 +325,8 @@ async function handleAdd(body: AddPayload): Promise<any> {
       inserted,
       skipped,
       pushedToAws: pushed,
+      profileEnrichment,
+      leadFunnel,
     },
   };
 }
@@ -433,7 +474,6 @@ async function handleUpdate(body: UpdatePayload): Promise<any> {
   return { statusCode: 200, body: { action: "update", rowId, updated: true } };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 /**
  * Manual-mode dial action — the agent's UI calls this when they click
  * "Llamar" on a preview lead. We:
@@ -580,8 +620,23 @@ async function handleManualSkip(body: ManualSkipPayload) {
   return { statusCode: 200, body: { ok: true, rowId: body.rowId } };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // BYO Data Plane (#46): tenant primero, fallback Vox pooled.
+    {
+      const r = await resolveDynamo(event?.headers, legacyDynamo);
+      dynamo = r.dynamo;
+      setActiveDynamo(r.tenantScoped ? r.dynamo : null);
+      // CP tenant-scoped (fail-closed) para el enrichment del CSV en handleAdd.
+      // Se resuelve por request (antes de despachar) → handleAdd lo lee.
+      const cp = await resolveCustomerProfiles(
+        event?.headers,
+        legacyProfiles,
+        LEGACY_PROFILES_DOMAIN
+      );
+      csvProfilesCtx = { profiles: cp.client, domainName: cp.domainName };
+    }
     const body = JSON.parse(event.body || "{}") as Payload;
     const { action, campaignId } = body;
 

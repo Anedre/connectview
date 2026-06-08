@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { traceChange, traceInfo } from "@/lib/debugTrace";
 
 export interface ActiveContact {
@@ -57,6 +58,76 @@ export interface MissedContact {
   /** When the miss was observed (Date.now() at the time onMissed fired). */
   missedAt: number;
   attributes: Record<string, string>;
+}
+
+/**
+ * Persist contactId → connectedAtMs in sessionStorage so the call
+ * timer survives a page refresh. Streams re-attaches to the live
+ * contact after reload but its first few snapshots can report a stale
+ * `statusDuration` (because the snapshot is from before the refresh
+ * finished or because the iframe is still re-syncing). Without this
+ * persistence the timer visibly resets to 00:00 mid-call.
+ *
+ * sessionStorage (not localStorage) — clears on tab close which is
+ * correct: a closed tab means the agent ended their session, no need
+ * to carry the timer forward.
+ */
+const CALL_TIMER_KEY = "vox.callTimers";
+function readStoredConnectedAt(contactId: string): number | null {
+  try {
+    const raw = sessionStorage.getItem(CALL_TIMER_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw) as Record<string, number>;
+    const v = obj?.[contactId];
+    return typeof v === "number" && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+function writeStoredConnectedAt(contactId: string, ts: number) {
+  try {
+    const raw = sessionStorage.getItem(CALL_TIMER_KEY);
+    const obj: Record<string, number> = raw ? JSON.parse(raw) : {};
+    obj[contactId] = ts;
+    // Cap to last 20 entries so this doesn't grow unbounded.
+    const entries = Object.entries(obj);
+    if (entries.length > 20) {
+      const trimmed = entries
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 20);
+      sessionStorage.setItem(CALL_TIMER_KEY, JSON.stringify(Object.fromEntries(trimmed)));
+    } else {
+      sessionStorage.setItem(CALL_TIMER_KEY, JSON.stringify(obj));
+    }
+  } catch {
+    /* quota / disabled storage — non-fatal */
+  }
+}
+/**
+ * Reconcile a freshly-computed connectedAtMs with the persisted one.
+ *
+ * Rule: if we already have a stored timestamp, prefer it ALWAYS unless
+ * the new one is significantly EARLIER (which would mean we mis-anchored
+ * earlier — very rare). This means the very first observation after a
+ * refresh restores the original timestamp instead of "now".
+ */
+function reconcileConnectedAt(
+  contactId: string,
+  fresh: number | null
+): number | null {
+  if (!contactId) return fresh;
+  const stored = readStoredConnectedAt(contactId);
+  if (stored && fresh && fresh < stored - 5000) {
+    // Fresh is clearly earlier — adopt and overwrite.
+    writeStoredConnectedAt(contactId, fresh);
+    return fresh;
+  }
+  if (stored) return stored;
+  if (fresh) {
+    writeStoredConnectedAt(contactId, fresh);
+    return fresh;
+  }
+  return null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -113,6 +184,8 @@ function extractContact(c: any): ActiveContact | null {
         connectedAtMs = Date.now();
       }
     }
+    // Restore from sessionStorage if we had this contact pre-refresh.
+    connectedAtMs = reconcileConnectedAt(contactId, connectedAtMs);
 
     return {
       contactId,
@@ -149,7 +222,7 @@ function extractFromSnapshot(c: any): ActiveContact | null {
   if (c.connections && Array.isArray(c.connections)) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const initialConn = c.connections.find((conn: any) => conn.initial);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const customerConn = c.connections.find(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (conn: any) => conn.endpoint?.type === "telephone_number"
@@ -183,6 +256,8 @@ function extractFromSnapshot(c: any): ActiveContact | null {
     const dur = typeof c.state?.duration === "number" ? c.state.duration : 0;
     connectedAtMs = Date.now() - dur;
   }
+  // Restore from sessionStorage if we had this contact pre-refresh.
+  connectedAtMs = reconcileConnectedAt(c.contactId || "", connectedAtMs);
 
   return {
     contactId: c.contactId || "",
@@ -360,7 +435,7 @@ interface ActiveContactsContextValue {
  * consumers read from React context.
  */
 function useActiveContactsState(): ActiveContactsContextValue {
-  const { user } = useAuth();
+  const { user, isOnboarding } = useAuth();
   const [contacts, setContacts] = useState<ActiveContact[]>([]);
   const [focusedContactId, setFocusedContactId] = useState<string | null>(null);
   const [missedContacts, setMissedContacts] = useState<MissedContact[]>([]);
@@ -762,6 +837,9 @@ function useActiveContactsState(): ActiveContactsContextValue {
   // contact — useful when Streams IPC is wedged. It can't surface
   // additional contacts beyond what Streams sees.
   useEffect(() => {
+    // En onboarding (tenant sin Connect conectado) no hay agente ni contacto
+    // activo que consultar — saltamos el polling para no spamear 404s.
+    if (isOnboarding) return;
     const username = user?.username;
     if (!username) return;
 
@@ -772,7 +850,7 @@ function useActiveContactsState(): ActiveContactsContextValue {
 
     const fetchActive = async () => {
       try {
-        const res = await fetch(
+        const res = await authedFetch(
           `${endpoints.getAgentActiveContact}?username=${encodeURIComponent(
             username
           )}`
@@ -828,7 +906,7 @@ function useActiveContactsState(): ActiveContactsContextValue {
       cancelled = true;
       if (apiIntervalRef.current) clearInterval(apiIntervalRef.current);
     };
-  }, [user?.username, observeAllContacts]);
+  }, [user?.username, observeAllContacts, isOnboarding]);
 
   // Stable callback for focus changes (used by the tab strip).
   const focus = useCallback((contactId: string | null) => {

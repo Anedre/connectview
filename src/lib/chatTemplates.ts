@@ -44,10 +44,10 @@ export const CHAT_TEMPLATES: ChatTemplate[] = [
     body: "Hola {{nombre}} 👋, te saluda {{agente}}. ¿En qué te puedo ayudar hoy?",
   },
   {
-    id: "saludo-udep",
+    id: "saludo-comercial",
     category: "bienvenida",
-    title: "Saludo UDEP",
-    body: "Hola {{nombre}}, soy {{agente}} de UDEP Admisión. Vi tu interés en información sobre nuestras carreras. ¿Te gustaría que conversemos?",
+    title: "Saludo comercial",
+    body: "Hola {{nombre}}, soy {{agente}}. Vi tu interés en nuestra información. ¿Te gustaría que conversemos?",
   },
   {
     id: "saludo-followup",
@@ -90,10 +90,10 @@ export const CHAT_TEMPLATES: ChatTemplate[] = [
     body: "Puedes contactarnos por:\n📞 Llamada\n💬 WhatsApp (este canal)\n📧 Email\n🌐 Web\n\nElige el que más te convenga.",
   },
   {
-    id: "info-requisitos",
+    id: "info-ampliar",
     category: "info",
-    title: "Requisitos UDEP",
-    body: "Para postular a UDEP necesitas:\n✅ DNI o pasaporte vigente\n✅ Certificado de estudios\n✅ Examen de admisión o ingreso por modalidad\n\n¿Te gustaría que coordinemos una reunión para ampliarte la información?",
+    title: "Ampliar información",
+    body: "Con gusto te amplío la información que necesites. ¿Te gustaría que coordinemos una llamada o reunión para verlo en detalle?",
   },
 
   // ─── Reagenda ──────────────────────────────────────────────────

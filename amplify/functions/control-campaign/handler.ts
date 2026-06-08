@@ -15,8 +15,11 @@ import {
   PutOutboundRequestBatchCommand,
 } from "@aws-sdk/client-connectcampaignsv2";
 import { randomUUID } from "node:crypto";
+import { resolveDynamo } from "../_shared/tenantConnect";
 
-const dynamo = new DynamoDBClient({});
+// BYO Data Plane (#46): DDB del tenant; ConnectCampaignsV2 queda legacy.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const campaignsV2 = new ConnectCampaignsV2Client({ maxAttempts: 2 });
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
@@ -162,6 +165,8 @@ async function pushContactsToAws(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // BYO Data Plane (#46): tenant primero, fallback Vox.
+    ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
     const body = JSON.parse(event.body || "{}");
     const { campaignId, action } = body;
     // Optional payload for set-concurrency. Clamp to a sane range so a

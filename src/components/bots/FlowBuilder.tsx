@@ -1,0 +1,776 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ReactFlow,
+  ReactFlowProvider,
+  Background,
+  BackgroundVariant,
+  Controls,
+  MiniMap,
+  addEdge,
+  useNodesState,
+  useEdgesState,
+  useReactFlow,
+  MarkerType,
+  type Node,
+  type Edge,
+  type Connection,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { Plus, Save, Trash2, AlertTriangle, Check, Play, Bot as BotIcon, Search } from "lucide-react";
+import {
+  NODE_KINDS,
+  PALETTE_GROUPS,
+  makeNode,
+  validateBot,
+  type Bot,
+  type BotNode,
+  type NodeKind,
+  type FieldDef,
+  type ButtonDef,
+  type ButtonKind,
+  type ListRow,
+} from "@/lib/botFlow";
+import { StepNode } from "@/components/bots/StepNode";
+import { FLOW_ICONS } from "@/components/bots/icons";
+import { BuilderCtx } from "@/components/bots/builderCtx";
+import { BotTester } from "@/components/bots/BotTester";
+import { getApiEndpoints } from "@/lib/api";
+import { WaTemplateConfigurator, type WaTemplate } from "@/components/whatsapp/WaTemplateConfigurator";
+
+/**
+ * FlowBuilder — the visual chat-flow editor (roadmap #16). A react-flow canvas
+ * with a node palette (left), an inspector (right) generated from the
+ * NODE_KINDS field catalog, a minimap and live validation. Edits stay in
+ * local state; the parent supplies `initial` and an `onSave(bot)` callback so
+ * the same builder powers both the real page and the gate-free demo.
+ */
+const nodeTypes = { step: StepNode };
+
+const EDGE_COLOR = "#22B8D9";
+const edgeDefaults = {
+  type: "smoothstep",
+  animated: false,
+  style: { stroke: EDGE_COLOR, strokeWidth: 2 },
+  markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR, width: 18, height: 18 },
+};
+
+// Friendly labels for selects whose stored value differs from the display.
+const SELECT_LABELS: Record<string, Record<string, string>> = {
+  op: {
+    equals: "es igual a",
+    contains: "contiene",
+    exists: "tiene algún valor",
+    gt: "mayor que",
+    lt: "menor que",
+    regex: "coincide (regex)",
+  },
+  unit: { minutes: "minutos", hours: "horas", days: "días" },
+};
+
+function toRFNodes(bot: Bot): Node[] {
+  return bot.nodes.map((n) => ({
+    id: n.id,
+    type: "step",
+    position: n.position,
+    data: { ...n.data, kind: n.kind },
+  }));
+}
+function toRFEdges(bot: Bot): Edge[] {
+  return bot.edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    sourceHandle: e.sourceHandle ?? undefined,
+    target: e.target,
+    targetHandle: e.targetHandle ?? undefined,
+    ...edgeDefaults,
+  }));
+}
+
+export function FlowBuilder(props: {
+  initial: Bot;
+  onSave?: (bot: Bot) => void | Promise<void>;
+  saving?: boolean;
+  onBack?: () => void;
+  autoTest?: boolean;
+}) {
+  return (
+    <ReactFlowProvider>
+      <FlowBuilderInner {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function FlowBuilderInner({
+  initial,
+  onSave,
+  saving,
+  onBack,
+  autoTest,
+}: {
+  initial: Bot;
+  onSave?: (bot: Bot) => void | Promise<void>;
+  saving?: boolean;
+  onBack?: () => void;
+  autoTest?: boolean;
+}) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const { screenToFlowPosition } = useReactFlow();
+
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(toRFNodes(initial));
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(toRFEdges(initial));
+  const [name, setName] = useState(initial.name);
+  const [status, setStatus] = useState<Bot["status"]>(initial.status);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showIssues, setShowIssues] = useState(false);
+  const [testing, setTesting] = useState(!!autoTest);
+  const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
+
+  // Approved WhatsApp templates — powers the "Plantilla" node's configurator.
+  useEffect(() => {
+    const ep = getApiEndpoints();
+    if (!ep?.listWhatsAppTemplates) return;
+    fetch(ep.listWhatsAppTemplates)
+      .then((r) => r.json())
+      .then((j) => setWaTemplates(Array.isArray(j.templates) ? j.templates : []))
+      .catch(() => { /* templates optional */ });
+  }, []);
+
+  // Reset when a different bot is loaded.
+  useEffect(() => {
+    setNodes(toRFNodes(initial));
+    setEdges(toRFEdges(initial));
+    setName(initial.name);
+    setStatus(initial.status);
+    setSelectedId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial.botId]);
+
+  const onConnect = useCallback(
+    (c: Connection) => setEdges((eds) => addEdge({ ...c, ...edgeDefaults }, eds)),
+    [setEdges]
+  );
+
+  const currentBot = useMemo<Bot>(
+    () => ({
+      botId: initial.botId,
+      name,
+      status,
+      trigger: initial.trigger,
+      nodes: nodes.map((n) => ({
+        id: n.id,
+        kind: (n.data as { kind: NodeKind }).kind,
+        position: n.position,
+        data: Object.fromEntries(
+          Object.entries(n.data).filter(([k]) => k !== "kind")
+        ),
+      })) as BotNode[],
+      edges: edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        sourceHandle: e.sourceHandle ?? null,
+        target: e.target,
+        targetHandle: e.targetHandle ?? null,
+      })),
+    }),
+    [initial.botId, initial.trigger, name, status, nodes, edges]
+  );
+
+  const issues = useMemo(() => validateBot(currentBot), [currentBot]);
+
+  const addNode = useCallback(
+    (kind: NodeKind) => {
+      const rect = wrapperRef.current?.getBoundingClientRect();
+      const pos = rect
+        ? screenToFlowPosition({ x: rect.x + rect.width / 2 - 117, y: rect.y + rect.height / 3 })
+        : { x: 120, y: 120 };
+      const node = makeNode(kind, pos);
+      setNodes((nds) => [
+        ...nds,
+        { id: node.id, type: "step", position: node.position, data: { ...node.data, kind } },
+      ]);
+      setSelectedId(node.id);
+    },
+    [screenToFlowPosition, setNodes]
+  );
+
+  const updateNodeData = useCallback(
+    (id: string, patch: Record<string, unknown>) => {
+      setNodes((nds) =>
+        nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n))
+      );
+    },
+    [setNodes]
+  );
+
+  const deleteNode = useCallback(
+    (id: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== id));
+      setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
+      setSelectedId(null);
+    },
+    [setNodes, setEdges]
+  );
+
+  const selectedNode = nodes.find((n) => n.id === selectedId) || null;
+
+  // 1-based step numbers among non-start nodes → the numbered badge (Kommo-style).
+  const numberMap = useMemo(() => {
+    const m = new Map<string, number>();
+    let n = 0;
+    for (const nd of nodes) {
+      if ((nd.data as { kind: NodeKind }).kind !== "start") {
+        n += 1;
+        m.set(nd.id, n);
+      }
+    }
+    return m;
+  }, [nodes]);
+
+  const builderActions = useMemo(
+    () => ({
+      updateNodeData,
+      selectNode: (id: string) => setSelectedId(id),
+      numberOf: (id: string) => numberMap.get(id),
+    }),
+    [updateNodeData, numberMap]
+  );
+
+  return (
+    <BuilderCtx.Provider value={builderActions}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      {/* Toolbar */}
+      <div className="fb-bar">
+        {onBack && (
+          <button onClick={onBack} title="Volver a mis bots" className="fb-bar__back">←</button>
+        )}
+        <span className="fb-bar__icon"><BotIcon size={16} /></span>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Nombre del bot"
+          className="fb-bar__name"
+        />
+        <div className={`fb-status fb-status--${status}`}>
+          <span className="fb-status__dot" />
+          <select value={status} onChange={(e) => setStatus(e.target.value as Bot["status"])}>
+            <option value="draft">Borrador</option>
+            <option value="active">Activo</option>
+            <option value="paused">Pausado</option>
+          </select>
+        </div>
+
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={() => setShowIssues((s) => !s)}
+            title="Validación del flujo"
+            className={`fb-chip ${issues.length ? "fb-chip--warn" : "fb-chip--ok"}`}
+          >
+            {issues.length ? <AlertTriangle size={13} /> : <Check size={13} />}
+            {issues.length ? `${issues.length} aviso${issues.length > 1 ? "s" : ""}` : "Sin avisos"}
+          </button>
+          <button
+            onClick={() => setTesting((t) => !t)}
+            title="Probar el bot en un chat de prueba"
+            className={`btn btn--sm ${testing ? "fb-test-on" : ""}`}
+          >
+            <Play size={13} /> Probar
+          </button>
+          <button onClick={() => onSave?.(currentBot)} disabled={saving} className="btn btn--primary btn--sm">
+            <Save size={13} /> {saving ? "Guardando…" : "Guardar"}
+          </button>
+        </div>
+      </div>
+
+      {showIssues && issues.length > 0 && (
+        <div
+          style={{
+            padding: "8px 14px",
+            background: "var(--accent-red-soft, rgba(229,72,77,0.1))",
+            borderBottom: "1px solid var(--border-1)",
+            fontSize: 12,
+            color: "var(--accent-red)",
+          }}
+        >
+          {issues.map((i, idx) => (
+            <div key={idx}>• {i}</div>
+          ))}
+        </div>
+      )}
+
+      {/* Body: palette | canvas | inspector */}
+      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        <Palette onAdd={addNode} />
+
+        <div ref={wrapperRef} style={{ flex: 1, position: "relative", minWidth: 0 }}>
+          {/* Absolute-fill so react-flow always measures a concrete size
+              (avoids the #004 "needs width and height" warning under flex). */}
+          <div style={{ position: "absolute", inset: 0 }}>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={(_, n) => setSelectedId(n.id)}
+              onPaneClick={() => setSelectedId(null)}
+              nodeTypes={nodeTypes}
+              defaultEdgeOptions={edgeDefaults}
+              fitView
+              proOptions={{ hideAttribution: true }}
+              style={{ background: "var(--bg-1)" }}
+            >
+              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border-1)" />
+              <Controls showInteractive={false} />
+              <MiniMap
+                pannable
+                zoomable
+                nodeColor={(n) =>
+                  NODE_KINDS[(n.data as { kind: NodeKind }).kind]?.accent || "#888"
+                }
+                nodeStrokeWidth={2}
+                maskColor="rgba(10,16,28,0.6)"
+                style={{ background: "var(--bg-2)", border: "1px solid var(--border-1)", borderRadius: 8 }}
+              />
+            </ReactFlow>
+          </div>
+          {testing && <BotTester bot={currentBot} onClose={() => setTesting(false)} />}
+        </div>
+
+        {selectedNode && (
+          <Inspector
+            key={selectedNode.id}
+            node={selectedNode}
+            allNodes={nodes}
+            waTemplates={waTemplates}
+            onChange={(patch) => updateNodeData(selectedNode.id, patch)}
+            onDelete={() => deleteNode(selectedNode.id)}
+            onClose={() => setSelectedId(null)}
+          />
+        )}
+      </div>
+    </div>
+    </BuilderCtx.Provider>
+  );
+}
+
+/* ─────────────────────────── Palette ─────────────────────────── */
+
+function Palette({ onAdd }: { onAdd: (kind: NodeKind) => void }) {
+  const [q, setQ] = useState("");
+  const query = q.trim().toLowerCase();
+  return (
+    <div className="fb-pal">
+      <div className="fb-pal__title">Pasos</div>
+      <div className="fb-pal__search">
+        <Search size={13} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar paso…" />
+      </div>
+      {PALETTE_GROUPS.map((group) => {
+        const items = Object.values(NODE_KINDS).filter(
+          (k) => k.group === group && (!query || k.label.toLowerCase().includes(query) || k.blurb.toLowerCase().includes(query))
+        );
+        if (items.length === 0) return null;
+        return (
+          <div key={group} className="fb-pal__group">
+            <div className="fb-pal__group-h">{group}</div>
+            {items.map((def) => {
+              const Icn = FLOW_ICONS[def.icon] || FLOW_ICONS.message;
+              return (
+                <button key={def.kind} onClick={() => onAdd(def.kind)} title={def.blurb} className="fb-pal__item">
+                  <span className="fb-pal__icon" style={{ background: `${def.accent}1a`, color: def.accent }}>
+                    <Icn size={14} strokeWidth={2.2} />
+                  </span>
+                  <span className="fb-pal__item-label">{def.label}</span>
+                  <Plus size={13} className="fb-pal__item-add" />
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─────────────────────────── Inspector ─────────────────────────── */
+
+function Inspector({
+  node,
+  allNodes,
+  waTemplates,
+  onChange,
+  onDelete,
+  onClose,
+}: {
+  node: Node;
+  allNodes: Node[];
+  waTemplates: WaTemplate[];
+  onChange: (patch: Record<string, unknown>) => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const kind = (node.data as { kind: NodeKind }).kind;
+  const def = NODE_KINDS[kind];
+  const data = node.data as Record<string, unknown>;
+  const Icn = FLOW_ICONS[def.icon] || FLOW_ICONS.message;
+
+  // Variables capturadas en el flujo (pasos "Pregunta" → saveAs, "Set field" → field)
+  // para ofrecerlas en el configurador de plantillas (modo flujo).
+  const flowVars = Array.from(
+    new Set(
+      allNodes.flatMap((n) => {
+        const d = n.data as { kind?: string; saveAs?: unknown; field?: unknown };
+        const out: string[] = [];
+        if (d.kind === "question" && typeof d.saveAs === "string" && d.saveAs.trim()) out.push(d.saveAs.trim());
+        if (d.kind === "set_field" && typeof d.field === "string" && d.field.trim()) out.push(d.field.trim());
+        return out;
+      })
+    )
+  );
+
+  return (
+    <div className="fb-insp">
+      <div className="fb-insp__head" style={{ background: `linear-gradient(135deg, ${def.accent}14, transparent 80%)` }}>
+        <span className="fb-insp__icon" style={{ background: `${def.accent}1f`, color: def.accent }}>
+          <Icn size={15} strokeWidth={2.2} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="fb-insp__title">{def.label}</div>
+          <div className="fb-insp__blurb">{def.blurb}</div>
+        </div>
+        <button onClick={onClose} className="fb-insp__close" title="Cerrar">×</button>
+      </div>
+
+      <div className="fb-insp__body">
+        {kind === "template" ? (
+          <WaTemplateConfigurator
+            mode="flow"
+            templates={waTemplates}
+            templateName={typeof data.templateName === "string" ? data.templateName : ""}
+            language={typeof data.language === "string" ? data.language : "es"}
+            variables={Array.isArray(data.variables) ? (data.variables as string[]) : []}
+            flowVars={flowVars}
+            onChange={(v) => onChange(v)}
+          />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+            {def.fields.map((f) => (
+              <Field
+                key={f.key}
+                field={f}
+                value={data[f.key]}
+                allNodes={allNodes}
+                selfId={node.id}
+                onChange={(v) => onChange({ [f.key]: v })}
+              />
+            ))}
+            {def.fields.length === 0 && (
+              <div style={{ fontSize: 12, color: "var(--text-3)" }}>Este paso no tiene opciones.</div>
+            )}
+          </div>
+        )}
+
+        <button onClick={onDelete} className="fb-insp__delete">
+          <Trash2 size={13} /> Eliminar paso
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 11.5,
+  fontWeight: 600,
+  color: "var(--text-2)",
+  marginBottom: 5,
+  display: "block",
+};
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  fontSize: 12.5,
+  padding: "7px 9px",
+  borderRadius: 7,
+  border: "1px solid var(--border-1)",
+  background: "var(--bg-1)",
+  color: "var(--text-1)",
+  boxSizing: "border-box",
+};
+
+function Field({
+  field,
+  value,
+  allNodes,
+  selfId,
+  onChange,
+}: {
+  field: FieldDef;
+  value: unknown;
+  allNodes: Node[];
+  selfId: string;
+  onChange: (v: unknown) => void;
+}) {
+  const v = value;
+  const labelMap = SELECT_LABELS[field.key];
+
+  return (
+    <div>
+      <label style={labelStyle}>{field.label}</label>
+
+      {field.type === "textarea" && (
+        <textarea
+          value={String(v ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder}
+          rows={3}
+          style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
+        />
+      )}
+
+      {(field.type === "text" || field.type === "var") && (
+        <input
+          value={String(v ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder}
+          style={{
+            ...inputStyle,
+            fontFamily: field.type === "var" ? "var(--font-mono, monospace)" : "inherit",
+          }}
+        />
+      )}
+
+      {field.type === "number" && (
+        <input
+          type="number"
+          value={String(v ?? "")}
+          onChange={(e) => onChange(Number(e.target.value))}
+          placeholder={field.placeholder}
+          style={inputStyle}
+        />
+      )}
+
+      {field.type === "select" && (
+        <select value={String(v ?? "")} onChange={(e) => onChange(e.target.value)} style={inputStyle}>
+          {field.options?.map((o) => (
+            <option key={o} value={o}>
+              {labelMap?.[o] || o}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {field.type === "node-ref" && (
+        <select value={String(v ?? "")} onChange={(e) => onChange(e.target.value)} style={inputStyle}>
+          <option value="">— elegir paso —</option>
+          {allNodes
+            .filter((n) => n.id !== selfId)
+            .map((n) => {
+              const k = (n.data as { kind: NodeKind }).kind;
+              return (
+                <option key={n.id} value={n.id}>
+                  {NODE_KINDS[k].label}: {NODE_KINDS[k].summary(n.data as Record<string, unknown>).slice(0, 28)}
+                </option>
+              );
+            })}
+        </select>
+      )}
+
+      {field.type === "buttons" && (
+        <ButtonsEditor value={Array.isArray(v) ? (v as ButtonDef[]) : []} onChange={onChange} />
+      )}
+
+      {field.type === "varlist" && (
+        <VarListEditor value={Array.isArray(v) ? (v as string[]) : []} onChange={onChange} />
+      )}
+
+      {field.type === "listrows" && (
+        <ListRowsEditor value={Array.isArray(v) ? (v as ListRow[]) : []} onChange={onChange} />
+      )}
+
+      {field.help && (
+        <div style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 4 }}>{field.help}</div>
+      )}
+    </div>
+  );
+}
+
+const uid = () => Math.random().toString(36).slice(2, 7);
+
+const addBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 5,
+  fontSize: 11.5,
+  padding: "6px 9px",
+  borderRadius: 7,
+  border: "1px dashed var(--border-1)",
+  background: "transparent",
+  color: "var(--text-2)",
+  cursor: "pointer",
+  justifyContent: "center",
+};
+const xBtnStyle: React.CSSProperties = {
+  border: "1px solid var(--border-1)",
+  background: "var(--bg-1)",
+  color: "var(--text-3)",
+  borderRadius: 7,
+  padding: "0 9px",
+  cursor: "pointer",
+  flex: "0 0 auto",
+};
+
+function ButtonsEditor({
+  value,
+  onChange,
+}: {
+  value: ButtonDef[];
+  onChange: (v: ButtonDef[]) => void;
+}) {
+  const max = 3; // WhatsApp interactive button messages allow up to 3 buttons
+  const add = () => {
+    if (value.length >= max) return;
+    onChange([...value, { id: uid(), label: "", type: "reply" }]);
+  };
+  const update = (id: string, patch: Partial<ButtonDef>) =>
+    onChange(value.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  const remove = (id: string) => onChange(value.filter((b) => b.id !== id));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {value.map((b) => {
+        const type = b.type || "reply";
+        return (
+          <div
+            key={b.id}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 5,
+              padding: 8,
+              border: "1px solid var(--border-1)",
+              borderRadius: 8,
+              background: "var(--bg-1)",
+            }}
+          >
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                value={b.label}
+                onChange={(e) => update(b.id, { label: e.target.value })}
+                placeholder="Texto del botón"
+                style={{ ...inputStyle, flex: 1 }}
+              />
+              <button onClick={() => remove(b.id)} style={xBtnStyle} title="Quitar">×</button>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <select
+                value={type}
+                onChange={(e) => update(b.id, { type: e.target.value as ButtonKind })}
+                style={{ ...inputStyle, flex: "0 0 116px" }}
+              >
+                <option value="reply">Respuesta</option>
+                <option value="url">Enlace</option>
+                <option value="phone">Llamada</option>
+              </select>
+              {type !== "reply" && (
+                <input
+                  value={b.value || ""}
+                  onChange={(e) => update(b.id, { value: e.target.value })}
+                  placeholder={type === "url" ? "https://…" : "+51…"}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <button
+        onClick={add}
+        disabled={value.length >= max}
+        style={{ ...addBtnStyle, opacity: value.length >= max ? 0.5 : 1, cursor: value.length >= max ? "default" : "pointer" }}
+      >
+        <Plus size={12} /> Agregar botón {value.length >= max ? "(máx 3)" : ""}
+      </button>
+      <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>
+        Solo los botones de <strong>Respuesta</strong> crean ramas en el flujo.
+      </div>
+    </div>
+  );
+}
+
+function VarListEditor({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const add = () => onChange([...value, ""]);
+  const update = (i: number, val: string) => onChange(value.map((x, idx) => (idx === i ? val : x)));
+  const remove = (i: number) => onChange(value.filter((_, idx) => idx !== i));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {value.map((val, i) => (
+        <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ fontSize: 11, fontFamily: "var(--font-mono, monospace)", color: "var(--text-3)", flex: "0 0 36px" }}>
+            {`{{${i + 1}}}`}
+          </span>
+          <input
+            value={val}
+            onChange={(e) => update(i, e.target.value)}
+            placeholder="valor o {{variable}}"
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <button onClick={() => remove(i)} style={xBtnStyle} title="Quitar">×</button>
+        </div>
+      ))}
+      <button onClick={add} style={addBtnStyle}>
+        <Plus size={12} /> Agregar variable
+      </button>
+    </div>
+  );
+}
+
+function ListRowsEditor({ value, onChange }: { value: ListRow[]; onChange: (v: ListRow[]) => void }) {
+  const max = 10; // WhatsApp list messages allow up to 10 rows
+  const add = () => {
+    if (value.length >= max) return;
+    onChange([...value, { id: uid(), title: "", description: "" }]);
+  };
+  const update = (id: string, patch: Partial<ListRow>) =>
+    onChange(value.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const remove = (id: string) => onChange(value.filter((r) => r.id !== id));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {value.map((r) => (
+        <div
+          key={r.id}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 5,
+            padding: 8,
+            border: "1px solid var(--border-1)",
+            borderRadius: 8,
+            background: "var(--bg-1)",
+          }}
+        >
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              value={r.title}
+              onChange={(e) => update(r.id, { title: e.target.value })}
+              placeholder="Título de la opción"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <button onClick={() => remove(r.id)} style={xBtnStyle} title="Quitar">×</button>
+          </div>
+          <input
+            value={r.description || ""}
+            onChange={(e) => update(r.id, { description: e.target.value })}
+            placeholder="Descripción (opcional)"
+            style={inputStyle}
+          />
+        </div>
+      ))}
+      <button
+        onClick={add}
+        disabled={value.length >= max}
+        style={{ ...addBtnStyle, opacity: value.length >= max ? 0.5 : 1, cursor: value.length >= max ? "default" : "pointer" }}
+      >
+        <Plus size={12} /> Agregar opción {value.length >= max ? "(máx 10)" : ""}
+      </button>
+    </div>
+  );
+}

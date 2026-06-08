@@ -60,10 +60,38 @@ const NAV: NavEntry[] = [
   },
   { section: "Crecimiento" },
   {
+    id: "leads",
+    path: "/leads",
+    label: "Leads",
+    icon: Icon.Users,
+    minRole: "Admins",
+  },
+  {
     id: "campaigns",
     path: "/campaigns",
     label: "Campañas",
     icon: Icon.Megaphone,
+    minRole: "Admins",
+  },
+  {
+    id: "bots",
+    path: "/bot",
+    label: "Bots",
+    icon: Icon.Workflow,
+    minRole: "Admins",
+  },
+  {
+    id: "agente",
+    path: "/agente",
+    label: "Agente IA",
+    icon: Icon.Sparkles,
+    minRole: "Admins",
+  },
+  {
+    id: "appointments",
+    path: "/appointments",
+    label: "Citas",
+    icon: Icon.Calendar,
     minRole: "Admins",
   },
   {
@@ -90,6 +118,13 @@ const NAV: NavEntry[] = [
   },
 ];
 
+/** Pinned integrations shown at the bottom of the sidebar (Kommo-style). */
+const PINNED = [
+  { id: "wa", label: "WhatsApp", color: "#25D366" },
+  { id: "sf", label: "Salesforce", color: "#00A1E0" },
+  { id: "connect", label: "Amazon Connect", color: "#FF9900" },
+];
+
 function isItem(e: NavEntry): e is NavItem {
   return (e as NavItem).id !== undefined;
 }
@@ -97,7 +132,7 @@ function isItem(e: NavEntry): e is NavItem {
 export function VoxSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useConnectAuth();
+  const { user, productName } = useConnectAuth();
   const { isAtLeast } = useRoles();
   const { agentState } = useCCP();
 
@@ -116,7 +151,7 @@ export function VoxSidebar() {
       <div className="sb__brand">
         <div className="sb__logo" />
         <div className="sb__name">
-          Vox<span>CRM</span>
+          {productName}
         </div>
       </div>
       <nav className="sb__nav">
@@ -150,6 +185,37 @@ export function VoxSidebar() {
           );
         })}
       </nav>
+      <div style={{ padding: "0 8px 8px" }}>
+        <div className="sb__section">Integraciones</div>
+        {PINNED.map((p) => (
+          <div
+            key={p.id}
+            title={`${p.label} · conectado`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "6px 10px",
+              fontSize: 13,
+              color: "var(--text-2)",
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: p.color,
+                boxShadow: `0 0 0 3px ${p.color}22`,
+                flex: "0 0 auto",
+              }}
+            />
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {p.label}
+            </span>
+          </div>
+        ))}
+      </div>
       <div className="sb__footer">
         <div className="sb__user-avatar">{initials}</div>
         <div className="sb__user-meta">

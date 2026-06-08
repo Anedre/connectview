@@ -4,8 +4,11 @@ import {
   GetItemCommand,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
+import { resolveDynamo } from "../_shared/tenantConnect";
 
-const dynamo = new DynamoDBClient({});
+// BYO Data Plane (#46): tenant primero, fallback Vox pooled.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 
 // Fields the admin can edit. Everything is optional — partial PATCH semantics.
@@ -62,6 +65,8 @@ const FIELD_MAP: Record<
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // BYO Data Plane (#46): tenant primero, fallback Vox.
+    ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
     const body: UpdateBody = JSON.parse(event.body || "{}");
     if (!body.campaignId) {
       return {

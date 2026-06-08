@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 
 /**
  * One scheduled follow-up row, as returned by the list-callbacks
@@ -31,8 +32,15 @@ export interface CallbackRecord {
     | "CANCELLED";
   assignedAgentUserId?: string;
   notes?: string;
-  /** Default "voice" when missing (legacy rows). */
-  channel?: "voice" | "email" | "whatsapp";
+  /** Default "voice" when missing (legacy rows). `task` is a generic
+   *  reminder with no auto-dispatch — the agent just sees it as a to-do. */
+  channel?: "voice" | "email" | "whatsapp" | "task";
+  /** Free-text title / asunto — added for Citas. Optional; if missing,
+   *  the UI derives a label from the channel + customer name. */
+  title?: string;
+  /** Visual duration in minutes for the calendar block. The actual
+   *  dispatch is point-in-time; this is just for rendering. */
+  durationMin?: number;
   actionType?: "auto-dispatch" | "manual-action";
   campaignId?: string;
   contactFlowId?: string;
@@ -63,7 +71,7 @@ interface UseCallbacksOptions {
    *  (most useful for the drawer). */
   status?: CallbackRecord["status"] | "PENDING";
   /** Filter by channel. */
-  channel?: "voice" | "email" | "whatsapp";
+  channel?: "voice" | "email" | "whatsapp" | "task";
   /** Max rows returned. Default: 50, cap 200. */
   limit?: number;
   /** Auto-poll every N seconds. 0 = no auto-refresh. Default: 60. */
@@ -129,7 +137,7 @@ export function useCallbacks(
         if (effectiveUserId) qs.set("agentUserId", effectiveUserId);
         if (status) qs.set("status", status);
         if (channel) qs.set("channel", channel);
-        const res = await fetch(`${listUrl}?${qs.toString()}`);
+        const res = await authedFetch(`${listUrl}?${qs.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (cancelled) return;
@@ -156,7 +164,7 @@ export function useCallbacks(
   const callMutation = useCallback(
     async (callbackId: string, action: "cancel" | "complete") => {
       if (!cancelUrl) throw new Error("Endpoint cancelCallback no configurado");
-      const r = await fetch(cancelUrl, {
+      const r = await authedFetch(cancelUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -146,6 +146,50 @@ export function LiveTranscriptPanel({
         ))}
       </div>
 
+      {/* Sentiment trend — one tick per segment, in time order, so the
+          agent/supervisor sees HOW the mood moved through the call (not
+          just the overall). Roadmap #22. */}
+      {data && data.segments.length > 1 && (
+        <div style={{ marginBottom: 12 }}>
+          <div
+            className="muted"
+            style={{ fontSize: 10.5, marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}
+          >
+            Tendencia de sentiment
+          </div>
+          <div style={{ display: "flex", gap: 2, alignItems: "flex-end", height: 22 }}>
+            {data.segments.map((s, i) => {
+              const sv = (s.sentiment || "NEUTRAL").toUpperCase();
+              const color =
+                sv === "POSITIVE"
+                  ? "var(--accent-green)"
+                  : sv === "NEGATIVE"
+                  ? "var(--accent-red)"
+                  : "var(--border-2, #cbd5e1)";
+              const h = sv === "NEUTRAL" ? 8 : 18;
+              return (
+                <div
+                  key={i}
+                  title={`${s.participant === "AGENT" ? "Agente" : "Cliente"} · ${SENTIMENT_TO_LABEL[sv] ?? "Neutro"}`}
+                  style={{
+                    flex: 1,
+                    minWidth: 3,
+                    maxWidth: 14,
+                    height: h,
+                    borderRadius: 2,
+                    background: color,
+                    opacity: s.participant === "AGENT" ? 0.45 : 1,
+                  }}
+                />
+              );
+            })}
+          </div>
+          <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>
+            Barras llenas = cliente · tenues = agente · rojo negativo · verde positivo
+          </div>
+        </div>
+      )}
+
       {/* Negative coaching nudge */}
       {overall === "NEGATIVE" && (
         <div

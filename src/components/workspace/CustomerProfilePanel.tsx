@@ -10,6 +10,10 @@ import { es } from "date-fns/locale";
 import { useDebugRender, traceChange } from "@/lib/debugTrace";
 import { ContactDetailModal } from "@/components/workspace/ContactDetailModal";
 import { formatDurationSec } from "@/lib/utils";
+import {
+  displayCustomerName,
+  displayBusinessLine,
+} from "@/lib/customerName";
 
 interface CustomerProfilePanelProps {
   phone: string | null;
@@ -147,13 +151,18 @@ export function CustomerProfilePanel({
     );
   }
 
-  // Derived display fields
-  const fullName =
-    profile.businessName ||
-    [profile.firstName, profile.middleName, profile.lastName]
-      .filter(Boolean)
-      .join(" ") ||
-    "Cliente";
+  // Derived display fields — see lib/customerName.ts for the rules.
+  const fullName = displayCustomerName(
+    {
+      firstName: profile.firstName,
+      middleName: profile.middleName,
+      lastName: profile.lastName,
+      businessName: profile.businessName,
+      email: profile.email,
+      phoneNumber: profile.phoneNumber,
+    },
+    "Cliente"
+  );
   const avatarColor = colorFromName(fullName);
   // Best-effort "role · company" line. We don't always have a job title in
   // Customer Profiles, so fall back gracefully.
@@ -162,11 +171,13 @@ export function CustomerProfilePanel({
     profile.attributes?.jobTitle ||
     profile.partyType ||
     null;
+  // Company line — only show BusinessName when it's a real company name
+  // (not a Salesforce-synced account number) AND it's not the same value
+  // we're already using as the primary fullName.
+  const smartBusiness = displayBusinessLine({ businessName: profile.businessName });
   const company =
     profile.attributes?.company ||
-    (profile.businessName && profile.businessName !== fullName
-      ? profile.businessName
-      : null);
+    (smartBusiness && smartBusiness !== fullName ? smartBusiness : null);
   const subLine =
     role && company
       ? `${role} · ${company}`

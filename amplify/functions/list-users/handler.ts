@@ -5,24 +5,30 @@ import {
   DescribeUserCommand,
   DescribeSecurityProfileCommand,
 } from "@aws-sdk/client-connect";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const client = new ConnectClient({});
+const legacyClient = new ConnectClient({});
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 
-// Cache security profile names to avoid repeated lookups
+// Cache de nombres de perfil — keyed por instancia+perfil para no mezclar tenants.
 const profileNameCache = new Map<string, string>();
 
-async function getProfileName(profileId: string): Promise<string> {
-  if (profileNameCache.has(profileId)) return profileNameCache.get(profileId)!;
+async function getProfileName(
+  profileId: string,
+  client: ConnectClient,
+  instanceId: string
+): Promise<string> {
+  const key = `${instanceId}:${profileId}`;
+  if (profileNameCache.has(key)) return profileNameCache.get(key)!;
   try {
     const res = await client.send(
       new DescribeSecurityProfileCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         SecurityProfileId: profileId,
       })
     );
     const name = res.SecurityProfile?.SecurityProfileName || profileId;
-    profileNameCache.set(profileId, name);
+    profileNameCache.set(key, name);
     return name;
   } catch {
     return profileId;
@@ -35,9 +41,11 @@ export const handler: Handler = async (event: any) => {
 
   try {
     if (method === "GET") {
+      // Connect del tenant (o legacy de Vox si no está configurado / sin token).
+      const { client, instanceId } = await resolveConnect(event?.headers, legacyClient, INSTANCE_ID);
       const summariesRes = await client.send(
         new ListUsersCommand({
-          InstanceId: INSTANCE_ID,
+          InstanceId: instanceId,
           MaxResults: 100,
         })
       );
@@ -50,7 +58,7 @@ export const handler: Handler = async (event: any) => {
           try {
             const userRes = await client.send(
               new DescribeUserCommand({
-                InstanceId: INSTANCE_ID,
+                InstanceId: instanceId,
                 UserId: summary.Id!,
               })
             );
@@ -58,7 +66,7 @@ export const handler: Handler = async (event: any) => {
             const user = userRes.User;
             const profileIds = user?.SecurityProfileIds || [];
             const profileNames = await Promise.all(
-              profileIds.map((id) => getProfileName(id))
+              profileIds.map((id) => getProfileName(id, client, instanceId))
             );
 
             return {

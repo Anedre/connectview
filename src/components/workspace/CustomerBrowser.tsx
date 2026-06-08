@@ -9,6 +9,8 @@ import { CustomerProfilePanel } from "@/components/workspace/CustomerProfilePane
 import { EditProfileModal } from "@/components/workspace/EditProfileModal";
 import { Avatar, colorFromName } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import { displayCustomerName } from "@/lib/customerName";
+import { FeatureNotice } from "@/components/vox/FeatureNotice";
 
 interface SearchResult {
   profileId: string;
@@ -30,6 +32,30 @@ interface RecentCustomer {
   lastDuration?: number;
   lastContactId: string;
   contactCount: number;
+  // Enriched fields from the list-recent-customers Lambda (added by
+  // SearchProfiles). Optional — old Lambda payloads still work without.
+  firstName?: string;
+  lastName?: string;
+  businessName?: string;
+  email?: string;
+  partyType?: string;
+}
+
+/** Resolve the best display name for a recent customer entry.
+ *  Delegates to the shared lib/customerName resolver — which also
+ *  filters out ID-like BusinessName values (e.g. "70498978"). */
+function recentDisplayName(r: RecentCustomer): string {
+  const phoneIsEmail = r.customerPhone?.includes("@");
+  return displayCustomerName(
+    {
+      firstName: r.firstName,
+      lastName: r.lastName,
+      businessName: r.businessName,
+      email: r.email || (phoneIsEmail ? r.customerPhone : undefined),
+      phoneNumber: phoneIsEmail ? undefined : r.customerPhone,
+    },
+    r.customerPhone
+  );
 }
 
 /**
@@ -109,13 +135,67 @@ export function CustomerBrowser() {
     setLoading(true);
     setError(null);
     try {
+      // Server-side search hits exact-match indexed keys (_phone, _email,
+      // _fullName). For partial names we ALSO scan the locally-cached
+      // `recents` list (which is name-enriched from list-recent-customers)
+      // and substring-match on the agent's typed text. This is what makes
+      // "Miguel" actually find "Miguel Vega Android" even though Connect
+      // doesn't have a _firstName indexed key on this domain.
       const r = await fetch(
         `${endpoints.searchCustomerProfiles}?q=${encodeURIComponent(trimmed)}`
       );
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
-      setResults(data.results || []);
-      if ((data.results || []).length === 0) {
+      const serverResults: SearchResult[] = data.results || [];
+
+      // Local fuzzy search over recents — case-insensitive substring
+      // match on the resolved display name, business, first/last name.
+      const isText = !/@/.test(trimmed) && !/^[+\d\s()-]+$/.test(trimmed);
+      const norm = trimmed.toLowerCase();
+      const localResults: SearchResult[] = isText
+        ? recents
+            .filter((r) => {
+              const hay = [
+                r.firstName,
+                r.lastName,
+                r.businessName,
+                r.email,
+                recentDisplayName(r),
+              ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+              return hay.includes(norm);
+            })
+            .map((r) => ({
+              profileId: r.customerPhone, // placeholder — re-resolved on click
+              firstName: r.firstName,
+              lastName: r.lastName,
+              businessName: r.businessName,
+              phoneNumber: r.customerPhone.includes("@")
+                ? undefined
+                : r.customerPhone,
+              email: r.customerPhone.includes("@")
+                ? r.customerPhone
+                : r.email,
+              partyType: r.partyType,
+              matchedBy: "name" as const,
+            }))
+        : [];
+
+      // Merge unique by profileId / phone fallback. Server results first
+      // so exact-match hits beat fuzzy ones.
+      const seen = new Set<string>();
+      const merged: SearchResult[] = [];
+      for (const r of [...serverResults, ...localResults]) {
+        const key = r.profileId || r.phoneNumber || r.email || "";
+        if (key && seen.has(key)) continue;
+        if (key) seen.add(key);
+        merged.push(r);
+      }
+
+      setResults(merged);
+      if (merged.length === 0) {
         setError("Sin resultados");
       }
     } catch (e) {
@@ -147,10 +227,16 @@ export function CustomerBrowser() {
 
   // ─── Default: search view ──────────────────────────────────────
   const composeName = (r: SearchResult) =>
-    r.businessName ||
-    [r.firstName, r.lastName].filter(Boolean).join(" ").trim() ||
-    r.email ||
-    r.phoneNumber ||
+    displayCustomerName(
+      {
+        firstName: r.firstName,
+        lastName: r.lastName,
+        businessName: r.businessName,
+        email: r.email,
+        phoneNumber: r.phoneNumber,
+      },
+      ""
+    ) ||
     "(sin nombre)";
 
   const matchedByLabel = (m: SearchResult["matchedBy"]) =>
@@ -164,6 +250,7 @@ export function CustomerBrowser() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <FeatureNotice feature="customerProfiles" />
       <div>
         <div className="section-title">Buscar cliente</div>
         <div
@@ -428,8 +515,12 @@ export function CustomerBrowser() {
           {!recentsLoading && recents.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {recents.map((r) => {
-                const name = r.customerPhone;
                 const isEmail = r.customerPhone.includes("@");
+                const displayName = recentDisplayName(r);
+                // True when we resolved an actual name (vs. fell back to
+                // the phone). Drives whether we show the phone as a
+                // secondary line under the name.
+                const hasName = displayName !== r.customerPhone;
                 const channelIcon =
                   r.lastChannel === "CHAT"
                     ? Icon.Chat
@@ -458,8 +549,12 @@ export function CustomerBrowser() {
                         profileId: r.customerPhone, // placeholder; SelectedProfileView
                         // re-resolves via the lookupCustomerProfile hook
                         // by phone/email anyway, so a placeholder id is OK.
+                        firstName: r.firstName,
+                        lastName: r.lastName,
+                        businessName: r.businessName,
                         phoneNumber: isEmail ? undefined : r.customerPhone,
-                        email: isEmail ? r.customerPhone : undefined,
+                        email: isEmail ? r.customerPhone : r.email,
+                        partyType: r.partyType,
                         matchedBy: "recent",
                       })
                     }
@@ -477,18 +572,19 @@ export function CustomerBrowser() {
                     }}
                   >
                     <Avatar
-                      name={name}
+                      name={displayName}
                       size="sm"
-                      color={colorFromName(name)}
+                      color={colorFromName(displayName)}
                     />
                     <span style={{ flex: 1, minWidth: 0 }}>
+                      {/* Line 1 — display name + channel icon */}
                       <span
                         style={{
                           display: "flex",
                           alignItems: "center",
                           gap: 5,
                           fontSize: 12.5,
-                          fontWeight: 500,
+                          fontWeight: 600,
                           color: "var(--text-1)",
                           overflow: "hidden",
                         }}
@@ -506,10 +602,29 @@ export function CustomerBrowser() {
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
                           }}
+                          title={displayName}
+                        >
+                          {displayName}
+                        </span>
+                      </span>
+                      {/* Line 2 — phone (only when we have a real name) */}
+                      {hasName && (
+                        <span
+                          className="mono"
+                          style={{
+                            display: "block",
+                            fontSize: 10.5,
+                            color: "var(--text-3)",
+                            marginTop: 1,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
                         >
                           {r.customerPhone}
                         </span>
-                      </span>
+                      )}
+                      {/* Line 3 — relative time + count */}
                       <span
                         className="muted"
                         style={{

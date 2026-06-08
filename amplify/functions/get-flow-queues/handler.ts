@@ -4,33 +4,37 @@ import {
   DescribeContactFlowCommand,
   DescribeQueueCommand,
 } from "@aws-sdk/client-connect";
+import { resolveConnect } from "../_shared/tenantConnect";
 
-const connect = new ConnectClient({ maxAttempts: 1 });
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 
-// Cache queue descriptions in memory so repeated lookups during the same
-// Lambda cold-start are cheap.
+// Cache queue descriptions in memory — keyed por instancia para no mezclar tenants.
 const queueNameCache = new Map<string, string>();
 
-async function resolveQueueName(queueIdOrArn: string): Promise<string> {
+async function resolveQueueName(
+  queueIdOrArn: string,
+  client: ConnectClient,
+  instanceId: string
+): Promise<string> {
   if (!queueIdOrArn) return "";
-  if (queueNameCache.has(queueIdOrArn))
-    return queueNameCache.get(queueIdOrArn)!;
+  const cacheKey = `${instanceId}:${queueIdOrArn}`;
+  if (queueNameCache.has(cacheKey)) return queueNameCache.get(cacheKey)!;
   const queueId = queueIdOrArn.includes("/")
     ? queueIdOrArn.split("/").pop() || queueIdOrArn
     : queueIdOrArn;
   try {
-    const res = await connect.send(
+    const res = await client.send(
       new DescribeQueueCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         QueueId: queueId,
       })
     );
     const name = res.Queue?.Name || queueId;
-    queueNameCache.set(queueIdOrArn, name);
+    queueNameCache.set(cacheKey, name);
     return name;
   } catch {
-    queueNameCache.set(queueIdOrArn, queueId);
+    queueNameCache.set(cacheKey, queueId);
     return queueId;
   }
 }
@@ -81,7 +85,9 @@ const QUEUE_ACTION_TYPES: Record<string, ExtractedQueue["source"]> = {
 };
 
 async function parseFlowQueues(
-  contentJson: string
+  contentJson: string,
+  client: ConnectClient,
+  instanceId: string
 ): Promise<ExtractedQueue[]> {
   let parsed: { Actions?: FlowAction[] };
   try {
@@ -123,7 +129,7 @@ async function parseFlowQueues(
       if (r.isDynamic) {
         r.queueName = `(dinámico: ${r.queueId})`;
       } else {
-        r.queueName = await resolveQueueName(r.queueId);
+        r.queueName = await resolveQueueName(r.queueId, client, instanceId);
       }
     })
   );
@@ -143,15 +149,16 @@ export const handler: Handler = async (event: any) => {
       };
     }
 
+    const { client: connect, instanceId } = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
     const res = await connect.send(
       new DescribeContactFlowCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: instanceId,
         ContactFlowId: contactFlowId,
       })
     );
     const content = res.ContactFlow?.Content || "{}";
 
-    const extracted = await parseFlowQueues(content);
+    const extracted = await parseFlowQueues(content, connect, instanceId);
 
     // Prefer transfer-to-queue over set-working-queue when deciding the
     // "primary" queue (that's where the contact actually lands).

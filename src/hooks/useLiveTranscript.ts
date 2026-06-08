@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { LiveTranscriptData } from "@/types/live-transcript";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 
 // Adaptive polling: aim for near-real-time, back off on throttling.
 const POLL_FAST_MS = 1500;   // happy path — feels live
@@ -32,7 +33,7 @@ export function useLiveTranscript(contactId: string | null) {
     const fetchTranscript = async () => {
       let throttled = false;
       try {
-        const r = await fetch(
+        const r = await authedFetch(
           `${endpoints.getLiveTranscript}?contactId=${encodeURIComponent(contactId)}`
         );
         const json = await r.json().catch(() => ({}));

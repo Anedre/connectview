@@ -14,6 +14,7 @@ import {
 } from "@aws-sdk/client-connect";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "node:crypto";
+import { resolveConnect } from "../_shared/tenantConnect";
 
 /**
  * start-outbound-contact — single entry-point that the agent desktop
@@ -29,13 +30,23 @@ import { randomUUID } from "node:crypto";
  * The Lambda fills in any field that's safe to default (InstanceId,
  * ClientToken) so the UI form stays small.
  */
-const connect = new ConnectClient({ maxAttempts: 2 });
-const dynamo = new DynamoDBClient({});
+const legacyConnect = new ConnectClient({ maxAttempts: 2 });
+// BYO Data Plane (#46): module-active. El helper audit() escribe a esta tabla,
+// que vive en la cuenta del cliente si activó el data plane.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 const REGION = process.env.AWS_REGION || "us-east-1";
 const ACCOUNT_ID = process.env.AWS_ACCOUNT_ID || "731736972577";
 const AUDIT_TABLE = process.env.ADMIN_AUDIT_TABLE || "connectview-admin-audit";
 const INSTANCE_ARN = `arn:aws:connect:${REGION}:${ACCOUNT_ID}:instance/${INSTANCE_ID}`;
+
+// Module-active: el handler las setea al inicio de cada invocación (Lambda
+// procesa un evento a la vez por contenedor → seguro). Los helpers de abajo
+// (startTask/startEmail/…) leen estas en vez de las hardcodeadas.
+let activeConnect = legacyConnect;
+let activeInstanceId = INSTANCE_ID;
+let activeInstanceArn = INSTANCE_ARN;
 
 // CORS is handled by the Function URL's own CORS config (duplicated
 // headers cause the browser to reject the response).
@@ -140,7 +151,7 @@ async function startTask(req: TaskBody) {
     });
   }
   const input: StartTaskContactCommandInput = {
-    InstanceId: INSTANCE_ID,
+    InstanceId: activeInstanceId,
     Name: req.name.slice(0, 512),
     Description: req.description?.slice(0, 4096),
     ContactFlowId: req.contactFlowId,
@@ -157,7 +168,7 @@ async function startTask(req: TaskBody) {
     // canonical pattern.
   };
   try {
-    const res = await connect.send(new StartTaskContactCommand(input));
+    const res = await activeConnect.send(new StartTaskContactCommand(input));
     await audit(req.actor || "unknown", "start-task", req, "success");
     return respond(200, {
       contactId: res.ContactId,
@@ -183,9 +194,9 @@ async function uploadAttachmentToContact(
   contentType: string,
   buffer: Buffer
 ): Promise<string> {
-  const start = await connect.send(
+  const start = await activeConnect.send(
     new StartAttachedFileUploadCommand({
-      InstanceId: INSTANCE_ID,
+      InstanceId: activeInstanceId,
       FileName: filename,
       FileSizeInBytes: buffer.byteLength,
       FileUseCaseType: "ATTACHMENT",
@@ -222,9 +233,9 @@ async function uploadAttachmentToContact(
     );
   }
 
-  await connect.send(
+  await activeConnect.send(
     new CompleteAttachedFileUploadCommand({
-      InstanceId: INSTANCE_ID,
+      InstanceId: activeInstanceId,
       FileId: fileId,
       AssociatedResourceArn: contactArn,
     })
@@ -240,9 +251,9 @@ async function uploadAttachmentToContact(
   const startTs = Date.now();
   const TIMEOUT_MS = 30_000;
   while (Date.now() - startTs < TIMEOUT_MS) {
-    const meta = await connect.send(
+    const meta = await activeConnect.send(
       new BatchGetAttachedFileMetadataCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: activeInstanceId,
         FileIds: [fileId],
         AssociatedResourceArn: contactArn,
       })
@@ -272,9 +283,9 @@ async function resolveAgentUserId(
 ): Promise<string | null> {
   let nextToken: string | undefined;
   for (let i = 0; i < 10; i++) {
-    const res = await connect.send(
+    const res = await activeConnect.send(
       new ListUsersCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: activeInstanceId,
         MaxResults: 100,
         NextToken: nextToken,
       })
@@ -330,9 +341,9 @@ async function startEmail(req: EmailBody) {
     // create an EMAIL contact tied to the agent (CreateContact), then
     // attach the actual outbound message via StartOutboundEmailContact
     // using the new ContactId.
-    const created = await connect.send(
+    const created = await activeConnect.send(
       new CreateContactCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: activeInstanceId,
         Channel: "EMAIL",
         InitiationMethod: "OUTBOUND",
         UserInfo: { UserId: userId },
@@ -345,7 +356,7 @@ async function startEmail(req: EmailBody) {
     if (!contactId) {
       throw new Error("CreateContact no devolvió ContactId");
     }
-    const contactArn = `${INSTANCE_ARN}/contact/${contactId}`;
+    const contactArn = `${activeInstanceArn}/contact/${contactId}`;
 
     // ─── 3) Upload attachments (if any) ────────────────────────────
     // The order matters: Connect's Send Email block picks up files
@@ -374,7 +385,7 @@ async function startEmail(req: EmailBody) {
 
     // ─── 4) StartOutboundEmailContact (actually sends the email) ───
     const input: StartOutboundEmailContactCommandInput = {
-      InstanceId: INSTANCE_ID,
+      InstanceId: activeInstanceId,
       ContactId: contactId,
       FromEmailAddress: {
         EmailAddress: req.fromEmailAddress,
@@ -397,7 +408,7 @@ async function startEmail(req: EmailBody) {
       },
       ClientToken: randomUUID(),
     };
-    await connect.send(new StartOutboundEmailContactCommand(input));
+    await activeConnect.send(new StartOutboundEmailContactCommand(input));
 
     // ─── 5) Auto-close the contact so it doesn't stick to the agent ─
     //
@@ -409,9 +420,9 @@ async function startEmail(req: EmailBody) {
     // disconnected itself, this StopContact call is a no-op (we
     // swallow the error).
     try {
-      await connect.send(
+      await activeConnect.send(
         new StopContactCommand({
-          InstanceId: INSTANCE_ID,
+          InstanceId: activeInstanceId,
           ContactId: contactId,
           DisconnectReason: { Code: "AGENT" },
         })
@@ -452,8 +463,18 @@ export const handler: Handler = async (event: any) => {
     return { statusCode: 200, headers: CORS_HEADERS, body: "" };
   }
 
-  if (!INSTANCE_ID) {
-    return respond(500, { error: "CONNECT_INSTANCE_ID no configurado" });
+  // Connect del tenant (o legacy de Vox). Setea las vars module-active.
+  {
+    const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID, INSTANCE_ARN);
+    activeConnect = r.client;
+    activeInstanceId = r.instanceId;
+    activeInstanceArn = r.instanceArn;
+    // #46: misma resolución → DDB del tenant para el audit.
+    dynamo = r.dynamo || legacyDynamo;
+  }
+
+  if (!activeInstanceId) {
+    return respond(500, { error: "Amazon Connect no configurado para esta organización" });
   }
 
   let body: RequestBody;

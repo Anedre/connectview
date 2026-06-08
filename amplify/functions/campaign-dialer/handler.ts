@@ -2,7 +2,6 @@ import type { Handler } from "aws-lambda";
 import {
   DynamoDBClient,
   QueryCommand,
-  ScanCommand,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
@@ -12,15 +11,28 @@ import {
   GetCurrentUserDataCommand,
   ListUsersCommand,
 } from "@aws-sdk/client-connect";
+import { getTenantConnect } from "../_shared/tenantConnect";
 
-const dynamo = new DynamoDBClient({});
-const connect = new ConnectClient({ maxAttempts: 1 });
+// BYO Data Plane (#46): DDB module-active igual que Connect. Se resetea por
+// campaña usando getTenantConnect(campaign.tenantId).dynamo. Lambda procesa
+// un evento a la vez por contenedor → seguro.
+const legacyDynamo = new DynamoDBClient({});
+let dynamo: DynamoDBClient = legacyDynamo;
+const legacyConnect = new ConnectClient({ maxAttempts: 1 });
+// Module-active: se resetean al inicio de procesar CADA campaña a partir del
+// tenantId guardado en el registro de la campaña. Las campañas se procesan
+// serialmente en dialCycle() → seguro pasar de un tenant a otro vía estas vars.
+let activeConnect = legacyConnect;
+let activeInstanceId = "";
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 const CAMPAIGN_AGENTS_TABLE =
   process.env.CAMPAIGN_AGENTS_TABLE || "connectview-campaign-agents";
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+// Setear activeInstanceId al legacy en boot para no romper el primer tick si
+// no hay campañas tenant-scoped todavía.
+activeInstanceId = INSTANCE_ID;
 // AMD-aware flow that runs CheckOutboundCallStatus FIRST so voicemails/no-answer
 // are hung up before reaching an agent. When present, every outbound dial uses
 // this flow (AMD is not free — AWS bills per-call — but it is worth it here).
@@ -32,6 +44,11 @@ const AMD_ENABLED = (process.env.AMD_ENABLED ?? "true").toLowerCase() !== "false
 
 interface Campaign {
   campaignId: string;
+  /** Organización que dueña de esta campaña. La asume create-campaign del JWT
+   *  del usuario que la creó. El dialer la usa para resolver el Connect del
+   *  cliente (assume-role cross-account). Vacío / "default" → cae al Connect
+   *  legacy de Vox (transición). */
+  tenantId?: string;
   name: string;
   status: string;
   sourcePhoneNumber: string;
@@ -302,16 +319,18 @@ async function assignContactToAgent(
 }
 
 // List all users in the instance so we can use them as an `Agents` filter for
-// GetCurrentUserData (which requires one filter). Cached within the warm container.
-let allUserIdsCache: string[] | null = null;
+// GetCurrentUserData (which requires one filter). Cached within the warm
+// container, keyeado por instanceId para que dos tenants no se mezclen.
+const allUserIdsCacheByInstance = new Map<string, string[]>();
 async function listAllUserIds(): Promise<string[]> {
-  if (allUserIdsCache) return allUserIdsCache;
+  const hit = allUserIdsCacheByInstance.get(activeInstanceId);
+  if (hit) return hit;
   const ids: string[] = [];
   let nextToken: string | undefined;
   do {
-    const res = await connect.send(
+    const res = await activeConnect.send(
       new ListUsersCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: activeInstanceId,
         MaxResults: 100,
         NextToken: nextToken,
       })
@@ -321,7 +340,7 @@ async function listAllUserIds(): Promise<string[]> {
     }
     nextToken = res.NextToken;
   } while (nextToken);
-  allUserIdsCache = ids;
+  allUserIdsCacheByInstance.set(activeInstanceId, ids);
   return ids;
 }
 
@@ -346,9 +365,9 @@ async function countAvailableFromUsers(userIds: string[]): Promise<number> {
   try {
     for (let i = 0; i < userIds.length; i += 100) {
       const batch = userIds.slice(i, i + 100);
-      const res = await connect.send(
+      const res = await activeConnect.send(
         new GetCurrentUserDataCommand({
-          InstanceId: INSTANCE_ID,
+          InstanceId: activeInstanceId,
           Filters: { Agents: batch },
         })
       );
@@ -381,9 +400,9 @@ async function listIdleAvailableUsers(
   try {
     for (let i = 0; i < userIds.length; i += 100) {
       const batch = userIds.slice(i, i + 100);
-      const res = await connect.send(
+      const res = await activeConnect.send(
         new GetCurrentUserDataCommand({
-          InstanceId: INSTANCE_ID,
+          InstanceId: activeInstanceId,
           Filters: { Agents: batch },
         })
       );
@@ -505,6 +524,129 @@ async function markAsFailed(
     });
 }
 
+/** Marca un contacto de WhatsApp como ENVIADO (terminal). No hay eventos de
+ *  Connect para WhatsApp, así que cerramos el contacto acá mismo. */
+async function markWhatsAppSent(
+  c: CampaignContact,
+  messageId: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  await dynamo.send(
+    new UpdateItemCommand({
+      TableName: CONTACTS_TABLE,
+      Key: { campaignId: { S: c.campaignId }, rowId: { S: c.rowId } },
+      UpdateExpression:
+        "SET #st = :done, lastAttemptAt = :now, connectContactId = :mid, whatsappMessageId = :mid",
+      ExpressionAttributeNames: { "#st": "status" },
+      ExpressionAttributeValues: {
+        ":done": { S: "done" },
+        ":now": { S: now },
+        ":mid": { S: messageId },
+      },
+    })
+  );
+  await dynamo
+    .send(
+      new UpdateItemCommand({
+        TableName: CAMPAIGNS_TABLE,
+        Key: { campaignId: { S: c.campaignId } },
+        UpdateExpression: "ADD doneCount :one, dialingCount :neg",
+        ExpressionAttributeValues: { ":one": { N: "1" }, ":neg": { N: "-1" } },
+      })
+    )
+    .catch(() => {
+      /* counter drift is OK */
+    });
+}
+
+/**
+ * Recupera contactos de WhatsApp que quedaron trabados en "dialing": como el
+ * envío de WhatsApp es síncrono (sub-segundo), cualquier contacto que lleve
+ * rato en "dialing" es basura de un tick anterior interrumpido (p. ej. la
+ * campaña se pausó a mitad de envío). Los devolvemos a "pending" para que el
+ * próximo ciclo los reenvíe. Devuelve cuántos recuperó.
+ */
+async function reclaimStaleWhatsAppDialing(campaignId: string): Promise<number> {
+  const cutoff = new Date(Date.now() - 120_000).toISOString(); // 2 min de gracia
+  let reclaimed = 0;
+  try {
+    const res = await dynamo.send(
+      new QueryCommand({
+        TableName: CONTACTS_TABLE,
+        IndexName: "campaignId-status-index",
+        KeyConditionExpression: "campaignId = :cid AND #st = :s",
+        ExpressionAttributeNames: { "#st": "status" },
+        ExpressionAttributeValues: { ":cid": { S: campaignId }, ":s": { S: "dialing" } },
+        Limit: 50,
+      })
+    );
+    const items = (res.Items || []).map((it) => unmarshall(it) as CampaignContact);
+    for (const c of items) {
+      // No tocar un envío potencialmente en curso de otro tick concurrente.
+      if (c.lastAttemptAt && c.lastAttemptAt > cutoff) continue;
+      try {
+        await dynamo.send(
+          new UpdateItemCommand({
+            TableName: CONTACTS_TABLE,
+            Key: { campaignId: { S: c.campaignId }, rowId: { S: c.rowId } },
+            UpdateExpression: "SET #st = :pending",
+            ConditionExpression: "#st = :dialing",
+            ExpressionAttributeNames: { "#st": "status" },
+            ExpressionAttributeValues: { ":pending": { S: "pending" }, ":dialing": { S: "dialing" } },
+          })
+        );
+        // Espejar contadores (dialing→pending) para que la lista no quede desfasada.
+        await dynamo
+          .send(
+            new UpdateItemCommand({
+              TableName: CAMPAIGNS_TABLE,
+              Key: { campaignId: { S: campaignId } },
+              UpdateExpression: "ADD dialingCount :neg, pendingCount :one",
+              ExpressionAttributeValues: { ":neg": { N: "-1" }, ":one": { N: "1" } },
+            })
+          )
+          .catch(() => { /* drift aceptable, fuente real son las filas */ });
+        reclaimed++;
+      } catch (e) {
+        // Otro tick lo movió primero → ignorar.
+        if (!(e instanceof Error && e.name === "ConditionalCheckFailedException")) throw e;
+      }
+    }
+  } catch (err) {
+    console.error("reclaimStaleWhatsAppDialing error:", err);
+  }
+  if (reclaimed > 0) console.log(`reclaimed ${reclaimed} stale dialing contacts (whatsapp) for ${campaignId}`);
+  return reclaimed;
+}
+
+/**
+ * Procesa una campaña de WhatsApp: envía el template a cada contacto PENDIENTE
+ * y lo marca "done". NO usa agentes ni el ciclo de voz (dialing→eventos Connect).
+ * Acotado por tick (BATCH) para no exceder el timeout con listas grandes.
+ */
+async function processCampaignWhatsApp(campaign: Campaign): Promise<void> {
+  const BATCH = 25;
+  // Rescatar contactos trabados en "dialing" de ticks interrumpidos antes de
+  // decidir si la campaña está completa.
+  await reclaimStaleWhatsAppDialing(campaign.campaignId);
+  const candidates = await findPendingContacts(campaign.campaignId, BATCH);
+  if (candidates.length === 0) {
+    await maybeCompleteCampaign(campaign);
+    return;
+  }
+  for (const contact of candidates) {
+    // Claim atómico (pending→dialing) para evitar doble envío entre ticks.
+    const claimed = await markAsDialing(contact);
+    if (!claimed) continue;
+    const messageId = await sendWhatsAppTemplate(campaign, contact);
+    if (messageId) {
+      await markWhatsAppSent(contact, messageId);
+    } else {
+      await markAsFailed(contact, "Envío de template de WhatsApp falló");
+    }
+  }
+}
+
 /**
  * Send a WhatsApp template for one contact. Returns a fake "contactId"
  * (the Meta messageId) on success so the rest of the dialer pipeline
@@ -536,6 +678,7 @@ async function sendWhatsAppTemplate(
   }
   const variables = varColumns.map((col) => {
     if (col === "__customerName__") return contact.customerName || "";
+    if (col.startsWith("lit:")) return col.slice(4); // valor fijo, igual para todos
     return customAttrs[col] != null ? String(customAttrs[col]) : "";
   });
 
@@ -553,6 +696,11 @@ async function sendWhatsAppTemplate(
         templateName: campaign.templateName,
         language: campaign.templateLanguage || "es",
         variables,
+        // WhatsApp BYO: el dialer no tiene JWT → pasa el tenant explícito para
+        // que send-whatsapp-template mande desde el número del CLIENTE (su End
+        // User Messaging), no el de Vox.
+        tenantId: campaign.tenantId,
+        campaignId: campaign.campaignId,
       }),
     });
     const body = (await r.json().catch(() => ({}))) as {
@@ -614,9 +762,9 @@ async function startOutbound(
     const useAmd = AMD_ENABLED && !!AMD_FLOW_ID;
     const contactFlowId = useAmd ? AMD_FLOW_ID : campaign.contactFlowId;
 
-    const res = await connect.send(
+    const res = await activeConnect.send(
       new StartOutboundVoiceContactCommand({
-        InstanceId: INSTANCE_ID,
+        InstanceId: activeInstanceId,
         ContactFlowId: contactFlowId,
         DestinationPhoneNumber: contact.phone,
         SourcePhoneNumber: campaign.sourcePhoneNumber,
@@ -942,6 +1090,31 @@ async function dialCycle(): Promise<{
   for (const campaign of campaigns) {
     if (!isWithinWindow(campaign)) {
       console.log(`[dialer] ${campaign.campaignId} outside calling window`);
+      continue;
+    }
+    // Resolver el Connect del tenant dueño de esta campaña. Si no hay tenantId
+    // (campañas legacy pre-#43) o no tiene Connect configurado, caemos al
+    // Connect de Vox (transición). Las campañas se procesan SERIALMENTE, así
+    // que mutar las vars module-active acá es seguro.
+    {
+      const tc = campaign.tenantId
+        ? await getTenantConnect(campaign.tenantId)
+        : null;
+      if (tc) {
+        activeConnect = tc.client;
+        activeInstanceId = tc.instanceId;
+        // #46: tabla de campaigns/campaign-contacts también en cuenta del tenant.
+        dynamo = tc.dynamo;
+      } else {
+        activeConnect = legacyConnect;
+        dynamo = legacyDynamo;
+        activeInstanceId = INSTANCE_ID;
+      }
+    }
+    // WhatsApp: ruta dedicada (envía template, sin agentes ni ciclo de voz).
+    if ((campaign.campaignType || "voice").toLowerCase() === "whatsapp") {
+      await processCampaignWhatsApp(campaign);
+      if ((await countPendingContacts(campaign.campaignId)) > 0) anyPendingLeft = true;
       continue;
     }
     const assignedAgentIds = await getAssignedAgents(campaign.campaignId);

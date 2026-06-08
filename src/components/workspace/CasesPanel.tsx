@@ -1,4 +1,4 @@
-import { CONNECT_INSTANCE_URL } from "@/lib/constants";
+import { useConnectAuth } from "@/context/ConnectAuthContext";
 import * as Icon from "@/components/vox/primitives";
 
 interface CasesPanelProps {
@@ -7,8 +7,9 @@ interface CasesPanelProps {
 }
 
 export function CasesPanel({ contactId, customerPhone }: CasesPanelProps) {
+  const { instanceUrl } = useConnectAuth();
   const openCasesInConnect = () => {
-    window.open(`${CONNECT_INSTANCE_URL}/connect/cases/case`, "_blank");
+    window.open(`${instanceUrl}/connect/cases/case`, "_blank");
   };
 
   if (!customerPhone) {

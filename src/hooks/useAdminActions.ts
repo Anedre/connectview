@@ -2,7 +2,9 @@ import { useCallback, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 
-type MonitorMode = "SILENT_MONITOR" | "BARGE" | "WHISPER";
+// Connect + Streams support only these two programmatic monitor modes
+// (no whisper/coaching in the Streams API — that's native Agent Workspace).
+type MonitorMode = "SILENT_MONITOR" | "BARGE";
 
 async function postJson(url: string, body: unknown) {
   const r = await fetch(url, {

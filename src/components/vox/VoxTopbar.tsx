@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useCCP, type ConnectAgentState } from "@/hooks/useCCP";
 import { modifierLabel } from "@/lib/utils";
@@ -30,14 +31,40 @@ function colorFor(state: ConnectAgentState): { fg: string; bg: string } {
   );
 }
 
+// Etiqueta en español del estado de Connect (los nombres llegan en inglés del
+// routing profile). Los estados personalizados muestran su propio nombre.
+const STATE_LABELS: Record<string, string> = {
+  Available: "Disponible",
+  Routable: "Disponible",
+  Busy: "En llamada",
+  CallingCustomer: "Marcando",
+  AfterCallWork: "ACW",
+  PendingBusy: "Ocupado",
+  Offline: "Offline",
+  Init: "Conectando…",
+  Error: "Error",
+  Lunch: "Almuerzo",
+  Break: "Pausa",
+  Training: "Capacitación",
+  Meeting: "Reunión",
+};
+function labelFor(name: string): string {
+  return STATE_LABELS[name] || name;
+}
+
 export function VoxTopbar() {
   const { user, signOut } = useAuth();
+  const { isOnboarding } = useConnectAuth();
   const { resolvedTheme, toggleTheme } = useTheme();
   const { agentState, availableStates, changeAgentState, error } = useCCP();
   const [statusOpen, setStatusOpen] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
 
   if (!user) return null;
+  // En onboarding (sin Connect) el chip de status/error no tiene sentido — el
+  // CCPProvider tampoco se suscribe, así que cualquier `error` que quede es
+  // de un render anterior y no aplica.
+  const ccpError = isOnboarding ? null : error;
 
   // Build the current state object for color lookup. agentState is the name.
   const current =
@@ -59,24 +86,38 @@ export function VoxTopbar() {
       </div>
 
       <div className="tb__actions">
-        <button
-          className="tb__status"
-          onClick={() => setStatusOpen((o) => !o)}
-          style={{
-            background: currentColor.bg,
-            color: currentColor.fg,
-          }}
-          disabled={selectableStates.length === 0}
-          title={
-            selectableStates.length === 0
-              ? "Esperando conexión con Amazon Connect…"
-              : "Cambiar estado del agente"
-          }
-        >
-          <span className="dot" />
-          {agentState}
-          <Icon.ChevDown size={12} style={{ opacity: 0.7 }} />
-        </button>
+        {/* En onboarding mostramos un CTA a Integraciones en lugar del
+            status pill, que sin Connect se queda en "Init" para siempre. */}
+        {isOnboarding ? (
+          <a
+            href="/admin"
+            className="tb__status"
+            style={{ background: "var(--accent-amber-soft)", color: "var(--accent-amber)" }}
+            title="Configurá tu Amazon Connect para activar el contact center"
+          >
+            <span className="dot" />
+            Configurá Connect
+          </a>
+        ) : (
+          <button
+            className="tb__status"
+            onClick={() => setStatusOpen((o) => !o)}
+            style={{
+              background: currentColor.bg,
+              color: currentColor.fg,
+            }}
+            disabled={selectableStates.length === 0}
+            title={
+              selectableStates.length === 0
+                ? "Esperando conexión con Amazon Connect…"
+                : "Cambiar estado del agente"
+            }
+          >
+            <span className="dot" />
+            {labelFor(agentState)}
+            <Icon.ChevDown size={12} style={{ opacity: 0.7 }} />
+          </button>
+        )}
         {statusOpen && selectableStates.length > 0 && (
           <div
             style={{
@@ -123,7 +164,7 @@ export function VoxTopbar() {
                     className="state-dot"
                     style={{ background: c.fg }}
                   />
-                  <span className="sb__label">{s.name}</span>
+                  <span className="sb__label">{labelFor(s.name)}</span>
                   {isCurrent && (
                     <Icon.Check size={12} style={{ color: c.fg }} />
                   )}
@@ -133,14 +174,14 @@ export function VoxTopbar() {
           </div>
         )}
 
-        {error && (
+        {ccpError && (
           <span
             className="chip chip--red"
-            title={error}
+            title={ccpError}
             style={{ maxWidth: 220 }}
           >
             <span className="dot" />
-            <span className="truncate">{error}</span>
+            <span className="truncate">{ccpError}</span>
           </span>
         )}
 

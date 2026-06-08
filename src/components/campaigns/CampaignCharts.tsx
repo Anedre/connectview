@@ -29,6 +29,9 @@ interface Props {
   /** Used to flip the sub-label from "en curso" to "de duración total"
    *  for finished campaigns. */
   isFinished?: boolean;
+  /** WhatsApp campaigns: relabel everything to "mensajes/envíos" instead
+   *  of "llamadas", and drop the voice-only "sin contestar" bucket. */
+  isWhatsApp?: boolean;
 }
 
 /**
@@ -48,6 +51,7 @@ export function CampaignCharts({
   startedAt,
   endedAt,
   isFinished,
+  isWhatsApp,
 }: Props) {
   // Rolling buffer of snapshots. ~60 samples × 3s poll ≈ 3 minutes.
   const [buffer, setBuffer] = useState<Snapshot[]>([]);
@@ -98,11 +102,11 @@ export function CampaignCharts({
       return [];
     }
     return [
-      { value: counts.done,      color: "var(--accent-green)", label: "Completados" },
+      { value: counts.done,      color: "var(--accent-green)", label: isWhatsApp ? "Enviados" : "Completados" },
       { value: counts.no_answer, color: "var(--accent-amber)", label: "Sin contestar" },
       { value: counts.failed,    color: "var(--accent-red)",   label: "Fallidos" },
     ].filter((s) => s.value > 0);
-  }, [counts.done, counts.no_answer, counts.failed]);
+  }, [counts.done, counts.no_answer, counts.failed, isWhatsApp]);
 
   // Estimated time to completion based on current pace
   const etaMinutes = useMemo(() => {
@@ -161,7 +165,7 @@ export function CampaignCharts({
         >
           {/* ── Donut: outcomes ─────────────────────────────────── */}
           <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-            <Donut size={108} segments={segments} total={completed} />
+            <Donut size={108} segments={segments} total={completed} centerLabel={isWhatsApp ? "enviados" : "cerrados"} />
             <div className="col" style={{ gap: 4, fontSize: 11 }}>
               {segments.length === 0 ? (
                 <div className="muted">Sin resultados todavía</div>
@@ -262,7 +266,7 @@ export function CampaignCharts({
           </div>
 
           {/* ── Pace gauge ──────────────────────────────────────── */}
-          <Gauge value={pace} eta={etaMinutes} pending={counts.pending} />
+          <Gauge value={pace} eta={etaMinutes} pending={counts.pending} isWhatsApp={isWhatsApp} />
         </div>
       </CardBody>
     </Card>
@@ -277,10 +281,12 @@ function Donut({
   size,
   segments,
   total,
+  centerLabel = "cerrados",
 }: {
   size: number;
   segments: Array<{ value: number; color: string; label: string }>;
   total: number;
+  centerLabel?: string;
 }) {
   const r = size / 2 - 8;
   const cx = size / 2;
@@ -346,7 +352,7 @@ function Donut({
           textTransform: "uppercase",
         }}
       >
-        cerrados
+        {centerLabel}
       </text>
     </svg>
   );
@@ -360,10 +366,12 @@ function Gauge({
   value,
   eta,
   pending,
+  isWhatsApp,
 }: {
   value: number;
   eta: number | null;
   pending: number;
+  isWhatsApp?: boolean;
 }) {
   // Half-circle gauge. Max 60 calls/min covers any realistic outbound
   // campaign pace; auto-scale up beyond that.
@@ -423,7 +431,7 @@ function Gauge({
           alignSelf: "flex-start",
         }}
       >
-        Pace · llamadas/min
+        {isWhatsApp ? "Ritmo · mensajes/min" : "Pace · llamadas/min"}
       </div>
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
         <path
