@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { explainIntegrationError } from "@/lib/integrationErrors";
 import { AudioPlayer } from "@/components/recordings/AudioPlayer";
 import { TranscriptViewer } from "@/components/recordings/TranscriptViewer";
@@ -75,7 +76,7 @@ export function ContactDetailView({ contactId }: Props) {
     }
     const ctrl = new AbortController();
     setLoading(true);
-    fetch(`${url}?contactId=${encodeURIComponent(contactId)}`, {
+    authedFetch(`${url}?contactId=${encodeURIComponent(contactId)}`, {
       signal: ctrl.signal,
     })
       .then((r) => r.json().then((j) => ({ ok: r.ok, status: r.status, j })))

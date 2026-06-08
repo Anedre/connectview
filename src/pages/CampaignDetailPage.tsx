@@ -8,6 +8,7 @@ import { useCampaignContactMutations } from "@/hooks/useCampaignContactMutations
 import { useCampaignAgents } from "@/hooks/useCampaignAgents";
 import { useCustomerNamesByPhone } from "@/hooks/useCustomerNamesByPhone";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { formatDistanceToNow, format } from "date-fns";
 import { EditCampaignDialog } from "@/components/campaigns/EditCampaignDialog";
 import { AddContactsDialog } from "@/components/campaigns/AddContactsDialog";
@@ -412,9 +413,21 @@ export function CampaignDetailPage() {
 
   // ── Recording URL builder ─────────────────────────────────────
   const recordingEndpoint = getApiEndpoints()?.getRecording;
-  const recordingUrlFor = (contactId: string | undefined): string | null => {
-    if (!contactId || !recordingEndpoint) return null;
-    return `${recordingEndpoint}?contactId=${encodeURIComponent(contactId)}`;
+  // Abre la grabación: fetchea get-recording CON JWT (authedFetch) → obtiene el
+  // presigned URL del tenant → lo abre. Antes era un <a href> directo que NO
+  // mandaba JWT (el backend caía a Novasys) y encima abría el JSON, no el audio.
+  const openRecording = async (contactId: string | undefined) => {
+    if (!contactId || !recordingEndpoint) return;
+    try {
+      const r = await authedFetch(
+        `${recordingEndpoint}?contactId=${encodeURIComponent(contactId)}`
+      );
+      const j = await r.json().catch(() => ({}));
+      if (j?.recordingUrl) window.open(j.recordingUrl, "_blank", "noopener");
+      else toast.error("Grabación no disponible para este contacto");
+    } catch {
+      toast.error("No se pudo abrir la grabación");
+    }
   };
 
   // ── Disposition (post-call outcome the agent annotates) ──────
@@ -1242,7 +1255,7 @@ export function CampaignDetailPage() {
                   );
                   const handlerLabel = resolveAgentLabel(row.agentUsername);
                   const isSelected = selectedRowIds.has(row.rowId);
-                  const recUrl = recordingUrlFor(row.connectContactId);
+                  const recUrl = !!(row.connectContactId && recordingEndpoint);
                   return (
                     <tr
                       key={row.rowId}
@@ -1370,20 +1383,21 @@ export function CampaignDetailPage() {
                       </td>
                       <td style={{ padding: "8px 10px" }}>
                         {recUrl ? (
-                          <a
-                            href={recUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => openRecording(row.connectContactId)}
                             className="chip chip--cyan"
                             style={{
                               fontSize: 10.5,
                               textDecoration: "none",
+                              border: "none",
+                              cursor: "pointer",
                             }}
                             title={`Escuchar (contactId ${row.connectContactId?.slice(-8)})`}
                           >
                             <Icon.Headset size={10} />
                             Escuchar
-                          </a>
+                          </button>
                         ) : (
                           <span className="muted" style={{ fontSize: 11 }}>
                             —

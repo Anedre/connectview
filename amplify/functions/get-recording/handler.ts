@@ -5,8 +5,7 @@ import {
 } from "@aws-sdk/client-connect";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { getTenantConnect } from "../_shared/tenantConnect";
-import { resolveTenantId } from "../_shared/cognitoAuth";
+import { resolveConnect } from "../_shared/tenantConnect";
 
 const legacyConnect = new ConnectClient({});
 const legacyS3 = new S3Client({});
@@ -22,25 +21,20 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     };
   }
 
-  // Connect + S3 del tenant (assume-role) o legacy si no está configurado.
-  // Las grabaciones viven en el bucket del Connect del cliente, así que el
-  // S3 también tiene que estar tenant-scoped (no alcanza con cambiar sólo
-  // Connect). Si el rol del cliente NO tiene s3:GetObject sobre su bucket,
-  // el presign sale OK pero el browser recibe 403 — el wizard avisa.
-  let connect: ConnectClient = legacyConnect;
-  let s3: S3Client = legacyS3;
-  let instanceId = INSTANCE_ID;
-  try {
-    const tenantId = await resolveTenantId(event?.headers);
-    const tc = await getTenantConnect(tenantId);
-    if (tc) {
-      connect = tc.client;
-      s3 = tc.s3;
-      instanceId = tc.instanceId;
-    }
-  } catch (e) {
-    console.error("resolveConnect en get-recording falló, uso legacy:", e);
-  }
+  // Auth + tenant: resuelve el Connect/S3 del tenant del JWT (mismo patrón que
+  // los otros ~40 Lambdas). Anónimo / tenant real sin config → cliente BLOQUEADO
+  // → DescribeContact vacío → SIN grabación. Cierra el leak: antes caía a la
+  // instancia/bucket legacy de Novasys y le devolvía la grabación de Novasys a
+  // CUALQUIERA que tuviera un contactId. Novasys y tenants configurados → SU
+  // instancia + SU bucket (assume-role). El `|| legacyS3` sólo aplica cuando el
+  // connect resolvió de verdad (legacy/tenant), nunca para el anónimo bloqueado
+  // (que ya no trae grabación). Las grabaciones viven en el bucket del Connect del
+  // cliente; si su rol NO tiene s3:GetObject, el presign sale OK pero el browser
+  // recibe 403 — el panel de integración avisa.
+  const r = await resolveConnect(event.headers, legacyConnect, INSTANCE_ID);
+  const connect: ConnectClient = r.client;
+  const s3: S3Client = r.s3 || legacyS3;
+  const instanceId = r.instanceId;
 
   try {
     // Get contact details including recording location
