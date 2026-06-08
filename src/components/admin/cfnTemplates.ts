@@ -161,6 +161,14 @@ Resources:
                   - connect:SearchContacts
                   - connect:DescribeContact
                   - connect:ListContactReferences
+                  - connect:DescribeRoutingProfile
+                  - connect:ListHoursOfOperations
+                  - connect:CreateQueue
+                  - connect:UpdateQueueName
+                  - connect:UpdateQueueStatus
+                  - connect:UpdateQueueMaxContacts
+                  - connect:UpdateQueueHoursOfOperation
+                  - connect:UpdateQueueOutboundCallerConfig
                 Resource: "*"
               # Customer Profiles (Cliente 360°): leer + escribir perfiles. El
               # upsert de campañas y la edición del Cliente 360° los crean/actualizan,

@@ -72,6 +72,14 @@ Resources:
                   - connect:SearchContacts
                   - connect:DescribeContact
                   - connect:ListContactReferences
+                  - connect:DescribeRoutingProfile
+                  - connect:ListHoursOfOperations
+                  - connect:CreateQueue
+                  - connect:UpdateQueueName
+                  - connect:UpdateQueueStatus
+                  - connect:UpdateQueueMaxContacts
+                  - connect:UpdateQueueHoursOfOperation
+                  - connect:UpdateQueueOutboundCallerConfig
                 Resource: "*"
         - PolicyName: VoxCrmCustomerProfiles
           PolicyDocument:
