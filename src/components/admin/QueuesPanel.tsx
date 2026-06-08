@@ -7,12 +7,12 @@ import * as Icon from "@/components/vox/primitives";
 
 /**
  * QueuesPanel — "Configuración → Colas". Gestor de colas del Amazon Connect del
- * tenant: lista, detalle (estado/máx contactos/horario), edición, AGENTES que la
- * atienden (agregar/quitar vía perfil de enrutamiento) y crear cola. Todo contra
- * SU instancia vía el endpoint list-queues (rol cross-account).
- *
- * Una campaña puede usar varias colas (distribuye por atributo); por eso esto es
- * gestión de colas, no un "default" único.
+ * tenant, a PANTALLA COMPLETA (master-detail, sin modales apretados):
+ *   - Lista de colas (click → detalle).
+ *   - Detalle a ancho completo: estado (toggle), máx contactos, horario, y los
+ *     AGENTES que la atienden (agregar/quitar vía perfil de enrutamiento).
+ *   - Crear cola (vista propia).
+ * Una campaña puede rutear a varias colas, así distribuye a los agentes.
  */
 
 interface Hours {
@@ -35,13 +35,14 @@ interface QueueDetail {
   outboundCallerName: string;
 }
 
+/* ── helpers ───────────────────────────────────────────────────────────── */
 const inputStyle: CSSProperties = {
   width: "100%",
-  marginTop: 4,
-  padding: "8px 10px",
-  fontSize: 13,
+  marginTop: 6,
+  padding: "10px 12px",
+  fontSize: 13.5,
   border: "1px solid var(--border-1)",
-  borderRadius: 6,
+  borderRadius: 8,
   background: "var(--bg-2)",
   color: "var(--text-1)",
 };
@@ -49,9 +50,19 @@ const labelSpan: CSSProperties = {
   fontSize: 11,
   color: "var(--text-3)",
   textTransform: "uppercase",
-  letterSpacing: 0.4,
-  fontWeight: 600,
+  letterSpacing: 0.5,
+  fontWeight: 700,
 };
+
+function initials(name: string): string {
+  return (name || "?")
+    .trim()
+    .split(/\s+/)
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function queuesPost(ep: string, body: any) {
@@ -65,27 +76,100 @@ async function queuesPost(ep: string, body: any) {
   return j;
 }
 
-function Overlay({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+function Switch({ on, onClick, disabled }: { on: boolean; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={on}
+      style={{
+        width: 42,
+        height: 24,
+        borderRadius: 999,
+        border: "none",
+        padding: 0,
+        cursor: disabled ? "default" : "pointer",
+        background: on ? "var(--accent-green)" : "var(--border-2)",
+        position: "relative",
+        transition: "background .2s",
+        opacity: disabled ? 0.6 : 1,
+        flex: "0 0 auto",
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          top: 3,
+          left: on ? 21 : 3,
+          width: 18,
+          height: 18,
+          borderRadius: "50%",
+          background: "#fff",
+          transition: "left .2s",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+        }}
+      />
+    </button>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div
-      onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(10,21,37,0.45)", display: "grid", placeItems: "center", zIndex: 1000, padding: 16 }}
+      style={{
+        background: "var(--bg-1)",
+        border: "1px solid var(--border-1)",
+        borderRadius: 14,
+        overflow: "hidden",
+      }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        style={{ background: "var(--bg-1)", borderRadius: 14, width: 460, maxWidth: "100%", maxHeight: "88vh", overflow: "auto", boxShadow: "0 12px 40px rgba(0,0,0,0.18)", padding: 20 }}
+        style={{
+          padding: "12px 18px",
+          borderBottom: "1px solid var(--border-1)",
+          fontWeight: 700,
+          fontSize: 13,
+          background: "var(--bg-2)",
+        }}
       >
-        {children}
+        {title}
       </div>
+      <div style={{ padding: 18 }}>{children}</div>
     </div>
   );
 }
 
+function BackLink({ onBack, label }: { onBack: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className="row"
+      style={{
+        gap: 6,
+        alignItems: "center",
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        color: "var(--text-3)",
+        fontSize: 13,
+        fontWeight: 600,
+        padding: 0,
+        marginBottom: 16,
+      }}
+    >
+      <Icon.ChevRight size={14} style={{ transform: "rotate(180deg)" }} /> {label}
+    </button>
+  );
+}
+
+/* ── Panel principal (router de vistas) ────────────────────────────────── */
 export function QueuesPanel() {
   const { queues, loading, error, refetch } = useQueues();
   const ep = getApiEndpoints()?.listQueues || "";
   const [hours, setHours] = useState<Hours[]>([]);
-  const [selected, setSelected] = useState<QueueSummary | null>(null);
+  const [detail, setDetail] = useState<QueueSummary | null>(null);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -95,27 +179,54 @@ export function QueuesPanel() {
       .catch(() => {});
   }, [ep]);
 
+  if (detail) {
+    return (
+      <QueueDetailView
+        queue={detail}
+        ep={ep}
+        hours={hours}
+        onBack={() => setDetail(null)}
+        onChanged={refetch}
+      />
+    );
+  }
+  if (creating) {
+    return (
+      <QueueCreateView
+        ep={ep}
+        hours={hours}
+        onBack={() => setCreating(false)}
+        onCreated={() => {
+          setCreating(false);
+          refetch();
+        }}
+      />
+    );
+  }
+
   return (
-    <div style={{ padding: 18, borderRadius: 12, background: "var(--bg-1)", border: "1px solid var(--border-1)" }}>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <div className="row" style={{ gap: 10, alignItems: "center" }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Colas de Amazon Connect</div>
-          {queues.length > 0 && (
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-cyan)", background: "var(--accent-cyan-soft)", borderRadius: 999, padding: "2px 10px" }}>{queues.length}</span>
-          )}
+    <div>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
+        <div>
+          <div className="row" style={{ gap: 10, alignItems: "center" }}>
+            <div style={{ fontWeight: 800, fontSize: 19 }}>Colas de Amazon Connect</div>
+            {queues.length > 0 && (
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-cyan)", background: "var(--accent-cyan-soft)", borderRadius: 999, padding: "2px 10px" }}>{queues.length}</span>
+            )}
+          </div>
+          <div className="muted" style={{ fontSize: 12.5, marginTop: 4, maxWidth: 560, lineHeight: 1.5 }}>
+            Gestioná las colas de tu contact center: estado, horario y qué agentes
+            las atienden. Una campaña puede rutear a varias colas para distribuir a los agentes.
+          </div>
         </div>
-        <button className="btn btn--primary btn--sm" onClick={() => setCreating(true)} disabled={!ep}>
-          <Icon.Plus size={13} /> Crear cola
+        <button className="btn btn--primary" onClick={() => setCreating(true)} disabled={!ep}>
+          <Icon.Plus size={14} /> Crear cola
         </button>
-      </div>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 14, lineHeight: 1.5 }}>
-        Click en una cola para ver su detalle, editarla y gestionar qué agentes la
-        atienden. Una campaña puede rutear a varias colas (así distribuye a los agentes).
       </div>
 
       {loading && <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Cargando colas…</div>}
       {error && (
-        <div style={{ fontSize: 12.5, padding: "10px 12px", borderRadius: 8, background: "var(--accent-red-soft)", color: "var(--accent-red)" }}>
+        <div style={{ fontSize: 12.5, padding: "12px 14px", borderRadius: 10, background: "var(--accent-red-soft)", color: "var(--accent-red)" }}>
           No se pudieron leer las colas: {error}
         </div>
       )}
@@ -126,38 +237,43 @@ export function QueuesPanel() {
       )}
 
       {queues.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
           {queues.map((q) => (
             <button
               key={q.id}
-              onClick={() => setSelected(q)}
+              onClick={() => setDetail(q)}
               className="row"
-              style={{ gap: 10, padding: "9px 12px", borderRadius: 8, background: "var(--bg-2)", border: "1px solid var(--border-1)", alignItems: "center", cursor: "pointer", textAlign: "left", width: "100%" }}
+              style={{
+                gap: 12,
+                padding: "14px 16px",
+                borderRadius: 12,
+                background: "var(--bg-1)",
+                border: "1px solid var(--border-1)",
+                alignItems: "center",
+                cursor: "pointer",
+                textAlign: "left",
+                width: "100%",
+                transition: "border-color .15s, transform .1s",
+              }}
             >
-              <span style={{ flex: "0 0 auto", display: "grid", placeItems: "center", width: 26, height: 26, borderRadius: 7, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }}>
-                <Icon.Queue size={14} />
+              <span style={{ flex: "0 0 auto", display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: 10, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }}>
+                <Icon.Queue size={18} />
               </span>
-              <span style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 13 }}>{q.name}</span>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", background: "var(--bg-1)", border: "1px solid var(--border-1)", borderRadius: 999, padding: "2px 8px" }}>
-                {q.type === "STANDARD" ? "Estándar" : q.type}
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{q.name}</span>
+                <span className="muted" style={{ fontSize: 11 }}>{q.type === "STANDARD" ? "Estándar" : q.type}</span>
               </span>
-              <Icon.ChevRight size={14} style={{ color: "var(--text-3)" }} />
+              <Icon.ChevRight size={16} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
             </button>
           ))}
         </div>
-      )}
-
-      {selected && (
-        <QueueDetailModal queue={selected} ep={ep} hours={hours} onClose={() => setSelected(null)} onChanged={refetch} />
-      )}
-      {creating && (
-        <QueueCreateModal ep={ep} hours={hours} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); refetch(); }} />
       )}
     </div>
   );
 }
 
-function QueueDetailModal({ queue, ep, hours, onClose, onChanged }: { queue: QueueSummary; ep: string; hours: Hours[]; onClose: () => void; onChanged: () => void }) {
+/* ── Vista de detalle (ancho completo) ─────────────────────────────────── */
+function QueueDetailView({ queue, ep, hours, onBack, onChanged }: { queue: QueueSummary; ep: string; hours: Hours[]; onBack: () => void; onChanged: () => void }) {
   const [d, setD] = useState<QueueDetail | null>(null);
   const [serving, setServing] = useState<Agent[]>([]);
   const [available, setAvailable] = useState<Agent[]>([]);
@@ -187,7 +303,7 @@ function QueueDetailModal({ queue, ep, hours, onClose, onChanged }: { queue: Que
   useEffect(() => { load(); }, [load]);
 
   const toggleStatus = async () => {
-    if (!d) return;
+    if (!d || saving) return;
     const next = d.status === "ENABLED" ? "DISABLED" : "ENABLED";
     setSaving(true);
     try {
@@ -256,83 +372,101 @@ function QueueDetailModal({ queue, ep, hours, onClose, onChanged }: { queue: Que
   const enabled = d?.status === "ENABLED";
 
   return (
-    <Overlay onClose={onClose}>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{queue.name}</div>
-          {d?.description && <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{d.description}</div>}
+    <div style={{ maxWidth: 880 }}>
+      <BackLink onBack={onBack} label="Colas" />
+
+      {/* Hero */}
+      <div className="row" style={{ gap: 14, alignItems: "center", marginBottom: 20 }}>
+        <span style={{ flex: "0 0 auto", display: "grid", placeItems: "center", width: 52, height: 52, borderRadius: 14, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }}>
+          <Icon.Queue size={24} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 22 }}>{queue.name}</div>
+          {d?.description && <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>{d.description}</div>}
         </div>
-        <button className="btn btn--ghost btn--sm" onClick={onClose}><Icon.Close size={15} /></button>
+        {d && (
+          <div className="row" style={{ gap: 10, alignItems: "center" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: enabled ? "var(--accent-green)" : "var(--text-3)" }}>
+              {enabled ? "Habilitada" : "Deshabilitada"}
+            </span>
+            <Switch on={!!enabled} onClick={toggleStatus} disabled={saving} />
+          </div>
+        )}
       </div>
 
       {loading || !d ? (
-        <div className="muted" style={{ fontSize: 12.5, padding: "16px 0" }}>Cargando detalle + agentes…</div>
+        <div className="muted" style={{ fontSize: 13, padding: "24px 0" }}>Cargando detalle + agentes…</div>
       ) : (
-        <>
-          {/* Estado + edición */}
-          <div className="row" style={{ gap: 10, alignItems: "center", margin: "12px 0 16px" }}>
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: enabled ? "var(--accent-green)" : "var(--text-3)", background: enabled ? "var(--accent-green-soft)" : "var(--bg-2)", borderRadius: 999, padding: "3px 10px" }}>
-              {enabled ? "Habilitada" : "Deshabilitada"}
-            </span>
-            <button className="btn btn--sm" onClick={toggleStatus} disabled={saving}>
-              {enabled ? "Deshabilitar" : "Habilitar"}
-            </button>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            <label style={{ display: "block" }}>
-              <span style={labelSpan}>Máx. contactos en cola</span>
-              <input type="number" min={0} value={maxContacts} onChange={(e) => setMaxContacts(e.target.value)} placeholder="Sin límite" style={inputStyle} />
-            </label>
-            <label style={{ display: "block" }}>
-              <span style={labelSpan}>Horario de atención</span>
-              <select value={hoursId} onChange={(e) => setHoursId(e.target.value)} style={inputStyle}>
-                {hours.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-              </select>
-            </label>
-          </div>
-          <button className="btn btn--primary btn--sm" onClick={saveEdits} disabled={saving} style={{ marginBottom: 18 }}>
-            {saving ? "Guardando…" : "Guardar cambios"}
-          </button>
-
-          {/* Agentes */}
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>Agentes que la atienden · {serving.length}</div>
-          <div className="muted" style={{ fontSize: 11, marginBottom: 8 }}>
-            En Connect los agentes atienden colas vía su perfil de enrutamiento — agregar/quitar afecta ese perfil.
-          </div>
-          {serving.length === 0 ? (
-            <div className="muted" style={{ fontSize: 12.5, padding: "4px 0 10px" }}>Ningún agente atiende esta cola todavía.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-              {serving.map((a) => (
-                <div key={a.userId} className="row" style={{ gap: 8, alignItems: "center", padding: "6px 8px", borderRadius: 6, background: "var(--bg-2)" }}>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600 }}>{a.name}</span>
-                  <button className="btn btn--ghost btn--sm" onClick={() => removeAgent(a.userId)} disabled={saving} title="Quitar del perfil de enrutamiento">Quitar</button>
-                </div>
-              ))}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <Section title="Configuración">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <label style={{ display: "block" }}>
+                <span style={labelSpan}>Máx. contactos en cola</span>
+                <input type="number" min={0} value={maxContacts} onChange={(e) => setMaxContacts(e.target.value)} placeholder="Sin límite" style={inputStyle} />
+              </label>
+              <label style={{ display: "block" }}>
+                <span style={labelSpan}>Horario de atención</span>
+                <select value={hoursId} onChange={(e) => setHoursId(e.target.value)} style={inputStyle}>
+                  {hours.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                </select>
+              </label>
             </div>
-          )}
-
-          {available.length > 0 && (
-            <div className="row" style={{ gap: 8, alignItems: "center" }}>
-              <select value={addUserId} onChange={(e) => setAddUserId(e.target.value)} style={{ ...inputStyle, marginTop: 0, flex: 1 }}>
-                <option value="">Agregar un agente…</option>
-                {available.map((a) => <option key={a.userId} value={a.userId}>{a.name}</option>)}
-              </select>
-              <button className="btn btn--sm" onClick={addAgent} disabled={saving || !addUserId}>Agregar</button>
+            <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
+              <button className="btn btn--primary" onClick={saveEdits} disabled={saving}>
+                {saving ? "Guardando…" : "Guardar cambios"}
+              </button>
             </div>
-          )}
-        </>
+          </Section>
+
+          <Section title={`Agentes que la atienden · ${serving.length}`}>
+            <div className="muted" style={{ fontSize: 11.5, marginBottom: 12, lineHeight: 1.5 }}>
+              En Amazon Connect los agentes atienden colas a través de su perfil de
+              enrutamiento — agregar o quitar afecta ese perfil.
+            </div>
+            {serving.length === 0 ? (
+              <div className="muted" style={{ fontSize: 13, padding: "6px 0 14px" }}>Ningún agente atiende esta cola todavía.</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 8, marginBottom: 14 }}>
+                {serving.map((a) => (
+                  <div key={a.userId} className="row" style={{ gap: 10, alignItems: "center", padding: "9px 12px", borderRadius: 10, background: "var(--bg-2)", border: "1px solid var(--border-1)" }}>
+                    <span style={{ flex: "0 0 auto", display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: "50%", background: "var(--accent-violet-soft)", color: "var(--accent-violet)", fontSize: 11, fontWeight: 800 }}>
+                      {initials(a.name)}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
+                    <button className="btn btn--ghost btn--sm" onClick={() => removeAgent(a.userId)} disabled={saving} title="Quitar del perfil de enrutamiento">Quitar</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {available.length > 0 && (
+              <div className="row" style={{ gap: 10, alignItems: "center", paddingTop: 12, borderTop: "1px solid var(--border-1)" }}>
+                <select value={addUserId} onChange={(e) => setAddUserId(e.target.value)} style={{ ...inputStyle, marginTop: 0, flex: 1, maxWidth: 320 }}>
+                  <option value="">Agregar un agente…</option>
+                  {available.map((a) => <option key={a.userId} value={a.userId}>{a.name}</option>)}
+                </select>
+                <button className="btn btn--primary btn--sm" onClick={addAgent} disabled={saving || !addUserId}>
+                  <Icon.Plus size={13} /> Agregar
+                </button>
+              </div>
+            )}
+          </Section>
+        </div>
       )}
-    </Overlay>
+    </div>
   );
 }
 
-function QueueCreateModal({ ep, hours, onClose, onCreated }: { ep: string; hours: Hours[]; onClose: () => void; onCreated: () => void }) {
+/* ── Vista de creación (ancho completo) ────────────────────────────────── */
+function QueueCreateView({ ep, hours, onBack, onCreated }: { ep: string; hours: Hours[]; onBack: () => void; onCreated: () => void }) {
   const [name, setName] = useState("");
   const [hoursId, setHoursId] = useState(hours[0]?.id || "");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!hoursId && hours[0]?.id) setHoursId(hours[0].id);
+  }, [hours, hoursId]);
 
   const create = async () => {
     if (!name.trim() || !hoursId) {
@@ -352,34 +486,35 @@ function QueueCreateModal({ ep, hours, onClose, onCreated }: { ep: string; hours
   };
 
   return (
-    <Overlay onClose={onClose}>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Crear cola</div>
-        <button className="btn btn--ghost btn--sm" onClick={onClose}><Icon.Close size={15} /></button>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <label style={{ display: "block" }}>
-          <span style={labelSpan}>Nombre</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. UDEP-Diplomados" style={inputStyle} />
-        </label>
-        <label style={{ display: "block" }}>
-          <span style={labelSpan}>Horario de atención</span>
-          <select value={hoursId} onChange={(e) => setHoursId(e.target.value)} style={inputStyle}>
-            {hours.length === 0 && <option value="">(sin horarios)</option>}
-            {hours.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
-        </label>
-        <label style={{ display: "block" }}>
-          <span style={labelSpan}>Descripción (opcional)</span>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Para qué es esta cola" style={inputStyle} />
-        </label>
-      </div>
-      <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
-        <button className="btn" onClick={onClose} disabled={saving}>Cancelar</button>
-        <button className="btn btn--primary" onClick={create} disabled={saving || !name.trim() || !hoursId}>
-          {saving ? "Creando…" : "Crear cola"}
-        </button>
-      </div>
-    </Overlay>
+    <div style={{ maxWidth: 640 }}>
+      <BackLink onBack={onBack} label="Colas" />
+      <div style={{ fontWeight: 800, fontSize: 22, marginBottom: 18 }}>Crear cola</div>
+
+      <Section title="Nueva cola">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <label style={{ display: "block" }}>
+            <span style={labelSpan}>Nombre</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. UDEP-Maestrías" style={inputStyle} autoFocus />
+          </label>
+          <label style={{ display: "block" }}>
+            <span style={labelSpan}>Horario de atención</span>
+            <select value={hoursId} onChange={(e) => setHoursId(e.target.value)} style={inputStyle}>
+              {hours.length === 0 && <option value="">(sin horarios)</option>}
+              {hours.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+            </select>
+          </label>
+          <label style={{ display: "block" }}>
+            <span style={labelSpan}>Descripción (opcional)</span>
+            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Para qué es esta cola" style={inputStyle} />
+          </label>
+        </div>
+        <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+          <button className="btn" onClick={onBack} disabled={saving}>Cancelar</button>
+          <button className="btn btn--primary" onClick={create} disabled={saving || !name.trim() || !hoursId}>
+            {saving ? "Creando…" : "Crear cola"}
+          </button>
+        </div>
+      </Section>
+    </div>
   );
 }
