@@ -717,6 +717,7 @@ function LeadDetailModal({
   });
   const [saving, setSaving] = useState(false);
   const [stageId, setStageId] = useState(lead.stageId || stages[0]?.id || "");
+  const [sfPushing, setSfPushing] = useState(false);
 
   const changeStage = async (next: string) => {
     if (!next || next === stageId) return;
@@ -760,6 +761,35 @@ function LeadDetailModal({
       onDeleted(lead.leadId);
     } catch {
       toast.error("No se pudo eliminar");
+    }
+  };
+
+  // Enviar este lead a Salesforce a demanda — red de seguridad por si el sync
+  // automático no ocurrió (ej. lead de campaña sin contactar). Muestra el
+  // resultado real (creado/actualizado, o el error de SF).
+  const pushToSf = async () => {
+    const ep = getApiEndpoints();
+    if (!ep?.manageLeads) return;
+    setSfPushing(true);
+    try {
+      const r = await authedFetch(ep.manageLeads, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pushSf", leadId: lead.leadId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error || "No se pudo enviar");
+      if (d.pushed) {
+        toast.success(
+          d.action === "created" ? "Lead creado en Salesforce" : "Lead actualizado en Salesforce"
+        );
+      } else {
+        toast.error(d.error || "No se pudo enviar a Salesforce");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo enviar a Salesforce");
+    } finally {
+      setSfPushing(false);
     }
   };
 
@@ -859,6 +889,23 @@ function LeadDetailModal({
           {field("company", "Empresa")}
           <div style={{ gridColumn: "1 / -1" }}>{field("monto", "Valor estimado (S/)", "number")}</div>
         </div>
+
+        {/* Enviar a Salesforce a demanda — red de seguridad por si el sync
+            automático no ocurrió (ej. lead de campaña sin contactar). Crea/
+            actualiza el Lead en SF y registra la actividad. */}
+        {canManage && (
+          <div className="row" style={{ justifyContent: "flex-end", marginBottom: 10 }}>
+            <button
+              className="btn btn--sm"
+              onClick={pushToSf}
+              disabled={sfPushing}
+              title="Crear o actualizar este lead en Salesforce y registrar la actividad"
+            >
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#00A1E0", display: "inline-block", marginRight: 6 }} />
+              {sfPushing ? "Enviando…" : "Enviar a Salesforce"}
+            </button>
+          </div>
+        )}
 
         {/* Historial de contacto: timeline Vox + Salesforce, traído en vivo. */}
         <SalesforcePanel lead={lead} />

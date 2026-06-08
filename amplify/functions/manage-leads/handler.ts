@@ -10,7 +10,7 @@ import {
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { randomUUID } from "node:crypto";
-import { propagateLead, appendLeadHistory, stageIdToLabel, setActiveDynamo, setActiveProfiles, type LeadHistoryEvent, type SfPushExtra } from "../_shared/leadSync";
+import { propagateLead, pushLeadToSalesforce, appendLeadHistory, stageIdToLabel, setActiveDynamo, setActiveProfiles, type LeadHistoryEvent, type SfPushExtra } from "../_shared/leadSync";
 import { setActiveTenant } from "../_shared/salesforceClient";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
@@ -209,6 +209,63 @@ export const handler: Handler = async (event: any) => {
           sfTaskId: prop.sfTaskId || undefined,
         });
         return ok({ moved: true, leadId: body.leadId, stageId: body.stageId });
+      }
+
+      // Forzar el envío de UN lead a Salesforce (botón "Enviar a Salesforce"
+      // del detalle) — red de seguridad por si el sync automático no ocurrió
+      // (ej. leads de campaña que aún no se contactaron). Devuelve el resultado
+      // REAL (éxito con ids, o el error de SF) para el toast del front.
+      if (body.action === "pushSf") {
+        if (!body.leadId) return bad(400, "leadId required");
+        const got = await dynamo.send(
+          new GetItemCommand({ TableName: TABLE, Key: { leadId: { S: String(body.leadId) } } })
+        );
+        if (!got.Item) return bad(404, "lead no encontrado");
+        const l = unmarshall(got.Item) as Lead & { sfLeadId?: string };
+        if (!l.phone && !l.email) {
+          return bad(400, "El lead necesita teléfono o email para enviarse a Salesforce.");
+        }
+        try {
+          const sf = await pushLeadToSalesforce(
+            {
+              phone: l.phone,
+              name: l.name,
+              email: l.email,
+              company: l.company,
+              stageId: l.stageId,
+              sfLeadId: l.sfLeadId,
+              source: l.source || "Vox Leads",
+              attributes: l.attributes,
+            },
+            {
+              taskSubject: "ARIA · Enviado a Salesforce",
+              taskDescription: `Lead enviado manualmente a Salesforce desde ARIA${l.name ? ` · ${l.name}` : ""}.`,
+              taskSubtype: "Task",
+            }
+          );
+          if (!sf) return ok({ pushed: false, error: "El lead necesita teléfono o email." });
+          // Persistir el sfLeadId nuevo → próximos sync idempotentes.
+          if (sf.leadId && !l.sfLeadId) {
+            await dynamo
+              .send(
+                new UpdateItemCommand({
+                  TableName: TABLE,
+                  Key: { leadId: { S: l.leadId } },
+                  UpdateExpression: "SET sfLeadId = :s",
+                  ExpressionAttributeValues: { ":s": { S: sf.leadId } },
+                })
+              )
+              .catch(() => {});
+          }
+          console.log(
+            `manage-leads pushSf lead=${l.leadId} sfLead=${sf.leadId} action=${sf.action} task=${sf.taskId || "—"}`
+          );
+          return ok({ pushed: true, sfLeadId: sf.leadId, action: sf.action, taskId: sf.taskId || null });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "error";
+          console.warn("manage-leads pushSf failed:", msg);
+          return ok({ pushed: false, error: msg.slice(0, 220) });
+        }
       }
 
       // Upsert. Dedup by phone — if a lead with this phone exists, update it.
