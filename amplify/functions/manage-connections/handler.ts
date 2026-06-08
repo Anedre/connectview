@@ -30,6 +30,7 @@ import {
 } from "@aws-sdk/client-socialmessaging";
 import { getIdentity } from "../_shared/cognitoAuth";
 import { getTenantConnect } from "../_shared/tenantConnect";
+import { provisionSfInboundToken } from "../_shared/sfInboundToken";
 
 const REGION = process.env.AWS_REGION || "us-east-1";
 const TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
@@ -209,7 +210,55 @@ export const handler = async (event: FnEvent) => {
         config?: Record<string, unknown>;
         whatsappSecret?: string;
         disconnectSalesforce?: boolean;
+        rotateSfInboundToken?: boolean;
       };
+
+      // Provisión/ROTACIÓN del token de ENTRADA de Salesforce (SF→Vox). Mina un
+      // token NUEVO per-tenant, lo guarda en Secrets Manager y devuelve el
+      // PLAINTEXT UNA sola vez (el admin lo pega en el Custom Header x-vox-token
+      // del Flow de SF). Acción aislada: NO pisa el resto del configJson con un
+      // body.config parcial — sólo mergea el flag `inboundTokenSet`. Ver
+      // sfInboundToken. El tenantId sale del JWT (arriba), nunca del body.
+      if (body.rotateSfInboundToken) {
+        let inboundToken: string;
+        try {
+          inboundToken = await provisionSfInboundToken(tenantId);
+        } catch (e) {
+          return resp(400, {
+            error: e instanceof Error ? e.message : "No se pudo generar el token",
+          });
+        }
+        // Mergear el flag en el config GUARDADO (sin clobber).
+        let stored: Record<string, unknown> = {};
+        try {
+          const r = await ddb.send(
+            new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } })
+          );
+          if (r.Item?.configJson?.S) stored = JSON.parse(r.Item.configJson.S);
+        } catch {
+          /* sin config previa → arrancamos de {} */
+        }
+        const sfPrev = (stored.salesforce as Record<string, unknown>) || {};
+        stored.salesforce = {
+          ...sfPrev,
+          inboundTokenSet: true,
+          inboundTokenRotatedAt: new Date().toISOString(),
+        };
+        await ddb.send(
+          new PutItemCommand({
+            TableName: TABLE,
+            Item: {
+              tenantId: { S: tenantId },
+              configJson: { S: JSON.stringify(stored) },
+              updatedAt: { S: new Date().toISOString() },
+            },
+          })
+        );
+        // SEGURIDAD: el plaintext viaja UNA vez en esta respuesta y NUNCA se
+        // persiste en DynamoDB (sólo el flag). No loguearlo.
+        return resp(200, { ok: true, inboundToken, tenantId });
+      }
+
       const config = (body.config || {}) as Record<string, unknown>;
 
       // El secreto de WhatsApp va a Secrets Manager; en DynamoDB solo el flag.

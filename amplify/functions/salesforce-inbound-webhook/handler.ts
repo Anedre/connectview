@@ -9,17 +9,12 @@ import {
   setActiveProfiles,
 } from "../_shared/leadSync";
 import { setActiveTenant } from "../_shared/salesforceClient";
-import { getTenantConnect, resolveCustomerProfiles } from "../_shared/tenantConnect";
-import { timingSafeEqual } from "node:crypto";
-
-/** Comparación de tiempo constante para el shared secret — evita un
- *  timing side-channel que permitiría recuperar el secreto byte a byte. */
-function safeSecretEq(a: string | undefined, b: string | undefined): boolean {
-  if (!a || !b) return false;
-  const ba = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return ba.length === bb.length && timingSafeEqual(ba, bb);
-}
+import {
+  getTenantConnect,
+  isTenantDataPlaneEnabled,
+  resolveCustomerProfiles,
+} from "../_shared/tenantConnect";
+import { resolveTenantFromInboundToken } from "../_shared/sfInboundToken";
 
 /**
  * salesforce-inbound-webhook — Salesforce → Vox (inbound). A record-triggered
@@ -28,30 +23,36 @@ function safeSecretEq(a: string | undefined, b: string | undefined): boolean {
  * origin="salesforce": llena el **Lead del embudo** (stage mapeado desde el
  * Status de SF) Y el **Customer Profile**, sin re-empujar a SF (anti-loop).
  *
- * Auth: a shared secret header (x-vox-token) must match SF_WEBHOOK_SECRET.
- * (Function URL is public, so this header is what gates it.)
+ * Auth multi-tenant (endurecido): el header `x-vox-token` ya NO es un secret
+ * GLOBAL. Es un token DISTINTO por tenant (`voxsf.<tenantId>.<secret>`,
+ * guardado en `connectview/tenant/<id>/sf-inbound`). Resolvemos el tenant DESDE
+ * el token — comparación constant-time contra el secret guardado del tenant — y
+ * FORZAMOS ese tenantId. El `tenantId` del BODY se IGNORA por completo. Así un
+ * holder de UN token no puede escribir en el data plane de OTRO tenant (el
+ * problema que el secret global no cerraba: probaba "conozco el secret", no
+ * "soy dueño del tenantId"). Ver [[sfInboundToken]].
  *
- * Multi-tenant (#44): el SF Flow inyecta `tenantId` en el body. Lo seteamos
- * como activeTenant para que cualquier llamada SF posterior (en propagateLead
- * cuando se queme algún update inverso) use la org del cliente. Si no viene,
- * cae a "default" → comportamiento legacy (Novasys).
+ * El fundador corre como tenant real `t_…` con su BYO data plane; su Salesforce
+ * es la org master (MASTER_SF_TENANT_IDS lo remapea vía setActiveTenant para el
+ * push inverso). Provisioná su token con `manage-connections` (botón en
+ * Integraciones) o `scripts/set-sf-inbound-token.mjs`.
  *
- * Expected JSON body (the SF Flow maps these from the Lead record):
- *   { tenantId?, phone?, mobilePhone?, firstName?, lastName?, email?,
+ * Expected JSON body (the SF Flow maps these from the Lead record; `tenantId`
+ * si todavía viene queda IGNORADO):
+ *   { phone?, mobilePhone?, firstName?, lastName?, email?,
  *     company?, status?, leadId?, source? }
  */
 const CORS: Record<string, string> = { "Content-Type": "application/json" };
-const WEBHOOK_SECRET = process.env.SF_WEBHOOK_SECRET || "";
-// CP legacy (Novasys) — usado SOLO para el tenant fundador (sin tenantId en el
-// body). Un tenant real resuelve SU CP (o bloqueado) vía resolveCustomerProfiles.
+// Args legacy REQUERIDOS por la firma de resolveCustomerProfiles
+// (legacyClient/legacyDomain). Como el tenant se resuelve del token (real) y el
+// 403 de abajo exige BYO Data Plane, la rama legacy ya NO se alcanza.
 const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 2 });
 const LEGACY_PROFILES_DOMAIN =
   process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
 
 interface InboundLead {
-  /** UUID del tenant dueño de la org SF que dispara el webhook. El SF Flow
-   *  lo hardcodea cuando el cliente configura el trigger (la wizard de Vox
-   *  le da copy/paste del valor). */
+  /** IGNORADO. El tenant se resuelve del token `x-vox-token`, no del body.
+   *  El SF Flow puede seguir mandándolo (compat) pero no se usa. */
   tenantId?: string;
   phone?: string;
   mobilePhone?: string;
@@ -84,12 +85,14 @@ export const handler: Handler = async (event: any) => {
     event?.requestContext?.http?.method || event.httpMethod || "POST";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
 
-  // Shared-secret gate. Header names arrive lowercased on Function URLs.
-  // Comparación constant-time (este endpoint es público; el header es la
-  // única barrera).
+  // Auth per-tenant. Header names arrive lowercased on Function URLs. El tenant
+  // se RESUELVE del token (constant-time contra el secret guardado del tenant) —
+  // ése es el dueño autenticado; el body no decide el tenant. 401 si el token no
+  // autentica a nadie. Este endpoint es público; el token es la única barrera.
   const headers = event.headers || {};
   const token = headers["x-vox-token"] || headers["X-Vox-Token"];
-  if (!WEBHOOK_SECRET || !safeSecretEq(token, WEBHOOK_SECRET)) {
+  const tenantId = await resolveTenantFromInboundToken(token);
+  if (!tenantId) {
     return { statusCode: 401, headers: CORS, body: JSON.stringify({ error: "unauthorized" }) };
   }
 
@@ -99,28 +102,38 @@ export const handler: Handler = async (event: any) => {
   } catch {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: "bad json" }) };
   }
+  // NOTA: `lead.tenantId` se IGNORA. El tenant ya está FORZADO desde el token.
 
-  // Tenant del payload (el SF Flow lo manda). Falla → "default" (legacy).
-  // Importante: este Lambda NO tiene JWT (lo invoca SF directo), así que el
-  // único discriminador es el campo del body.
-  setActiveTenant(lead.tenantId || null);
-  // BYO Data Plane (#46): mismo tenantId → su DynamoDB. Sin tenant o sin SF
-  // configurado → null → leadSync vuelve al cliente legacy de Vox.
-  if (lead.tenantId) {
-    const tc = await getTenantConnect(lead.tenantId);
-    setActiveDynamo(tc?.dynamo || null);
-  } else {
-    setActiveDynamo(null);
+  // Defensa en profundidad (igual criterio que web-form-capture): un tenant real
+  // SIN BYO Data Plane no tiene dónde escribir aislado → en vez de caer al
+  // DynamoDB pooled de Novasys (setActiveDynamo(null)) rechazamos con 403. El
+  // fundador tiene Data Plane habilitado, así que pasa. getTenantConnect resuelve
+  // sus clients assumed (DynamoDB/Customer Profiles en SU cuenta).
+  const tc = await getTenantConnect(tenantId);
+  const dpOn = await isTenantDataPlaneEnabled(tenantId);
+  if (!tc || !dpOn) {
+    return {
+      statusCode: 403,
+      headers: CORS,
+      body: JSON.stringify({
+        error: "El tenant no tiene Data Plane (BYO) habilitado para sincronizar leads",
+      }),
+    };
   }
-  // Customer Profiles fail-closed: tenant real → SU CP (o bloqueado si no lo
-  // resolvió), NUNCA Novasys. Sin tenantId → "novasys" (legacy) = CP de Novasys
-  // (sus datos, este webhook lo dispara la org SF del fundador).
+
+  // activeTenant → SU org SF para el push inverso (o, si está en
+  // MASTER_SF_TENANT_IDS, el SF master del fundador).
+  setActiveTenant(tenantId);
+  // BYO Data Plane (#46): su DynamoDB (assumed creds → su cuenta).
+  setActiveDynamo(tc.dynamo);
+  // Customer Profiles fail-closed: SU CP (o se saltea si no se resolvió dominio),
+  // NUNCA el de Novasys.
   {
     const cp = await resolveCustomerProfiles(
       undefined,
       legacyProfiles,
       LEGACY_PROFILES_DOMAIN,
-      lead.tenantId || "novasys"
+      tenantId
     );
     setActiveProfiles(cp.client, cp.domainName);
   }

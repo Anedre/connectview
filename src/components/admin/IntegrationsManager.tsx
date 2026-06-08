@@ -466,10 +466,44 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
   const sf = config.salesforce || {};
   const [open, setOpen] = useState(false);
   const [env, setEnv] = useState<"production" | "sandbox">(sf.environment || "production");
+  // Token de ENTRADA (SF→Vox) recién generado, para mostrarlo UNA vez.
+  const [inboundToken, setInboundToken] = useState("");
+  const [genningToken, setGenningToken] = useState(false);
   const ep = getApiEndpoints();
 
   const tone: Tone = sf.connected ? "ok" : "idle";
   const statusLabel = sf.connected ? "Conectado" : "No conectado";
+
+  // Genera/ROTA el token de entrada per-tenant del webhook SF→Vox. El backend
+  // lo guarda en Secrets Manager y devuelve el plaintext UNA sola vez; lo
+  // mostramos para pegarlo en el Custom Header `x-vox-token` del Flow de SF.
+  const onGenerateInboundToken = async () => {
+    if (!ep?.manageConnections) {
+      toast.message("Disponible al desplegar el backend de integraciones.");
+      return;
+    }
+    if (sf.inboundTokenSet && !window.confirm(
+      "Rotar el token invalida el anterior: el Flow de Salesforce dejará de " +
+        "sincronizar hasta que pegues el token nuevo en su header. ¿Continuar?"
+    )) return;
+    setGenningToken(true);
+    try {
+      const r = await authedFetch(ep.manageConnections, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rotateSfInboundToken: true }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.inboundToken) throw new Error(j.error || "No se pudo generar el token");
+      setInboundToken(j.inboundToken);
+      update({ salesforce: { ...sf, inboundTokenSet: true } });
+      toast.success("Token de entrada generado — copialo ahora (se muestra una sola vez)");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falló la generación del token");
+    } finally {
+      setGenningToken(false);
+    }
+  };
 
   const onConnect = async () => {
     if (!ep?.salesforceOAuthStart) {
@@ -543,6 +577,43 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
             </div>
           </>
         )}
+
+        {/* Webhook de entrada (SF → ARIA): token per-tenant para el header
+            x-vox-token del Flow de Salesforce. Reemplaza el secret global. */}
+        <div style={{ borderTop: "1px solid var(--border-1)", paddingTop: 14 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Webhook de entrada (SF → ARIA)</div>
+          <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
+            Para que tu Flow de Salesforce sincronice leads hacia ARIA, generá un
+            token propio y pegalo en el Custom Header <code style={{ fontSize: 11.5 }}>x-vox-token</code> de
+            la Named Credential del Flow. Es exclusivo de tu organización: nadie
+            más puede escribir en tus datos con él.
+          </div>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn--sm" onClick={onGenerateInboundToken} disabled={genningToken}>
+              {genningToken
+                ? "Generando…"
+                : sf.inboundTokenSet
+                  ? <><Icon.Settings size={12} /> Rotar token</>
+                  : <><Icon.Sparkles size={12} /> Generar token</>}
+            </button>
+            {sf.inboundTokenSet && !inboundToken && (
+              <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>
+                Token activo{sf.inboundTokenRotatedAt ? ` · generado ${new Date(sf.inboundTokenRotatedAt).toLocaleDateString("es-PE")}` : ""}
+              </span>
+            )}
+          </div>
+          {inboundToken && (
+            <div style={{ marginTop: 10 }}>
+              <div className="row" style={{ gap: 8 }}>
+                <code style={{ flex: 1, padding: "7px 10px", background: "var(--bg-2)", borderRadius: 6, fontSize: 12, border: "1px solid var(--border-1)", overflow: "auto", whiteSpace: "nowrap" }}>{inboundToken}</code>
+                <button className="btn btn--sm" onClick={() => copy(inboundToken, "Token")}><Icon.Copy size={12} /> Copiar</button>
+              </div>
+              <div className="muted" style={{ fontSize: 11, marginTop: 6, color: "var(--accent-amber)" }}>
+                ⚠️ Copialo ahora: por seguridad no se vuelve a mostrar. Si lo perdés, rotá uno nuevo.
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </ConnCard>
   );
