@@ -4,6 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { getApiEndpoints } from "@/lib/api";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
+import { useConnectAgentUsername } from "@/hooks/useConnectAgentUsername";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import { CustomerProfilePanel } from "@/components/workspace/CustomerProfilePanel";
 import { EditProfileModal } from "@/components/workspace/EditProfileModal";
@@ -70,6 +71,9 @@ function recentDisplayName(r: RecentCustomer): string {
  */
 export function CustomerBrowser() {
   const { user } = useConnectAuth();
+  // Username de Connect (CCP) — fuente de verdad para list-recent-customers, que
+  // resuelve agentUsername → Connect user id. El de Cognito no matchea (404/vacío).
+  const connectUsername = useConnectAgentUsername();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -86,7 +90,7 @@ export function CustomerBrowser() {
 
   const fetchRecents = async () => {
     const endpoints = getApiEndpoints();
-    const username = user?.username;
+    const username = connectUsername || user?.username;
     if (!endpoints?.listRecentCustomers || !username) return;
     setRecentsLoading(true);
     setRecentsError(null);
@@ -112,7 +116,7 @@ export function CustomerBrowser() {
   useEffect(() => {
     fetchRecents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.username]);
+  }, [user?.username, connectUsername]);
 
   // Auto-focus the search input on mount so the agent can start typing
   // immediately when they land on the idle desktop.

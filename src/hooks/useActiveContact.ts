@@ -12,6 +12,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
+import { useConnectAgentUsername } from "@/hooks/useConnectAgentUsername";
 import { traceChange, traceInfo } from "@/lib/debugTrace";
 
 export interface ActiveContact {
@@ -837,27 +838,9 @@ function useActiveContactsState(): ActiveContactsContextValue {
   // contact — useful when Streams IPC is wedged. It can't surface
   // additional contacts beyond what Streams sees.
 
-  // ─── Username REAL de Connect del agente (del CCP/Streams) ──────
-  // Fuente de verdad para los lookups de Connect. Puede ≠ el username de Cognito
-  // (ej. Cognito "anedre12345" vs Connect "Andre-Alata"), lo que hacía que el
-  // polling de contacto activo nunca encontrara al agente.
-  const [connectUsername, setConnectUsername] = useState<string | null>(null);
-  useEffect(() => {
-    if (typeof connect === "undefined") return;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (connect as any).agent((agent: any) => {
-        try {
-          const uname = agent?.getConfiguration?.()?.username;
-          if (uname) setConnectUsername((prev) => (prev === uname ? prev : uname));
-        } catch {
-          /* noop */
-        }
-      });
-    } catch {
-      /* noop */
-    }
-  }, []);
+  // Username REAL de Connect del agente (del CCP) — fuente de verdad para los
+  // lookups de Connect; puede ≠ el de Cognito. Ver useConnectAgentUsername.
+  const connectUsername = useConnectAgentUsername();
 
   useEffect(() => {
     // En onboarding (tenant sin Connect conectado) no hay agente ni contacto
