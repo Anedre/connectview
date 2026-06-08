@@ -135,6 +135,8 @@ Resources:
                   - connect:DescribeUser
                   - connect:DescribeQueue
                   - connect:DescribeSecurityProfile
+                  - connect:ListSecurityProfiles
+                  - connect:UpdateUserSecurityProfiles
                   - connect:ListContactFlows
                   - connect:DescribeContactFlow
                   # Provisión del set canónico de flows de ARIA (#1 onboarding):

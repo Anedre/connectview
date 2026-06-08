@@ -19,8 +19,10 @@ import { IntegrationsManager } from "@/components/admin/IntegrationsManager";
 import { TeamManager } from "@/components/admin/TeamManager";
 import { PageHeader } from "@/components/vox/PageHeader";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
+import { ConnectUserRoleModal } from "@/components/admin/ConnectUserRoleModal";
 
 interface ConnectUser {
+  userId: string;
   username: string;
   email: string;
   firstName: string;
@@ -29,6 +31,7 @@ interface ConnectUser {
   enabled: boolean;
   created: string;
   groups: string[];
+  groupIds: string[];
 }
 
 const PROFILE_CHIP: Record<string, string> = {
@@ -46,6 +49,10 @@ export function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [section, setSection] = useState("users");
+  const [availableProfiles, setAvailableProfiles] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [editingUser, setEditingUser] = useState<ConnectUser | null>(null);
 
   const fetchUsers = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
@@ -60,6 +67,7 @@ export function AdminPage() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       setUsers(data.users || []);
+      setAvailableProfiles(data.availableProfiles || []);
       setError(null);
     } catch (err) {
       // En refetch silencioso (focus) mantenemos el último estado bueno en vez
@@ -283,7 +291,10 @@ export function AdminPage() {
                               {u.email || "—"}
                             </td>
                             <td>
-                              <div className="row" style={{ flexWrap: "wrap", gap: 4 }}>
+                              <div
+                                className="row"
+                                style={{ flexWrap: "wrap", gap: 4, alignItems: "center" }}
+                              >
                                 {u.groups.map((p) => (
                                   <span
                                     key={p}
@@ -292,6 +303,15 @@ export function AdminPage() {
                                     {p}
                                   </span>
                                 ))}
+                                {availableProfiles.length > 0 && (
+                                  <button
+                                    className="btn btn--sm"
+                                    style={{ padding: "2px 8px", fontSize: 11, height: "auto" }}
+                                    onClick={() => setEditingUser(u)}
+                                  >
+                                    Editar
+                                  </button>
+                                )}
                               </div>
                             </td>
                             <td>
@@ -304,6 +324,20 @@ export function AdminPage() {
                   )}
                 </CardBody>
               </Card>
+              {editingUser && (
+                <ConnectUserRoleModal
+                  user={{
+                    userId: editingUser.userId,
+                    username: editingUser.username,
+                    firstName: editingUser.firstName,
+                    lastName: editingUser.lastName,
+                    groupIds: editingUser.groupIds || [],
+                  }}
+                  available={availableProfiles}
+                  onClose={() => setEditingUser(null)}
+                  onSaved={() => fetchUsers()}
+                />
+              )}
             </div>
           )}
 

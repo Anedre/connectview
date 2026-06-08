@@ -52,6 +52,8 @@ Resources:
                   - connect:DescribeUser
                   - connect:DescribeQueue
                   - connect:DescribeSecurityProfile
+                  - connect:ListSecurityProfiles
+                  - connect:UpdateUserSecurityProfiles
                   - connect:ListContactFlows
                   - connect:DescribeContactFlow
                   - connect:CreateContactFlow
