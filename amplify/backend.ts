@@ -197,6 +197,21 @@ profileLambda.addToRolePolicy(
     ],
   })
 );
+// Tenant resolution: leer la config del tenant + asumir su rol, para que
+// getTenantConnect/resolveCustomerProfiles resuelva (founder t_* Y tenants BYO).
+// SIN esto, resolveCustomerProfiles cae a "blocked" → NO SALEN LOS PERFILES.
+profileLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: ["dynamodb:GetItem"],
+    resources: [`arn:aws:dynamodb:${REGION}:${ACCOUNT_ID}:table/connectview-connections`],
+  })
+);
+profileLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: ["sts:AssumeRole"],
+    resources: ["arn:aws:iam::*:role/VoxCrmConnectAccess"],
+  })
+);
 asFunction(profileLambda).addEnvironment(
   "CUSTOMER_PROFILES_DOMAIN",
   CUSTOMER_PROFILES_DOMAIN
@@ -208,6 +223,21 @@ liveTranscriptLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["connect:ListRealtimeContactAnalysisSegments"],
     resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
+  })
+);
+// Tenant resolution (mismo motivo que lookup-customer-profile): leer config +
+// asumir el rol del tenant para que resolveConnect resuelva SU instancia/Contact
+// Lens. Sin esto, founder/tenant → bloqueado → transcripción en vivo vacía.
+liveTranscriptLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: ["dynamodb:GetItem"],
+    resources: [`arn:aws:dynamodb:${REGION}:${ACCOUNT_ID}:table/connectview-connections`],
+  })
+);
+liveTranscriptLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: ["sts:AssumeRole"],
+    resources: ["arn:aws:iam::*:role/VoxCrmConnectAccess"],
   })
 );
 asFunction(liveTranscriptLambda).addEnvironment(
