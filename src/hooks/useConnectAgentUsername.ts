@@ -27,14 +27,26 @@ export function useConnectAgentUsername(): string | null {
       // null → el front caía al username de Cognito → lookups de Connect vacíos
       // (recientes, contacto activo). Ahora REINTENTAMOS hasta que `connect` exista;
       // connect.agent() ya maneja el timing del agente (dispara cuando está listo).
+      // El global se lee como (globalThis as any).connect — IGUAL que CCPContext.
+      // El bare `connect` (global ambiente del .d.ts) NO resuelve en runtime dentro
+      // del módulo ESM de Vite → quedaba null (recientes + contacto-activo caían al
+      // username de Cognito). Reintentamos hasta que el CCP lo defina.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (typeof connect === "undefined" || typeof (connect as any).agent !== "function") {
+      const conn = (globalThis as any).connect;
+      // Esperamos también el EVENT BUS (conn.core.getEventBus), IGUAL que CCPContext
+      // (su línea 347). Sin el bus creado, conn.agent(cb) registra el callback pero
+      // NUNCA dispara → era exactamente nuestro bug (suscribía pero no capturaba).
+      if (
+        !conn ||
+        typeof conn.agent !== "function" ||
+        !conn.core?.getEventBus?.()
+      ) {
         if (attempts++ < 60) timer = setTimeout(subscribe, 500); // ~30s máx
         return;
       }
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (connect as any).agent((agent: any) => {
+        conn.agent((agent: any) => {
           try {
             const uname = agent?.getConfiguration?.()?.username;
             if (uname) setUsername((prev) => (prev === uname ? prev : uname));
