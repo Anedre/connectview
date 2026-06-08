@@ -152,40 +152,41 @@ export function CustomerBrowser() {
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       const serverResults: SearchResult[] = data.results || [];
 
-      // Local fuzzy search over recents — case-insensitive substring
-      // match on the resolved display name, business, first/last name.
-      const isText = !/@/.test(trimmed) && !/^[+\d\s()-]+$/.test(trimmed);
+      // Local fuzzy search over recents — substring match sobre nombre/empresa/
+      // email Y sobre los DÍGITOS del teléfono. Así "953" matchea +51953730189
+      // (parcial), que Connect SearchProfiles NO permite (solo match exacto).
+      // Limitado a los contactos recientes del agente (no hay índice de prefijo).
       const norm = trimmed.toLowerCase();
-      const localResults: SearchResult[] = isText
-        ? recents
-            .filter((r) => {
-              const hay = [
-                r.firstName,
-                r.lastName,
-                r.businessName,
-                r.email,
-                recentDisplayName(r),
-              ]
-                .filter(Boolean)
-                .join(" ")
-                .toLowerCase();
-              return hay.includes(norm);
-            })
-            .map((r) => ({
-              profileId: r.customerPhone, // placeholder — re-resolved on click
-              firstName: r.firstName,
-              lastName: r.lastName,
-              businessName: r.businessName,
-              phoneNumber: r.customerPhone.includes("@")
-                ? undefined
-                : r.customerPhone,
-              email: r.customerPhone.includes("@")
-                ? r.customerPhone
-                : r.email,
-              partyType: r.partyType,
-              matchedBy: "name" as const,
-            }))
-        : [];
+      const qDigits = trimmed.replace(/[^\d]/g, "");
+      const localResults: SearchResult[] = recents
+        .filter((r) => {
+          const hay = [
+            r.firstName,
+            r.lastName,
+            r.businessName,
+            r.email,
+            recentDisplayName(r),
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          const phoneDigits = (r.customerPhone || "").replace(/[^\d]/g, "");
+          const nameHit = norm.length >= 2 && hay.includes(norm);
+          const phoneHit = qDigits.length >= 3 && phoneDigits.includes(qDigits);
+          return nameHit || phoneHit;
+        })
+        .map((r) => ({
+          profileId: r.customerPhone, // placeholder — re-resolved on click
+          firstName: r.firstName,
+          lastName: r.lastName,
+          businessName: r.businessName,
+          phoneNumber: r.customerPhone.includes("@")
+            ? undefined
+            : r.customerPhone,
+          email: r.customerPhone.includes("@") ? r.customerPhone : r.email,
+          partyType: r.partyType,
+          matchedBy: "name" as const,
+        }));
 
       // Merge unique by profileId / phone fallback. Server results first
       // so exact-match hits beat fuzzy ones.
