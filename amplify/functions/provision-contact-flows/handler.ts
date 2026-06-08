@@ -173,7 +173,7 @@ const DEFAULT_BUSY = "En este momento todos nuestros asesores están ocupados. P
 const DEFAULT_FAREWELL = "👋 ¡Gracias por escribirnos! Esperamos haberte ayudado. ¡Que tengas un excelente día! ✨";
 
 /** Cola "principal" del tenant: la default (BasicQueue) o la primera STANDARD. */
-async function resolveDefaultQueue(client: ConnectClient, instanceId: string): Promise<{ id: string; name: string } | null> {
+async function resolveDefaultQueue(client: ConnectClient, instanceId: string, preferredId?: string): Promise<{ id: string; name: string } | null> {
   let token: string | undefined;
   const all: { id: string; name: string }[] = [];
   do {
@@ -182,6 +182,11 @@ async function resolveDefaultQueue(client: ConnectClient, instanceId: string): P
     token = r.NextToken;
   } while (token);
   if (all.length === 0) return null;
+  // La cola que el admin eligió como PRINCIPAL (Configuración → Colas) gana.
+  if (preferredId) {
+    const m = all.find((q) => q.id === preferredId);
+    if (m) return m;
+  }
   return all.find((q) => q.name === "BasicQueue") || all.find((q) => /basic|principal|general|ventas|main/i.test(q.name)) || all[0];
 }
 
@@ -212,7 +217,7 @@ export const handler = async (event: FnEvent) => {
   if (!identity.groups.includes("Admins")) return resp(403, { error: "Solo administradores pueden provisionar flows" });
   const tenantId = identity.tenantId;
 
-  let body: { dryRun?: boolean } = {};
+  let body: { dryRun?: boolean; defaultQueueId?: string } = {};
   try {
     body = JSON.parse(event.body || "{}");
   } catch {
@@ -229,18 +234,24 @@ export const handler = async (event: FnEvent) => {
   const instanceId = tc.instanceId;
 
   try {
-    // Textos: de la config del tenant si existen, si no genéricos.
+    // Config del tenant (una sola lectura): textos + cola principal elegida.
     let farewell = DEFAULT_FAREWELL;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let storedCfg: any = {};
     try {
       const r = await ddb.send(new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } }));
-      const cfg = r.Item?.configJson?.S ? JSON.parse(r.Item.configJson.S) : {};
-      const f = (cfg?.messaging?.chatFarewell || "").trim();
+      storedCfg = r.Item?.configJson?.S ? JSON.parse(r.Item.configJson.S) : {};
+      const f = (storedCfg?.messaging?.chatFarewell || "").trim();
       if (f) farewell = f;
     } catch {
       /* genéricos */
     }
 
-    const queue = await resolveDefaultQueue(client, instanceId);
+    // Cola que rutean los flows: la del body (el admin la acaba de elegir) >
+    // la guardada en config > auto (BasicQueue). Así "Marcar como principal"
+    // en Configuración → Colas re-rutea el ARIA-Outbound a esa cola.
+    const preferredQueueId = body.defaultQueueId || storedCfg?.connect?.defaultQueueId;
+    const queue = await resolveDefaultQueue(client, instanceId, preferredQueueId);
     if (!queue) {
       return resp(409, { error: "No se encontró ninguna cola (STANDARD) en tu instancia de Connect. Creá al menos una cola antes de provisionar los flows." });
     }
@@ -277,19 +288,23 @@ export const handler = async (event: FnEvent) => {
       }
     }
 
-    // Guardar los ids en la config del tenant (connectview-connections).
+    // Guardar en la config del tenant: ids de los flows + la cola principal
+    // resuelta (para que el front la muestre y las próximas provisión la respeten).
     try {
-      const r = await ddb.send(new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } }));
-      const cfg = r.Item?.configJson?.S ? JSON.parse(r.Item.configJson.S) : {};
-      cfg.contactFlows = {
+      storedCfg.contactFlows = {
         inboundId: result["ARIA-Inbound"]?.id,
         outboundId: result["ARIA-Outbound"]?.id,
         disconnectId: result["ARIA-Disconnect"]?.id,
         provisionedAt: new Date().toISOString(),
       };
-      await ddb.send(new PutItemCommand({ TableName: TABLE, Item: { tenantId: { S: tenantId }, configJson: { S: JSON.stringify(cfg) }, updatedAt: { S: new Date().toISOString() } } }));
+      storedCfg.connect = {
+        ...(storedCfg.connect || {}),
+        defaultQueueId: queue.id,
+        defaultQueueName: queue.name,
+      };
+      await ddb.send(new PutItemCommand({ TableName: TABLE, Item: { tenantId: { S: tenantId }, configJson: { S: JSON.stringify(storedCfg) }, updatedAt: { S: new Date().toISOString() } } }));
     } catch (e) {
-      console.error("guardar contactFlows en config falló:", e);
+      console.error("guardar contactFlows/cola en config falló:", e);
     }
 
     return resp(200, { ok: true, tenantId, instanceId, resolvedQueue: queue, flows: result });

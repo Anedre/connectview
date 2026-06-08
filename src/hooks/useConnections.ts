@@ -32,6 +32,10 @@ export interface ConnectConn {
   /** Override del domain name de Customer Profiles. Default: derivado del
    *  instanceUrl como `amazon-connect-<alias>`. */
   customerProfilesDomain?: string;
+  /** Cola "principal" elegida por el admin (Configuración → Colas). Los flows
+   *  ARIA-Outbound/Inbound rutean a esta. La escribe provision-contact-flows. */
+  defaultQueueId?: string;
+  defaultQueueName?: string;
 }
 export interface SalesforceConn {
   connected?: boolean;
