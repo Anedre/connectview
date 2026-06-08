@@ -148,6 +148,8 @@ Resources:
                   - social-messaging:ListLinkedWhatsAppBusinessAccounts
                   - social-messaging:GetLinkedWhatsAppBusinessAccount
                   - social-messaging:GetLinkedWhatsAppBusinessAccountPhoneNumber
+                  - social-messaging:ListWhatsAppMessageTemplates
+                  - social-messaging:GetWhatsAppMessageTemplate
                 Resource: "*"
         - PolicyName: VoxCrmBedrock
           PolicyDocument:

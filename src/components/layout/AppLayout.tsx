@@ -5,6 +5,7 @@ import { IncomingCallOverlay } from "@/components/vox/IncomingCallOverlay";
 import { FloatingCallWidget } from "@/components/vox/FloatingCallWidget";
 import { OnboardingBanner } from "@/components/vox/OnboardingBanner";
 import { SoftphoneBanner } from "@/components/vox/SoftphoneBanner";
+import { NavProgress } from "@/components/layout/NavProgress";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -13,6 +14,7 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="app" data-density="cozy">
+      <NavProgress />
       <VoxSidebar />
       <VoxTopbar />
       <main className="app__main">
