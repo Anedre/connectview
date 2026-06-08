@@ -87,6 +87,17 @@ export interface ContactFlowsConfig {
   disconnectId?: string;
   provisionedAt?: string;
 }
+/** Reglas de ruteo por atributo (Configuración → Ruteo): cada valor del atributo
+ *  del lead se mapea a una cola. Generan el flow ARIA-Outbound-Smart que las
+ *  campañas usan para distribuir a los agentes por atributo. */
+export interface RoutingRulesConfig {
+  attribute?: string;
+  rules?: { value: string; queueId: string }[];
+  defaultQueueId?: string;
+  flowId?: string;
+  flowName?: string;
+  updatedAt?: string;
+}
 /** White-label por tenant (#8): la marca que ve el cliente DENTRO de la app
  *  (post-login). El login/splash siguen con la marca de plataforma (ARIA)
  *  porque ahí todavía no sabemos qué tenant es (haría falta dominio por tenant). */
@@ -103,6 +114,7 @@ export interface ConnectionsConfig {
   whatsapp?: WhatsAppConn;
   messaging?: MessagingConn;
   contactFlows?: ContactFlowsConfig;
+  routingRules?: RoutingRulesConfig;
   branding?: BrandingConn;
 }
 
