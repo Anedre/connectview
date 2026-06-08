@@ -10,7 +10,7 @@ import {
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { randomUUID } from "node:crypto";
-import { propagateLead, appendLeadHistory, stageIdToLabel, setActiveDynamo, setActiveProfiles, type LeadHistoryEvent } from "../_shared/leadSync";
+import { propagateLead, appendLeadHistory, stageIdToLabel, setActiveDynamo, setActiveProfiles, type LeadHistoryEvent, type SfPushExtra } from "../_shared/leadSync";
 import { setActiveTenant } from "../_shared/salesforceClient";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
@@ -65,15 +65,18 @@ interface Lead {
  * Salesforce (origin="vox"). Resiliente: si SF falla, el guardado del lead no
  * se ve afectado. El re-escribir el lead dentro del hub es un no-op (sig igual).
  */
-async function propagateById(leadId: string): Promise<void> {
+async function propagateById(
+  leadId: string,
+  sfExtra?: SfPushExtra
+): Promise<{ sfTaskId?: string | null; sfLeadId?: string }> {
   try {
     const got = await dynamo.send(
       new GetItemCommand({ TableName: TABLE, Key: { leadId: { S: leadId } } })
     );
-    if (!got.Item) return;
+    if (!got.Item) return {};
     const l = unmarshall(got.Item) as Lead & { sfLeadId?: string };
-    if (!l.phone) return;
-    await propagateLead(
+    if (!l.phone) return {};
+    const res = await propagateLead(
       {
         phone: l.phone,
         name: l.name,
@@ -84,10 +87,19 @@ async function propagateById(leadId: string): Promise<void> {
         source: l.source || "Vox Leads",
         attributes: l.attributes,
       },
-      { origin: "vox" }
+      { origin: "vox", sfExtra }
     );
+    // Log explícito del resultado de SF: sirve para confirmar que el Lead
+    // sincroniza + que se registró la actividad (Task), y para diagnosticar
+    // los leads que "no se graban" (el error de SF queda en el log de abajo).
+    console.log(
+      `manage-leads SF sync lead=${leadId} sfLead=${res.sf?.leadId || "—"} ` +
+        `action=${res.sf?.action || "none"} task=${res.sf?.taskId || "—"}`
+    );
+    return { sfTaskId: res.sf?.taskId, sfLeadId: res.sf?.leadId };
   } catch (err) {
     console.warn("manage-leads propagate failed", err);
+    return {};
   }
 }
 
@@ -183,12 +195,18 @@ export const handler: Handler = async (event: any) => {
             },
           })
         );
-        await propagateById(String(body.leadId));
+        const stageLabel = await stageIdToLabel(String(body.stageId));
+        const prop = await propagateById(String(body.leadId), {
+          taskSubject: `ARIA · Etapa: ${stageLabel || String(body.stageId)}`.slice(0, 255),
+          taskDescription: `El lead pasó a la etapa "${stageLabel || String(body.stageId)}" desde ARIA.`,
+          taskSubtype: "Task",
+        });
         await appendLeadHistory(String(body.leadId), {
           ts: new Date().toISOString(),
           type: "stage_change",
           stageId: String(body.stageId),
-          stageLabel: await stageIdToLabel(String(body.stageId)),
+          stageLabel,
+          sfTaskId: prop.sfTaskId || undefined,
         });
         return ok({ moved: true, leadId: body.leadId, stageId: body.stageId });
       }
@@ -247,9 +265,19 @@ export const handler: Handler = async (event: any) => {
           })
         );
       }
-      await propagateById(leadId);
+      const prop = await propagateById(leadId, {
+        taskSubject: isNew ? "ARIA · Lead creado" : "ARIA · Lead actualizado",
+        taskDescription: isNew
+          ? `Lead creado en ARIA${item.name ? ` · ${item.name}` : ""}${item.phone ? ` · ${item.phone}` : ""}.`
+          : "Datos del lead actualizados desde ARIA.",
+        taskSubtype: "Task",
+      });
       if (!isNew) {
-        await appendLeadHistory(leadId, { ts: new Date().toISOString(), type: "update" });
+        await appendLeadHistory(leadId, {
+          ts: new Date().toISOString(),
+          type: "update",
+          sfTaskId: prop.sfTaskId || undefined,
+        });
       }
       return ok({ lead: item, saved: true, isNew });
     }
