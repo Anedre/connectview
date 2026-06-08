@@ -210,9 +210,13 @@ async function searchContactsFallback(
   phone: string,
   maxDays: number
 ): Promise<HistoricalContact[]> {
+  // SearchContacts limita el TimeRange a 1345h (~56 días). Si el front pide más
+  // (el perfil pide 90), capamos a 55 para no tirar 500 (que dejaba el panel en
+  // "Sin interacciones"). Historial >55 días → requiere CTRs en Customer Profiles.
+  const cappedDays = Math.min(maxDays, 55);
   const endTime = new Date();
   const startTime = new Date();
-  startTime.setDate(startTime.getDate() - maxDays);
+  startTime.setDate(startTime.getDate() - cappedDays);
 
   const result = await connect.send(
     new SearchContactsCommand({

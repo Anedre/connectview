@@ -59,7 +59,7 @@ export function ContactHistoryPanel({ phone }: ContactHistoryPanelProps) {
           Historial
         </span>
         <span className="chip">
-          {contacts.length} contactos · 90 días
+          {contacts.length} contactos · 55 días
         </span>
       </div>
 
