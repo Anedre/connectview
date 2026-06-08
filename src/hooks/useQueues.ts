@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 
 export interface QueueSummary {
   id: string;
@@ -17,7 +18,7 @@ export function useQueues() {
     const endpoints = getApiEndpoints();
     if (!endpoints?.listQueues) return;
     setLoading(true);
-    fetch(endpoints.listQueues)
+    authedFetch(endpoints.listQueues)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();

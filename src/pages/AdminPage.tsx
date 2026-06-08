@@ -16,6 +16,7 @@ import { CatalogEditor } from "@/components/admin/CatalogEditor";
 import { AuditLogViewer } from "@/components/admin/AuditLogViewer";
 import { PermissionsEditor } from "@/components/admin/PermissionsEditor";
 import { IntegrationsManager } from "@/components/admin/IntegrationsManager";
+import { QueuesPanel } from "@/components/admin/QueuesPanel";
 import { TeamManager } from "@/components/admin/TeamManager";
 import { PageHeader } from "@/components/vox/PageHeader";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
@@ -344,6 +345,7 @@ export function AdminPage() {
           {section === "tipificacion" && <TaxonomyEditor />}
           {section === "catalogos" && <CatalogEditor />}
           {section === "integrations" && <IntegrationsManager />}
+          {section === "queues" && <QueuesPanel />}
           {section === "security" && (
             <div className="col" style={{ gap: 16 }}>
               <PermissionsEditor />
@@ -351,7 +353,7 @@ export function AdminPage() {
             </div>
           )}
 
-          {section !== "users" && section !== "tipificacion" && section !== "catalogos" && section !== "security" && section !== "integrations" && (
+          {section !== "users" && section !== "tipificacion" && section !== "catalogos" && section !== "security" && section !== "integrations" && section !== "queues" && (
             <Card>
               <CardBody
                 style={{
