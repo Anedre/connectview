@@ -226,73 +226,81 @@ async function searchContactsFallback(
       SearchCriteria: {
         Channels: ["VOICE", "CHAT", "TASK", "EMAIL"],
       },
+      // Más RECIENTES primero — así el slice(0,50) de abajo (que DescribeContamos
+      // para sacar el teléfono del cliente) toma los contactos más nuevos, no un
+      // subconjunto arbitrario de la ventana. Sin esto, ventanas grandes devolvían 0.
+      Sort: { FieldName: "INITIATION_TIMESTAMP", Order: "DESCENDING" },
       MaxResults: 100,
     })
   );
 
+  // SearchContacts NO incluye el CustomerEndpoint en el resumen, así que hay que
+  // DescribeContact cada resultado para obtener el teléfono del cliente y RECIÉN
+  // ahí filtrar. (El bug: antes filtraba por c.CustomerEndpoint?.Address sobre el
+  // summary → siempre undefined → 0 resultados.) Capamos a 50 (los más recientes)
+  // para no martillar la API; cubre clientes con contactos recientes. Historial
+  // completo de clientes viejos → requiere ingesta de CTRs en Customer Profiles.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const matching = ((result.Contacts as any[]) || []).filter(
+  const summaries = ((result.Contacts as any[]) || []).slice(0, 50);
+  const detailed = (
+    await Promise.all(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      summaries.map(async (c: any) => {
+        try {
+          const detail = await connect.send(
+            new DescribeContactCommand({
+              InstanceId: instanceId,
+              ContactId: c.Id!,
+            })
+          );
+          return detail.Contact || null;
+        } catch {
+          return null;
+        }
+      })
+    )
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (c: any) =>
-      c.CustomerEndpoint?.Address === phone ||
-      c.CustomerEndpoint?.Value === phone
+  ).filter((x): x is any => !!x);
+
+  const matching = detailed.filter(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (contact: any) => contact.CustomerEndpoint?.Address === phone
   );
 
   const rows = await Promise.all(
-    matching.slice(0, 20).map(async (c) => {
-      try {
-        const detail = await connect.send(
-          new DescribeContactCommand({
-            InstanceId: instanceId,
-            ContactId: c.Id!,
-          })
-        );
-        const contact = detail.Contact;
-        const duration =
-          contact?.DisconnectTimestamp && contact?.InitiationTimestamp
-            ? Math.round(
-                (contact.DisconnectTimestamp.getTime() -
-                  contact.InitiationTimestamp.getTime()) / 1000
-              )
-            : 0;
-
-        const agentId = contact?.AgentInfo?.Id || "";
-        const queueId = contact?.QueueInfo?.Id || "";
-        const [agentUsername, queueName] = await Promise.all([
-          agentId ? resolveAgentUsername(agentId) : Promise.resolve(""),
-          queueId ? resolveQueueName(queueId) : Promise.resolve(""),
-        ]);
-
-        return {
-          contactId: c.Id as string,
-          channel: contact?.Channel || "UNKNOWN",
-          subChannel: deriveSubChannel(
-            contact?.Channel || "",
-            contact?.InitiationMethod,
-            contact?.CustomerEndpoint?.Type
-          ),
-          initiationTimestamp: contact?.InitiationTimestamp?.toISOString() || "",
-          disconnectTimestamp: contact?.DisconnectTimestamp?.toISOString() || "",
-          duration,
-          agentUsername,
-          queueName,
-          initiationMethod: contact?.InitiationMethod,
-          disconnectReason: contact?.DisconnectReason,
-          customerEndpoint: contact?.CustomerEndpoint?.Address,
-          hasRecording: (contact?.Recordings?.length || 0) > 0,
-        };
-      } catch {
-        return {
-          contactId: c.Id as string,
-          channel: "UNKNOWN",
-          initiationTimestamp: c.InitiationTimestamp?.toISOString?.() || "",
-          disconnectTimestamp: "",
-          duration: 0,
-          agentUsername: "",
-          queueName: "",
-          hasRecording: false,
-        };
-      }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    matching.slice(0, 20).map(async (contact: any) => {
+      const duration =
+        contact.DisconnectTimestamp && contact.InitiationTimestamp
+          ? Math.round(
+              (contact.DisconnectTimestamp.getTime() -
+                contact.InitiationTimestamp.getTime()) / 1000
+            )
+          : 0;
+      const agentId = contact.AgentInfo?.Id || "";
+      const queueId = contact.QueueInfo?.Id || "";
+      const [agentUsername, queueName] = await Promise.all([
+        agentId ? resolveAgentUsername(agentId) : Promise.resolve(""),
+        queueId ? resolveQueueName(queueId) : Promise.resolve(""),
+      ]);
+      return {
+        contactId: contact.Id as string,
+        channel: contact.Channel || "UNKNOWN",
+        subChannel: deriveSubChannel(
+          contact.Channel || "",
+          contact.InitiationMethod,
+          contact.CustomerEndpoint?.Type
+        ),
+        initiationTimestamp: contact.InitiationTimestamp?.toISOString() || "",
+        disconnectTimestamp: contact.DisconnectTimestamp?.toISOString() || "",
+        duration,
+        agentUsername,
+        queueName,
+        initiationMethod: contact.InitiationMethod,
+        disconnectReason: contact.DisconnectReason,
+        customerEndpoint: contact.CustomerEndpoint?.Address,
+        hasRecording: (contact.Recordings?.length || 0) > 0,
+      };
     })
   );
 
