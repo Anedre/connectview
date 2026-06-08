@@ -693,17 +693,21 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
 function LeadDetailModal({
   lead,
   canManage,
+  stages,
   onClose,
   onSaved,
   onDeleted,
+  onMove,
   onCall,
   onWhatsApp,
 }: {
   lead: Lead;
   canManage: boolean;
+  stages: { id: string; label: string }[];
   onClose: () => void;
   onSaved: (l: Lead) => void;
   onDeleted: (id: string) => void;
+  onMove: (leadId: string, stageId: string) => void | Promise<void>;
   onCall: (phone: string) => void;
   onWhatsApp: (phone: string, name?: string) => void;
 }) {
@@ -712,6 +716,13 @@ function LeadDetailModal({
     company: lead.company || "", monto: lead.montoEstimado ? String(lead.montoEstimado) : "",
   });
   const [saving, setSaving] = useState(false);
+  const [stageId, setStageId] = useState(lead.stageId || stages[0]?.id || "");
+
+  const changeStage = async (next: string) => {
+    if (!next || next === stageId) return;
+    setStageId(next);
+    await onMove(lead.leadId, next);
+  };
 
   const save = async () => {
     const ep = getApiEndpoints();
@@ -818,6 +829,28 @@ function LeadDetailModal({
             </a>
           )}
         </div>
+
+        {/* Etapa del embudo — editable sin arrastrar la tarjeta (clave en la
+            vista Tabla, donde no hay drag & drop). */}
+        {stages.length > 0 && (
+          <label style={{ display: "block", marginBottom: 16 }}>
+            <span style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 600 }}>
+              Etapa
+            </span>
+            <select
+              value={stageId}
+              disabled={!canManage}
+              onChange={(e) => changeStage(e.target.value)}
+              style={{ width: "100%", marginTop: 4, padding: "8px 10px", fontSize: 13, border: "1px solid var(--border-1)", borderRadius: 6, background: "var(--bg-2)", color: "var(--text-1)" }}
+            >
+              {stages.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
           {field("name", "Nombre")}
@@ -1499,9 +1532,11 @@ export function LeadsPage() {
         <LeadDetailModal
           lead={selected}
           canManage={canManage}
+          stages={tree}
           onClose={() => setSelected(null)}
           onSaved={(l) => { setLeads((cur) => cur.map((x) => (x.leadId === l.leadId ? l : x))); setSelected(null); }}
           onDeleted={(id) => { setLeads((cur) => cur.filter((x) => x.leadId !== id)); setSelected(null); }}
+          onMove={move}
           onCall={dialLead}
           onWhatsApp={openWhatsApp}
         />
