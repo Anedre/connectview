@@ -4,6 +4,12 @@ import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "node:crypto";
 import { resolveDynamo, resolveWhatsApp } from "../_shared/tenantConnect";
 import { sendWhatsApp } from "../_shared/whatsappSend";
+import { getIdentity, isLegacyTenant } from "../_shared/cognitoAuth";
+
+// Secreto compartido para llamadas server-to-server (campaign-dialer). El
+// frontend manda JWT; el dialer no tiene JWT y prueba que es interno con este
+// header. Sin JWT NI secreto, NO se respeta body.tenantId (anti-impersonación).
+const INTERNAL_SECRET = process.env.VOX_INTERNAL_SECRET || "";
 
 // BYO Data Plane (#46): tabla del tenant. SocialMessaging queda con cred legacy.
 const legacyDynamo = new DynamoDBClient({});
@@ -115,13 +121,38 @@ export const handler: Handler = async (event: any) => {
     };
   }
 
-  // WhatsApp BYO: resolvemos el End User Messaging del TENANT (su número). El
-  // campaign-dialer (server-to-server, sin JWT) pasa el tenant en body.tenantId.
+  // AUTH (anti-impersonación): el tenant SALE del JWT (frontend con authedFetch).
+  // body.tenantId SOLO se respeta para llamadas internas (campaign-dialer) que
+  // presentan el secreto compartido. Sin JWT y sin secreto → 401: así un POST
+  // público con body.tenantId ajeno YA NO envía WhatsApp desde el número de otro
+  // tenant (impersonación / quema de cuota Meta de un tercero).
+  const identity = await getIdentity(event?.headers).catch(() => null);
+  const hdrs = event?.headers || {};
+  const internalOk =
+    !!INTERNAL_SECRET &&
+    (hdrs["x-vox-internal"] || hdrs["X-Vox-Internal"]) === INTERNAL_SECRET;
+  // Impersonación: si el body reclama un tenant REAL (no legacy) pero NO hay JWT
+  // ni secreto interno → 401. Así un POST público con body.tenantId="otro-tenant"
+  // ya NO envía WhatsApp desde el número de ese tenant. Los callers internos sin
+  // tenantId (bots → número legacy) y el dialer (con secreto) NO se ven afectados.
+  const claimsTenant = !!body.tenantId && !isLegacyTenant(body.tenantId);
+  if (claimsTenant && !identity?.tenantId && !internalOk) {
+    return {
+      statusCode: 401,
+      headers: CORS,
+      body: JSON.stringify({ error: "No autorizado (tenantId sin credenciales)" }),
+    };
+  }
+  // JWT manda (ignora el body.tenantId de un atacante); el dialer interno usa su
+  // body.tenantId (con secreto); el resto cae al número legacy de siempre.
+  const effectiveTenantId = identity?.tenantId || (internalOk ? body.tenantId : undefined);
+
+  // WhatsApp BYO: resolvemos el End User Messaging del TENANT (su número).
   const { client: waClient, phoneNumberId, mode, metaPhoneNumberId, tenantId } = await resolveWhatsApp(
     event?.headers,
     legacyClient,
     LEGACY_PHONE_NUMBER_ID,
-    body.tenantId
+    effectiveTenantId
   );
   const hasNumber = mode === "meta" ? !!metaPhoneNumberId : !!phoneNumberId;
   if (!hasNumber) {

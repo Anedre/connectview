@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import * as Icon from "@/components/vox/primitives";
 
 interface WhatsAppTemplate {
@@ -121,7 +122,7 @@ export function WhatsAppQuickSendModal({
     }
     setSending(true);
     try {
-      const r = await fetch(endpoints.sendWhatsAppTemplate, {
+      const r = await authedFetch(endpoints.sendWhatsAppTemplate, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

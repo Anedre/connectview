@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { useAuth } from "@/hooks/useAuth";
 import * as Icon from "@/components/vox/primitives";
 
@@ -976,7 +977,7 @@ async function dispatchCta(
     const templateName = String(p.templateName || "");
     if (!templateName) throw new Error("Falta templateName en payload");
     const language = String(p.language || "es");
-    const r = await fetch(endpoints.sendWhatsAppTemplate, {
+    const r = await authedFetch(endpoints.sendWhatsAppTemplate, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

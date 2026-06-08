@@ -690,7 +690,13 @@ async function sendWhatsAppTemplate(
   try {
     const r = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // Secreto interno: prueba que es el dialer (server-to-server, sin JWT) y
+        // autoriza a send-whatsapp-template a respetar el body.tenantId. Sin esto,
+        // send-whatsapp-template ignora body.tenantId (anti-impersonación pública).
+        "x-vox-internal": process.env.VOX_INTERNAL_SECRET || "",
+      },
       body: JSON.stringify({
         phone: contact.phone,
         templateName: campaign.templateName,

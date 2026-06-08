@@ -38,6 +38,11 @@ export interface SalesforceConn {
   instanceUrl?: string;
   environment?: "production" | "sandbox";
   connectedAt?: string;
+  /** Flag — el token de ENTRADA per-tenant (SF→Vox) ya fue generado. El token
+   *  vive en Secrets Manager (`connectview/tenant/<id>/sf-inbound`), nunca acá.
+   *  El plaintext se muestra UNA vez al generarlo (para pegarlo en el Flow). */
+  inboundTokenSet?: boolean;
+  inboundTokenRotatedAt?: string;
 }
 export interface WhatsAppConn {
   phoneNumberId?: string;
@@ -110,7 +115,11 @@ function readLocal(): ConnectionsConfig {
 export function useConnections() {
   const ep = getApiEndpoints();
   const hasBackend = !!ep?.manageConnections;
-  const [config, setConfig] = useState<ConnectionsConfig>(() => readLocal());
+  // SEGURIDAD multi-tenant (demo same-browser): si hay backend, NO seedeamos desde
+  // localStorage (que es GLOBAL, no por tenant). Arrancamos vacío y `refetch()` lo
+  // llena con el config del tenant del JWT. Así, tras Novasys→logout→UDEP en la
+  // misma laptop, UDEP NO arranca con el roleArn/externalId/branding de Novasys.
+  const [config, setConfig] = useState<ConnectionsConfig>(() => (hasBackend ? {} : readLocal()));
   const [loading, setLoading] = useState<boolean>(() => hasBackend);
   const [saving, setSaving] = useState(false);
   const [whatsappNumbers, setWhatsappNumbers] = useState<WhatsAppNumber[]>([]);
