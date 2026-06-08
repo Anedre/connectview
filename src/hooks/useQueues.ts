@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 
@@ -14,10 +14,11 @@ export function useQueues() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refetch = useCallback(() => {
     const endpoints = getApiEndpoints();
     if (!endpoints?.listQueues) return;
     setLoading(true);
+    setError(null);
     authedFetch(endpoints.listQueues)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -28,5 +29,9 @@ export function useQueues() {
       .finally(() => setLoading(false));
   }, []);
 
-  return { queues, loading, error };
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  return { queues, loading, error, refetch };
 }
