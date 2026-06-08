@@ -74,9 +74,13 @@ export function useMyCampaignLeads(refreshMs = 5000) {
           attributes?: Record<string, string>;
           assignedAgentUserId?: string;
           createdAt?: string;
+          nextRetryAt?: string;
         }>;
+        const nowIso = new Date().toISOString();
         for (const c of rows) {
           if (c.assignedAgentUserId !== userId) continue;
+          // Reagendados: ocultos hasta su hora (nextRetryAt futuro).
+          if (c.nextRetryAt && c.nextRetryAt > nowIso) continue;
           out.push({
             campaignId: camp.campaignId,
             campaignName: camp.name,
@@ -163,5 +167,30 @@ export function useMyCampaignLeads(refreshMs = 5000) {
     [userId, refresh]
   );
 
-  return { leads, loading, error, refresh, callLead, skipLead };
+  /** Reagendar — el lead vuelve a la lista del agente a partir de nextRetryAt. */
+  const rescheduleLead = useCallback(
+    async (lead: MyLead, nextRetryAt: string): Promise<void> => {
+      const endpoints = getApiEndpoints();
+      if (!endpoints?.editCampaignContacts)
+        throw new Error("editCampaignContacts endpoint missing");
+      if (!userId) throw new Error("no userId");
+      const r = await fetch(endpoints.editCampaignContacts, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "manual-reschedule",
+          campaignId: lead.campaignId,
+          rowId: lead.rowId,
+          userId,
+          nextRetryAt,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      refresh();
+    },
+    [userId, refresh]
+  );
+
+  return { leads, loading, error, refresh, callLead, skipLead, rescheduleLead };
 }

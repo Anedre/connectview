@@ -4,6 +4,13 @@ import { useMyCampaignLeads, type MyLead } from "@/hooks/useMyCampaignLeads";
 import { useCCP } from "@/hooks/useCCP";
 import * as Icon from "@/components/vox/primitives";
 
+const RESCHEDULE_PRESETS: { label: string; ms: number }[] = [
+  { label: "+30 min", ms: 30 * 60 * 1000 },
+  { label: "+1 h", ms: 60 * 60 * 1000 },
+  { label: "+3 h", ms: 3 * 60 * 60 * 1000 },
+  { label: "+1 día", ms: 24 * 60 * 60 * 1000 },
+];
+
 /**
  * Preview-dial / manual-mode lead list shown in the agent desktop when
  * the agent has pending manual-mode campaign leads pre-assigned to them.
@@ -19,11 +26,12 @@ import * as Icon from "@/components/vox/primitives";
  * "Transcripción en vivo" idle pane stays in its default state.
  */
 export function MyCampaignLeadsPanel() {
-  const { leads, callLead, skipLead, refresh, loading } = useMyCampaignLeads(
+  const { leads, callLead, skipLead, rescheduleLead, refresh, loading } = useMyCampaignLeads(
     5000
   );
   const { placeCall, agentState } = useCCP();
   const [busy, setBusy] = useState<string | null>(null); // rowId currently mutating
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null);
 
   if (leads.length === 0) {
     if (loading) {
@@ -91,6 +99,21 @@ export function MyCampaignLeadsPanel() {
       toast.success("Lead saltado");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error saltando");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleReschedule = async (lead: MyLead, addMs: number) => {
+    if (busy) return;
+    setBusy(lead.rowId);
+    setReschedulingId(null);
+    try {
+      const nextRetryAt = new Date(Date.now() + addMs).toISOString();
+      await rescheduleLead(lead, nextRetryAt);
+      toast.success("Lead reagendado");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error reagendando");
     } finally {
       setBusy(null);
     }
@@ -205,30 +228,67 @@ export function MyCampaignLeadsPanel() {
                   gap: 6,
                   flexShrink: 0,
                   alignSelf: "center",
+                  flexWrap: "wrap",
+                  justifyContent: "flex-end",
                 }}
               >
-                <button
-                  className="btn btn--ghost btn--sm"
-                  onClick={() => handleSkip(lead)}
-                  disabled={isBusy}
-                  title="No marcar este lead — pasar al siguiente"
-                  style={{ minHeight: 30 }}
-                >
-                  <Icon.Close size={11} /> Saltar
-                </button>
-                <button
-                  className="btn btn--success btn--sm"
-                  onClick={() => handleCall(lead)}
-                  disabled={isBusy || !canDial}
-                  title={
-                    !canDial
-                      ? "Cambia a Available para poder marcar"
-                      : "Marcar este lead"
-                  }
-                  style={{ minHeight: 30 }}
-                >
-                  <Icon.PhoneIn size={12} /> {isBusy ? "…" : "Llamar"}
-                </button>
+                {reschedulingId === lead.rowId ? (
+                  <>
+                    {RESCHEDULE_PRESETS.map((p) => (
+                      <button
+                        key={p.label}
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => handleReschedule(lead, p.ms)}
+                        disabled={isBusy}
+                        style={{ minHeight: 30 }}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                    <button
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => setReschedulingId(null)}
+                      title="Cancelar"
+                      style={{ minHeight: 30 }}
+                    >
+                      <Icon.Close size={11} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => setReschedulingId(lead.rowId)}
+                      disabled={isBusy}
+                      title="Posponer este lead para más tarde"
+                      style={{ minHeight: 30 }}
+                    >
+                      Reagendar
+                    </button>
+                    <button
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => handleSkip(lead)}
+                      disabled={isBusy}
+                      title="No marcar este lead — pasar al siguiente"
+                      style={{ minHeight: 30 }}
+                    >
+                      <Icon.Close size={11} /> Saltar
+                    </button>
+                    <button
+                      className="btn btn--success btn--sm"
+                      onClick={() => handleCall(lead)}
+                      disabled={isBusy || !canDial}
+                      title={
+                        !canDial
+                          ? "Cambia a Available para poder marcar"
+                          : "Marcar este lead"
+                      }
+                      style={{ minHeight: 30 }}
+                    >
+                      <Icon.PhoneIn size={12} /> {isBusy ? "…" : "Llamar"}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           );

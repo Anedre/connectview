@@ -34,7 +34,7 @@ const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 
-type Action = "add" | "delete" | "update" | "manual-call" | "manual-skip";
+type Action = "add" | "delete" | "update" | "manual-call" | "manual-skip" | "manual-reschedule";
 
 interface AddPayload {
   action: "add";
@@ -78,12 +78,23 @@ interface ManualSkipPayload {
   reason?: string;
 }
 
+/** Manual-mode reschedule — el agente pospone el lead para más tarde. */
+interface ManualReschedulePayload {
+  action: "manual-reschedule";
+  campaignId: string;
+  rowId: string;
+  userId: string;
+  /** ISO timestamp en el que el lead vuelve a aparecer en la lista del agente. */
+  nextRetryAt: string;
+}
+
 type Payload =
   | AddPayload
   | DeletePayload
   | UpdatePayload
   | ManualCallPayload
-  | ManualSkipPayload;
+  | ManualSkipPayload
+  | ManualReschedulePayload;
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -620,6 +631,48 @@ async function handleManualSkip(body: ManualSkipPayload) {
   return { statusCode: 200, body: { ok: true, rowId: body.rowId } };
 }
 
+/**
+ * Manual-mode reschedule — el agente pospone el lead. Queda `pending` (sigue
+ * siendo suyo) pero con nextRetryAt futuro, así desaparece de su lista "ahora"
+ * hasta esa hora. No toca contadores (sigue pending).
+ */
+async function handleManualReschedule(body: ManualReschedulePayload) {
+  if (!body.rowId || !body.userId || !body.nextRetryAt) {
+    return { statusCode: 400, body: { error: "rowId, userId y nextRetryAt requeridos" } };
+  }
+  const cur = await dynamo.send(
+    new GetItemCommand({
+      TableName: CONTACTS_TABLE,
+      Key: { campaignId: { S: body.campaignId }, rowId: { S: body.rowId } },
+    })
+  );
+  if (!cur.Item) {
+    return { statusCode: 404, body: { error: "Contact not found" } };
+  }
+  const row = unmarshall(cur.Item);
+  const assigned = (row.assignedAgentUserId as string) || "";
+  if (assigned && assigned !== body.userId) {
+    return { statusCode: 403, body: { error: "Contact assigned to a different agent" } };
+  }
+  const currentStatus = (row.status as string) || "pending";
+  if (currentStatus !== "pending") {
+    return { statusCode: 409, body: { error: `Contact is not pending: ${currentStatus}` } };
+  }
+  await dynamo.send(
+    new UpdateItemCommand({
+      TableName: CONTACTS_TABLE,
+      Key: { campaignId: { S: body.campaignId }, rowId: { S: body.rowId } },
+      UpdateExpression: "SET nextRetryAt = :nra, rescheduledAt = :now, rescheduledBy = :uid",
+      ExpressionAttributeValues: {
+        ":nra": { S: body.nextRetryAt },
+        ":now": { S: new Date().toISOString() },
+        ":uid": { S: body.userId },
+      },
+    })
+  );
+  return { statusCode: 200, body: { ok: true, rowId: body.rowId, nextRetryAt: body.nextRetryAt } };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
@@ -674,12 +727,14 @@ export const handler: Handler = async (event: any) => {
       result = await handleManualCall(body as ManualCallPayload);
     } else if (action === "manual-skip") {
       result = await handleManualSkip(body as ManualSkipPayload);
+    } else if (action === "manual-reschedule") {
+      result = await handleManualReschedule(body as ManualReschedulePayload);
     } else {
       return {
         statusCode: 400,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          error: `Unknown action: ${action as Action}. Use add | delete | update | manual-call | manual-skip.`,
+          error: `Unknown action: ${action as Action}. Use add | delete | update | manual-call | manual-skip | manual-reschedule.`,
         }),
       };
     }
