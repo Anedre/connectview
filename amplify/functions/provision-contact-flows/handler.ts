@@ -168,6 +168,68 @@ function buildOutboundFlow(queueId: string): object {
   };
 }
 
+/**
+ * Saliente SMART (campañas multi-cola): preámbulo → Compare sobre
+ * $.Attributes.<atributo> → una cola por valor (UpdateContactTargetQueue literal,
+ * que el parser de get-flow-queues detecta) → transferir. Varias reglas pueden
+ * apuntar a la misma cola; los valores sin match caen a la cola por defecto.
+ * Misma forma EXACTA que el UDEP-Outbound-Smart real (Connect es estricto).
+ */
+function buildSmartOutboundFlow(
+  attribute: string,
+  rules: { value: string; queueId: string }[],
+  defaultQueueId: string,
+  flowName: string
+): object {
+  const qActionId = (qid: string) => "q_" + qid.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
+  const uniqueQueueIds = [...new Set([...rules.map((r) => r.queueId), defaultQueueId].filter(Boolean))];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const actions: any[] = [
+    { Identifier: "log", Type: "UpdateFlowLoggingBehavior", Parameters: { FlowLoggingBehavior: "Enabled" }, Transitions: { NextAction: "voice" } },
+    { Identifier: "voice", Type: "UpdateContactTextToSpeechVoice", Parameters: { TextToSpeechVoice: VOICE }, Transitions: { NextAction: "lang", Errors: [{ NextAction: "lang", ErrorType: "NoMatchingError" }] } },
+    { Identifier: "lang", Type: "UpdateContactData", Parameters: { LanguageCode: LANG }, Transitions: { NextAction: "record", Errors: [{ NextAction: "record", ErrorType: "NoMatchingError" }] } },
+    { Identifier: "record", Type: "UpdateContactRecordingBehavior", Parameters: { RecordingBehavior: { RecordedParticipants: ["Agent", "Customer"] } }, Transitions: { NextAction: "check" } },
+    {
+      Identifier: "check",
+      Type: "Compare",
+      Parameters: { ComparisonValue: `$.Attributes.${attribute}` },
+      Transitions: {
+        NextAction: qActionId(defaultQueueId),
+        Conditions: rules.map((r) => ({ Condition: { Operator: "Equals", Operands: [String(r.value)] }, NextAction: qActionId(r.queueId) })),
+        Errors: [{ NextAction: qActionId(defaultQueueId), ErrorType: "NoMatchingCondition" }],
+      },
+    },
+    ...uniqueQueueIds.map((qid) => ({
+      Identifier: qActionId(qid),
+      Type: "UpdateContactTargetQueue",
+      Parameters: { QueueId: qid },
+      Transitions: { NextAction: "xfer", Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }] },
+    })),
+    { Identifier: "xfer", Type: "TransferContactToQueue", Parameters: {}, Transitions: { NextAction: "end", Errors: [{ NextAction: "end", ErrorType: "QueueAtCapacity" }, { NextAction: "end", ErrorType: "NoMatchingError" }] } },
+    { Identifier: "end", Type: "DisconnectParticipant", Parameters: {}, Transitions: {} },
+  ];
+
+  const ActionMetadata: Record<string, unknown> = {};
+  actions.forEach((a, i) => {
+    ActionMetadata[a.Identifier] = { position: { x: 60 + (i % 5) * 220, y: 60 + Math.floor(i / 5) * 150 } };
+  });
+
+  return {
+    Version: "2019-10-30",
+    StartAction: "log",
+    Metadata: {
+      entryPointPosition: { x: 20, y: 20 },
+      name: flowName,
+      description: "ARIA · saliente con ruteo por atributo (generado desde Configuración → Ruteo).",
+      type: "contactFlow",
+      status: "PUBLISHED",
+      ActionMetadata,
+    },
+    Actions: actions,
+  };
+}
+
 const DEFAULT_GREETING = "¡Hola! Gracias por comunicarte. En un momento te atiende un asesor. 🙌";
 const DEFAULT_BUSY = "En este momento todos nuestros asesores están ocupados. Por favor intentá más tarde. Gracias.";
 const DEFAULT_FAREWELL = "👋 ¡Gracias por escribirnos! Esperamos haberte ayudado. ¡Que tengas un excelente día! ✨";
@@ -217,7 +279,14 @@ export const handler = async (event: FnEvent) => {
   if (!identity.groups.includes("Admins")) return resp(403, { error: "Solo administradores pueden provisionar flows" });
   const tenantId = identity.tenantId;
 
-  let body: { dryRun?: boolean; defaultQueueId?: string } = {};
+  let body: {
+    dryRun?: boolean;
+    defaultQueueId?: string;
+    action?: string;
+    attribute?: string;
+    rules?: { value: string; queueId: string }[];
+    flowName?: string;
+  } = {};
   try {
     body = JSON.parse(event.body || "{}");
   } catch {
@@ -232,6 +301,46 @@ export const handler = async (event: FnEvent) => {
   }
   const client = tc.client;
   const instanceId = tc.instanceId;
+
+  // ── Ruteo inteligente: genera/actualiza ARIA-Outbound-Smart desde las reglas
+  //    (atributo del lead → cola). Lo usan las campañas para distribuir por
+  //    atributo (ej. programa=1→Cola A, 2→Cola B, 3→Cola C). ──
+  if (body.action === "smartFlow") {
+    const attribute = String(body.attribute || "").trim();
+    const rules = (Array.isArray(body.rules) ? body.rules : [])
+      .map((r) => ({ value: String(r?.value ?? "").trim(), queueId: String(r?.queueId ?? "") }))
+      .filter((r) => r.value && r.queueId);
+    const defaultQueueId = String(body.defaultQueueId || "");
+    const flowName = String(body.flowName || "ARIA-Outbound-Smart").trim() || "ARIA-Outbound-Smart";
+    if (!attribute || rules.length === 0 || !defaultQueueId) {
+      return resp(400, { error: "Se requieren el atributo, al menos una regla (valor → cola) y la cola por defecto." });
+    }
+    try {
+      const content = JSON.stringify(buildSmartOutboundFlow(attribute, rules, defaultQueueId, flowName));
+      const existing = await existingFlows(client, instanceId);
+      let flowId = existing.get(flowName);
+      let act: "created" | "updated";
+      if (flowId) {
+        await client.send(new UpdateContactFlowContentCommand({ InstanceId: instanceId, ContactFlowId: flowId, Content: content }));
+        act = "updated";
+      } else {
+        const c = await client.send(new CreateContactFlowCommand({ InstanceId: instanceId, Name: flowName, Type: "CONTACT_FLOW", Content: content, Description: "ARIA · ruteo por atributo (generado)" }));
+        flowId = c.ContactFlowId || "";
+        act = "created";
+      }
+      try {
+        const rr = await ddb.send(new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } }));
+        const cfg = rr.Item?.configJson?.S ? JSON.parse(rr.Item.configJson.S) : {};
+        cfg.routingRules = { attribute, rules, defaultQueueId, flowId, flowName, updatedAt: new Date().toISOString() };
+        await ddb.send(new PutItemCommand({ TableName: TABLE, Item: { tenantId: { S: tenantId }, configJson: { S: JSON.stringify(cfg) }, updatedAt: { S: new Date().toISOString() } } }));
+      } catch (e) {
+        console.error("guardar routingRules falló:", e);
+      }
+      return resp(200, { ok: true, flowId, flowName, action: act, rulesCount: rules.length });
+    } catch (e) {
+      return resp(500, { error: e instanceof Error ? e.message : "error" });
+    }
+  }
 
   try {
     // Config del tenant (una sola lectura): textos + cola principal elegida.
