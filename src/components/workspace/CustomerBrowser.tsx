@@ -206,6 +206,19 @@ export function CustomerBrowser() {
     }
   };
 
+  // Búsqueda EN VIVO (typeahead): dispara mientras el agente escribe, con debounce
+  // de 300ms para no martillar SearchProfiles en cada tecla. Query vacío → limpia.
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      setError(null);
+      return;
+    }
+    const t = setTimeout(() => runSearch(query), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
   // ─── Sub-view: selected profile ─────────────────────────────────
   if (selected) {
     return (
