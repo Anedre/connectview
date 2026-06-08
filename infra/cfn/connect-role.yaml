@@ -134,6 +134,18 @@ Resources:
                   - cloudformation:DescribeStackEvents
                   - cloudformation:DescribeStacks
                 Resource: !Sub "arn:aws:cloudformation:*:${AWS::AccountId}:stack/VoxCrmConnectAccess/*"
+        - PolicyName: VoxCrmSelfDiagnostics
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Auto-diagnóstico de permisos: deja que Vox detecte permisos
+              # faltantes (drift) SIMULANDO las acciones sin ejecutarlas. Scope =
+              # SOLO este mismo rol → no puede simular ningún otro principal de tu
+              # cuenta. Sin esto, un permiso faltante recién se nota como un
+              # AccessDenied en silencio dentro del producto.
+              - Effect: Allow
+                Action: iam:SimulatePrincipalPolicy
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/VoxCrmConnectAccess"
         - PolicyName: VoxCrmWhatsApp
           PolicyDocument:
             Version: "2012-10-17"

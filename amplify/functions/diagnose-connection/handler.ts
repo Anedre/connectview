@@ -47,6 +47,7 @@ import {
   BedrockRuntimeClient,
   InvokeModelCommand,
 } from "@aws-sdk/client-bedrock-runtime";
+import { IAMClient, SimulatePrincipalPolicyCommand } from "@aws-sdk/client-iam";
 import { getIdentity } from "../_shared/cognitoAuth";
 
 const CONNECTIONS_TABLE =
@@ -61,6 +62,67 @@ const DATA_PLANE_TABLES = [
   "connectview-campaign-contacts", "connectview-campaigns", "connectview-catalogs",
   "connectview-contacts", "connectview-hsm-sends", "connectview-leads",
   "connectview-taxonomies", "connectview-wrapup-history",
+];
+
+// Acciones que el rol DEBE tener con Resource:"*" — justo donde históricamente
+// apareció el "drift" (el código usa una acción que la plantilla vieja no
+// otorgaba → AccessDenied en silencio). Las acciones scoped por recurso
+// (outbound, S3, Bedrock) las cubren los probes funcionales de más abajo, no
+// esta simulación. MANTENER EN SYNC con cfnTemplates.ts / connect-role.yaml.
+const EXPECTED_STAR_PERMISSIONS: {
+  group: string;
+  label: string;
+  actions: string[];
+}[] = [
+  {
+    group: "directory",
+    label: "Usuarios y perfiles de seguridad",
+    actions: [
+      "connect:ListUsers", "connect:DescribeUser", "connect:ListQueues", "connect:DescribeQueue",
+      "connect:DescribeSecurityProfile", "connect:ListSecurityProfiles", "connect:UpdateUserSecurityProfiles",
+    ],
+  },
+  {
+    group: "routing",
+    label: "Enrutamiento y números de teléfono",
+    actions: [
+      "connect:ListRoutingProfiles", "connect:ListRoutingProfileQueues",
+      "connect:AssociateRoutingProfileQueues", "connect:DisassociateRoutingProfileQueues",
+      "connect:ListPhoneNumbers", "connect:ListPhoneNumbersV2",
+    ],
+  },
+  {
+    group: "metrics",
+    label: "Métricas e historial de contactos",
+    actions: [
+      "connect:GetMetricDataV2", "connect:GetCurrentMetricData", "connect:GetCurrentUserData",
+      "connect:SearchContacts", "connect:DescribeContact", "connect:ListContactReferences",
+    ],
+  },
+  {
+    group: "flows",
+    label: "Flujos de contacto (bots)",
+    actions: [
+      "connect:ListContactFlows", "connect:DescribeContactFlow",
+      "connect:CreateContactFlow", "connect:UpdateContactFlowContent",
+    ],
+  },
+  {
+    group: "profiles",
+    label: "Cliente 360° (Customer Profiles)",
+    actions: [
+      "profile:SearchProfiles", "profile:GetDomain", "profile:ListDomains",
+      "profile:CreateProfile", "profile:UpdateProfile", "profile:PutProfileObject", "profile:AddProfileKey",
+    ],
+  },
+  {
+    group: "whatsapp",
+    label: "WhatsApp (plantillas y envío)",
+    actions: [
+      "social-messaging:SendWhatsAppMessage", "social-messaging:ListLinkedWhatsAppBusinessAccounts",
+      "social-messaging:ListWhatsAppMessageTemplates", "social-messaging:GetWhatsAppMessageTemplate",
+    ],
+  },
 ];
 
 const CORS: Record<string, string> = {
@@ -258,6 +320,9 @@ export const handler = async (event: FnEvent) => {
         (e instanceof Error ? e.message.slice(0, 140) : ""),
     });
   }
+
+  // ── Check 3b: drift de permisos del rol (auto-diagnóstico, SIN ejecutar) ─
+  await diagnosePermissionDrift(checks, region, assumedCreds, cfg.roleArn);
 
   // ── Check 4: Contact Lens ──────────────────────────────────────────────
   try {
@@ -556,6 +621,104 @@ export const handler = async (event: FnEvent) => {
 
   return resp(200, { checks, generatedAt: new Date().toISOString() });
 };
+
+/**
+ * diagnosePermissionDrift — detecta "drift" de permisos: acciones que la app
+ * USA pero que el rol del tenant (creado con una plantilla anterior) no otorga.
+ * Usa iam:SimulatePrincipalPolicy sobre el PROPIO rol → evalúa cada acción SIN
+ * ejecutarla (cero efectos secundarios, cubre lecturas Y escrituras). Si el rol
+ * no tiene ni ese permiso (rol viejo), lo reporta como "reaplicá la plantilla"
+ * en vez de fallar. Esto convierte cada AccessDenied silencioso futuro en un
+ * aviso accionable acá.
+ */
+async function diagnosePermissionDrift(
+  checks: Check[],
+  region: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assumedCreds: any,
+  roleArn: string
+): Promise<void> {
+  const allActions = EXPECTED_STAR_PERMISSIONS.flatMap((g) => g.actions);
+  let results;
+  try {
+    const iam = new IAMClient({ region, credentials: assumedCreds });
+    const out = await iam.send(
+      new SimulatePrincipalPolicyCommand({
+        PolicySourceArn: roleArn,
+        ActionNames: allActions,
+      })
+    );
+    results = out.EvaluationResults || [];
+  } catch (e) {
+    const name = e instanceof Error ? e.name : "";
+    const denied = /AccessDenied|not authorized/i.test(name);
+    checks.push({
+      id: "permissions",
+      label: "Permisos del rol (auto-diagnóstico)",
+      status: "warn",
+      detail: denied
+        ? "El rol todavía no puede auto-verificar sus permisos."
+        : "No pudimos verificar los permisos del rol.",
+      remediation: denied
+        ? "Reaplicá la plantilla del rol (paso 3): la versión nueva agrega iam:SimulatePrincipalPolicy SOLO sobre el propio rol, para que Vox detecte por vos cualquier permiso faltante (en vez de fallar en silencio)."
+        : null,
+    });
+    return;
+  }
+
+  if (results.length === 0) {
+    checks.push({
+      id: "permissions",
+      label: "Permisos del rol (auto-diagnóstico)",
+      status: "warn",
+      detail: "La simulación de permisos no devolvió resultados.",
+      remediation: null,
+    });
+    return;
+  }
+
+  // Acciones denegadas, agrupadas por feature.
+  const deniedByGroup: Record<string, string[]> = {};
+  for (const r of results) {
+    if (r.EvalDecision !== "allowed" && r.EvalActionName) {
+      const grp = EXPECTED_STAR_PERMISSIONS.find((g) =>
+        g.actions.includes(r.EvalActionName!)
+      );
+      if (grp) (deniedByGroup[grp.group] ||= []).push(r.EvalActionName);
+    }
+  }
+  const missingGroups = EXPECTED_STAR_PERMISSIONS.filter(
+    (g) => (deniedByGroup[g.group]?.length || 0) > 0
+  );
+
+  if (missingGroups.length === 0) {
+    checks.push({
+      id: "permissions",
+      label: "Permisos del rol",
+      status: "ok",
+      detail: `El rol tiene los ${allActions.length} permisos que la app necesita.`,
+    });
+    return;
+  }
+
+  const totalMissing = Object.values(deniedByGroup).reduce(
+    (n, a) => n + a.length,
+    0
+  );
+  checks.push({
+    id: "permissions",
+    label: "Permisos del rol",
+    status: "error",
+    detail: `Faltan ${totalMissing} permiso(s) en ${missingGroups.length} área(s): ${missingGroups
+      .map((g) => g.label)
+      .join(", ")}.`,
+    remediation:
+      "Tu rol se creó con una versión anterior de la plantilla. Reaplicá la plantilla del rol (paso 3) — es segura de re-aplicar (solo agrega lo que falta, no toca nada más). Detalle: " +
+      missingGroups
+        .map((g) => `${g.label} → ${deniedByGroup[g.group].join(", ")}`)
+        .join(" · "),
+  });
+}
 
 /**
  * Si el rol del cliente otorgó cloudformation:DescribeStackEvents, leemos el
