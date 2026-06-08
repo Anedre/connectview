@@ -392,8 +392,8 @@ function StageColumn({
           <span style={{ fontWeight: 700, fontSize: 12.5, textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</span>
           <div className="row" style={{ gap: 6 }}>
             {conversionPct != null && (
-              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-3)" }} title="Conversión desde la etapa anterior">
-                {conversionPct}%↓
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-3)" }} title="Conversión desde la etapa anterior (acotada a 100%)">
+                {Math.min(conversionPct, 100)}%↓
               </span>
             )}
             <span style={{ fontSize: 11, fontWeight: 700, color, background: `${color}1f`, borderRadius: 999, padding: "2px 8px" }}>

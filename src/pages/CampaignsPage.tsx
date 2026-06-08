@@ -122,8 +122,15 @@ export function CampaignsPage() {
     (acc, c) => acc + (c.totalContacts || 0),
     0
   );
+  // Solo cuenta actividad en vivo de campañas ACTIVAS (RUNNING/PAUSED) — antes
+  // sumaba también contadores stale de campañas terminadas → "EN VIVO 1" con
+  // "0 activas" (contacto fantasma).
   const live = campaigns.reduce(
-    (acc, c) => acc + (c.dialingCount || 0) + (c.connectedCount || 0),
+    (acc, c) =>
+      acc +
+      (c.status === "RUNNING" || c.status === "PAUSED"
+        ? (c.dialingCount || 0) + (c.connectedCount || 0)
+        : 0),
     0
   );
 
