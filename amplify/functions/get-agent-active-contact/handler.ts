@@ -102,8 +102,13 @@ export const handler: Handler = async (event: any) => {
     if (!resolvedUserId && username) {
       resolvedUserId = (await resolveUserId(connect, instanceId, username)) || undefined;
       if (!resolvedUserId) {
+        // 200 (no 404): "no encontré ese username en Connect" es un estado NORMAL
+        // (el username de Cognito puede ≠ el de Connect, o el agente aún no está en
+        // la instancia). Devolver 404 hacía que el browser lo logueara como request
+        // fallida en CADA poll → spam de consola. El contacto activo igual se ve por
+        // el CCP (Streams); este endpoint es solo un complemento.
         return {
-          statusCode: 404,
+          statusCode: 200,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contact: null,
