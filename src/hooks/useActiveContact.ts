@@ -14,6 +14,7 @@ import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { useConnectAgentUsername } from "@/hooks/useConnectAgentUsername";
 import { traceChange, traceInfo } from "@/lib/debugTrace";
+import { whenStreamsReady } from "@/lib/whenStreamsReady";
 
 export interface ActiveContact {
   contactId: string;
@@ -742,35 +743,40 @@ function useActiveContactsState(): ActiveContactsContextValue {
       } catch { /* noop */ }
     };
 
-    try { connect.contact?.(subscribeToContact); } catch { /* noop */ }
-
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const core = (connect as any).core;
-      const bus = core?.getEventBus?.();
-      if (bus) {
-        const events = [
-          "contact::init",
-          "contact::incoming",
-          "contact::connecting",
-          "contact::connected",
-          "contact::accepted",
-          "contact::refresh",
-          "contact::acw",
-        ];
-        events.forEach((evt) => {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            bus.subscribe(evt, (c: any) => {
-              subscribeToContact(c);
-              const info = extractContact(c);
-              // Bus events fire for a single contact — partial update.
-              if (info) observeAllContacts([info], false);
-            });
-          } catch { /* noop */ }
-        });
-      }
-    } catch { /* noop */ }
+    // Suscripción a contactos (camino INSTANTÁNEO) — ESPERA el event bus. Antes se
+    // suscribía al toque; si el bus aún no existía (carga async vía el CCP), los
+    // callbacks se registraban pero NUNCA disparaban (mismo bug del username). El
+    // poll de 800ms de abajo igual levanta los contactos, pero con delay; esto
+    // restaura el path en tiempo real. whenStreamsReady reintenta hasta que el bus
+    // exista y recién ahí suscribe.
+    const cancelStreams = whenStreamsReady((conn) => {
+      try { conn.contact?.(subscribeToContact); } catch { /* noop */ }
+      try {
+        const bus = conn.core?.getEventBus?.();
+        if (bus) {
+          const events = [
+            "contact::init",
+            "contact::incoming",
+            "contact::connecting",
+            "contact::connected",
+            "contact::accepted",
+            "contact::refresh",
+            "contact::acw",
+          ];
+          events.forEach((evt) => {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              bus.subscribe(evt, (c: any) => {
+                subscribeToContact(c);
+                const info = extractContact(c);
+                // Bus events fire for a single contact — partial update.
+                if (info) observeAllContacts([info], false);
+              });
+            } catch { /* noop */ }
+          });
+        }
+      } catch { /* noop */ }
+    });
 
     // Streams polling with backoff. See the long comment in the
     // previous (single-contact) version — same logic, but now it
@@ -827,6 +833,7 @@ function useActiveContactsState(): ActiveContactsContextValue {
     }
 
     return () => {
+      cancelStreams();
       if (intervalRef.current) clearTimeout(intervalRef.current);
       subscribedContactIds.current.clear();
     };
