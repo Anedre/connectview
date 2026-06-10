@@ -25,9 +25,23 @@ el navegador, sin regresión). Claude design debe **usar** estos, no recrearlos:
   `IconButton`, `EmptyState`/`ErrorState`, `Modal`, `ConfirmDialog` + `useConfirm()`, `FormField`,
   `BrandLockup`.
 
-Pendientes de fases siguientes (lo que generará Claude design + migraciones): `DataTable`, `KpiTile`,
-`ChannelBadge`, `StatusDot`/`SeverityBadge`, `Chart` (ECharts), `Avatar`, `CallDuration`, etc., y
-**migrar** los 307 colores Tailwind crudos + 16 `confirm()` a estos primitivos.
+---
+
+## Estado de implementación — Fase 1 ✅ HECHA (2026-06-09)
+
+Cerrado el "cisma" y la a11y base (verificado: `tsc` 0 + `vite build` 0 en cada paso). Commits `6f2f9a8`→`313a97a`:
+
+- **P1 (cisma de color) — CERRADO:** 0 colores Tailwind crudos numerados en TODO `src/`. Mapeado a `--accent-*`/`-soft` (marca) y neutros `--bg/--text/--border`, colapsando las variantes `dark:` redundantes. Verificado que Tailwind v4 genera las clases `prop-[var(--token)]`.
+- **P3:** 16 `confirm()`/`alert()` nativos → `useConfirm()`/`ConfirmDialog`.
+- **P11:** marca visible unificada a **AIRA** (`<title>`, login, ~50 textos `ARIA`/`Vox`). Codename `Vox` intacto en identificadores/CSS/comentarios.
+- **P2 (a11y):** nav `<div onClick>` → `<button>` (teclado) + foco visible global (Fase 0) + `aria-current`/`role="alert"`.
+- **P8:** ~87 emoji-icono → `lucide-react`/primitivos `Icon.*`. Emoji de copy/data (EmojiPicker, mensajes, plantillas, tonos) intacto.
+- **Limpieza:** 11 archivos de código muerto borrados.
+
+Pendientes de **Fase 2** (consolidar duplicados + diseñar lo que falta): `DataTable`, `KpiTile`,
+`ChannelBadge`, `StatusDot`/`SeverityBadge`, `Chart` (ECharts), `Avatar`, `CallDuration`; **integrar**
+los primitivos ya creados (EmptyState/Modal/FormField/IconButton/BrandLockup) en las pantallas;
+`aria-live` exhaustivos en pantallas en vivo; y pulir pantalla por pantalla (doc 03).
 
 ---
 
