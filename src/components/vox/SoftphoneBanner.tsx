@@ -12,7 +12,7 @@ import * as Icon from "./primitives";
  * confirmación del vínculo Vox↔Connect (capa 2): cuando el agente se loguea
  * acá, el CCP captura su username real y —si coincide con lo que el admin le
  * asignó— queda confirmado. Las credenciales se ponen en la página de Connect;
- * ARIA nunca las ve.
+ * AIRA nunca las ve.
  *
  * Se muestra cuando: el tenant tiene Connect configurado (no onboarding) y el
  * softphone todavía no autenticó (isInitialized=false), tras una gracia inicial
@@ -74,7 +74,7 @@ export function SoftphoneBanner() {
         </div>
         <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 2, lineHeight: 1.45 }}>
           Iniciá sesión para activar tu teléfono y <b>confirmar tu agente asignado</b>.
-          Tus credenciales las ponés en la página de Connect — ARIA nunca las ve.
+          Tus credenciales las ponés en la página de Connect — AIRA nunca las ve.
         </div>
       </div>
       <button

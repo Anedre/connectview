@@ -151,7 +151,7 @@ export function BotTester({ bot, onClose }: { bot: Bot; onClose: () => void }) {
       <div className="fb-wa__head">
         <span className="fb-wa__avatar"><BotIcon size={18} /></span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="fb-wa__name">{bot.name || "Asistente ARIA"}</div>
+          <div className="fb-wa__name">{bot.name || "Asistente AIRA"}</div>
           <div className="fb-wa__presence">{loading ? "escribiendo…" : "en línea"}</div>
         </div>
         <button onClick={() => setInspect((v) => !v)} title="Inspeccionar variables y herramientas" className={`fb-wa__ibtn ${inspect ? "is-on" : ""}`}><Braces size={14} /></button>

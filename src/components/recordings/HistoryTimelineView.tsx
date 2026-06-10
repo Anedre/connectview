@@ -60,7 +60,7 @@ const ORIGIN_STYLES: { match: string[]; label: string; bg: string }[] = [
   { match: ["web", "website", "pagina", "página", "landing", "formulario", "form"], label: "Web", bg: "#0a6bb5" },
   { match: ["referral", "referido", "recomend"], label: "Referido", bg: "#d98324" },
   { match: ["phone", "llamada", "inbound", "telefon"], label: "Teléfono", bg: "#0aa5b5" },
-  { match: ["vox"], label: "Vox", bg: "#7c5cff" },
+  { match: ["vox"], label: "AIRA", bg: "#7c5cff" },
 ];
 function originBadge(src?: string): { label: string; bg: string } {
   const k = (src || "").toLowerCase();

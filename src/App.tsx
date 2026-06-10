@@ -200,7 +200,7 @@ function LoadingScreen() {
               lineHeight: 1,
             }}
           >
-            ARIA
+            AIRA
           </h1>
           <p style={{ marginTop: 8, fontSize: 13, color: "var(--text-2)" }}>
             Plataforma de contact center
@@ -305,7 +305,7 @@ function LoginScreen() {
         <div className="vox-auth__brand">
           <div className="vox-auth__brand-tile">A</div>
           <div className="vox-auth__brand-lockup">
-            <span className="vox-auth__brand-name">ARIA</span>
+            <span className="vox-auth__brand-name">AIRA</span>
             <span className="vox-auth__brand-tag">BY NOVASYS</span>
           </div>
         </div>
@@ -352,7 +352,7 @@ function LoginScreen() {
           <span className="vox-login__eyebrow">Conectar a Amazon Connect</span>
           <h2 className="vox-login__head">Casi listo para empezar</h2>
           <p className="vox-login__sub">
-            ARIA usa tu sesión de Amazon Connect para voz y chats. Te
+            AIRA usa tu sesión de Amazon Connect para voz y chats. Te
             abriremos una pestaña; este panel se conectará solo.
           </p>
 
@@ -391,7 +391,7 @@ function LoginScreen() {
           <div className="vox-login__tip">
             <span aria-hidden className="vox-login__tip-icon">i</span>
             <span className="vox-login__tip-text">
-              Mantén la pestaña de Amazon Connect abierta mientras usas ARIA —
+              Mantén la pestaña de Amazon Connect abierta mientras usas AIRA —
               la sesión se comparte automáticamente.
             </span>
           </div>
@@ -566,7 +566,7 @@ function AppContent() {
                     session — the CCP is headless so this is the only UI
                     to switch listen↔intervene and leave. */}
                 <MonitorControlBar />
-                {/* Global ARIA Copilot — floating assistant on every route. */}
+                {/* Global AIRA Copilot — floating assistant on every route. */}
                 <CopilotPanel />
               </TooltipProvider>
             </BrowserRouter>

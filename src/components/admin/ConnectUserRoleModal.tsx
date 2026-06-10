@@ -26,7 +26,7 @@ interface Props {
 /**
  * ConnectUserRoleModal — permite a un Admin cambiar los perfiles de seguridad
  * (Admin / Agent / CallCenterManager / …) de un agente de Amazon Connect SIN
- * salir de ARIA. Hace PUT a list-users, que llama UpdateUserSecurityProfiles en
+ * salir de AIRA. Hace PUT a list-users, que llama UpdateUserSecurityProfiles en
  * la instancia del tenant. Acción privilegiada: el backend re-verifica que el
  * que llama sea Admin.
  */

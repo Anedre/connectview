@@ -38,7 +38,7 @@ function originTone(src?: string): { label: string; bg: string } {
   if (k.includes("web") || k.includes("form") || k.includes("landing")) return { label: "Web", bg: "#0a6bb5" };
   if (k.includes("referido") || k.includes("referral")) return { label: "Referido", bg: "#d98324" };
   if (k.includes("phone") || k.includes("telefon") || k.includes("llamada")) return { label: "Teléfono", bg: "#0aa5b5" };
-  if (k.includes("vox")) return { label: "ARIA", bg: "#7c5cff" };
+  if (k.includes("vox")) return { label: "AIRA", bg: "#7c5cff" };
   return { label: src || "—", bg: "var(--text-3)" };
 }
 

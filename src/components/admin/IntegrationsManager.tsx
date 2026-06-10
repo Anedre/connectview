@@ -226,14 +226,14 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
       const dataPlaneVerifiedAt = new Date().toISOString();
       update({ connect: { ...draft, dataPlaneVerifiedAt } });
       setDraft((d) => ({ ...d, dataPlaneVerifiedAt }));
-      toast.success(`Las 14 tablas existen en tu cuenta. Vox ya escribe acá.`);
+      toast.success(`Las 14 tablas existen en tu cuenta. AIRA ya escribe acá.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falló la verificación del data plane");
     } finally {
       setVerifyingDp(false);
     }
   };
-  // Provisión de contact flows (#1): crea el set canónico de ARIA (Inbound /
+  // Provisión de contact flows (#1): crea el set canónico de AIRA (Inbound /
   // Outbound / Disconnect) en la instancia del tenant. Usa authedFetch porque el
   // Lambda exige JWT de admin; lee el roleArn de la config GUARDADA (server-side),
   // así que requiere conexión verificada primero.
@@ -252,7 +252,7 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "No se pudieron provisionar los flows");
       const n = Object.keys(j.flows || {}).length;
-      toast.success(`✅ ${n} contact flows de ARIA listos en tu instancia (cola: ${j.resolvedQueue?.name || "—"}).`);
+      toast.success(`✅ ${n} contact flows de AIRA listos en tu instancia (cola: ${j.resolvedQueue?.name || "—"}).`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falló la provisión de flows");
     } finally {
@@ -322,7 +322,7 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
 
         {/* Paso 2 */}
         <div>
-          <StepLabel n={2}>Permitir que ARIA embeba tu CCP</StepLabel>
+          <StepLabel n={2}>Permitir que AIRA embeba tu CCP</StepLabel>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
             En tu consola de Connect → <b>Configuración de la aplicación → Orígenes aprobados</b>, agregá este dominio:
           </div>
@@ -336,7 +336,7 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
         <div>
           <StepLabel n={3}>Dar acceso seguro (rol cross-account)</StepLabel>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-            Creá un rol IAM en TU cuenta AWS que ARIA pueda asumir (no creamos nada en tu cuenta, solo lo asumimos). Desplegá esta plantilla CloudFormation y pegá el <b>RoleArn</b> de salida.
+            Creá un rol IAM en TU cuenta AWS que AIRA pueda asumir (no creamos nada en tu cuenta, solo lo asumimos). Desplegá esta plantilla CloudFormation y pegá el <b>RoleArn</b> de salida.
           </div>
           <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
             <button className="btn btn--sm" onClick={() => copy(connectCfnTemplate(draft.externalId || "", draft.instanceArn || ""), "Plantilla CloudFormation")}>
@@ -377,10 +377,10 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
         <div>
           <StepLabel n={4}>Tus datos en tu cuenta (requerido)</StepLabel>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-            Vox <b>no guarda datos de empresas en su cuenta</b>. Tus leads, campañas, contactos,
+            AIRA <b>no guarda datos de empresas en su cuenta</b>. Tus leads, campañas, contactos,
             tipificaciones y audit viven en TU cuenta AWS. Desplegá esta plantilla: crea las 14 tablas
             DynamoDB en TU cuenta y extiende el rol existente con permisos de lectura/escritura sobre
-            ellas. <b>Es un paso necesario: sin esto, Vox no tiene dónde guardar tus datos.</b>
+            ellas. <b>Es un paso necesario: sin esto, AIRA no tiene dónde guardar tus datos.</b>
           </div>
           <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
             <button className="btn btn--sm" onClick={() => copy(dataPlaneCfnTemplate(), "Plantilla Data Plane")}>
@@ -417,7 +417,7 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
               <div style={{ fontWeight: 600, fontSize: 13 }}>Activar BYO Data Plane</div>
               <div className="muted" style={{ fontSize: 12, marginTop: 2, lineHeight: 1.5 }}>
                 Tildá esto SOLO después de haber aplicado el CFN del paso 4 en tu cuenta.
-                A partir de ese momento Vox lee/escribe en TU DynamoDB; si las tablas no existen
+                A partir de ese momento AIRA lee/escribe en TU DynamoDB; si las tablas no existen
                 las llamadas van a fallar.
               </div>
             </div>
@@ -447,7 +447,7 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
             {verifying ? "Verificando…" : <><Icon.Check size={13} /> Verificar conexión</>}
           </button>
           {c.verifiedAt && (
-            <button className="btn" onClick={onProvisionFlows} disabled={provisioning} title="Crea los contact flows de ARIA (entrante, saliente, despedida) en tu instancia de Connect.">
+            <button className="btn" onClick={onProvisionFlows} disabled={provisioning} title="Crea los contact flows de AIRA (entrante, saliente, despedida) en tu instancia de Connect.">
               {provisioning ? "Provisionando…" : "⚡ Provisionar flows"}
             </button>
           )}
@@ -573,7 +573,7 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
               </div>
             </div>
             <div>
-              <StepLabel n={2}>Autorizá a ARIA</StepLabel>
+              <StepLabel n={2}>Autorizá a AIRA</StepLabel>
               <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
                 Te lleva al login de Salesforce, das consentimiento y volvés. Guardamos el token de forma segura (Secrets Manager) — nunca en tu navegador.
               </div>
@@ -584,12 +584,12 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
           </>
         )}
 
-        {/* Webhook de entrada (SF → ARIA): token per-tenant para el header
+        {/* Webhook de entrada (SF → AIRA): token per-tenant para el header
             x-vox-token del Flow de Salesforce. Reemplaza el secret global. */}
         <div style={{ borderTop: "1px solid var(--border-1)", paddingTop: 14 }}>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Webhook de entrada (SF → ARIA)</div>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Webhook de entrada (SF → AIRA)</div>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
-            Para que tu Flow de Salesforce sincronice leads hacia ARIA, generá un
+            Para que tu Flow de Salesforce sincronice leads hacia AIRA, generá un
             token propio y pegalo en el Custom Header <code style={{ fontSize: 11.5 }}>x-vox-token</code> de
             la Named Credential del Flow. Es exclusivo de tu organización: nadie
             más puede escribir en tus datos con él.
@@ -809,7 +809,7 @@ function MessagingCard({ config, update }: { config: ConnectionsConfig; update: 
     <ConnCard
       icon={<span style={{ fontSize: 20 }}>🎨</span>}
       title="Marca y mensajes"
-      desc="Personalizá el nombre de producto que ven tus agentes (white-label) y los textos automáticos que reciben tus clientes. Vacío = valores por defecto de ARIA."
+      desc="Personalizá el nombre de producto que ven tus agentes (white-label) y los textos automáticos que reciben tus clientes. Vacío = valores por defecto de AIRA."
       tone={tone}
       statusLabel={brand.productName?.trim() || msg.chatFarewell?.trim() ? "Personalizado" : "Por defecto"}
       open={open}
@@ -820,7 +820,7 @@ function MessagingCard({ config, update }: { config: ConnectionsConfig; update: 
           <span style={labelStyle}>Nombre de producto (marca)</span>
           <input
             style={inputStyle}
-            placeholder="ARIA"
+            placeholder="AIRA"
             value={productName}
             onChange={(e) => setProductName(e.target.value)}
           />

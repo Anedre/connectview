@@ -23,7 +23,7 @@ export function FlowBuilderDemoPage() {
           flex: "0 0 auto",
         }}
       >
-        ARIA · Constructor de bots <strong style={{ color: "var(--text-2)" }}>(demo)</strong> — estado local, sin red
+        AIRA · Constructor de bots <strong style={{ color: "var(--text-2)" }}>(demo)</strong> — estado local, sin red
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <FlowBuilder

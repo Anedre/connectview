@@ -239,7 +239,7 @@ function LeadCard({
             </span>
           ) : (
             <span
-              title="Lead nativo de ARIA (no vino de Salesforce)"
+              title="Lead nativo de AIRA (no vino de Salesforce)"
               style={{
                 display: "inline-flex", alignItems: "center", gap: 4, height: 18,
                 padding: "0 8px", borderRadius: 999, fontSize: 9.5, fontWeight: 700,
@@ -247,7 +247,7 @@ function LeadCard({
                 border: "1px solid color-mix(in srgb, var(--accent-violet) 30%, transparent)",
               }}
             >
-              ARIA
+              AIRA
             </span>
           )}
           {/* Sub-origen para leads de Vox (manual / campaña / web / whatsapp). */}
@@ -514,7 +514,7 @@ const ORIGIN_STYLES: { match: string[]; label: string; bg: string }[] = [
   { match: ["web", "website", "pagina", "página", "landing", "formulario", "form"], label: "Web", bg: "#0a6bb5" },
   { match: ["referral", "referido", "recomend"], label: "Referido", bg: "#d98324" },
   { match: ["phone", "llamada", "inbound", "telefon"], label: "Teléfono", bg: "#0aa5b5" },
-  { match: ["vox"], label: "ARIA", bg: "#7c5cff" },
+  { match: ["vox"], label: "AIRA", bg: "#7c5cff" },
 ];
 function originBadge(src?: string): { label: string; bg: string } {
   const k = (src || "").toLowerCase();

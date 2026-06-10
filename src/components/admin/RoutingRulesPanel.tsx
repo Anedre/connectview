@@ -9,7 +9,7 @@ import * as Icon from "@/components/vox/primitives";
 /**
  * RoutingRulesPanel — "Configuración → Ruteo". Builder visual de reglas
  * atributo→cola: elegís un atributo del lead (ej. "programa") y mapeás cada
- * valor a una cola (1→A, 2→B, 3→C). ARIA genera el flow `ARIA-Outbound-Smart`
+ * valor a una cola (1→A, 2→B, 3→C). AIRA genera el flow `AIRA-Outbound-Smart`
  * en Connect (Compare por $.Attributes.<atributo> → cola por valor). Las
  * campañas que usen ese flow distribuyen los contactos por atributo, y el
  * panel de agentes deja asignar agentes por cola.
@@ -108,8 +108,8 @@ export function RoutingRulesPanel() {
     <div style={{ maxWidth: 760 }}>
       <div style={{ fontWeight: 800, fontSize: 19 }}>Ruteo inteligente</div>
       <div className="muted" style={{ fontSize: 12.5, marginTop: 4, marginBottom: 18, maxWidth: 600, lineHeight: 1.5 }}>
-        Mapeá un atributo del lead a colas. ARIA genera el flow{" "}
-        <span className="mono" style={{ fontWeight: 700 }}>ARIA-Outbound-Smart</span>{" "}
+        Mapeá un atributo del lead a colas. AIRA genera el flow{" "}
+        <span className="mono" style={{ fontWeight: 700 }}>AIRA-Outbound-Smart</span>{" "}
         que las campañas usan para distribuir los contactos: ej. <b>programa</b> = 1 → Cola A,
         2 → Cola B, 3 → Cola C. Los valores sin coincidencia caen a la cola por defecto.
       </div>

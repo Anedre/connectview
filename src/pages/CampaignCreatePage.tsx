@@ -156,10 +156,10 @@ export function CampaignCreatePage() {
   }, [phones, sourcePhoneNumber]);
   useEffect(() => {
     if (contactFlowId || flows.length === 0) return;
-    // Default: el saliente canónico de ARIA (provisionado en el onboarding);
+    // Default: el saliente canónico de AIRA (provisionado en el onboarding);
     // compat con el flow de routing-por-nivel del fundador; si no, el primero.
     const smart =
-      flows.find((f) => f.name === "ARIA-Outbound") ||
+      flows.find((f) => f.name === "AIRA-Outbound") ||
       flows.find((f) => f.name === "UDEP-Outbound-Smart");
     setContactFlowId((smart || flows[0]).id);
   }, [flows, contactFlowId]);
@@ -235,10 +235,10 @@ export function CampaignCreatePage() {
       const sampleAttrs = Object.keys(result.contacts[0]?.attributes ?? {});
       if (sampleAttrs.some((k) => ["nivel", "level", "udep_nivel", "tipo"].includes(k.trim().toLowerCase())) && !contactFlowId) {
         // Datos con atributo de nivel → preferimos un flow que enrute por nivel
-        // (el del fundador); si no existe, caemos al saliente canónico de ARIA.
+        // (el del fundador); si no existe, caemos al saliente canónico de AIRA.
         const smart =
           flows.find((f) => f.name === "UDEP-Outbound-Smart") ||
-          flows.find((f) => f.name === "ARIA-Outbound");
+          flows.find((f) => f.name === "AIRA-Outbound");
         if (smart) setContactFlowId(smart.id);
       }
     } catch (err) {
