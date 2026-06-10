@@ -33,6 +33,7 @@ import { MonitorDemoPage } from "@/pages/MonitorDemoPage";
 import { FlowBuilderDemoPage } from "@/pages/FlowBuilderDemoPage";
 import { WizardDemoPage } from "@/pages/WizardDemoPage";
 import { FlowBuilderPage } from "@/pages/FlowBuilderPage";
+import { AutomationsPage } from "@/pages/AutomationsPage";
 import { AgentePage } from "@/pages/AgentePage";
 import { InicioDemoPage } from "@/pages/InicioDemoPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
@@ -495,6 +496,7 @@ function AnimatedRoutes() {
             <Route path="/charts-lab" element={<ChartsLabPage />} />
             <Route path="/appointments" element={<AppointmentsPage />} />
             <Route path="/bot" element={<FlowBuilderPage />} />
+            <Route path="/automations" element={<AutomationsPage />} />
             <Route path="/agente" element={<AgentePage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/campaigns/nueva" element={<CampaignCreatePage />} />

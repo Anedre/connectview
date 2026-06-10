@@ -142,6 +142,9 @@ interface ApiEndpoints {
   // Vincula un usuario de Vox con un agente de Amazon Connect (capa 2):
   // guarda custom:connectUser. Admin asigna a otros; usuario auto-confirma.
   setConnectLink?: string;
+  // Reglas de automatización (#15): CRUD de triggers→condiciones→acciones
+  // que el automation-engine ejecuta (eventos de hooks + tick de EventBridge).
+  manageAutomations?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

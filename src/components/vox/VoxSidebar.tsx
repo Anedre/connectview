@@ -30,6 +30,7 @@ interface NavItem {
     | "Ticket"
     | "Megaphone"
     | "Workflow"
+    | "Lightning"
     | "Chart"
     | "Sparkles"
     | "Settings"
@@ -78,6 +79,13 @@ const NAV: NavEntry[] = [
     path: "/bot",
     label: "Bots",
     icon: Icon.Workflow,
+    minRole: "Admins",
+  },
+  {
+    id: "automations",
+    path: "/automations",
+    label: "Automatizaciones",
+    icon: Icon.Lightning,
     minRole: "Admins",
   },
   {
