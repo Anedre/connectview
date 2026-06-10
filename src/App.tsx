@@ -34,6 +34,7 @@ import { FlowBuilderDemoPage } from "@/pages/FlowBuilderDemoPage";
 import { WizardDemoPage } from "@/pages/WizardDemoPage";
 import { FlowBuilderPage } from "@/pages/FlowBuilderPage";
 import { AgentePage } from "@/pages/AgentePage";
+import { InicioDemoPage } from "@/pages/InicioDemoPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ChartsLabPage } from "@/pages/ChartsLabPage";
 
@@ -602,6 +603,16 @@ export default function App() {
         <div style={{ height: "100vh", overflow: "auto", background: "var(--bg-0)" }}>
           <AgentePage />
         </div>
+      </ThemeProvider>
+    );
+  }
+
+  // Auth-free preview del dashboard ejecutivo (Inicio) con datos mock — para
+  // verificar el diseño sin login (el shell real está tras Cognito+Connect).
+  if (typeof window !== "undefined" && window.location.pathname === "/inicio-demo") {
+    return (
+      <ThemeProvider>
+        <InicioDemoPage />
       </ThemeProvider>
     );
   }
