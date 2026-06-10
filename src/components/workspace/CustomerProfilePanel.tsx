@@ -526,10 +526,12 @@ export function CustomerProfilePanel({
                               height: 16,
                               fontSize: 9.5,
                               padding: "0 5px",
+                              display: "inline-flex",
+                              alignItems: "center",
                             }}
                             title="Tiene grabación"
                           >
-                            🎙️
+                            <Icon.Mic size={10} />
                           </span>
                         )}
                       </div>

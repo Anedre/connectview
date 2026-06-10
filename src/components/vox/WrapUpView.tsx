@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Phone, Mail, MessageCircle, Lightbulb } from "lucide-react";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import { useLiveTranscript } from "@/hooks/useLiveTranscript";
@@ -761,13 +762,13 @@ export function WrapUpView({
                 {selectedStage.subStages.map((sub) => {
                   const isSelected = sub.id === subStageId;
                   const followCh = followupChannelFor(sub.id);
-                  const chipIcon =
+                  const ChipIcon =
                     followCh === "voice"
-                      ? "📞"
+                      ? Phone
                       : followCh === "email"
-                      ? "📧"
+                      ? Mail
                       : followCh === "whatsapp"
-                      ? "💬"
+                      ? MessageCircle
                       : null;
                   return (
                     <label
@@ -800,13 +801,13 @@ export function WrapUpView({
                             <Icon.Sparkles size={9} /> IA
                           </span>
                         )}
-                      {chipIcon && (
+                      {ChipIcon && (
                         <span
                           className="chip chip--cyan"
                           style={{ height: 18, fontSize: 10 }}
                           title="Al enviar se abrirá el modal de Agendar follow-up"
                         >
-                          {chipIcon} agendar
+                          <ChipIcon size={10} /> agendar
                         </span>
                       )}
                     </label>
@@ -825,7 +826,8 @@ export function WrapUpView({
                     borderTop: "1px solid var(--border-1)",
                   }}
                 >
-                  💡 Al hacer{" "}
+                  <Lightbulb size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+                  Al hacer{" "}
                   <strong>Enviar resumen</strong> te abriremos el modal de
                   Agendar follow-up para que pongas la fecha/hora.
                 </div>

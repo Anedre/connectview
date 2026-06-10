@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Phone, Mail, MessageCircle, PenLine } from "lucide-react";
 import {
   useCallbacks,
   type CallbackRecord,
@@ -57,22 +58,22 @@ type Channel = "voice" | "email" | "whatsapp";
 
 const CHANNEL_META: Record<
   Channel,
-  { icon: string; label: string; color: string; bg: string }
+  { icon: React.ElementType; label: string; color: string; bg: string }
 > = {
   voice: {
-    icon: "📞",
+    icon: Phone,
     label: "Llamada",
     color: "var(--accent-cyan)",
     bg: "var(--accent-cyan-soft)",
   },
   email: {
-    icon: "📧",
+    icon: Mail,
     label: "Email",
     color: "var(--accent-amber)",
     bg: "var(--accent-amber-soft)",
   },
   whatsapp: {
-    icon: "💬",
+    icon: MessageCircle,
     label: "WhatsApp",
     color: "var(--accent-green)",
     bg: "var(--accent-green-soft)",
@@ -415,7 +416,7 @@ export function CallbackHistoryDrawer({
                 onComplete={async () => {
                   try {
                     await complete(c.callbackId);
-                    toast.success("✅ Marcado como enviado");
+                    toast.success("Marcado como enviado");
                     refetch();
                   } catch (err) {
                     toast.error(
@@ -554,7 +555,7 @@ function FollowupRow({
         }}
         title={meta.label}
       >
-        {meta.icon}
+        <meta.icon size={13} />
       </span>
       <div
         style={{
@@ -641,7 +642,13 @@ function FollowupRow({
             }}
             title={detailText}
           >
-            {ch === "email" ? "📧 " : ch === "whatsapp" ? "💬 " : "📝 "}
+            {ch === "email" ? (
+              <Mail size={11} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+            ) : ch === "whatsapp" ? (
+              <MessageCircle size={11} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+            ) : (
+              <PenLine size={11} style={{ verticalAlign: "-2px", marginRight: 4 }} />
+            )}
             {detailText}
           </div>
         )}

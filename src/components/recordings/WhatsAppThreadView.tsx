@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { Paperclip } from "lucide-react";
 import { useCustomerThread, type ThreadMessage, type ThreadSession } from "@/hooks/useCustomerThread";
 import { ThreadDatePicker } from "@/components/recordings/ThreadDatePicker";
 import * as Icon from "@/components/vox/primitives";
@@ -626,7 +627,7 @@ function AttachmentInline({
         color: "var(--text-1)",
       }}
     >
-      📎 {attachment.name || attachment.id}
+      <Paperclip size={14} style={{ flexShrink: 0 }} /> {attachment.name || attachment.id}
       {attachment.sizeBytes && (
         <span className="muted" style={{ fontSize: 10.5 }}>
           · {Math.round(attachment.sizeBytes / 1024)} KB

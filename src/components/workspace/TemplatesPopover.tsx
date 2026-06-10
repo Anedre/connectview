@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { Popover } from "@base-ui/react/popover";
 import {
   CHAT_TEMPLATES,
@@ -45,7 +46,7 @@ export function TemplatesPopover({ ctx, onPick, disabled }: Props) {
             aria-label="Plantillas"
             style={{ fontSize: 14 }}
           >
-            📝
+            <Icon.Note size={15} />
           </button>
         )}
       />
@@ -170,7 +171,7 @@ export function TemplatesPopover({ ctx, onPick, disabled }: Props) {
                           }}
                           title={`Variables sin contexto: ${missingVars.join(", ")}`}
                         >
-                          ⚠ {missingVars.length} var
+                          <AlertTriangle size={10} style={{ verticalAlign: "-1px" }} /> {missingVars.length} var
                         </span>
                       )}
                     </div>

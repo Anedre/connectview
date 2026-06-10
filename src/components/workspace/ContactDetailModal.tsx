@@ -14,6 +14,19 @@ import {
 import { VALORACION_META } from "@/lib/dispositions";
 import { sanitizeText } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
+import {
+  Phone,
+  MessageCircle,
+  Mail,
+  ClipboardList,
+  FileText,
+  Paperclip,
+  PenLine,
+  Sparkles,
+  BarChart3,
+  Check,
+  type LucideIcon,
+} from "lucide-react";
 
 interface ContactDetailModalProps {
   open: boolean;
@@ -35,20 +48,23 @@ function fmtFileSize(bytes: number | undefined): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function channelMeta(channel: string, subChannel?: string) {
+function channelMeta(
+  channel: string,
+  subChannel?: string
+): { icon: LucideIcon; label: string; color: string } {
   const k = (channel || "").toUpperCase();
   const isWA = (subChannel || "").toLowerCase().includes("messaging");
   if (k === "VOICE")
-    return { icon: "📞", label: "Llamada", color: "var(--accent-green)" };
+    return { icon: Phone, label: "Llamada", color: "var(--accent-green)" };
   if (k === "CHAT")
     return isWA
-      ? { icon: "💚", label: "WhatsApp", color: "var(--accent-green)" }
-      : { icon: "💬", label: "Chat", color: "var(--accent-cyan)" };
+      ? { icon: MessageCircle, label: "WhatsApp", color: "var(--accent-green)" }
+      : { icon: MessageCircle, label: "Chat", color: "var(--accent-cyan)" };
   if (k === "EMAIL")
-    return { icon: "📧", label: "Email", color: "var(--accent-amber)" };
+    return { icon: Mail, label: "Email", color: "var(--accent-amber)" };
   if (k === "TASK")
-    return { icon: "📋", label: "Tarea", color: "var(--accent-violet)" };
-  return { icon: "📄", label: channel, color: "var(--text-2)" };
+    return { icon: ClipboardList, label: "Tarea", color: "var(--accent-violet)" };
+  return { icon: FileText, label: channel, color: "var(--text-2)" };
 }
 
 /**
@@ -164,7 +180,7 @@ export function ContactDetailModal({
             gap: 12,
           }}
         >
-          <span style={{ fontSize: 22 }}>{meta.icon}</span>
+          <meta.icon size={22} style={{ color: meta.color }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-1)" }}>
               {meta.label} · {detail?.customerEndpoint || "—"}
@@ -402,7 +418,7 @@ function WrapUpCard({ wrapUp }: { wrapUp: ContactWrapUp }) {
           flexWrap: "wrap",
         }}
       >
-        <span style={{ fontSize: 14 }}>📝</span>
+        <PenLine size={14} />
         <span
           style={{
             fontSize: 10.5,
@@ -528,13 +544,15 @@ function WrapUpCard({ wrapUp }: { wrapUp: ContactWrapUp }) {
                   : k
               }
             >
-              {k === "task24h"
-                ? "✓ Tarea 24h"
-                : k === "emailConfirm"
-                ? "✉ Email confirmación"
-                : k === "nps"
-                ? "📊 NPS"
-                : k}
+              {k === "task24h" ? (
+                <><Check size={12} /> Tarea 24h</>
+              ) : k === "emailConfirm" ? (
+                <><Mail size={12} /> Email confirmación</>
+              ) : k === "nps" ? (
+                <><BarChart3 size={12} /> NPS</>
+              ) : (
+                k
+              )}
             </span>
           ))}
         </div>
@@ -740,7 +758,7 @@ function SummaryCard({
           marginBottom: 6,
         }}
       >
-        <span style={{ fontSize: 14 }}>✨</span>
+        <Sparkles size={14} />
         <span
           style={{
             fontSize: 10.5,
@@ -1114,7 +1132,7 @@ function AttachmentsList({
               opacity: a.url ? 1 : 0.5,
             }}
           >
-            <span style={{ fontSize: 18 }}>📎</span>
+            <Paperclip size={18} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{

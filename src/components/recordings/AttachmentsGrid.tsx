@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { Image, Film, Music, FileText, ClipboardList, Paperclip } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import * as Icon from "@/components/vox/primitives";
 
@@ -39,13 +40,33 @@ type KindFilter = "all" | CustomerAttachment["kind"];
 
 const KIND_LABELS: Record<KindFilter, string> = {
   all: "Todos",
-  image: "🖼 Imágenes",
-  video: "🎬 Videos",
-  audio: "🎵 Audios",
-  pdf: "📄 PDFs",
-  document: "📋 Documentos",
-  other: "📎 Otros",
+  image: "Imágenes",
+  video: "Videos",
+  audio: "Audios",
+  pdf: "PDFs",
+  document: "Documentos",
+  other: "Otros",
 };
+
+/** Icon for a media kind, used in the filter pills. `all` has no icon. */
+function kindIcon(kind: KindFilter): React.ReactNode {
+  switch (kind) {
+    case "image":
+      return <Image size={12} />;
+    case "video":
+      return <Film size={12} />;
+    case "audio":
+      return <Music size={12} />;
+    case "pdf":
+      return <FileText size={12} />;
+    case "document":
+      return <ClipboardList size={12} />;
+    case "other":
+      return <Paperclip size={12} />;
+    default:
+      return null;
+  }
+}
 
 const KIND_ORDER: KindFilter[] = [
   "all",
@@ -64,13 +85,24 @@ function humanSize(b: number | undefined): string {
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function fileIcon(kind: CustomerAttachment["kind"]): string {
-  return (
-    { image: "🖼", video: "🎬", audio: "🎵", pdf: "📄", document: "📋", other: "📎" } as Record<
-      CustomerAttachment["kind"],
-      string
-    >
-  )[kind];
+/** Large file-type icon shown in the tile preview area when there's no
+ *  image thumbnail to render. */
+function fileIcon(kind: CustomerAttachment["kind"]): React.ReactNode {
+  const size = 34;
+  switch (kind) {
+    case "image":
+      return <Image size={size} />;
+    case "video":
+      return <Film size={size} />;
+    case "audio":
+      return <Music size={size} />;
+    case "pdf":
+      return <FileText size={size} />;
+    case "document":
+      return <ClipboardList size={size} />;
+    default:
+      return <Paperclip size={size} />;
+  }
 }
 
 export function AttachmentsGrid({ phone }: Props) {
@@ -207,6 +239,9 @@ export function AttachmentsGrid({ phone }: Props) {
               onClick={() => setFilter(k)}
               className="btn btn--sm"
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
                 background:
                   filter === k ? "var(--text-1)" : "var(--bg-2)",
                 color:
@@ -216,6 +251,7 @@ export function AttachmentsGrid({ phone }: Props) {
                 padding: "3px 8px",
               }}
             >
+              {kindIcon(k)}
               {KIND_LABELS[k]} · {counts[k]}
             </button>
           ))}

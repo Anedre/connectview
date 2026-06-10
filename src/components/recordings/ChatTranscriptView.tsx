@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Image as ImageIcon, Paperclip } from "lucide-react";
 import * as Icon from "@/components/vox/primitives";
 import { sanitizeText } from "@/lib/utils";
 
@@ -200,10 +201,10 @@ function AttachmentBubble({
         )}
         <div
           className="muted"
-          style={{ fontSize: 10.5, marginTop: 4 }}
+          style={{ fontSize: 10.5, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}
           title={name}
         >
-          🖼️ {name} {sizeLabel && `· ${sizeLabel}`}
+          <ImageIcon size={12} style={{ flexShrink: 0 }} /> {name} {sizeLabel && `· ${sizeLabel}`}
         </div>
       </div>
     );
@@ -315,7 +316,7 @@ function AttachmentBubble({
         minWidth: 200,
       }}
     >
-      <span style={{ fontSize: 18 }}>📎</span>
+      <Paperclip size={18} style={{ flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{

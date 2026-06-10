@@ -1,5 +1,6 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { Info, AlertTriangle, Check, X, CheckSquare, PenLine } from "lucide-react";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
@@ -611,8 +612,8 @@ function ChecklistBlock({
         className="row"
         style={{ justifyContent: "space-between", marginBottom: 6 }}
       >
-        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-1)" }}>
-          ☑ {block.title || "Checklist"}
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-1)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <CheckSquare size={12} /> {block.title || "Checklist"}
         </span>
         <span className="muted" style={{ fontSize: 11 }}>
           {doneCount}/{block.items.length}
@@ -654,31 +655,31 @@ function ChecklistBlock({
 
 const TONE_COLOR: Record<
   Extract<CoachBlock, { type: "callout" }>["tone"],
-  { bg: string; fg: string; border: string; icon: string }
+  { bg: string; fg: string; border: string; icon: ReactNode }
 > = {
   info: {
     bg: "rgba(99,102,241,0.10)",
     fg: "var(--accent-violet)",
     border: "rgba(99,102,241,0.30)",
-    icon: "ℹ",
+    icon: <Info size={14} />,
   },
   warn: {
     bg: "rgba(245,158,11,0.12)",
     fg: "var(--accent-amber)",
     border: "rgba(245,158,11,0.35)",
-    icon: "⚠",
+    icon: <AlertTriangle size={14} />,
   },
   success: {
     bg: "rgba(16,185,129,0.12)",
     fg: "var(--accent-green)",
     border: "rgba(16,185,129,0.35)",
-    icon: "✓",
+    icon: <Check size={14} />,
   },
   error: {
     bg: "rgba(239,68,68,0.12)",
     fg: "var(--accent-red)",
     border: "rgba(239,68,68,0.35)",
-    icon: "✗",
+    icon: <X size={14} />,
   },
 };
 
@@ -700,7 +701,7 @@ function CalloutBlock({
         alignItems: "flex-start",
       }}
     >
-      <span style={{ color: c.fg, fontWeight: 700, fontSize: 14 }}>{c.icon}</span>
+      <span style={{ color: c.fg, display: "inline-flex", alignItems: "center", flexShrink: 0, marginTop: 1 }}>{c.icon}</span>
       <span style={{ fontSize: 12.5, color: c.fg, fontWeight: 500 }}>
         {block.text}
       </span>
@@ -822,7 +823,7 @@ function FormBlock({
           className="row"
           style={{ gap: 6, fontSize: 12.5, color: "var(--accent-green)", fontWeight: 500 }}
         >
-          ✓ {block.title} guardado en notas
+          <Check size={13} style={{ flexShrink: 0 }} /> {block.title} guardado en notas
         </div>
       </div>
     );
@@ -836,9 +837,12 @@ function FormBlock({
           fontWeight: 600,
           color: "var(--text-1)",
           marginBottom: 6,
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
         }}
       >
-        📝 {block.title}
+        <PenLine size={12} /> {block.title}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {block.fields.map((f) => (

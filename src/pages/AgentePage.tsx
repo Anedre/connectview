@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { MessageCircle, Wrench, Check } from "lucide-react";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import * as Icon from "@/components/vox/primitives";
@@ -244,7 +245,7 @@ export function AgentePage() {
                   <span className="bot-card__chip"><Icon.Globe size={12} /> {b.trigger || "WhatsApp"}</span>
                   {b.agentMeta?.model && <span className="bot-card__chip"><Icon.Sparkles size={12} /> {shortModel(b.agentMeta.model)}</span>}
                   {!!b.agentMeta?.toolsCount && <span className="bot-card__chip"><Icon.Tag size={12} /> {b.agentMeta.toolsCount} {b.agentMeta.toolsCount === 1 ? "herramienta" : "herramientas"}</span>}
-                  {cv && cv.total > 0 && <span className="bot-card__chip" title="Conversaciones · % resueltas">💬 {cv.total} · {Math.round((cv.resolved / cv.total) * 100)}%</span>}
+                  {cv && cv.total > 0 && <span className="bot-card__chip" title="Conversaciones · % resueltas"><MessageCircle size={12} /> {cv.total} · {Math.round((cv.resolved / cv.total) * 100)}%</span>}
                 </div>
                 {(() => {
                   const r = readiness(b.agentMeta);
@@ -282,7 +283,7 @@ export function AgentePage() {
                     <span className="ag-conv__badge" style={{ background: m.soft, color: m.color }}>{m.label}</span>
                     <span className="ag-conv__name">{c.agentName || "Agente"}</span>
                     <span className="ag-conv__txt">{c.lastUserText || "—"}</span>
-                    {c.toolsUsed?.length > 0 && <span className="ag-conv__tools" title={c.toolsUsed.join(", ")}>🔧 {c.toolsUsed.length}</span>}
+                    {c.toolsUsed?.length > 0 && <span className="ag-conv__tools" title={c.toolsUsed.join(", ")}><Wrench size={12} /> {c.toolsUsed.length}</span>}
                     <span className="ag-conv__meta">{c.turns} turnos{c.source === "playground" ? " · prueba" : ""}</span>
                     <span className="ag-conv__when">{c.createdAt ? new Date(c.createdAt).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</span>
                   </div>
@@ -387,7 +388,7 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
                   <button key={t.key} className={`ag-tool ${on ? "ag-tool--on" : ""}`} onClick={() => toggleTool(t.key)}>
                     <span className="ag-tool__icon" style={{ background: on ? t.accent : "var(--bg-3)", color: on ? "#fff" : "var(--text-3)" }}><Icn size={15} /></span>
                     <span className="ag-tool__meta"><span className="ag-tool__label">{t.label}</span><span className="ag-tool__desc">{t.desc}</span></span>
-                    <span className={`ag-tool__check ${on ? "ag-tool__check--on" : ""}`}>{on ? "✓" : ""}</span>
+                    <span className={`ag-tool__check ${on ? "ag-tool__check--on" : ""}`}>{on ? <Check size={13} /> : ""}</span>
                   </button>
                 );
               })}

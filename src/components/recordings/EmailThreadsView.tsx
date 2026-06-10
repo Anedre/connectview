@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
+import { Mail, Paperclip } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { useContactDetail } from "@/hooks/useContactDetail";
 import * as Icon from "@/components/vox/primitives";
@@ -299,15 +300,15 @@ function EmailThreadCard({
       >
         <div
           style={{
-            fontSize: 16,
             width: 24,
             height: 24,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            color: "var(--accent-amber)",
           }}
         >
-          📧
+          <Mail size={16} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
@@ -475,7 +476,7 @@ function EmailMessageRow({ row }: { row: EmailRow }) {
                 color: "var(--text-1)",
               }}
             >
-              📎 {a.fileName || a.fileId}
+              <Paperclip size={12} style={{ flexShrink: 0 }} /> {a.fileName || a.fileId}
             </a>
           ))}
         </div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
@@ -264,10 +265,10 @@ function LeadCard({
         </div>
         {age.label && (
           <span
-            style={{ fontSize: 10, fontWeight: 600, color: age.stale ? "var(--accent-red)" : "var(--text-3)" }}
+            style={{ fontSize: 10, fontWeight: 600, color: age.stale ? "var(--accent-red)" : "var(--text-3)", display: "inline-flex", alignItems: "center", gap: 3 }}
             title={age.stale ? "Lead estancado (>7 días sin cambios)" : "Última actualización"}
           >
-            {age.stale ? "⚠ " : ""}{age.label}
+            {age.stale && <AlertTriangle size={10} style={{ flexShrink: 0 }} />}{age.label}
           </span>
         )}
       </div>
@@ -1939,7 +1940,7 @@ function LeadFilterBar(props: LeadFilterBarProps) {
         onClick={() => setStaleOnly(!staleOnly)}
         title="Sólo leads con más de 7 días sin cambios"
       >
-        ⚠ Estancados
+        <AlertTriangle size={12} /> Estancados
       </button>
 
       {/* Clear-all */}

@@ -1,5 +1,6 @@
 import { useState, type ReactNode, type CSSProperties } from "react";
 import { toast } from "sonner";
+import { AlertTriangle, CheckCircle2, Send, Lock, Palette } from "lucide-react";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
 import { getApiEndpoints } from "@/lib/api";
@@ -252,7 +253,7 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "No se pudieron provisionar los flows");
       const n = Object.keys(j.flows || {}).length;
-      toast.success(`✅ ${n} contact flows de AIRA listos en tu instancia (cola: ${j.resolvedQueue?.name || "—"}).`);
+      toast.success(`${n} contact flows de AIRA listos en tu instancia (cola: ${j.resolvedQueue?.name || "—"}).`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falló la provisión de flows");
     } finally {
@@ -448,7 +449,7 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
           </button>
           {c.verifiedAt && (
             <button className="btn" onClick={onProvisionFlows} disabled={provisioning} title="Crea los contact flows de AIRA (entrante, saliente, despedida) en tu instancia de Connect.">
-              {provisioning ? "Provisionando…" : "⚡ Provisionar flows"}
+              {provisioning ? "Provisionando…" : <><Icon.Lightning size={13} /> Provisionar flows</>}
             </button>
           )}
           {c.verifiedAt && <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>Verificada {new Date(c.verifiedAt).toLocaleString("es-PE")}</span>}
@@ -614,8 +615,8 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
                 <code style={{ flex: 1, padding: "7px 10px", background: "var(--bg-2)", borderRadius: 6, fontSize: 12, border: "1px solid var(--border-1)", overflow: "auto", whiteSpace: "nowrap" }}>{inboundToken}</code>
                 <button className="btn btn--sm" onClick={() => copy(inboundToken, "Token")}><Icon.Copy size={12} /> Copiar</button>
               </div>
-              <div className="muted" style={{ fontSize: 11, marginTop: 6, color: "var(--accent-amber)" }}>
-                ⚠️ Copialo ahora: por seguridad no se vuelve a mostrar. Si lo perdés, rotá uno nuevo.
+              <div className="muted" style={{ fontSize: 11, marginTop: 6, color: "var(--accent-amber)", display: "flex", alignItems: "center", gap: 5 }}>
+                <AlertTriangle size={12} style={{ flexShrink: 0 }} /> Copialo ahora: por seguridad no se vuelve a mostrar. Si lo perdés, rotá uno nuevo.
               </div>
             </div>
           )}
@@ -710,13 +711,13 @@ function WhatsAppCard({
         {/* La observación: la diferencia entre los dos tipos de número */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)", background: "color-mix(in srgb, var(--accent-green) 8%, transparent)" }}>
-            <div style={{ fontWeight: 700, fontSize: 12.5 }}>✅ Número de Connect (AWS)</div>
+            <div style={{ fontWeight: 700, fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}><CheckCircle2 size={14} style={{ flexShrink: 0, color: "var(--accent-green)" }} /> Número de Connect (AWS)</div>
             <div className="muted" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.5 }}>
               Lo atiende un <b>agente</b> en el desktop: entra como contacto, con colas, routing y Contact Lens. Entrante + saliente. Sin token.
             </div>
           </div>
           <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-1)", background: "var(--bg-2)" }}>
-            <div style={{ fontWeight: 700, fontSize: 12.5 }}>📤 Número de Meta aparte</div>
+            <div style={{ fontWeight: 700, fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}><Send size={13} style={{ flexShrink: 0 }} /> Número de Meta aparte</div>
             <div className="muted" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.5 }}>
               Envía <b>plantillas</b> (campañas) por Cloud API de Meta. Bots entrantes por webhook <i>(en construcción)</i>. <b>No</b> tiene agente en vivo de Connect.
             </div>
@@ -772,8 +773,8 @@ function WhatsAppCard({
             <label>
               <span style={labelStyle}>Token de acceso {wa.tokenSet ? "(ya guardado — dejá vacío para mantenerlo)" : ""}</span>
               <input style={inputStyle} type="password" autoComplete="new-password" name="wa-access-token" placeholder={wa.tokenSet ? "••••••••••••" : "Token permanente de Meta"} value={token} onChange={(e) => setToken(e.target.value)} />
-              <span className="muted" style={{ fontSize: 10.5, marginTop: 3, display: "block" }}>
-                🔒 El token se guarda cifrado en el backend (Secrets Manager), nunca en tu navegador.
+              <span className="muted" style={{ fontSize: 10.5, marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}>
+                <Lock size={11} style={{ flexShrink: 0 }} /> El token se guarda cifrado en el backend (Secrets Manager), nunca en tu navegador.
               </span>
             </label>
             <div className="row"><button className="btn btn--primary btn--sm" onClick={onSaveMeta}>Guardar</button></div>
@@ -807,7 +808,7 @@ function MessagingCard({ config, update }: { config: ConnectionsConfig; update: 
   };
   return (
     <ConnCard
-      icon={<span style={{ fontSize: 20 }}>🎨</span>}
+      icon={<Palette size={20} />}
       title="Marca y mensajes"
       desc="Personalizá el nombre de producto que ven tus agentes (white-label) y los textos automáticos que reciben tus clientes. Vacío = valores por defecto de AIRA."
       tone={tone}

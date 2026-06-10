@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Clock, AlertTriangle, Paperclip, Loader2 } from "lucide-react";
 import { useChatSession, type ChatMessage } from "@/hooks/useChatSession";
 import * as Icon from "@/components/vox/primitives";
 import { useDebugRender } from "@/lib/debugTrace";
@@ -244,9 +245,9 @@ export function ChatThreadPanel({
               onClick={() => setHistoryOpen(true)}
               className="btn btn--ghost btn--sm"
               title="Ver chats anteriores con este cliente"
-              style={{ fontSize: 11.5 }}
+              style={{ fontSize: 11.5, display: "inline-flex", alignItems: "center", gap: 4 }}
             >
-              🕒 Historial
+              <Clock size={13} /> Historial
             </button>
           )}
           <span
@@ -328,7 +329,7 @@ export function ChatThreadPanel({
             gap: 8,
           }}
         >
-          ⚠ {attachError}
+          <AlertTriangle size={14} style={{ flexShrink: 0 }} /> {attachError}
           <button
             onClick={() => setAttachError(null)}
             className="btn btn--ghost btn--sm btn--icon"
@@ -399,7 +400,7 @@ export function ChatThreadPanel({
             aria-label="Adjuntar archivo"
             style={{ fontSize: 14 }}
           >
-            {attaching ? "⏳" : "📎"}
+            {attaching ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
           </button>
           <input
             ref={fileInputRef}

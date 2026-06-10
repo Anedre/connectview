@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2, Rocket,
-  Users, Search, ArrowLeft, Phone, MessageSquare,
+  Users, Search, ArrowLeft, Phone, MessageSquare, User, Bot, Zap, Check,
+  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useContactFlows, useSourcePhones } from "@/hooks/useContactFlows";
@@ -49,11 +50,11 @@ interface WaTemplate {
   bodyText?: string; variableCount?: number; headerText?: string; footerText?: string; buttons?: WaTemplateButton[];
 }
 
-const DIAL_MODES = [
-  { value: "progressive", label: "Automático — 1 a la vez", short: "Marca un contacto, espera a que termine, marca el siguiente.", icon: "📞" },
-  { value: "power", label: "Automático — 2 a la vez", short: "Marca 2 por agente libre, prioriza el primero que conteste.", icon: "⚡" },
-  { value: "manual", label: "Manual — el agente decide", short: "Los leads aparecen en lista; el agente elige cuándo marcar.", icon: "👤" },
-  { value: "agentless", label: "Sin agente (IVR / encuesta)", short: "Marca sin agente; atiende un flujo automático.", icon: "🤖" },
+const DIAL_MODES: Array<{ value: string; label: string; short: string; icon: LucideIcon }> = [
+  { value: "progressive", label: "Automático — 1 a la vez", short: "Marca un contacto, espera a que termine, marca el siguiente.", icon: Phone },
+  { value: "power", label: "Automático — 2 a la vez", short: "Marca 2 por agente libre, prioriza el primero que conteste.", icon: Zap },
+  { value: "manual", label: "Manual — el agente decide", short: "Los leads aparecen en lista; el agente elige cuándo marcar.", icon: User },
+  { value: "agentless", label: "Sin agente (IVR / encuesta)", short: "Marca sin agente; atiende un flujo automático.", icon: Bot },
 ];
 const TIMEZONES = [
   { value: "America/Lima", label: "Perú (Lima) — UTC-5" },
@@ -565,7 +566,7 @@ export function CampaignCreatePage() {
                 {flowQueuesLoading ? <p className="muted" style={{ fontSize: 11.5 }}>Detectando colas…</p>
                   : flowQueues && flowQueues.literalQueues.length > 0 ? (
                     <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-                      {flowQueues.literalQueues.map((q) => <span key={q.queueId} className="chip chip--green" style={{ height: 22 }}>✓ {q.queueName}</span>)}
+                      {flowQueues.literalQueues.map((q) => <span key={q.queueId} className="chip chip--green" style={{ height: 22, display: "inline-flex", alignItems: "center", gap: 4 }}><Check size={13} /> {q.queueName}</span>)}
                     </div>
                   ) : <p className="muted" style={{ fontSize: 11.5 }}>El flow define las colas (enrutamiento por atributos).</p>}
               </div>
@@ -573,15 +574,18 @@ export function CampaignCreatePage() {
               <div className="camp-field">
                 <label className="camp-lbl">¿Cómo se marcan los leads?</label>
                 <div className="camp-modes">
-                  {DIAL_MODES.map((m) => (
+                  {DIAL_MODES.map((m) => {
+                    const ModeIcon = m.icon;
+                    return (
                     <button key={m.value} className={`camp-mode ${dialMode === m.value ? "camp-mode--active" : ""}`} onClick={() => setDialMode(m.value)}>
-                      <span style={{ fontSize: 17 }}>{m.icon}</span>
+                      <span style={{ display: "grid", placeItems: "center" }}><ModeIcon size={17} /></span>
                       <span style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ display: "block", fontSize: 12.5, fontWeight: 600 }}>{m.label}</span>
                         <span className="muted" style={{ fontSize: 10.5, display: "block", lineHeight: 1.35 }}>{m.short}</span>
                       </span>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

@@ -303,7 +303,7 @@ function CallCard({
             fontSize: 16,
           }}
         >
-          📞
+          <Icon.Phone size={16} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
@@ -337,8 +337,8 @@ function CallCard({
               flexWrap: "wrap",
             }}
           >
-            <span className="chip" style={{ fontSize: 10.5 }}>
-              ⏱ {formatDurationSec(row.duration)}
+            <span className="chip" style={{ fontSize: 10.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <Icon.Clock size={11} /> {formatDurationSec(row.duration)}
             </span>
             {row.disconnectReason && (
               <span className="muted" style={{ fontSize: 10.5 }}>

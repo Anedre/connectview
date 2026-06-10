@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Search, Check, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useContactFlows, useSourcePhones } from "@/hooks/useContactFlows";
 import { useQueues } from "@/hooks/useQueues";
@@ -247,36 +247,43 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
             </Select>
             {/* Auto-detection hint */}
             {flowQueuesLoading && (
-              <p className="text-xs text-muted-foreground">
-                🔍 Analizando queues del flow...
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Search size={13} className="shrink-0" /> Analizando queues del flow...
               </p>
             )}
             {flowQueues?.primaryQueue && !flowQueues.primaryQueue.isDynamic && (
-              <p className="text-xs text-[var(--accent-green)]">
-                ✓ Detectada automáticamente del flow:{" "}
-                <strong>{flowQueues.primaryQueue.queueName}</strong>
-                {flowQueues.literalQueues.length > 1 && (
-                  <span className="block text-[var(--accent-amber)]">
-                    El flow referencia {flowQueues.literalQueues.length}{" "}
-                    queues. Elegimos la principal — puedes cambiarla.
-                  </span>
-                )}
+              <p className="flex items-start gap-1.5 text-xs text-[var(--accent-green)]">
+                <Check size={13} className="mt-0.5 shrink-0" />
+                <span>
+                  Detectada automáticamente del flow:{" "}
+                  <strong>{flowQueues.primaryQueue.queueName}</strong>
+                  {flowQueues.literalQueues.length > 1 && (
+                    <span className="block text-[var(--accent-amber)]">
+                      El flow referencia {flowQueues.literalQueues.length}{" "}
+                      queues. Elegimos la principal — puedes cambiarla.
+                    </span>
+                  )}
+                </span>
               </p>
             )}
             {flowQueues &&
               flowQueues.literalQueues.length === 0 &&
               flowQueues.dynamicQueues.length > 0 && (
-                <p className="text-xs text-[var(--accent-amber)]">
-                  ⚠️ El flow usa queue dinámica (desde atributos) — elige
-                  manualmente la que quieras usar.
+                <p className="flex items-start gap-1.5 text-xs text-[var(--accent-amber)]">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  <span>
+                    El flow usa queue dinámica (desde atributos) — elige
+                    manualmente la que quieras usar.
+                  </span>
                 </p>
               )}
             {flowQueues &&
               flowQueues.literalQueues.length === 0 &&
               flowQueues.dynamicQueues.length === 0 &&
               contactFlowId && (
-                <p className="text-xs text-[var(--accent-amber)]">
-                  ⚠️ No se detectó ninguna queue en el flow. Elige manualmente.
+                <p className="flex items-start gap-1.5 text-xs text-[var(--accent-amber)]">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  <span>No se detectó ninguna queue en el flow. Elige manualmente.</span>
                 </p>
               )}
             <p className="text-xs text-muted-foreground">

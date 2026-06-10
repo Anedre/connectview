@@ -48,37 +48,32 @@ const STAGE_ICON: Record<PipelineStageId, React.ElementType> = {
 
 const STAGE_COLOR: Record<
   PipelineStageId,
-  { ring: string; dot: string; chip: string; emoji: string }
+  { ring: string; dot: string; chip: string }
 > = {
   ARRIVED: {
     ring: "ring-[var(--accent-amber-soft)] hover:ring-[var(--accent-amber)]",
     dot: "bg-[var(--accent-amber)]",
     chip: "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)]",
-    emoji: "📞",
   },
   IN_IVR: {
     ring: "ring-[var(--accent-violet-soft)] hover:ring-[var(--accent-violet)]",
     dot: "bg-[var(--accent-violet)]",
     chip: "bg-[var(--accent-violet-soft)] text-[var(--accent-violet)]",
-    emoji: "🤖",
   },
   IN_QUEUE: {
     ring: "ring-[var(--accent-cyan-soft)] hover:ring-[var(--accent-cyan)]",
     dot: "bg-[var(--accent-cyan)]",
     chip: "bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)]",
-    emoji: "⏳",
   },
   WITH_AGENT: {
     ring: "ring-[var(--accent-green-soft)] hover:ring-[var(--accent-green)]",
     dot: "bg-[var(--accent-green)]",
     chip: "bg-[var(--accent-green-soft)] text-[var(--accent-green)]",
-    emoji: "👤",
   },
   FINISHED: {
     ring: "ring-[var(--border-2)]",
     dot: "bg-[var(--text-3)]",
     chip: "bg-[var(--bg-2)] text-[var(--text-2)]",
-    emoji: "✔",
   },
 };
 
@@ -192,7 +187,7 @@ export function Stage({
       <div className="relative flex-1 overflow-y-auto rounded-lg bg-muted/30 p-2">
         {stage.contacts.length === 0 ? (
           <div className="flex h-full min-h-[160px] flex-col items-center justify-center text-[11px] text-muted-foreground/70">
-            <span className="text-3xl opacity-30">{palette.emoji}</span>
+            <Icon className="h-8 w-8 opacity-30" />
             <span className="mt-1 italic">vacío</span>
           </div>
         ) : (

@@ -1,3 +1,4 @@
+import { Circle, Phone } from "lucide-react";
 import type { CampaignAgentLive, CampaignQueueLive } from "@/hooks/useCampaignStats";
 import * as Icon from "@/components/vox/primitives";
 
@@ -148,12 +149,12 @@ export function CampaignMonitoringPanel({
                   </div>
                   <div style={{ flex: "0 0 auto", textAlign: "right" }}>
                     {onCall ? (
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-green)" }}>
-                        🟢 En llamada{liveName ? ` · ${liveName}` : ""}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: "var(--accent-green)" }}>
+                        <Circle size={9} fill="currentColor" /> En llamada{liveName ? ` · ${liveName}` : ""}
                       </span>
                     ) : dialing ? (
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-amber)" }}>
-                        📞 Marcando{liveName ? ` · ${liveName}` : ""}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: "var(--accent-amber)" }}>
+                        <Phone size={12} /> Marcando{liveName ? ` · ${liveName}` : ""}
                       </span>
                     ) : (
                       <span className="muted" style={{ fontSize: 12 }}>Libre</span>

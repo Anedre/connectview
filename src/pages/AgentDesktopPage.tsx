@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { MessageCircle, Mail, ClipboardList, Phone } from "lucide-react";
 import { useCCP } from "@/hooks/useCCP";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { roleLabelOf } from "@/types/auth";
@@ -714,13 +715,15 @@ export function AgentDesktopPage() {
                   borderColor: "transparent",
                 }}
               >
-                {isChat
-                  ? "💬 Chat"
-                  : isEmail
-                  ? "📧 Email"
-                  : isTask
-                  ? "📋 Tarea"
-                  : "📞 Voz"}
+                {isChat ? (
+                  <><MessageCircle size={13} /> Chat</>
+                ) : isEmail ? (
+                  <><Mail size={13} /> Email</>
+                ) : isTask ? (
+                  <><ClipboardList size={13} /> Tarea</>
+                ) : (
+                  <><Phone size={13} /> Voz</>
+                )}
               </span>
               {isActive && !isChat && !isEmail && !isTask && (
                 <span

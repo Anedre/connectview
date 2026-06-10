@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Phone, Mail, MessageCircle } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import * as Icon from "@/components/vox/primitives";
@@ -53,7 +54,7 @@ function presetLabel(min: number) {
 const CHANNELS: {
   id: Channel;
   label: string;
-  icon: string;
+  icon: React.ElementType;
   help: string;
   /** CSS color token used to tint the active card and submit button */
   color: string;
@@ -62,7 +63,7 @@ const CHANNELS: {
   {
     id: "voice",
     label: "Llamada",
-    icon: "📞",
+    icon: Phone,
     help: "El sistema te llamará automáticamente al cliente y a ti",
     color: "var(--accent-green)",
     colorSoft: "var(--accent-green-soft)",
@@ -70,7 +71,7 @@ const CHANNELS: {
   {
     id: "email",
     label: "Email",
-    icon: "📧",
+    icon: Mail,
     help: "Te recordamos enviar el correo a la hora pactada",
     color: "var(--accent-amber)",
     colorSoft: "var(--accent-amber-soft)",
@@ -78,7 +79,7 @@ const CHANNELS: {
   {
     id: "whatsapp",
     label: "WhatsApp",
-    icon: "💬",
+    icon: MessageCircle,
     help: "Te recordamos enviar el template a la hora pactada",
     color: "var(--accent-cyan)",
     colorSoft: "var(--accent-cyan-soft)",
@@ -306,7 +307,7 @@ export function ScheduleFollowupModal({
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       toast.success(
-        `${channelMeta.icon} Follow-up agendado · ${new Date(ts).toLocaleString("es-PE", {
+        `Follow-up agendado · ${new Date(ts).toLocaleString("es-PE", {
           dateStyle: "short",
           timeStyle: "short",
         })}`
@@ -493,7 +494,7 @@ export function ScheduleFollowupModal({
                     transition: "background .15s, border-color .15s, color .15s",
                   }}
                 >
-                  <span style={{ fontSize: 22 }}>{c.icon}</span>
+                  <c.icon size={22} />
                   <span>{c.label}</span>
                 </button>
               );

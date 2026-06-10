@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { getApiEndpoints } from "@/lib/api";
@@ -13,6 +13,15 @@ import { VALORACION_META } from "@/lib/dispositions";
 import { formatDurationSec, sanitizeText } from "@/lib/utils";
 import { Card, CardBody, CardHead } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import {
+  Phone,
+  MessageCircle,
+  Mail,
+  Paperclip,
+  PenLine,
+  BarChart3,
+  Check,
+} from "lucide-react";
 
 interface ContactWrapUp {
   notes: string;
@@ -202,16 +211,23 @@ export function ContactDetailView({ contactId }: Props) {
 function ContactHeader({ data }: { data: ContactDetailResponse }) {
   const ch = (data.channel || "").toUpperCase();
   const isWA = (data.subChannel || "").toLowerCase().includes("messaging");
-  const channelLabel =
-    ch === "VOICE"
-      ? "📞 Llamada"
-      : ch === "CHAT"
-      ? isWA
-        ? "💚 WhatsApp"
-        : "💬 Chat"
-      : ch === "EMAIL"
-      ? "📧 Email"
-      : data.channel;
+  const channelLabel: ReactNode =
+    ch === "VOICE" ? (
+      <><Phone size={13} /> Llamada</>
+    ) : ch === "CHAT" ? (
+      isWA ? (
+        <>
+          <MessageCircle size={13} style={{ color: "var(--accent-green)" }} />{" "}
+          WhatsApp
+        </>
+      ) : (
+        <><MessageCircle size={13} /> Chat</>
+      )
+    ) : ch === "EMAIL" ? (
+      <><Mail size={13} /> Email</>
+    ) : (
+      data.channel
+    );
   return (
     <Card>
       <CardBody>
@@ -502,8 +518,15 @@ function EmailDetail({ data }: { data: ContactDetailResponse }) {
                     marginBottom: 6,
                   }}
                 >
-                  <span style={{ fontSize: 12 }}>
-                    📎 {a.fileName || a.fileId}
+                  <span
+                    style={{
+                      fontSize: 12,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Paperclip size={13} /> {a.fileName || a.fileId}
                   </span>
                   {a.url ? (
                     <a
@@ -554,7 +577,13 @@ function WrapUpCard({ wrapUp }: { wrapUp: ContactWrapUp }) {
   return (
     <Card>
       <CardHead
-        title="📝 Cierre por el agente"
+        title={
+          <span
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            <PenLine size={14} /> Cierre por el agente
+          </span>
+        }
         right={
           <span className="card__sub">
             {wrapUp.agentUsername}
@@ -666,13 +695,15 @@ function WrapUpCard({ wrapUp }: { wrapUp: ContactWrapUp }) {
                     : k
                 }
               >
-                {k === "task24h"
-                  ? "✓ Tarea 24h"
-                  : k === "emailConfirm"
-                  ? "✉ Email confirmación"
-                  : k === "nps"
-                  ? "📊 NPS"
-                  : k}
+                {k === "task24h" ? (
+                  <><Check size={12} /> Tarea 24h</>
+                ) : k === "emailConfirm" ? (
+                  <><Mail size={12} /> Email confirmación</>
+                ) : k === "nps" ? (
+                  <><BarChart3 size={12} /> NPS</>
+                ) : (
+                  k
+                )}
               </span>
             ))}
           </div>

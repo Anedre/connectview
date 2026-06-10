@@ -1,3 +1,4 @@
+import { Headphones, Mic } from "lucide-react";
 import { useCCP } from "@/hooks/useCCP";
 import type { MonitorSession } from "@/context/CCPContext";
 
@@ -85,22 +86,22 @@ export function MonitorControlBar({ sessionOverride, onSetMode, onEnd }: Props =
         <button
           onClick={() => setMonitorState("SILENT_MONITOR")}
           disabled={!isBarge}
-          style={pillBtn(!isBarge)}
+          style={{ ...pillBtn(!isBarge), display: "inline-flex", alignItems: "center", gap: 6 }}
           title="Solo escuchar — el cliente y el agente no te oyen"
         >
-          🎧 Escuchar
+          <Headphones size={14} /> Escuchar
         </button>
         <button
           onClick={() => setMonitorState("BARGE")}
           disabled={isBarge || !canBarge}
-          style={pillBtn(isBarge)}
+          style={{ ...pillBtn(isBarge), display: "inline-flex", alignItems: "center", gap: 6 }}
           title={
             canBarge
               ? "Entrar a la llamada — todos te escuchan"
               : "Esta sesión no permite intervenir"
           }
         >
-          🎙️ Intervenir
+          <Mic size={14} /> Intervenir
         </button>
       </div>
 

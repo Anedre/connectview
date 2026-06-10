@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Phone, MessageCircle, Mail, Paperclip, History } from "lucide-react";
 import * as Icon from "@/components/vox/primitives";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useLeadOverview, type OvHistEvent } from "@/hooks/useLeadOverview";
@@ -18,11 +19,11 @@ import { AttachmentsGrid } from "@/components/recordings/AttachmentsGrid";
  */
 type Lens = "history" | "calls" | "whatsapp" | "emails" | "files";
 
-const CHANNELS: { id: Exclude<Lens, "history">; label: string; icon: string; tone: string }[] = [
-  { id: "calls", label: "Llamadas", icon: "📞", tone: "var(--accent-cyan)" },
-  { id: "whatsapp", label: "WhatsApp", icon: "💬", tone: "var(--accent-green)" },
-  { id: "emails", label: "Emails", icon: "📧", tone: "var(--accent-amber)" },
-  { id: "files", label: "Archivos", icon: "📎", tone: "var(--text-2)" },
+const CHANNELS: { id: Exclude<Lens, "history">; label: string; icon: React.ElementType; tone: string }[] = [
+  { id: "calls", label: "Llamadas", icon: Phone, tone: "var(--accent-cyan)" },
+  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle, tone: "var(--accent-green)" },
+  { id: "emails", label: "Emails", icon: Mail, tone: "var(--accent-amber)" },
+  { id: "files", label: "Archivos", icon: Paperclip, tone: "var(--text-2)" },
 ];
 
 function originTone(src?: string): { label: string; bg: string } {
@@ -109,7 +110,7 @@ export function Lead360View({ lead, onBack }: { lead: RecentLead; onBack: () => 
         {/* Panel grande: Historial */}
         <section style={{ flex: "1.7 1 360px", minWidth: 300, border: "1px solid var(--border-1)", borderRadius: 12, background: "var(--bg-2)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div className="row" style={{ gap: 8, padding: "10px 14px", borderBottom: "1px solid var(--border-1)" }}>
-            <span style={{ fontSize: 15 }}>📜</span>
+            <History size={15} />
             <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>Historial {ov.history ? `(${ov.history.count})` : ""}</span>
           </div>
           <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
@@ -145,7 +146,7 @@ export function Lead360View({ lead, onBack }: { lead: RecentLead; onBack: () => 
             return (
               <section key={c.id} style={{ border: "1px solid var(--border-1)", borderRadius: 12, background: "var(--bg-2)", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                 <div className="row" style={{ gap: 10, alignItems: "center" }}>
-                  <span style={{ flex: "0 0 auto", width: 34, height: 34, borderRadius: 9, display: "grid", placeItems: "center", fontSize: 17, background: "var(--bg-1)", border: `1px solid ${c.tone}44` }}>{c.icon}</span>
+                  <span style={{ flex: "0 0 auto", width: 34, height: 34, borderRadius: 9, display: "grid", placeItems: "center", fontSize: 17, background: "var(--bg-1)", border: `1px solid ${c.tone}44`, color: c.tone }}><c.icon size={17} /></span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 13 }}>{c.label}</div>
                     <div className="muted" style={{ fontSize: 11 }}>

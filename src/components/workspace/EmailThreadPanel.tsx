@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Mail, Paperclip } from "lucide-react";
 import { useContactDetail } from "@/hooks/useContactDetail";
 import { sanitizeText } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
@@ -182,9 +183,12 @@ export function EmailThreadPanel({
               color: "var(--accent-amber)",
               borderColor: "transparent",
               flexShrink: 0,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
             }}
           >
-            📧 Email
+            <Mail size={12} /> Email
           </span>
         </div>
 
@@ -356,7 +360,7 @@ export function EmailThreadPanel({
                   maxWidth: 280,
                 }}
               >
-                <span style={{ fontSize: 13 }}>📎</span>
+                <Paperclip size={13} style={{ flexShrink: 0 }} />
                 <span
                   style={{
                     overflow: "hidden",
