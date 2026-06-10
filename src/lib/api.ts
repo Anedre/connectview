@@ -145,6 +145,9 @@ interface ApiEndpoints {
   // Reglas de automatización (#15): CRUD de triggers→condiciones→acciones
   // que el automation-engine ejecuta (eventos de hooks + tick de EventBridge).
   manageAutomations?: string;
+  // WhatsApp Flows (#10): envía un formulario nativo de Meta (interactive
+  // flow) a un teléfono. La respuesta vuelve por whatsapp-meta-webhook.
+  sendWhatsAppFlow?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;
