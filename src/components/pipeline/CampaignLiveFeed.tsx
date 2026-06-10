@@ -60,31 +60,31 @@ const STATUS_META: Record<
   dialing: {
     label: "Marcando",
     Icon: Phone,
-    dot: "bg-blue-500",
+    dot: "bg-[var(--accent-cyan)]",
     flavour: "Marcando ahora",
   },
   connected: {
     label: "Conectada",
     Icon: PhoneCall,
-    dot: "bg-emerald-500",
+    dot: "bg-[var(--accent-green)]",
     flavour: "Hablando con el agente",
   },
   done: {
     label: "Completada",
     Icon: CheckCircle2,
-    dot: "bg-emerald-600",
+    dot: "bg-[var(--accent-green)]",
     flavour: "Cerró exitosamente",
   },
   no_answer: {
     label: "Sin respuesta",
     Icon: PhoneOff,
-    dot: "bg-amber-500",
+    dot: "bg-[var(--accent-amber)]",
     flavour: "No atendieron",
   },
   failed: {
     label: "Falló",
     Icon: XCircle,
-    dot: "bg-rose-500",
+    dot: "bg-[var(--accent-red)]",
     flavour: "Falló la llamada",
   },
 };

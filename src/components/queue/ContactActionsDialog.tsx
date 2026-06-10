@@ -231,11 +231,11 @@ export function ContactActionsDialog({
         </div>
 
         {/* Stop */}
-        <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-3 dark:border-rose-900 dark:bg-rose-950/20">
-          <Label className="text-rose-700 dark:text-rose-300">
+        <div className="rounded-lg border border-[var(--accent-red-soft)] bg-[var(--accent-red-soft)] p-3">
+          <Label className="text-[var(--accent-red)]">
             Terminar llamada
           </Label>
-          <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">
+          <p className="mt-1 text-xs text-[var(--accent-red)]">
             Fuerza el disconnect de la llamada. Acción irreversible.
           </p>
           <Button

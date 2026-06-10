@@ -227,7 +227,7 @@ export function ContactDetailDrawer({
               {campaignInfo && (
                 <div className="col-span-2 flex flex-col">
                   <span className="text-muted-foreground">Campaña</span>
-                  <span className="flex items-center gap-1 truncate font-semibold text-orange-800 dark:text-orange-300">
+                  <span className="flex items-center gap-1 truncate font-semibold text-[var(--accent-amber)]">
                     <Megaphone className="h-3 w-3" />
                     {campaignInfo.campaignName}
                   </span>
@@ -365,11 +365,11 @@ export function ContactDetailDrawer({
               )}
 
               {/* Stop */}
-              <div className="space-y-2 rounded-lg border border-rose-200 bg-rose-50/50 p-3 dark:border-rose-900 dark:bg-rose-950/20">
-                <Label className="text-xs text-rose-700 dark:text-rose-300">
+              <div className="space-y-2 rounded-lg border border-[var(--accent-red-soft)] bg-[var(--accent-red-soft)] p-3">
+                <Label className="text-xs text-[var(--accent-red)]">
                   Terminar llamada
                 </Label>
-                <p className="text-[10px] text-rose-600 dark:text-rose-400">
+                <p className="text-[10px] text-[var(--accent-red)]">
                   Fuerza el disconnect. Irreversible.
                 </p>
                 <Button

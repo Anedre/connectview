@@ -80,16 +80,16 @@ interface StatusMeta {
 function statusMeta(status: string | null): StatusMeta {
   const s = (status || "").toLowerCase();
   if (s === "available") {
-    return { label: "Available", Icon: Headphones, dot: "bg-emerald-500" };
+    return { label: "Available", Icon: Headphones, dot: "bg-[var(--accent-green)]" };
   }
   if (s.includes("call") || s === "on call" || s === "busy") {
-    return { label: "En llamada", Icon: Phone, dot: "bg-blue-500" };
+    return { label: "En llamada", Icon: Phone, dot: "bg-[var(--accent-cyan)]" };
   }
   if (s === "aftercallwork" || s === "acw") {
-    return { label: "ACW", Icon: Phone, dot: "bg-orange-500" };
+    return { label: "ACW", Icon: Phone, dot: "bg-[var(--accent-amber)]" };
   }
   if (s.includes("break") || s === "lunch") {
-    return { label: "Break", Icon: Coffee, dot: "bg-amber-500" };
+    return { label: "Break", Icon: Coffee, dot: "bg-[var(--accent-amber)]" };
   }
   if (s === "offline") {
     return { label: "Offline", Icon: UserX, dot: "bg-muted-foreground/40" };
@@ -301,9 +301,9 @@ function AgentRowCard({
       }}
       className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-card transition ${
         isOver && canDrop
-          ? "border-emerald-500 ring-2 ring-emerald-500/30"
+          ? "border-[var(--accent-green)] ring-2 ring-[var(--accent-green-soft)]"
           : isOver && !canDrop
-            ? "border-rose-500 ring-2 ring-rose-500/20"
+            ? "border-[var(--accent-red)] ring-2 ring-[var(--accent-red-soft)]"
             : "hover:border-foreground/30"
       }`}
       title={
@@ -313,7 +313,7 @@ function AgentRowCard({
       }
     >
       {isOfflineWithWork && (
-        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50/50 px-5 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+        <div className="flex items-center gap-2 border-b border-[var(--accent-amber-soft)] bg-[var(--accent-amber-soft)] px-5 py-2 text-xs text-[var(--accent-amber)]">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           <span>
             <span className="font-medium">Offline</span> — sus leads no se
@@ -444,7 +444,7 @@ function AgentRowCard({
             <span className="text-sm text-muted-foreground">completadas</span>
           </div>
           {agent.stats && agent.stats.errorsToday > 0 && (
-            <div className="mt-2 text-xs text-rose-600 dark:text-rose-400">
+            <div className="mt-2 text-xs text-[var(--accent-red)]">
               <span className="font-medium tabular-nums">
                 {agent.stats.errorsToday}
               </span>{" "}
@@ -730,9 +730,9 @@ export function FlowView({
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
                     isRunning
-                      ? "bg-emerald-500 animate-pulse"
+                      ? "bg-[var(--accent-green)] animate-pulse"
                       : campaignStatus.toUpperCase() === "PAUSED"
-                        ? "bg-amber-500"
+                        ? "bg-[var(--accent-amber)]"
                         : "bg-muted-foreground/40"
                   }`}
                 />

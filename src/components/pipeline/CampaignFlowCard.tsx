@@ -206,7 +206,7 @@ export function CampaignFlowCard({
       >
         {isCampaignPinned ? (
           <>
-            <Pin className="h-3.5 w-3.5 fill-current text-amber-600 dark:text-amber-400" />
+            <Pin className="h-3.5 w-3.5 fill-current text-[var(--accent-amber)]" />
             Fijada
           </>
         ) : (

@@ -49,8 +49,8 @@ export function ContactCard({ contact, onClick }: ContactCardProps) {
       <div
         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
           urgent
-            ? "bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300"
-            : "bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300"
+            ? "bg-[var(--accent-red-soft)] text-[var(--accent-red)]"
+            : "bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)]"
         }`}
       >
         <Icon className="h-4 w-4" />
@@ -65,8 +65,8 @@ export function ContactCard({ contact, onClick }: ContactCardProps) {
           </Badge>
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-          <Clock className={`h-3 w-3 ${urgent ? "text-rose-600" : ""}`} />
-          <span className={urgent ? "font-semibold text-rose-600" : ""}>
+          <Clock className={`h-3 w-3 ${urgent ? "text-[var(--accent-red)]" : ""}`} />
+          <span className={urgent ? "font-semibold text-[var(--accent-red)]" : ""}>
             {formatWait(waitSec)}
           </span>
           {contact.queueName && (

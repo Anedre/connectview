@@ -17,16 +17,16 @@ export interface AgentCardProps {
 }
 
 function statusColor(status: string | null): string {
-  if (!status) return "bg-slate-100 text-slate-700";
+  if (!status) return "bg-[var(--bg-2)] text-[var(--text-2)]";
   const s = status.toLowerCase();
-  if (s === "available") return "bg-emerald-100 text-emerald-800";
+  if (s === "available") return "bg-[var(--accent-green-soft)] text-[var(--accent-green)]";
   if (s.includes("call") || s === "on call" || s === "busy")
-    return "bg-blue-100 text-blue-800";
-  if (s.includes("break") || s === "lunch") return "bg-amber-100 text-amber-800";
-  if (s === "offline") return "bg-slate-100 text-slate-500";
+    return "bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)]";
+  if (s.includes("break") || s === "lunch") return "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)]";
+  if (s === "offline") return "bg-[var(--bg-2)] text-[var(--text-3)]";
   if (s === "aftercallwork" || s === "acw")
-    return "bg-orange-100 text-orange-800";
-  return "bg-slate-100 text-slate-700";
+    return "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)]";
+  return "bg-[var(--bg-2)] text-[var(--text-2)]";
 }
 
 function statusIcon(status: string | null): React.ElementType {
@@ -83,11 +83,11 @@ export function AgentCard({
       onClick={() => onClick?.(agent)}
       className={`group relative flex cursor-pointer flex-col gap-2 rounded-lg border bg-card p-3 transition-all hover:shadow-sm ${
         isOver && canDrop
-          ? "border-emerald-500 ring-2 ring-emerald-500/30"
+          ? "border-[var(--accent-green)] ring-2 ring-[var(--accent-green-soft)]"
           : isOver && !canDrop
-          ? "border-rose-500 ring-2 ring-rose-500/30"
+          ? "border-[var(--accent-red)] ring-2 ring-[var(--accent-red-soft)]"
           : canReceive
-          ? "border-emerald-200 hover:border-emerald-500/60"
+          ? "border-[var(--accent-green-soft)] hover:border-[var(--accent-green)]"
           : ""
       }`}
     >
@@ -116,7 +116,7 @@ export function AgentCard({
         <div
           className={`rounded-md px-2 py-1.5 text-xs ${
             campaignInfo
-              ? "bg-orange-50 dark:bg-orange-950/30"
+              ? "bg-[var(--accent-amber-soft)]"
               : "bg-muted/50"
           }`}
         >
@@ -129,7 +129,7 @@ export function AgentCard({
             </Badge>
           </div>
           {campaignInfo && (
-            <div className="mt-1 flex items-center gap-1 text-[10px] text-orange-800 dark:text-orange-300">
+            <div className="mt-1 flex items-center gap-1 text-[10px] text-[var(--accent-amber)]">
               <Megaphone className="h-2.5 w-2.5" />
               <span className="truncate font-semibold">
                 {campaignInfo.campaignName}

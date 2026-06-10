@@ -24,20 +24,20 @@ interface Props {
 
 const STATUS_STYLES: Record<string, { pill: string; border: string }> = {
   COMPLETED: {
-    pill: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
-    border: "border-emerald-200/60 dark:border-emerald-900/40",
+    pill: "bg-[var(--accent-green-soft)] text-[var(--accent-green)]",
+    border: "border-[var(--accent-green-soft)]",
   },
   CANCELLED: {
-    pill: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-    border: "border-slate-200/60 dark:border-slate-800/60",
+    pill: "bg-[var(--bg-2)] text-[var(--text-2)]",
+    border: "border-[var(--border-2)]",
   },
   RUNNING: {
-    pill: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200",
-    border: "border-sky-200/60 dark:border-sky-900/40",
+    pill: "bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)]",
+    border: "border-[var(--accent-cyan-soft)]",
   },
   PAUSED: {
-    pill: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
-    border: "border-amber-200/60 dark:border-amber-900/40",
+    pill: "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)]",
+    border: "border-[var(--accent-amber-soft)]",
   },
 };
 
@@ -91,7 +91,7 @@ export function PinnedCampaignCard({ stats, onUnpin }: Props) {
           key: "done",
           label: "Completadas",
           value: done,
-          color: "bg-emerald-500",
+          color: "bg-[var(--accent-green)]",
           pct: sum > 0 ? (done / sum) * 100 : 0,
           Icon: CheckCircle2,
         },
@@ -99,7 +99,7 @@ export function PinnedCampaignCard({ stats, onUnpin }: Props) {
           key: "no_answer",
           label: "Sin respuesta",
           value: noAns,
-          color: "bg-amber-500",
+          color: "bg-[var(--accent-amber)]",
           pct: sum > 0 ? (noAns / sum) * 100 : 0,
           Icon: PhoneOff,
         },
@@ -107,7 +107,7 @@ export function PinnedCampaignCard({ stats, onUnpin }: Props) {
           key: "failed",
           label: "Errores",
           value: failed,
-          color: "bg-rose-500",
+          color: "bg-[var(--accent-red)]",
           pct: sum > 0 ? (failed / sum) * 100 : 0,
           Icon: XCircle,
         },
@@ -136,7 +136,7 @@ export function PinnedCampaignCard({ stats, onUnpin }: Props) {
       <div className="flex flex-wrap items-center gap-2">
         <div
           title="Esta campaña está fijada — histórico, no refresca en vivo"
-          className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700 ring-1 ring-amber-300/60 dark:bg-amber-950 dark:text-amber-300"
+          className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent-amber-soft)] text-[var(--accent-amber)] ring-1 ring-[var(--accent-amber-soft)]"
         >
           <Pin className="h-3.5 w-3.5 fill-current" />
         </div>

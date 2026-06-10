@@ -53,42 +53,42 @@ export function CampaignProgressPanel({ campaign: _campaign, stats, kpis }: Prop
         key: "done",
         label: "Done",
         pct: pctOf(counts.done),
-        color: "bg-emerald-500",
+        color: "bg-[var(--accent-green)]",
         value: counts.done,
       },
       {
         key: "connected",
         label: "Connected",
         pct: pctOf(counts.connected),
-        color: "bg-emerald-400",
+        color: "bg-[var(--accent-green)]",
         value: counts.connected,
       },
       {
         key: "dialing",
         label: "Dialing",
         pct: pctOf(counts.dialing),
-        color: "bg-blue-500",
+        color: "bg-[var(--accent-cyan)]",
         value: counts.dialing,
       },
       {
         key: "no_answer",
         label: "No answer",
         pct: pctOf(counts.no_answer),
-        color: "bg-amber-500",
+        color: "bg-[var(--accent-amber)]",
         value: counts.no_answer,
       },
       {
         key: "failed",
         label: "Failed",
         pct: pctOf(counts.failed),
-        color: "bg-rose-500",
+        color: "bg-[var(--accent-red)]",
         value: counts.failed,
       },
       {
         key: "pending",
         label: "Pending",
         pct: pctOf(counts.pending),
-        color: "bg-slate-300 dark:bg-slate-700",
+        color: "bg-[var(--bg-3)]",
         value: counts.pending,
       },
     ];
@@ -134,8 +134,8 @@ export function CampaignProgressPanel({ campaign: _campaign, stats, kpis }: Prop
                 <span aria-hidden>·</span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="relative flex h-1.5 w-1.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent-green)] opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--accent-green)]" />
                   </span>
                   <span className="font-semibold tabular-nums text-foreground">
                     {kpis.live}
@@ -271,11 +271,11 @@ function HeroKpi({
 }) {
   const dotCls =
     tone === "critical"
-      ? "bg-rose-500"
+      ? "bg-[var(--accent-red)]"
       : tone === "warning"
-        ? "bg-amber-500"
+        ? "bg-[var(--accent-amber)]"
         : tone === "success"
-          ? "bg-emerald-500"
+          ? "bg-[var(--accent-green)]"
           : null;
   return (
     <div title={hint} className="min-w-0">
@@ -317,7 +317,7 @@ function SmallStat({
   return (
     <div
       className={`flex items-center justify-between gap-1.5 rounded-md px-2 py-1 text-[11px] ${
-        highlight ? "bg-blue-50 dark:bg-blue-950/30" : "bg-muted/30"
+        highlight ? "bg-[var(--accent-cyan-soft)]" : "bg-muted/30"
       }`}
     >
       <span className="flex items-center gap-1">

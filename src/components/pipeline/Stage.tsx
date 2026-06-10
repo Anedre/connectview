@@ -51,35 +51,33 @@ const STAGE_COLOR: Record<
   { ring: string; dot: string; chip: string; emoji: string }
 > = {
   ARRIVED: {
-    ring: "ring-amber-300/50 hover:ring-amber-400",
-    dot: "bg-amber-500",
-    chip: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+    ring: "ring-[var(--accent-amber-soft)] hover:ring-[var(--accent-amber)]",
+    dot: "bg-[var(--accent-amber)]",
+    chip: "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)]",
     emoji: "📞",
   },
   IN_IVR: {
-    ring: "ring-violet-300/50 hover:ring-violet-400",
-    dot: "bg-violet-500",
-    chip:
-      "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200",
+    ring: "ring-[var(--accent-violet-soft)] hover:ring-[var(--accent-violet)]",
+    dot: "bg-[var(--accent-violet)]",
+    chip: "bg-[var(--accent-violet-soft)] text-[var(--accent-violet)]",
     emoji: "🤖",
   },
   IN_QUEUE: {
-    ring: "ring-sky-300/50 hover:ring-sky-400",
-    dot: "bg-sky-500",
-    chip: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200",
+    ring: "ring-[var(--accent-cyan-soft)] hover:ring-[var(--accent-cyan)]",
+    dot: "bg-[var(--accent-cyan)]",
+    chip: "bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)]",
     emoji: "⏳",
   },
   WITH_AGENT: {
-    ring: "ring-emerald-300/50 hover:ring-emerald-400",
-    dot: "bg-emerald-500",
-    chip:
-      "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
+    ring: "ring-[var(--accent-green-soft)] hover:ring-[var(--accent-green)]",
+    dot: "bg-[var(--accent-green)]",
+    chip: "bg-[var(--accent-green-soft)] text-[var(--accent-green)]",
     emoji: "👤",
   },
   FINISHED: {
-    ring: "ring-slate-300/50",
-    dot: "bg-slate-400",
-    chip: "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300",
+    ring: "ring-[var(--border-2)]",
+    dot: "bg-[var(--text-3)]",
+    chip: "bg-[var(--bg-2)] text-[var(--text-2)]",
     emoji: "✔",
   },
 };
@@ -147,9 +145,9 @@ export function Stage({
       ref={dropRef as unknown as React.Ref<HTMLDivElement>}
       className={`relative flex min-h-[260px] flex-1 min-w-0 flex-col rounded-xl border bg-card/60 p-3 backdrop-blur-sm transition-all ${
         isOver && canDrop
-          ? "ring-4 ring-emerald-400 scale-[1.01]"
+          ? "ring-4 ring-[var(--accent-green)] scale-[1.01]"
           : isOver && !canDrop
-            ? "ring-4 ring-rose-400/60"
+            ? "ring-4 ring-[var(--accent-red)]"
             : "ring-1 " + palette.ring
       }`}
     >

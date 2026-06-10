@@ -22,8 +22,8 @@ interface Props {
 }
 
 const STATUS_PILL: Record<string, string> = {
-  RUNNING: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
-  PAUSED: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+  RUNNING: "bg-[var(--accent-green-soft)] text-[var(--accent-green)]",
+  PAUSED: "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)]",
 };
 
 export function ActiveCampaignsPanel({ data, loading }: Props) {
@@ -48,7 +48,7 @@ export function ActiveCampaignsPanel({ data, loading }: Props) {
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <Megaphone className="h-4 w-4 text-orange-600" />
+          <Megaphone className="h-4 w-4 text-[var(--accent-amber)]" />
           Campañas activas ({data.campaigns.length})
         </CardTitle>
       </CardHeader>
@@ -69,9 +69,9 @@ export function ActiveCampaignsPanel({ data, loading }: Props) {
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                   {c.status === "PAUSED" ? (
-                    <Pause className="h-4 w-4 shrink-0 text-amber-600" />
+                    <Pause className="h-4 w-4 shrink-0 text-[var(--accent-amber)]" />
                   ) : (
-                    <PhoneCall className="h-4 w-4 shrink-0 text-emerald-600" />
+                    <PhoneCall className="h-4 w-4 shrink-0 text-[var(--accent-green)]" />
                   )}
                   <span className="truncate font-semibold">{c.name}</span>
                   <Badge className={STATUS_PILL[c.status] || "text-xs"}>
@@ -104,7 +104,7 @@ export function ActiveCampaignsPanel({ data, loading }: Props) {
                 </div>
                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full bg-gradient-to-r from-orange-500 to-pink-600 transition-all"
+                    className="h-full bg-gradient-to-r from-[var(--accent-amber)] to-[var(--accent-pink-soft)] transition-all"
                     style={{ width: `${pct}%` }}
                   />
                 </div>
@@ -117,39 +117,39 @@ export function ActiveCampaignsPanel({ data, loading }: Props) {
                   icon={Clock}
                   value={counts.pending}
                   label="Pendientes"
-                  color="text-slate-500"
+                  color="text-[var(--text-3)]"
                 />
                 <MiniKpi
                   icon={Phone}
                   value={counts.dialing}
                   label="Marcando"
-                  color="text-blue-600"
+                  color="text-[var(--accent-cyan)]"
                   highlight={counts.dialing > 0}
                 />
                 <MiniKpi
                   icon={PhoneCall}
                   value={counts.connected}
                   label="En llamada"
-                  color="text-emerald-600"
+                  color="text-[var(--accent-green)]"
                   highlight={counts.connected > 0}
                 />
                 <MiniKpi
                   icon={CheckCircle2}
                   value={counts.done}
                   label="Cerrados"
-                  color="text-emerald-700"
+                  color="text-[var(--accent-green)]"
                 />
                 <MiniKpi
                   icon={PhoneOff}
                   value={counts.no_answer}
                   label="Sin resp."
-                  color="text-amber-600"
+                  color="text-[var(--accent-amber)]"
                 />
                 <MiniKpi
                   icon={XCircle}
                   value={counts.failed}
                   label="Fallidos"
-                  color="text-rose-600"
+                  color="text-[var(--accent-red)]"
                 />
               </div>
 
@@ -165,7 +165,7 @@ export function ActiveCampaignsPanel({ data, loading }: Props) {
                       className="flex items-center justify-between rounded px-2 py-1 text-xs hover:bg-muted/40"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="flex h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                        <span className="flex h-2 w-2 animate-pulse rounded-full bg-[var(--accent-green)]" />
                         <span className="font-mono">
                           {lc.phone || lc.rowId.slice(0, 8)}
                         </span>
@@ -184,8 +184,8 @@ export function ActiveCampaignsPanel({ data, loading }: Props) {
                         <Badge
                           className={
                             lc.status === "connected"
-                              ? "bg-emerald-100 text-emerald-800 text-[9px]"
-                              : "bg-blue-100 text-blue-800 text-[9px]"
+                              ? "bg-[var(--accent-green-soft)] text-[var(--accent-green)] text-[9px]"
+                              : "bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)] text-[9px]"
                           }
                         >
                           {lc.status}
@@ -232,7 +232,7 @@ function MiniKpi({
   return (
     <div
       className={`rounded-md py-1 ${
-        highlight ? "bg-blue-50 dark:bg-blue-950/30" : "bg-muted/30"
+        highlight ? "bg-[var(--accent-cyan-soft)]" : "bg-muted/30"
       }`}
     >
       <Icon className={`mx-auto h-3 w-3 ${color}`} />

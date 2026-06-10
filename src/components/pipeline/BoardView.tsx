@@ -58,41 +58,41 @@ function agentStatusMeta(status: string | null): {
   if (s === "available")
     return {
       color:
-        "bg-emerald-100 text-emerald-800 ring-emerald-300/60 dark:bg-emerald-950 dark:text-emerald-200",
+        "bg-[var(--accent-green-soft)] text-[var(--accent-green)] ring-[var(--accent-green-soft)]",
       Icon: Headphones,
       label: "Disponible",
     };
   if (s.includes("call") || s === "on call" || s === "busy")
     return {
       color:
-        "bg-sky-100 text-sky-800 ring-sky-300/60 dark:bg-sky-950 dark:text-sky-200",
+        "bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)] ring-[var(--accent-cyan-soft)]",
       Icon: Phone,
       label: "En llamada",
     };
   if (s === "aftercallwork" || s === "acw")
     return {
       color:
-        "bg-orange-100 text-orange-800 ring-orange-300/60 dark:bg-orange-950 dark:text-orange-200",
+        "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)] ring-[var(--accent-amber-soft)]",
       Icon: Phone,
       label: "ACW",
     };
   if (s.includes("break") || s === "lunch")
     return {
       color:
-        "bg-amber-100 text-amber-800 ring-amber-300/60 dark:bg-amber-950 dark:text-amber-200",
+        "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)] ring-[var(--accent-amber-soft)]",
       Icon: Coffee,
       label: "Break",
     };
   if (s === "offline")
     return {
       color:
-        "bg-slate-100 text-slate-500 ring-slate-300/40 dark:bg-slate-900 dark:text-slate-400",
+        "bg-[var(--bg-2)] text-[var(--text-3)] ring-[var(--border-2)]",
       Icon: UserX,
       label: "Offline",
     };
   return {
     color:
-      "bg-slate-100 text-slate-700 ring-slate-300/60 dark:bg-slate-900 dark:text-slate-300",
+      "bg-[var(--bg-2)] text-[var(--text-2)] ring-[var(--border-2)]",
     Icon: AlertCircle,
     label: status || "—",
   };
@@ -189,9 +189,9 @@ function Column({
       layout
       className={`flex h-full min-h-[340px] min-w-[240px] max-w-[320px] flex-1 shrink-0 flex-col rounded-2xl border bg-card/70 backdrop-blur-sm transition ${
         isOver && canAccept
-          ? "ring-2 ring-emerald-400 shadow-lg shadow-emerald-500/10"
+          ? "ring-2 ring-[var(--accent-green)] shadow-lg shadow-[var(--accent-green)]"
           : isOver && !canAccept
-            ? "ring-2 ring-rose-400"
+            ? "ring-2 ring-[var(--accent-red)]"
             : "ring-1 ring-border/60 hover:ring-border"
       }`}
     >
@@ -311,11 +311,11 @@ function AgentDropChip({
         compact ? "px-1.5 py-1" : "px-2 py-1.5"
       } text-left transition-all hover:border-primary/40 hover:shadow-sm ${
         isOver && canAccept
-          ? "ring-2 ring-emerald-400 shadow-md shadow-emerald-500/20 scale-[1.02]"
+          ? "ring-2 ring-[var(--accent-green)] shadow-md shadow-[var(--accent-green)] scale-[1.02]"
           : isOver && !canAccept
-            ? "ring-2 ring-rose-400"
+            ? "ring-2 ring-[var(--accent-red)]"
             : canReceive
-              ? "ring-1 ring-emerald-200/60"
+              ? "ring-1 ring-[var(--accent-green-soft)]"
               : ""
       }`}
       title={
@@ -336,7 +336,7 @@ function AgentDropChip({
         </div>
       </div>
       {canReceive && (
-        <span className="text-[9px] italic text-emerald-600 opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="text-[9px] italic text-[var(--accent-green)] opacity-0 transition-opacity group-hover:opacity-100">
           drop ↓
         </span>
       )}
@@ -416,12 +416,12 @@ function AgentDock({
         <div className="max-h-[calc(100vh-12rem)] space-y-2 overflow-y-auto p-2">
           {(
             [
-              ["available", "Disponibles", "text-emerald-700 dark:text-emerald-300"],
-              ["busy", "En llamada", "text-sky-700 dark:text-sky-300"],
-              ["acw", "ACW", "text-orange-700 dark:text-orange-300"],
-              ["break", "Break", "text-amber-700 dark:text-amber-300"],
-              ["offline", "Offline", "text-slate-500"],
-              ["other", "Otros", "text-slate-500"],
+              ["available", "Disponibles", "text-[var(--accent-green)]"],
+              ["busy", "En llamada", "text-[var(--accent-cyan)]"],
+              ["acw", "ACW", "text-[var(--accent-amber)]"],
+              ["break", "Break", "text-[var(--accent-amber)]"],
+              ["offline", "Offline", "text-[var(--text-3)]"],
+              ["other", "Otros", "text-[var(--text-3)]"],
             ] as const
           ).map(([key, label, cls]) => {
             const list = grouped[key];
@@ -508,7 +508,7 @@ export function BoardView({
     <div className="rounded-xl border bg-gradient-to-b from-background via-background/60 to-muted/20 p-3">
       {activeLabel && (
         <div className="mb-3 flex items-center justify-between gap-2">
-          <span className="rounded-full bg-gradient-to-r from-sky-500 to-cyan-500 px-3 py-1 text-xs font-semibold text-white shadow-sm">
+          <span className="rounded-full bg-gradient-to-r from-[var(--accent-cyan)] to-[var(--accent-cyan-soft)] px-3 py-1 text-xs font-semibold text-white shadow-sm">
             {activeLabel}
           </span>
           <span className="text-[11px] text-muted-foreground">
@@ -530,8 +530,8 @@ export function BoardView({
             label="Marcando"
             hint="Dialer llamando · iniciando contacto"
             Icon={PhoneIncoming}
-            accentClass="bg-gradient-to-br from-violet-500 to-purple-600 text-white"
-            headerRing="bg-violet-50/60 dark:bg-violet-950/20"
+            accentClass="bg-gradient-to-br from-[var(--accent-violet)] to-[var(--accent-violet-soft)] text-white"
+            headerRing="bg-[var(--accent-violet-soft)]"
             contacts={arrived}
             config={config}
             contactToCampaign={contactToCampaign}
@@ -548,8 +548,8 @@ export function BoardView({
               label="Pendientes"
               hint="En flow / AMD · esperando ruteo"
               Icon={Clock}
-              accentClass="bg-gradient-to-br from-amber-400 to-orange-500 text-white"
-              headerRing="bg-amber-50/60 dark:bg-amber-950/20"
+              accentClass="bg-gradient-to-br from-[var(--accent-amber)] to-[var(--accent-amber-soft)] text-white"
+              headerRing="bg-[var(--accent-amber-soft)]"
               contacts={inIvr}
               config={config}
               contactToCampaign={contactToCampaign}
@@ -566,8 +566,8 @@ export function BoardView({
             label="En cola"
             hint="Esperando un agente"
             Icon={Clock}
-            accentClass="bg-gradient-to-br from-sky-500 to-blue-600 text-white"
-            headerRing="bg-sky-50/60 dark:bg-sky-950/20"
+            accentClass="bg-gradient-to-br from-[var(--accent-cyan)] to-[var(--accent-cyan-soft)] text-white"
+            headerRing="bg-[var(--accent-cyan-soft)]"
             contacts={inQueue}
             config={config}
             contactToCampaign={contactToCampaign}
@@ -597,8 +597,8 @@ export function BoardView({
                 : "Conversaciones en curso"
             }
             Icon={Headphones}
-            accentClass="bg-gradient-to-br from-emerald-500 to-teal-600 text-white"
-            headerRing="bg-emerald-50/60 dark:bg-emerald-950/20"
+            accentClass="bg-gradient-to-br from-[var(--accent-green)] to-[var(--accent-green-soft)] text-white"
+            headerRing="bg-[var(--accent-green-soft)]"
             contacts={withAgentContacts}
             config={config}
             contactToCampaign={contactToCampaign}
@@ -611,7 +611,7 @@ export function BoardView({
             extra={
               idleAgents.length > 0 ? (
                 <div className="space-y-1">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-green)]">
                     Drop rápido
                   </div>
                   <div className="grid grid-cols-1 gap-1">
@@ -641,8 +641,8 @@ export function BoardView({
               label="Finalizados"
               hint="Completadas · abandonos · errores"
               Icon={CheckCircle2}
-              accentClass="bg-gradient-to-br from-slate-500 to-slate-700 text-white"
-              headerRing="bg-slate-50/60 dark:bg-slate-950/20"
+              accentClass="bg-gradient-to-br from-[var(--bg-3)] to-[var(--bg-3)] text-white"
+              headerRing="bg-[var(--bg-2)]"
               contacts={finishedFlat}
               config={config}
               contactToCampaign={contactToCampaign}

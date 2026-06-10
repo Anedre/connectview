@@ -64,12 +64,12 @@ export function AuditLogPanel() {
                     </td>
                     <td className="p-2">
                       {e.result === "success" ? (
-                        <Badge className="bg-emerald-100 text-emerald-800">
+                        <Badge className="bg-[var(--accent-green-soft)] text-[var(--accent-green)]">
                           <Check className="mr-0.5 h-3 w-3" />
                           OK
                         </Badge>
                       ) : (
-                        <Badge className="bg-rose-100 text-rose-800">
+                        <Badge className="bg-[var(--accent-red-soft)] text-[var(--accent-red)]">
                           <X className="mr-0.5 h-3 w-3" />
                           Error
                         </Badge>

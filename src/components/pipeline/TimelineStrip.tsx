@@ -38,41 +38,41 @@ const SWIMLANES: {
     id: "ARRIVED",
     label: "Llegada",
     Icon: Phone,
-    dot: "bg-amber-500",
-    lane: "from-amber-500/[0.08] to-amber-500/0",
-    accent: "text-amber-700 dark:text-amber-300",
+    dot: "bg-[var(--accent-amber)]",
+    lane: "from-[var(--accent-amber)] to-[var(--accent-amber-soft)]",
+    accent: "text-[var(--accent-amber)]",
   },
   {
     id: "IN_IVR",
     label: "IVR / Dialing",
     Icon: FileStack,
-    dot: "bg-violet-500",
-    lane: "from-violet-500/[0.08] to-violet-500/0",
-    accent: "text-violet-700 dark:text-violet-300",
+    dot: "bg-[var(--accent-violet)]",
+    lane: "from-[var(--accent-violet)] to-[var(--accent-violet-soft)]",
+    accent: "text-[var(--accent-violet)]",
   },
   {
     id: "IN_QUEUE",
     label: "En cola",
     Icon: Clock,
-    dot: "bg-sky-500",
-    lane: "from-sky-500/[0.08] to-sky-500/0",
-    accent: "text-sky-700 dark:text-sky-300",
+    dot: "bg-[var(--accent-cyan)]",
+    lane: "from-[var(--accent-cyan)] to-[var(--accent-cyan-soft)]",
+    accent: "text-[var(--accent-cyan)]",
   },
   {
     id: "WITH_AGENT",
     label: "Con agente",
     Icon: Headphones,
-    dot: "bg-emerald-500",
-    lane: "from-emerald-500/[0.08] to-emerald-500/0",
-    accent: "text-emerald-700 dark:text-emerald-300",
+    dot: "bg-[var(--accent-green)]",
+    lane: "from-[var(--accent-green)] to-[var(--accent-green-soft)]",
+    accent: "text-[var(--accent-green)]",
   },
   {
     id: "FINISHED",
     label: "Finalizado",
     Icon: CheckCircle2,
-    dot: "bg-slate-400",
-    lane: "from-slate-500/[0.06] to-slate-500/0",
-    accent: "text-slate-600 dark:text-slate-300",
+    dot: "bg-[var(--text-3)]",
+    lane: "from-[var(--bg-3)] to-[var(--bg-2)]",
+    accent: "text-[var(--text-2)]",
   },
 ];
 
@@ -89,10 +89,10 @@ const CHANNEL_META: Record<
   string,
   { Icon: React.ElementType; color: string; label: string }
 > = {
-  VOICE: { Icon: Phone, color: "bg-sky-500", label: "Voz" },
-  CHAT: { Icon: MessageSquare, color: "bg-emerald-500", label: "Chat" },
-  EMAIL: { Icon: Mail, color: "bg-violet-500", label: "Email" },
-  TASK: { Icon: CheckSquare, color: "bg-amber-500", label: "Task" },
+  VOICE: { Icon: Phone, color: "bg-[var(--accent-cyan)]", label: "Voz" },
+  CHAT: { Icon: MessageSquare, color: "bg-[var(--accent-green)]", label: "Chat" },
+  EMAIL: { Icon: Mail, color: "bg-[var(--accent-violet)]", label: "Email" },
+  TASK: { Icon: CheckSquare, color: "bg-[var(--accent-amber)]", label: "Task" },
 };
 
 function formatMinutesAgo(minutes: number): string {
@@ -197,11 +197,11 @@ export function TimelineStrip({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <span>Línea de tiempo · últimos 15 min</span>
-          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-sky-800 dark:bg-sky-950 dark:text-sky-200">
+          <span className="rounded-full bg-[var(--accent-cyan-soft)] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[var(--accent-cyan)]">
             {totalNow} activos
           </span>
           {retryCount > 0 && (
-            <span className="flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-800 dark:bg-rose-950 dark:text-rose-200">
+            <span className="flex items-center gap-1 rounded-full bg-[var(--accent-red-soft)] px-2 py-0.5 text-[11px] font-semibold text-[var(--accent-red)]">
               <RotateCw className="h-3 w-3" />
               {retryCount} retry
             </span>
@@ -231,7 +231,7 @@ export function TimelineStrip({
             })}
             <span className="mx-1 h-3 w-px bg-border" />
             <span className="flex items-center gap-1">
-              <span className="inline-block h-2.5 w-2.5 rounded-full bg-rose-500 ring-1 ring-rose-200" />
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--accent-red)] ring-1 ring-[var(--accent-red-soft)]" />
               retry
             </span>
           </div>
@@ -310,7 +310,7 @@ export function TimelineStrip({
                 key={mAgo}
                 className={`absolute inset-y-0 border-l ${
                   isNow
-                    ? "border-emerald-400/60"
+                    ? "border-[var(--accent-green)]"
                     : "border-dashed border-muted-foreground/15"
                 }`}
                 style={{ left: `${leftPct}%` }}
@@ -368,9 +368,9 @@ export function TimelineStrip({
           <motion.div
             animate={{ opacity: [0.4, 1, 0.4] }}
             transition={{ duration: 1.8, repeat: Infinity }}
-            className="absolute -right-1 top-0 bottom-0 w-0.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+            className="absolute -right-1 top-0 bottom-0 w-0.5 rounded-full bg-[var(--accent-green)] shadow-[0_0_8px_rgba(16,185,129,0.6)]"
           />
-          <span className="absolute -right-1 top-1/2 h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" />
+          <span className="absolute -right-1 top-1/2 h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rounded-full bg-[var(--accent-green)] ring-4 ring-[var(--accent-green-soft)]" />
         </div>
 
         {/* Event dots — overlaid on top of lanes */}
@@ -410,7 +410,7 @@ export function TimelineStrip({
                 }}
                 className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background ${
                   isRetry
-                    ? "bg-rose-500 animate-pulse shadow-[0_0_6px_rgba(244,63,94,0.55)]"
+                    ? "bg-[var(--accent-red)] animate-pulse shadow-[0_0_6px_rgba(244,63,94,0.55)]"
                     : `${channel.color} shadow-sm`
                 }`}
                 style={{
@@ -441,7 +441,7 @@ export function TimelineStrip({
             <span
               className={`inline-block h-2 w-2 rounded-full ${
                 hovered.stage === "RETRY"
-                  ? "bg-rose-500"
+                  ? "bg-[var(--accent-red)]"
                   : (CHANNEL_META[hovered.channel] || CHANNEL_META.VOICE).color
               }`}
             />

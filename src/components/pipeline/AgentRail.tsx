@@ -30,16 +30,16 @@ export interface AgentRailProps {
 }
 
 function statusColor(status: string | null): string {
-  if (!status) return "bg-slate-200 text-slate-700";
+  if (!status) return "bg-[var(--bg-2)] text-[var(--text-2)]";
   const s = status.toLowerCase();
-  if (s === "available") return "bg-emerald-200 text-emerald-900";
+  if (s === "available") return "bg-[var(--accent-green-soft)] text-[var(--accent-green)]";
   if (s.includes("call") || s === "on call" || s === "busy")
-    return "bg-blue-200 text-blue-900";
-  if (s.includes("break") || s === "lunch") return "bg-amber-200 text-amber-900";
-  if (s === "offline") return "bg-slate-200 text-slate-500";
+    return "bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)]";
+  if (s.includes("break") || s === "lunch") return "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)]";
+  if (s === "offline") return "bg-[var(--bg-2)] text-[var(--text-3)]";
   if (s === "aftercallwork" || s === "acw")
-    return "bg-orange-200 text-orange-900";
-  return "bg-slate-200 text-slate-700";
+    return "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)]";
+  return "bg-[var(--bg-2)] text-[var(--text-2)]";
 }
 
 function statusIcon(status: string | null): React.ElementType {
@@ -98,11 +98,11 @@ function AgentLane({
       whileHover={{ scale: 1.01 }}
       className={`group relative flex cursor-pointer flex-col gap-1.5 rounded-lg border bg-card p-2.5 text-[11px] transition-all ${
         isOver && canDrop
-          ? "border-emerald-500 ring-4 ring-emerald-400/40"
+          ? "border-[var(--accent-green)] ring-4 ring-[var(--accent-green-soft)]"
           : isOver && !canDrop
-            ? "border-rose-400 ring-4 ring-rose-400/30"
+            ? "border-[var(--accent-red)] ring-4 ring-[var(--accent-red-soft)]"
             : canReceive
-              ? "border-emerald-200/70 hover:border-emerald-400 ring-1 ring-emerald-200/40"
+              ? "border-[var(--accent-green-soft)] hover:border-[var(--accent-green)] ring-1 ring-[var(--accent-green-soft)]"
               : ""
       }`}
     >
@@ -133,7 +133,7 @@ function AgentLane({
         <div
           className={`rounded-md px-1.5 py-1 text-[10px] ${
             campaignInfo
-              ? "bg-orange-50 dark:bg-orange-950/30"
+              ? "bg-[var(--accent-amber-soft)]"
               : "bg-muted/50"
           }`}
         >
@@ -147,7 +147,7 @@ function AgentLane({
             </Badge>
           </div>
           {campaignInfo && (
-            <div className="mt-0.5 flex items-center gap-1 text-[9px] text-orange-800 dark:text-orange-300">
+            <div className="mt-0.5 flex items-center gap-1 text-[9px] text-[var(--accent-amber)]">
               <Megaphone className="h-2.5 w-2.5" />
               <span className="truncate font-semibold">
                 {campaignInfo.campaignName}
@@ -164,7 +164,7 @@ function AgentLane({
           {agent.queues.slice(0, 3).map((q) => (
             <span
               key={q.id}
-              className="truncate rounded bg-sky-100 px-1 py-0 text-[9px] font-medium text-sky-800 dark:bg-sky-950 dark:text-sky-200"
+              className="truncate rounded bg-[var(--accent-cyan-soft)] px-1 py-0 text-[9px] font-medium text-[var(--accent-cyan)]"
               title={q.name}
             >
               {q.name}
@@ -182,7 +182,7 @@ function AgentLane({
       {agent.stats && (
         <div className="flex items-center justify-between gap-2 border-t pt-1 text-[9px]">
           <span
-            className="flex items-center gap-0.5 text-sky-700 dark:text-sky-300"
+            className="flex items-center gap-0.5 text-[var(--accent-cyan)]"
             title="En cola para este agente ahora"
           >
             <Clock className="h-2.5 w-2.5" />
@@ -191,7 +191,7 @@ function AgentLane({
             </span>
           </span>
           <span
-            className="flex items-center gap-0.5 text-emerald-700 dark:text-emerald-300"
+            className="flex items-center gap-0.5 text-[var(--accent-green)]"
             title="Completadas hoy"
           >
             <CheckCircle2 className="h-2.5 w-2.5" />
@@ -202,7 +202,7 @@ function AgentLane({
           <span
             className={`flex items-center gap-0.5 ${
               agent.stats.errorsToday > 0
-                ? "text-rose-700 dark:text-rose-300"
+                ? "text-[var(--accent-red)]"
                 : "text-muted-foreground"
             }`}
             title="Errores / abandonadas hoy"
@@ -216,7 +216,7 @@ function AgentLane({
       )}
 
       {canReceive && (
-        <div className="absolute inset-x-0 -top-1.5 mx-auto w-fit rounded-full bg-emerald-500 px-1.5 py-0 text-[8px] font-semibold uppercase tracking-wide text-white opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="absolute inset-x-0 -top-1.5 mx-auto w-fit rounded-full bg-[var(--accent-green)] px-1.5 py-0 text-[8px] font-semibold uppercase tracking-wide text-white opacity-0 transition-opacity group-hover:opacity-100">
           Disponible
         </div>
       )}
@@ -251,7 +251,7 @@ export function AgentRail({
           Agentes <span className="text-muted-foreground">({agents.length})</span>
         </div>
         <div className="flex gap-1 text-[10px]">
-          <Badge className="bg-emerald-100 text-emerald-800">
+          <Badge className="bg-[var(--accent-green-soft)] text-[var(--accent-green)]">
             {
               agents.filter(
                 (a) =>
@@ -260,7 +260,7 @@ export function AgentRail({
             }{" "}
             disponibles
           </Badge>
-          <Badge className="bg-blue-100 text-blue-800">
+          <Badge className="bg-[var(--accent-cyan-soft)] text-[var(--accent-cyan)]">
             {agents.filter((a) => !!a.activeContact).length} en llamada
           </Badge>
         </div>

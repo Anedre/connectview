@@ -54,26 +54,26 @@ const CHANNEL_COLOR: Record<
   { bg: string; ring: string; text: string; glow: string }
 > = {
   VOICE: {
-    bg: "bg-gradient-to-br from-sky-400 to-blue-600",
-    ring: "ring-sky-300",
+    bg: "bg-gradient-to-br from-[var(--accent-cyan)] to-[var(--accent-cyan-soft)]",
+    ring: "ring-[var(--accent-cyan-soft)]",
     text: "text-white",
     glow: "shadow-[0_0_0_4px_rgba(14,165,233,0.15)]",
   },
   CHAT: {
-    bg: "bg-gradient-to-br from-emerald-400 to-teal-600",
-    ring: "ring-emerald-300",
+    bg: "bg-gradient-to-br from-[var(--accent-green)] to-[var(--accent-green-soft)]",
+    ring: "ring-[var(--accent-green-soft)]",
     text: "text-white",
     glow: "shadow-[0_0_0_4px_rgba(16,185,129,0.15)]",
   },
   EMAIL: {
-    bg: "bg-gradient-to-br from-violet-400 to-purple-600",
-    ring: "ring-violet-300",
+    bg: "bg-gradient-to-br from-[var(--accent-violet)] to-[var(--accent-violet-soft)]",
+    ring: "ring-[var(--accent-violet-soft)]",
     text: "text-white",
     glow: "shadow-[0_0_0_4px_rgba(139,92,246,0.15)]",
   },
   TASK: {
-    bg: "bg-gradient-to-br from-amber-400 to-orange-600",
-    ring: "ring-amber-300",
+    bg: "bg-gradient-to-br from-[var(--accent-amber)] to-[var(--accent-amber-soft)]",
+    ring: "ring-[var(--accent-amber-soft)]",
     text: "text-white",
     glow: "shadow-[0_0_0_4px_rgba(245,158,11,0.15)]",
   },
@@ -216,27 +216,27 @@ export function ContactBubble({
         compact ? "py-0.5 text-[10px]" : "py-1 text-[11px]"
       } font-medium shadow-sm transition ${
         selected
-          ? "ring-4 ring-indigo-400 shadow-[0_0_0_6px_rgba(99,102,241,0.3)]"
+          ? "ring-4 ring-[var(--accent-violet)] shadow-[0_0_0_6px_rgba(99,102,241,0.3)]"
           : urgent
-            ? "animate-pulse ring-rose-400 shadow-[0_0_0_6px_rgba(244,63,94,0.25)]"
+            ? "animate-pulse ring-[var(--accent-red)] shadow-[0_0_0_6px_rgba(244,63,94,0.25)]"
             : warn
-              ? "ring-amber-300 shadow-[0_0_0_4px_rgba(245,158,11,0.2)]"
+              ? "ring-[var(--accent-amber)] shadow-[0_0_0_4px_rgba(245,158,11,0.2)]"
               : ""
-      } ${pinned ? "outline outline-2 outline-offset-2 outline-amber-400" : ""} ${
+      } ${pinned ? "outline outline-2 outline-offset-2 outline-[var(--accent-amber)]" : ""} ${
         contact.state === "FINISHED" ? "opacity-60 saturate-50" : ""
       } ${
         highlighted
-          ? "ring-4 ring-cyan-400 scale-110 shadow-[0_0_12px_rgba(34,211,238,0.6)]"
+          ? "ring-4 ring-[var(--accent-cyan)] scale-110 shadow-[0_0_12px_rgba(34,211,238,0.6)]"
           : ""
       } ${dimmed ? "opacity-30 saturate-50" : ""}`}
     >
       {pinned && (
-        <span className="absolute -left-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-[8px] text-white shadow">
+        <span className="absolute -left-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--accent-amber)] text-[8px] text-white shadow">
           <Star className="h-2.5 w-2.5 fill-white" />
         </span>
       )}
       {selected && (
-        <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500 text-[8px] text-white shadow">
+        <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--accent-violet)] text-[8px] text-white shadow">
           <Check className="h-2.5 w-2.5" />
         </span>
       )}
