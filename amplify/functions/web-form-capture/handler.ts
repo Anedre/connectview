@@ -3,6 +3,7 @@ import { propagateLead, setActiveDynamo, setActiveProfiles } from "../_shared/le
 import { getTenantConnect, isTenantDataPlaneEnabled } from "../_shared/tenantConnect";
 import { isLegacyTenant } from "../_shared/cognitoAuth";
 import { setActiveTenant } from "../_shared/salesforceClient";
+import { fireAutomation } from "../_shared/automationHook";
 
 /**
  * web-form-capture — public endpoint a website form posts to so leads land
@@ -156,6 +157,15 @@ export const handler: Handler = async (event: any) => {
       { phone, name: customerName, email, company, source, attributes },
       { origin: "vox" }
     );
+    // Automatizaciones (#15): el caso estrella — "lead nuevo del form web →
+    // acción automática" (ej. plantilla de bienvenida por WhatsApp).
+    if (result.voxAction === "created") {
+      await fireAutomation({
+        type: "lead_created",
+        tenantId,
+        lead: { leadId: result.leadId, phone, name: customerName, source },
+      });
+    }
     return {
       statusCode: 200,
       headers: CORS,

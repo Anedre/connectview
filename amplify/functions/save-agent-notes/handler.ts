@@ -12,6 +12,8 @@ import {
   StartTaskContactCommand,
 } from "@aws-sdk/client-connect";
 import { resolveConnect } from "../_shared/tenantConnect";
+import { resolveTenantId } from "../_shared/cognitoAuth";
+import { fireAutomation } from "../_shared/automationHook";
 
 // BYO Connect + Data Plane (#43+#46): module-active.
 const legacyConnect = new ConnectClient({ maxAttempts: 1 });
@@ -262,6 +264,27 @@ export const handler: Handler = async (event: any) => {
         // History write is best-effort — don't fail the save if the
         // history table is unavailable.
         console.warn("wrap-up history write failed:", err);
+      }
+
+      // Automatizaciones (#15): el wrap-up guardado es un trigger (best-effort,
+      // ≤1.5s, no-op sin envs). El tenant sale del JWT del agente.
+      try {
+        const tenantId = await resolveTenantId(event?.headers);
+        if (tenantId) {
+          await fireAutomation({
+            type: "wrapup_saved",
+            tenantId,
+            wrapup: {
+              contactId,
+              stage,
+              valoracion,
+              channel,
+              phone: customerPhone,
+            },
+          });
+        }
+      } catch {
+        /* nunca romper el guardado del wrap-up */
       }
 
       return {

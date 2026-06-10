@@ -14,6 +14,7 @@ import { propagateLead, pushLeadToSalesforce, appendLeadHistory, stageIdToLabel,
 import { setActiveTenant } from "../_shared/salesforceClient";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
+import { fireAutomation } from "../_shared/automationHook";
 
 /**
  * manage-leads — the unified lead funnel / embudo (roadmap #4, Kommo-style).
@@ -123,7 +124,8 @@ export const handler: Handler = async (event: any) => {
   // Tenant del JWT → propagateById/propagateLead pegan al SF del cliente
   // (vía salesforceClient.setActiveTenant → soql/insertSObject/updateSObject).
   // Sin tenant configurado SF → fallback JWT bearer legacy.
-  setActiveTenant(await resolveTenantId(event?.headers));
+  const tenantId = await resolveTenantId(event?.headers);
+  setActiveTenant(tenantId);
   // BYO Data Plane (#46): mismo tenant para DynamoDB local + leadSync writes.
   {
     const r = await resolveDynamo(event?.headers, legacyDynamo);
@@ -207,6 +209,12 @@ export const handler: Handler = async (event: any) => {
           stageId: String(body.stageId),
           stageLabel,
           sfTaskId: prop.sfTaskId || undefined,
+        });
+        // Automatizaciones (#15): el cambio de etapa es un trigger.
+        await fireAutomation({
+          type: "lead_stage_changed",
+          tenantId,
+          lead: { leadId: String(body.leadId), stageId: String(body.stageId) },
         });
         return ok({ moved: true, leadId: body.leadId, stageId: body.stageId });
       }
@@ -334,6 +342,14 @@ export const handler: Handler = async (event: any) => {
           ts: new Date().toISOString(),
           type: "update",
           sfTaskId: prop.sfTaskId || undefined,
+        });
+      }
+      // Automatizaciones (#15): lead nuevo en el embudo es un trigger.
+      if (isNew) {
+        await fireAutomation({
+          type: "lead_created",
+          tenantId,
+          lead: { leadId, phone, name: item.name, stageId: item.stageId, source: item.source },
         });
       }
       return ok({ lead: item, saved: true, isNew });
