@@ -35,7 +35,7 @@ const SOURCE_LABEL: Record<string, string> = {
   web_form: "Web", campaign: "Campaña", salesforce: "Salesforce", whatsapp: "WhatsApp", manual: "Manual",
 };
 // Paleta "infografía" del diseño v2 (decisión del usuario en Claude Design).
-const DATA_PALETTE = ["#15485A", "#2E9D8E", "#92C73E", "#F2972E", "#1C97A6", "#F5A524"];
+const DATA_PALETTE = ["#2BC6E6","#25B873","#A3D63B","#F5C518","#F5A524","#F2722E","#9B8CF0","#ED84C2","#ED5257","#6E8BFF"];
 
 const CHIP_COLOR: Record<string, string> = {
   "chip--green": "var(--accent-green)", "chip--red": "var(--accent-red)",
@@ -55,10 +55,10 @@ function normChannel(c?: string): ChannelKey {
 }
 const CHANNEL_KEYS: ChannelKey[] = ["voz", "wa", "chat", "email", "sms"];
 const SENTIMENT_META: { key: string; label: string; color: string }[] = [
-  { key: "POSITIVE", label: "Positivo", color: "#2E9D8E" },
-  { key: "NEUTRAL", label: "Neutral", color: "#15485A" },
-  { key: "MIXED", label: "Mixto", color: "#92C73E" },
-  { key: "NEGATIVE", label: "Negativo", color: "#F2972E" },
+  { key: "POSITIVE", label: "Positivo", color: "#25B873" },
+  { key: "NEUTRAL", label: "Neutral", color: "#6E8BFF" },
+  { key: "MIXED", label: "Mixto", color: "#F5C518" },
+  { key: "NEGATIVE", label: "Negativo", color: "#ED5257" },
 ];
 
 const dayMs = 86400000;

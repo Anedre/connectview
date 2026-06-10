@@ -40,18 +40,18 @@ function dGrad(color: string) {
 }
 
 export const EXEC_CHANNEL_META: { key: keyof ExecChannelDay; label: string; color: string }[] = [
-  { key: "voz", label: "Voz", color: "#15485A" },
-  { key: "wa", label: "WhatsApp", color: "#2E9D8E" },
-  { key: "chat", label: "Chat", color: "#92C73E" },
-  { key: "email", label: "Email", color: "#F2972E" },
-  { key: "sms", label: "SMS", color: "#1C97A6" },
+  { key: "voz", label: "Voz", color: "#2BC6E6" },
+  { key: "wa", label: "WhatsApp", color: "#25B873" },
+  { key: "chat", label: "Chat", color: "#9B8CF0" },
+  { key: "email", label: "Email", color: "#F5A524" },
+  { key: "sms", label: "SMS", color: "#ED84C2" },
 ];
 
 /* ---------- Área comparativa (actual vs anterior) ---------- */
 export function ExecAreaEChart({
   data,
-  colorA = "#F2972E",
-  colorB = "#2E9D8E",
+  colorA = "#2BC6E6",
+  colorB = "#9B8CF0",
   height = 282,
 }: {
   data: ExecTrendDay[];
@@ -263,7 +263,7 @@ export function ExecDonutEChart({
 /* ---------- Gauge (CSAT) ---------- */
 export function ExecGaugeEChart({
   value,
-  color = "#2E9D8E",
+  color = "#25B873",
   label = "satisfacción",
   height = 184,
 }: {

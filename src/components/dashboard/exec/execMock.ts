@@ -98,6 +98,9 @@ export const EXEC_DATA_PALETTE = {
   amber: "#F5A524",
 } as const;
 
+/** Paleta diversa aprobada (un color vívido y único por serie/etapa; cicla si hay más). */
+export const DATA_COLORS = ["#2BC6E6","#25B873","#A3D63B","#F5C518","#F5A524","#F2722E","#9B8CF0","#ED84C2","#ED5257","#6E8BFF"];
+
 export const EXEC_MOCK: ExecData = {
   kpis: {
     contactos: { value: 184, delta: +23, spark: [12, 18, 9, 22, 17, 28, 31] },
@@ -131,10 +134,10 @@ export const EXEC_MOCK: ExecData = {
     { label: "30/5", actual: 96, anterior: 40 },
   ],
   sentiment: [
-    { name: "Positivo", value: 114, color: "#2E9D8E" },
-    { name: "Neutral", value: 48, color: "#15485A" },
-    { name: "Mixto", value: 14, color: "#92C73E" },
-    { name: "Negativo", value: 8, color: "#F2972E" },
+    { name: "Positivo", value: 114, color: "#25B873" },
+    { name: "Neutral", value: 48, color: "#6E8BFF" },
+    { name: "Mixto", value: 14, color: "#F5C518" },
+    { name: "Negativo", value: 8, color: "#ED5257" },
   ],
   agentRank: [
     { name: "María Gonzales", value: 42 },
@@ -144,18 +147,18 @@ export const EXEC_MOCK: ExecData = {
     { name: "Diego Soto", value: 19 },
   ],
   byQueue: [
-    { name: "UDEP-Pregrado", value: 78, color: "#15485A" },
-    { name: "UDEP-Posgrado", value: 41, color: "#2E9D8E" },
-    { name: "UDEP-Alumnos", value: 33, color: "#92C73E" },
-    { name: "UDEP-Diplomados", value: 20, color: "#F2972E" },
-    { name: "Gerencia", value: 12, color: "#1C97A6" },
+    { name: "UDEP-Pregrado", value: 78, color: "#2BC6E6" },
+    { name: "UDEP-Posgrado", value: 41, color: "#25B873" },
+    { name: "UDEP-Alumnos", value: 33, color: "#A3D63B" },
+    { name: "UDEP-Diplomados", value: 20, color: "#F5C518" },
+    { name: "Gerencia", value: 12, color: "#F5A524" },
   ],
   leadSources: [
-    { name: "Web", value: 18, color: "#2E9D8E" },
-    { name: "Campaña", value: 14, color: "#92C73E" },
-    { name: "WhatsApp", value: 9, color: "#F2972E" },
-    { name: "Salesforce", value: 4, color: "#15485A" },
-    { name: "Manual", value: 2, color: "#1C97A6" },
+    { name: "Web", value: 18, color: "#2BC6E6" },
+    { name: "Campaña", value: 14, color: "#25B873" },
+    { name: "WhatsApp", value: 9, color: "#A3D63B" },
+    { name: "Salesforce", value: 4, color: "#F5C518" },
+    { name: "Manual", value: 2, color: "#F5A524" },
   ],
   funnel: [
     { label: "Contactado", value: 47, color: "#15485A" },

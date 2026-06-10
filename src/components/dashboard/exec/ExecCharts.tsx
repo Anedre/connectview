@@ -9,7 +9,7 @@ import type { ExecCampaign, ExecLiveQueue, ExecSlice } from "./execMock";
  */
 
 /* ---------- Ranking de agentes ---------- */
-const RANK_COLORS = ["#2E9D8E", "#92C73E", "#F2972E", "#15485A", "#1C97A6"];
+const RANK_COLORS = ["#2BC6E6","#25B873","#A3D63B","#F5C518","#F5A524","#F2722E","#9B8CF0","#ED84C2","#ED5257","#6E8BFF"];
 const initialsOf = (n: string) =>
   n.split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
@@ -202,7 +202,7 @@ export function ExecHeatmap() {
     []
   );
   const colorFor = (v: number) =>
-    `color-mix(in srgb, #F2972E ${Math.round(v * 100)}%, #15485A)`;
+    `color-mix(in srgb, #F2722E ${Math.round(v * 100)}%, #123A4A)`;
   return (
     <div>
       <div className="exec-heat">
@@ -284,8 +284,8 @@ export function ExecCampaigns({ data }: { data: ExecCampaign[] }) {
                 style={{
                   width: `${pct}%`,
                   background: running
-                    ? "linear-gradient(180deg, #45C9B3, #2E9D8E 60%, #247F73)"
-                    : "linear-gradient(180deg, #F8B560, #F2972E 60%, #D87A14)",
+                    ? "linear-gradient(180deg, #5AD6B0, #25B873 60%, #1B8F5A)"
+                    : "linear-gradient(180deg, #FAC661, #F5A524 60%, #D8851A)",
                   boxShadow:
                     "inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -2px 3px rgba(0,0,0,0.3)",
                 }}
