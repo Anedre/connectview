@@ -106,8 +106,9 @@
 # WAVE 3 — Riqueza de WhatsApp
 > Lo que hace que el WhatsApp de Kommo se sienta premium. El cliente vive en WhatsApp.
 
-### 10. ⭐ WhatsApp Flows (forms in-chat)
-- **Estado:** mandamos templates con variables.
+### 10. ⭐ WhatsApp Flows (forms in-chat) — 🟡 V1 HECHA (2026-06-10, falta Flow real del usuario)
+- **Entregado (v1):** Lambda `connectview-send-whatsapp-flow` (mensaje interactivo Flows API v3, dual-mode AWS/Meta, dryRun, tracking en hsm-sends como `flow:<nombre>`) + captura de la respuesta `nfm_reply` en `whatsapp-meta-webhook` → `propagateLead` (lead + CP + SF) con los campos del form como attributes `flow_*` + history + **trigger nuevo de Automatizaciones `whatsapp_flow_completed`** (form completado → mover etapa / plantilla / webhook). UI: registro de Flows (flow_id+nombre+CTA+pantalla) en Integraciones → WhatsApp; botón "Enviar formulario" en el composer del chat (solo WA, respeta ventana 24h). **Verificado e2e sintético** (webhook → lead "Carla Flow E2E" + automatización OK). **Falta (usuario):** diseñar/publicar un Flow real en Meta Business Manager y pegarlo en Integraciones; registrar el webhook en su app Meta (tenants modo "meta"). **Limitación v1:** captura estructurada solo modo "meta" (en modo "aws" la respuesta llega al chat del agente — la WABA tiene un solo event destination); Flows en campañas masivas = v2.
+- **Estado previo:** mandamos templates con variables.
 - **Gap:** Kommo tiene Flows — formularios multi-pantalla DENTRO de WhatsApp. Reemplaza Typeform/Sappier para captura de datos.
 - **Build:** integrar Meta WhatsApp Flows API. Nuevo Lambda `send-whatsapp-flow`. El Flow JSON se diseña en Meta; Vox lo dispara y recibe la respuesta vía webhook → escribe en Customer Profile + crea/actualiza lead. **Esto es directamente lo que Sappier hace, pero nativo en WhatsApp.**
 - **Esfuerzo:** L · **Dependencias:** #14 · **Toca:** nuevo Lambda, webhook handler
