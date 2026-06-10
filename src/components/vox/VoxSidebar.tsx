@@ -169,10 +169,12 @@ export function VoxSidebar() {
             location.pathname === entry.path ||
             (entry.path !== "/" && location.pathname.startsWith(entry.path));
           return (
-            <div
+            <button
+              type="button"
               key={entry.id}
               className={`sb__item ${active ? "sb__item--active" : ""}`}
               onClick={() => navigate(entry.path)}
+              aria-current={active ? "page" : undefined}
             >
               <Icn className="sb__icon" size={16} />
               <div className="sb__label">{entry.label}</div>
@@ -181,7 +183,7 @@ export function VoxSidebar() {
                   {entry.count}
                 </div>
               )}
-            </div>
+            </button>
           );
         })}
       </nav>

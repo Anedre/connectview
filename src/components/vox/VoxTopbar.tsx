@@ -151,7 +151,8 @@ export function VoxTopbar() {
               const c = colorFor(s);
               const isCurrent = s.name === agentState;
               return (
-                <div
+                <button
+                  type="button"
                   key={s.name}
                   onClick={() => {
                     changeAgentState(s);
@@ -159,6 +160,7 @@ export function VoxTopbar() {
                   }}
                   className={`sb__item ${isCurrent ? "sb__item--active" : ""}`}
                   style={{ margin: 0, padding: "8px 10px" }}
+                  aria-current={isCurrent ? "true" : undefined}
                 >
                   <span
                     className="state-dot"
@@ -168,7 +170,7 @@ export function VoxTopbar() {
                   {isCurrent && (
                     <Icon.Check size={12} style={{ color: c.fg }} />
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -177,6 +179,7 @@ export function VoxTopbar() {
         {ccpError && (
           <span
             className="chip chip--red"
+            role="alert"
             title={ccpError}
             style={{ maxWidth: 220 }}
           >
@@ -229,7 +232,8 @@ export function VoxTopbar() {
               </div>
               <div style={{ fontSize: 11, color: "var(--text-3)" }}>{user.email}</div>
             </div>
-            <div
+            <button
+              type="button"
               className="sb__item"
               style={{ margin: 4, padding: "8px 10px" }}
               onClick={() => {
@@ -239,7 +243,7 @@ export function VoxTopbar() {
             >
               <Icon.Logout className="sb__icon" size={14} />
               <span className="sb__label">Cerrar sesión</span>
-            </div>
+            </button>
           </div>
         )}
       </div>
