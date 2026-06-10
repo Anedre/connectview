@@ -117,6 +117,14 @@ interface TaxStage { id: string; label?: string; salesforceValue?: string; subSt
 let taxCache: { stages: TaxStage[]; at: number } | null = null;
 const TAX_TTL_MS = 5 * 60 * 1000;
 
+/** Invalida el cache de taxonomía. OBLIGATORIO al cambiar de tenant dentro de
+ *  un mismo contenedor (p.ej. el automation-engine procesando varios tenants):
+ *  el cache NO está keyeado por tenant y serviría stages/salesforceValue de
+ *  otro cliente. */
+export function resetTaxonomyCache(): void {
+  taxCache = null;
+}
+
 async function loadDefaultStages(): Promise<TaxStage[]> {
   if (taxCache && Date.now() - taxCache.at < TAX_TTL_MS) return taxCache.stages;
   try {
