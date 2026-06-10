@@ -42,7 +42,8 @@ export type TriggerType =
   | "lead_created"
   | "lead_stage_changed"
   | "lead_inactive"
-  | "wrapup_saved";
+  | "wrapup_saved"
+  | "whatsapp_flow_completed";
 export type ActionType =
   | "send_whatsapp_template"
   | "move_stage"
@@ -67,6 +68,7 @@ const TRIGGER_TYPES: TriggerType[] = [
   "lead_stage_changed",
   "lead_inactive",
   "wrapup_saved",
+  "whatsapp_flow_completed",
 ];
 const ACTION_TYPES: ActionType[] = [
   "send_whatsapp_template",

@@ -6,8 +6,17 @@ import {
   ScanCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
+import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { getTenantConnect } from "../_shared/tenantConnect";
 import { sendWhatsApp } from "../_shared/whatsappSend";
+import {
+  appendLeadHistory,
+  propagateLead,
+  setActiveDynamo,
+  setActiveProfiles,
+} from "../_shared/leadSync";
+import { setActiveTenant } from "../_shared/salesforceClient";
+import { fireAutomation } from "../_shared/automationHook";
 
 /**
  * whatsapp-meta-webhook — webhook de Meta Cloud API para números de WhatsApp
@@ -124,6 +133,91 @@ async function pickBotId(dynamo: DynamoDBClient, configBotId?: string): Promise<
   }
 }
 
+// Client CP "fail-closed": con domain "" el upsert del Cliente 360° se saltea.
+// (Pasar client=null a setActiveProfiles caería al dominio LEGACY de Novasys —
+// leak cross-tenant. Este webhook es de tenants modo "meta", nunca Novasys.)
+const cpFailClosed = new CustomerProfilesClient({ maxAttempts: 1 });
+
+/**
+ * Respuesta de un WhatsApp Flow (formulario nativo, #10): el cliente completó
+ * el form → Meta manda `interactive.nfm_reply` con `response_json`. Acá lo
+ * convertimos en CRM: upsert del lead (hub propagateLead → tabla + Customer
+ * Profile + SF) con los campos del form como attributes `flow_*`, historial,
+ * y el trigger de Automatizaciones `whatsapp_flow_completed` (#15).
+ */
+async function handleFlowReply(
+  phoneNumberId: string,
+  from: string,
+  nfm: { name?: string; body?: string; response_json?: string }
+): Promise<void> {
+  const t = await findTenantByMetaPhone(phoneNumberId);
+  if (!t || !t.tenantId) return;
+
+  // Contexto del tenant para el hub de leads (mismo fallback pooled que las
+  // sesiones de bot de este webhook). CP: fail-closed si no hay rol del tenant.
+  setActiveTenant(t.tenantId);
+  try {
+    const tc = await getTenantConnect(t.tenantId);
+    setActiveDynamo(tc?.dynamo ?? null);
+    if (tc?.customerProfiles) {
+      setActiveProfiles(tc.customerProfiles, tc.customerProfilesDomain ?? "");
+    } else {
+      setActiveProfiles(cpFailClosed, "");
+    }
+  } catch {
+    setActiveDynamo(null);
+    setActiveProfiles(cpFailClosed, "");
+  }
+
+  // Campos del form → attributes flow_<campo>. flow_token interno se descarta.
+  let fields: Record<string, unknown> = {};
+  try {
+    fields = JSON.parse(nfm.response_json || "{}");
+  } catch {
+    /* respuesta malformada → igual registramos la interacción */
+  }
+  const attributes: Record<string, string> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (k === "flow_token" || v == null) continue;
+    attributes[`flow_${k}`.slice(0, 64)] = String(v).slice(0, 512);
+  }
+  if (nfm.name) attributes.last_flow = String(nfm.name).slice(0, 128);
+
+  // Nombre del lead si el form lo trae (campos típicos).
+  const name =
+    (fields.name as string) ||
+    (fields.nombre as string) ||
+    (fields.full_name as string) ||
+    undefined;
+
+  const phone = from.startsWith("+") ? from : `+${from}`;
+  try {
+    const result = await propagateLead(
+      { phone, name, source: "WhatsApp Flow", attributes },
+      { origin: "vox" }
+    );
+    if (result.leadId) {
+      await appendLeadHistory(result.leadId, {
+        ts: new Date().toISOString(),
+        type: "interaccion",
+        channel: "WhatsApp",
+        notes: `Formulario completado${nfm.name ? ` · ${nfm.name}` : ""}`,
+      });
+    }
+    await fireAutomation({
+      type: "whatsapp_flow_completed",
+      tenantId: t.tenantId,
+      lead: { leadId: result.leadId, phone, name, source: "WhatsApp Flow" },
+      flow: { name: nfm.name },
+    });
+    console.log(
+      `flow reply: tenant=${t.tenantId} phone=${phone} flow=${nfm.name || "—"} lead=${result.leadId || "—"} fields=${Object.keys(attributes).length}`
+    );
+  } catch (e) {
+    console.error("flow reply → CRM falló:", e);
+  }
+}
+
 async function handleInbound(phoneNumberId: string, from: string, text: string): Promise<void> {
   const t = await findTenantByMetaPhone(phoneNumberId);
   if (!t || !t.tenantId) return; // número no mapeado a un tenant en modo meta
@@ -228,6 +322,13 @@ export const handler: Handler = async (event: any) => {
         const phoneNumberId = value?.metadata?.phone_number_id || "";
         for (const msg of value.messages || []) {
           const from = msg.from;
+          // Respuesta de un WhatsApp Flow (#10): va al CRM, NO al bot (el
+          // JSON crudo no es un turno de conversación).
+          const nfm = msg.interactive?.nfm_reply;
+          if (phoneNumberId && from && nfm) {
+            await handleFlowReply(phoneNumberId, from, nfm);
+            continue;
+          }
           const text =
             msg.text?.body ||
             msg.interactive?.button_reply?.id ||

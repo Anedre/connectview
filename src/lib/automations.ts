@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   ArrowRightLeft,
   CalendarClock,
+  ClipboardList,
   Globe,
   MessageCircle,
   MoveRight,
@@ -22,7 +23,8 @@ export type TriggerType =
   | "lead_created"
   | "lead_stage_changed"
   | "lead_inactive"
-  | "wrapup_saved";
+  | "wrapup_saved"
+  | "whatsapp_flow_completed";
 export type ActionType =
   | "send_whatsapp_template"
   | "move_stage"
@@ -30,7 +32,7 @@ export type ActionType =
   | "webhook";
 
 export interface RuleCondition {
-  field: "source" | "stageId" | "valoracion" | "channel";
+  field: "source" | "stageId" | "valoracion" | "channel" | "flowName";
   op: "eq" | "neq";
   value: string;
 }
@@ -122,6 +124,21 @@ export const TRIGGER_DEFS: Record<
     accent: "var(--accent-green)",
     fields: [],
   },
+  whatsapp_flow_completed: {
+    label: "Formulario completado",
+    description: "Un cliente completa un formulario de WhatsApp (Flow #10).",
+    icon: ClipboardList,
+    accent: "var(--accent-pink)",
+    fields: [
+      {
+        key: "flowName",
+        label: "Solo el formulario",
+        type: "text",
+        placeholder: "nombre del Flow",
+        hint: "Vacío = cualquier formulario.",
+      },
+    ],
+  },
 };
 
 export const CONDITION_FIELDS: Array<{ value: RuleCondition["field"]; label: string }> = [
@@ -129,6 +146,7 @@ export const CONDITION_FIELDS: Array<{ value: RuleCondition["field"]; label: str
   { value: "stageId", label: "Etapa" },
   { value: "valoracion", label: "Valoración (wrap-up)" },
   { value: "channel", label: "Canal (wrap-up)" },
+  { value: "flowName", label: "Formulario (Flow)" },
 ];
 
 export const ACTION_DEFS: Record<
@@ -279,6 +297,7 @@ export const TRIGGER_ORDER: TriggerType[] = [
   "lead_stage_changed",
   "lead_inactive",
   "wrapup_saved",
+  "whatsapp_flow_completed",
 ];
 export const ACTION_ORDER: ActionType[] = [
   "send_whatsapp_template",

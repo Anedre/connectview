@@ -9,6 +9,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { randomUUID } from "node:crypto";
+import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { isLegacyTenant } from "../_shared/cognitoAuth";
 import { getTenantConnect } from "../_shared/tenantConnect";
 import {
@@ -63,7 +64,12 @@ const ok = (b: unknown) => ({ statusCode: 200, headers: HDRS, body: JSON.stringi
 const bad = (c: number, e: string) => ({ statusCode: c, headers: HDRS, body: JSON.stringify({ error: e }) });
 
 // ───────────────────────── tipos ─────────────────────────
-type TriggerType = "lead_created" | "lead_stage_changed" | "lead_inactive" | "wrapup_saved";
+type TriggerType =
+  | "lead_created"
+  | "lead_stage_changed"
+  | "lead_inactive"
+  | "wrapup_saved"
+  | "whatsapp_flow_completed";
 type ActionType = "send_whatsapp_template" | "move_stage" | "schedule_callback" | "webhook";
 
 interface Rule {
@@ -95,6 +101,8 @@ export interface AutomationEvent {
     phone?: string;
     customerName?: string;
   };
+  /** Para whatsapp_flow_completed (#10): nombre del Flow de Meta. */
+  flow?: { name?: string };
 }
 
 /** Contexto normalizado sobre el que corren condiciones y acciones. */
@@ -108,6 +116,7 @@ interface Ctx {
   source?: string;
   valoracion?: string;
   channel?: string;
+  flowName?: string;
 }
 
 interface LeadItem {
@@ -161,12 +170,22 @@ async function loadAllRules(): Promise<Rule[]> {
   return out.filter((r) => r.enabled !== false);
 }
 
+// CP "fail-closed" para tenants reales sin rol: domain "" = el upsert del
+// Cliente 360° se saltea (client=null caería al dominio LEGACY de Novasys).
+const cpFailClosed = new CustomerProfilesClient({ maxAttempts: 1 });
+
 /**
  * Activa el contexto del tenant para TODOS los helpers (leads DDB, Customer
- * Profiles, Salesforce, cache de taxonomía). Tenant real sin Data Plane
- * utilizable → throw (el caller decide SKIP — nunca caer al pooled, G5).
+ * Profiles, Salesforce, cache de taxonomía).
+ *
+ * `strict` (el TICK): tenant real sin Data Plane utilizable → throw → SKIP
+ * del tenant (G5: escanear los leads POOLED con reglas de otro tenant sería
+ * un leak). `strict=false` (EVENTOS de hooks): el evento ya viene scoped al
+ * tenant → fallback al pooled con CP fail-closed — consistente con el
+ * whatsapp-meta-webhook, que escribe las sesiones/leads de tenants meta sin
+ * Data Plane en el pooled. Acciones sin DDB (webhook, plantilla) corren igual.
  */
-async function setupTenant(tenantId: string): Promise<void> {
+async function setupTenant(tenantId: string, strict = true): Promise<void> {
   resetTaxonomyCache(); // G4: el cache no está keyeado por tenant
   setActiveTenant(tenantId); // SF: legacy/master → JWT-bearer; real → su OAuth
   if (isLegacyTenant(tenantId)) {
@@ -175,12 +194,24 @@ async function setupTenant(tenantId: string): Promise<void> {
     setActiveProfiles(null, null);
     return;
   }
-  const tc = await getTenantConnect(tenantId);
-  if (!tc?.dynamo) throw new Error(`tenant ${tenantId} sin Connect/Data Plane configurado`);
-  leadsDynamo = tc.dynamo;
-  setActiveDynamo(tc.dynamo);
-  // CP del cliente; domain "" = fail-closed (skip del upsert de perfil).
-  setActiveProfiles(tc.customerProfiles ?? null, tc.customerProfilesDomain ?? "");
+  let tc: Awaited<ReturnType<typeof getTenantConnect>> = null;
+  try {
+    tc = await getTenantConnect(tenantId);
+  } catch {
+    tc = null;
+  }
+  if (tc?.dynamo) {
+    leadsDynamo = tc.dynamo;
+    setActiveDynamo(tc.dynamo);
+    // CP del cliente; domain "" = fail-closed (skip del upsert de perfil).
+    setActiveProfiles(tc.customerProfiles ?? null, tc.customerProfilesDomain ?? "");
+    return;
+  }
+  if (strict) throw new Error(`tenant ${tenantId} sin Connect/Data Plane configurado`);
+  console.warn(`automation: tenant ${tenantId} sin Data Plane — evento procesado contra pooled (CP off)`);
+  leadsDynamo = legacyDynamo;
+  setActiveDynamo(null);
+  setActiveProfiles(cpFailClosed, "");
 }
 
 function matchesConditions(rule: Rule, ctx: Ctx): boolean {
@@ -201,6 +232,11 @@ function matchesTrigger(rule: Rule, ev: AutomationEvent): boolean {
   if (ev.type === "lead_stage_changed") {
     const want = String(rule.trigger.params?.stageId || "");
     if (want && want !== String(ev.lead?.stageId || "")) return false;
+  }
+  // whatsapp_flow_completed admite filtrar por nombre del Flow.
+  if (ev.type === "whatsapp_flow_completed") {
+    const want = String(rule.trigger.params?.flowName || "").toLowerCase();
+    if (want && want !== String(ev.flow?.name || "").toLowerCase()) return false;
   }
   return true;
 }
@@ -224,6 +260,7 @@ function ctxFromEvent(ev: AutomationEvent): Ctx {
     name: ev.lead?.name,
     stageId: ev.lead?.stageId,
     source: ev.lead?.source,
+    flowName: ev.flow?.name,
   };
 }
 
@@ -483,7 +520,7 @@ async function processEvent(ev: AutomationEvent): Promise<{ matched: number; fir
   const matched = rules.filter((r) => matchesConditions(r, ctx));
   if (matched.length === 0) return { matched: 0, fired: 0 };
 
-  await setupTenant(ev.tenantId); // throw → el caller responde error (sin tocar nada)
+  await setupTenant(ev.tenantId, false); // eventos: fallback pooled (no estricto)
   let fired = 0;
   for (const rule of matched) fired += await executeRule(rule, ev.type, ctx);
   return { matched: matched.length, fired };
