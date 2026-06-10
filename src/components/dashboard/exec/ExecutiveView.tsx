@@ -18,7 +18,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { ExecStat } from "./ExecStat";
-import type { ExecData, ExecInsight, ExecPeriod } from "./execMock";
+import {
+  ExecAreaEChart,
+  ExecBarsEChart,
+  ExecDonutEChart,
+  ExecGaugeEChart,
+} from "./ExecEcharts";
+import type { ExecData, ExecInsight, ExecPeriod, ExecSlice } from "./execMock";
 import "@/styles/exec.css";
 
 /**
@@ -148,6 +154,81 @@ function ExecSkeleton() {
   );
 }
 
+function ExecPanel({
+  title,
+  hint,
+  right,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="exec-panel">
+      <div className="exec-panel__head">
+        <div className="exec-panel__title">{title}</div>
+        {(hint || right) && <div className="exec-panel__spacer" />}
+        {right}
+        {hint && <span className="exec-panel__hint">{hint}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Placeholder de panel (se reemplaza por el componente real en el Paso 3). */
+function PanelSkeleton({ h = 180 }: { h?: number }) {
+  return <div className="exec-skel" style={{ height: h, borderRadius: 10 }} />;
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ textAlign: "center" }}>
+      <div
+        style={{
+          fontSize: 16,
+          fontWeight: 800,
+          letterSpacing: "-0.03em",
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          fontSize: 9.5,
+          color: "var(--e-t3)",
+          textTransform: "uppercase",
+          letterSpacing: "0.07em",
+          fontWeight: 600,
+          marginTop: 2,
+        }}
+      >
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function DonutLegend({ data, total }: { data: ExecSlice[]; total: number }) {
+  return (
+    <div className="exec-legend" style={{ flex: 1 }}>
+      {data.map((s) => (
+        <div key={s.name} className="exec-legend__item">
+          <span className="exec-legend__sw" style={{ background: s.color }} />
+          <span className="exec-legend__name">{s.name}</span>
+          <span className="exec-legend__val">{s.value}</span>
+          <span className="exec-legend__pct">
+            {Math.round((s.value / total) * 100)}%
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export interface ExecutiveViewProps {
   data: ExecData;
   period: ExecPeriod;
@@ -168,6 +249,7 @@ export function ExecutiveView({
   const [now, setNow] = useState(() => new Date());
   const segRef = useRef<HTMLDivElement>(null);
   const [thumb, setThumb] = useState({ left: 4, width: 0 });
+  const [mainChart, setMainChart] = useState<"compare" | "channel">("compare");
 
   // Reloj en vivo (UI, no dato de negocio).
   useEffect(() => {
@@ -192,6 +274,9 @@ export function ExecutiveView({
   const dateLabel = now
     .toLocaleDateString("es-PE", { day: "2-digit", month: "short" })
     .replace(".", "");
+  const sentTotal = data.sentiment.reduce((s, d) => s + d.value, 0);
+  const queueTotal = data.byQueue.reduce((s, d) => s + d.value, 0);
+  const leadTotal = data.leadSources.reduce((s, d) => s + d.value, 0);
 
   return (
     <div className="exec">
@@ -266,8 +351,110 @@ export function ExecutiveView({
         <ExecStat index={6} period={period} label="Agentes" icon={Users} accent="var(--e-cyan)" value={k.agentes.available} note={`${k.agentes.online} online`} />
       </div>
 
-      {/* TODO Paso 2/3: filas de charts (área/donut/gauge), rank, pill-bars, funnel,
-          heatmap, campañas, colas en vivo. */}
+      {/* Main row: volumen + sentiment */}
+      <div className="exec-row exec-row--main">
+        <ExecPanel
+          title={mainChart === "compare" ? "Volumen de contactos" : "Volumen por canal"}
+          right={
+            <div className="exec-toggle">
+              <button
+                className={`exec-toggle__opt ${mainChart === "compare" ? "exec-toggle__opt--active" : ""}`}
+                onClick={() => setMainChart("compare")}
+              >
+                Comparación
+              </button>
+              <button
+                className={`exec-toggle__opt ${mainChart === "channel" ? "exec-toggle__opt--active" : ""}`}
+                onClick={() => setMainChart("channel")}
+              >
+                Por canal
+              </button>
+            </div>
+          }
+        >
+          {mainChart === "compare" ? (
+            <ExecAreaEChart data={data.volumeTrend} />
+          ) : (
+            <ExecBarsEChart data={data.volumeByChannel} />
+          )}
+        </ExecPanel>
+        <ExecPanel title="Sentiment de contactos">
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <div style={{ flex: "0 0 176px" }}>
+              <ExecDonutEChart
+                data={data.sentiment}
+                centerValue={sentTotal}
+                centerLabel="contactos"
+                height={196}
+              />
+            </div>
+            <DonutLegend data={data.sentiment} total={sentTotal} />
+          </div>
+        </ExecPanel>
+      </div>
+
+      {/* Vivid row: CSAT gauge + ranking + por cola */}
+      <div className="exec-row exec-row--vivid">
+        <ExecPanel title="Satisfacción (CSAT)">
+          <div style={{ display: "grid", placeItems: "center", padding: "6px 0" }}>
+            <div style={{ width: "100%", maxWidth: 220 }}>
+              <ExecGaugeEChart value={data.csat.value} label="satisfacción" color="#2E9D8E" />
+            </div>
+            <div className="exec-gauge-meta">
+              Meta {data.csat.meta}% ·{" "}
+              <b>+{data.csat.value - data.csat.meta} pts por encima</b>
+            </div>
+            <div style={{ display: "flex", gap: 20, marginTop: 12 }}>
+              <MiniStat label="Encuestas" value={String(data.csat.encuestas)} />
+              <MiniStat label="Promotores" value={`${data.csat.promotores}%`} />
+              <MiniStat label="Detractores" value={`${data.csat.detractores}%`} />
+            </div>
+          </div>
+        </ExecPanel>
+        <ExecPanel title="Ranking de agentes" hint="por contactos">
+          <PanelSkeleton h={200} />
+        </ExecPanel>
+        <ExecPanel title="Contactos por cola" hint={`${queueTotal} total`}>
+          <PanelSkeleton h={200} />
+        </ExecPanel>
+      </div>
+
+      {/* Growth row: fuentes + embudo */}
+      <div className="exec-row exec-row--growth">
+        <ExecPanel title="Fuentes de leads">
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <div style={{ flex: "0 0 160px" }}>
+              <ExecDonutEChart
+                data={data.leadSources}
+                centerValue={leadTotal}
+                centerLabel="leads"
+                height={176}
+              />
+            </div>
+            <DonutLegend data={data.leadSources} total={leadTotal} />
+          </div>
+        </ExecPanel>
+        <ExecPanel title="Embudo de leads" hint="tasa de cierre 10.6%">
+          <PanelSkeleton h={200} />
+        </ExecPanel>
+      </div>
+
+      {/* Bottom row: campañas + colas en vivo */}
+      <div className="exec-row exec-row--bottom">
+        <ExecPanel title="Campañas activas">
+          <PanelSkeleton h={140} />
+        </ExecPanel>
+        <ExecPanel title="Colas en tiempo real">
+          <PanelSkeleton h={140} />
+        </ExecPanel>
+      </div>
+
+      {/* Heatmap */}
+      <div className="exec-row" style={{ gridTemplateColumns: "1fr" }}>
+        <ExecPanel title="Contactos por hora × día de semana" hint="08:00 – 20:00">
+          <PanelSkeleton h={160} />
+        </ExecPanel>
+      </div>
     </div>
   );
 }
