@@ -3,7 +3,11 @@
    Scoped under .exec so the rest of the (navy) app is untouched.
    ============================================================ */
 
-.exec {
+/* `.exec-vars` = alias SOLO-VARIABLES: permite usar las clases exec-* (panels,
+   stats, seg, skel…) en otras pantallas (ej. Reportes) sin heredar el layout
+   del dashboard (background/padding/glows). Misma familia visual, cero copia. */
+.exec,
+.exec-vars {
   /* Superficies/texto/borde: tokens del sistema (dark deep-black / light, Fase 0/1).
      El tema (data-theme) lo maneja :root del sistema → el exec hereda dark/light. */
   --e-bg: var(--bg-0);
@@ -26,7 +30,10 @@
   --e-pink: var(--accent-pink);
 
   --e-glow: 0.07;
+}
 
+/* Layout del dashboard — SOLO .exec (no el alias). */
+.exec {
   position: relative;
   min-height: 100%;
   background: var(--e-bg);
@@ -36,7 +43,8 @@
   overflow: hidden;
 }
 
-[data-theme="light"] .exec { --e-glow: 0.05; }
+[data-theme="light"] .exec,
+[data-theme="light"] .exec-vars { --e-glow: 0.05; }
 
 /* radial ambient glows */
 .exec::before, .exec::after {
