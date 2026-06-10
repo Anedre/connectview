@@ -249,6 +249,21 @@ export function InsightsPanel({ metrics, lastRefresh, onRefresh }: InsightsPanel
       .filter((s) => s.value > 0);
   }, [leads, tree]);
 
+  // Heatmap hora×día desde los timestamps REALES de los contactos del período
+  // (grid 7×13: lun..dom × 08..20h — el componente normaliza por max).
+  const heatmap = useMemo(() => {
+    const grid = Array.from({ length: 7 }, () => new Array(13).fill(0));
+    for (const c of curContacts) {
+      const dt = new Date(c.initiationTimestamp);
+      const dow = (dt.getDay() + 6) % 7; // Mon=0 … Sun=6
+      let b = dt.getHours() - 8; // 08:00 → 0 … 20:00 → 12
+      if (b < 0) b = 0;
+      if (b > 12) b = 12;
+      grid[dow][b] += 1;
+    }
+    return { grid, max: Math.max(1, ...grid.flat()) };
+  }, [curContacts]);
+
   const upcoming = appts.filter((a) => a.status !== "cancelled" && a.whenISO && new Date(a.whenISO).getTime() >= Date.now()).length;
   const apptTotal = appts.filter((a) => a.status !== "cancelled").length;
   const online = metrics?.summary.totalAgentsOnline ?? 0;
@@ -330,7 +345,8 @@ export function InsightsPanel({ metrics, lastRefresh, onRefresh }: InsightsPanel
     agentsOnline: online,
     org: "",
     insights,
-  }), [curContacts, prevContacts, contactSpark, posPct, negPct, aht, periodLeads, prevLeads, leadSpark, upcoming, apptTotal, hsmSent, available, online, volumeByChannel, trend, sentiment, agentRank, byQueue, leadSources, funnel, campaigns, metrics, insights]);
+    heatmap,
+  }), [curContacts, prevContacts, contactSpark, posPct, negPct, aht, periodLeads, prevLeads, leadSpark, upcoming, apptTotal, hsmSent, available, online, volumeByChannel, trend, sentiment, agentRank, byQueue, leadSources, funnel, campaigns, metrics, insights, heatmap]);
 
   return (
     <ExecutiveView

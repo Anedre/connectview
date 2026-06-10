@@ -185,9 +185,15 @@ export function ExecPillBars({ data }: { data: ExecSlice[] }) {
 const HEAT_DAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const HEAT_HOURS = Array.from({ length: 13 }, (_, i) => i + 8); // 08–20
 
-export function ExecHeatmap() {
-  const mounted = useMounted([]);
-  const grid = useMemo(
+export function ExecHeatmap({
+  data,
+}: {
+  /** Grid 7×13 REAL (conteos absolutos) + max. Sin data → patrón demo. */
+  data?: { grid: number[][]; max: number };
+}) {
+  const mounted = useMounted([data ? "real" : "demo"]);
+  // Demo determinístico (solo cuando no hay datos reales — /inicio-demo).
+  const demoGrid = useMemo(
     () =>
       HEAT_DAYS.map((_, di) =>
         HEAT_HOURS.map((h) => {
@@ -201,6 +207,15 @@ export function ExecHeatmap() {
       ),
     []
   );
+  // Normaliza: con data real, v = conteo/max; el title muestra el conteo real.
+  const cellOf = (di: number, hi: number): { v: number; count: number | null } => {
+    if (data) {
+      const count = data.grid[di]?.[hi] ?? 0;
+      return { v: data.max > 0 ? count / data.max : 0, count };
+    }
+    const v = demoGrid[di][hi];
+    return { v, count: null };
+  };
   const colorFor = (v: number) =>
     `color-mix(in srgb, #F2722E ${Math.round(v * 100)}%, #123A4A)`;
   return (
@@ -216,12 +231,12 @@ export function ExecHeatmap() {
           <div key={day} style={{ display: "contents" }}>
             <div className="exec-heat__rowlabel">{day}</div>
             {HEAT_HOURS.map((h, hi) => {
-              const v = grid[di][hi];
+              const { v, count } = cellOf(di, hi);
               return (
                 <div
                   key={h}
                   className="exec-heat__cell"
-                  title={`${day} ${h}:00 · ${Math.round(v * 42)} contactos`}
+                  title={`${day} ${h}:00 · ${count ?? Math.round(v * 42)} contactos`}
                   style={{
                     background: colorFor(v),
                     opacity: mounted ? 0.12 + v * 0.88 : 0,

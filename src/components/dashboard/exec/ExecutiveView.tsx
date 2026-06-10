@@ -457,7 +457,7 @@ export function ExecutiveView({
       {/* Heatmap */}
       <div className="exec-row" style={{ gridTemplateColumns: "1fr" }}>
         <ExecPanel title="Contactos por hora × día de semana" hint="08:00 – 20:00">
-          <ExecHeatmap />
+          <ExecHeatmap data={data.heatmap} />
         </ExecPanel>
       </div>
     </div>

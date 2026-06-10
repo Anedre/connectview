@@ -86,6 +86,9 @@ export interface ExecData {
   org: string;
   /** Insights opcionales; si se omiten, ExecutiveView los deriva de los datos. */
   insights?: ExecInsight[];
+  /** Heatmap hora×día REAL (grid 7×13, lun..dom × 08..20h). Si se omite,
+   *  ExecHeatmap muestra un patrón demo (solo para /inicio-demo). */
+  heatmap?: { grid: number[][]; max: number };
 }
 
 /** Paleta de datos "infografía" del diseño v2 (tokenizada también como --data-* en index.css). */
