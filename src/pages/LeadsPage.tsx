@@ -14,6 +14,7 @@ import { VALORACION_META, type Valoracion } from "@/lib/dispositions";
 import * as Icon from "@/components/vox/primitives";
 import { PageHeader } from "@/components/vox/PageHeader";
 import { WhatsAppQuickSendModal } from "@/components/workspace/WhatsAppQuickSendModal";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * LeadsPage — unified lead funnel / embudo (roadmap #4, Kommo/Pipedrive-style).
@@ -718,6 +719,7 @@ function LeadDetailModal({
   const [saving, setSaving] = useState(false);
   const [stageId, setStageId] = useState(lead.stageId || stages[0]?.id || "");
   const [sfPushing, setSfPushing] = useState(false);
+  const { confirm, confirmDialog } = useConfirm();
 
   const changeStage = async (next: string) => {
     if (!next || next === stageId) return;
@@ -754,7 +756,7 @@ function LeadDetailModal({
   const del = async () => {
     const ep = getApiEndpoints();
     if (!ep?.manageLeads) return;
-    if (!confirm(`¿Eliminar el lead "${lead.name || lead.phone}"?`)) return;
+    if (!(await confirm({ title: `¿Eliminar el lead "${lead.name || lead.phone}"?`, destructive: true, confirmLabel: "Eliminar" }))) return;
     try {
       await authedFetch(`${ep.manageLeads}?leadId=${encodeURIComponent(lead.leadId)}`, { method: "DELETE" });
       toast.success("Lead eliminado");
@@ -919,6 +921,7 @@ function LeadDetailModal({
           </div>
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 }

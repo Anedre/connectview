@@ -22,6 +22,7 @@ import { QueueManagerHeader, type QueueKpis } from "@/components/pipeline/QueueM
 import { AgentActionsDialog } from "@/components/queue/AgentActionsDialog";
 import { AuditLogPanel } from "@/components/queue/AuditLogPanel";
 import { ActiveCampaignsPanel } from "@/components/queue/ActiveCampaignsPanel";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import type { BubbleDragPayload } from "@/components/pipeline/ContactBubble";
 
 export function QueueManagerPage() {
@@ -43,6 +44,7 @@ function QueueManagerInner() {
     3000
   );
   const { transferContact, stopContact } = useAdminActions();
+  const { confirm, confirmDialog } = useConfirm();
   const {
     config,
     update,
@@ -271,9 +273,11 @@ function QueueManagerInner() {
 
   // Board-only: drop onto "Finalizados" → stopContact.
   const onContactDroppedOnFinished = async (payload: BubbleDragPayload) => {
-    const ok = confirm(
-      `¿Forzar desconexión de ${payload.phone || "esta llamada"}?`
-    );
+    const ok = await confirm({
+      title: `¿Forzar desconexión de ${payload.phone || "esta llamada"}?`,
+      destructive: true,
+      confirmLabel: "Forzar desconexión",
+    });
     if (!ok) return;
     try {
       await stopContact(payload.contactId);
@@ -465,9 +469,11 @@ function QueueManagerInner() {
               variant="outline"
               onClick={async () => {
                 if (
-                  !confirm(
-                    `¿Forzar disconnect de ${multiSelected.length} llamadas?`
-                  )
+                  !(await confirm({
+                    title: `¿Forzar disconnect de ${multiSelected.length} llamadas?`,
+                    destructive: true,
+                    confirmLabel: "Forzar disconnect",
+                  }))
                 )
                   return;
                 for (const id of multiSelected) {
@@ -513,6 +519,7 @@ function QueueManagerInner() {
           campaignName: c.campaign.name,
         }))}
       />
+      {confirmDialog}
     </div>
   );
 }

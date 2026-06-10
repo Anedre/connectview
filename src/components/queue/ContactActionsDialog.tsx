@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import type { QueuedContact, LiveAgent, QueueMeta } from "@/hooks/useLiveQueue";
 import { useAdminActions } from "@/hooks/useAdminActions";
 import { useAuth } from "@/hooks/useAuth";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 interface Props {
   contact: QueuedContact | null;
@@ -42,6 +43,7 @@ export function ContactActionsDialog({
   const { user } = useAuth();
   const { transferContact, stopContact, monitorContact, pending } =
     useAdminActions();
+  const { confirm, confirmDialog } = useConfirm();
   const [targetAgent, setTargetAgent] = useState("");
   const [targetQueue, setTargetQueue] = useState("");
   const [mode, setMode] = useState<"transfer-agent" | "transfer-queue" | null>(
@@ -80,7 +82,7 @@ export function ContactActionsDialog({
   };
 
   const handleStop = async () => {
-    if (!confirm("¿Forzar disconnect de esta llamada?")) return;
+    if (!(await confirm({ title: "¿Forzar disconnect de esta llamada?", description: "Fuerza el disconnect de la llamada. Acción irreversible.", destructive: true, confirmLabel: "Forzar disconnect" }))) return;
     try {
       await stopContact(contact.contactId);
       toast.success("Llamada terminada");
@@ -260,6 +262,7 @@ export function ContactActionsDialog({
         {/* Silence unused 'mode' warning */}
         <div className="hidden">{mode}</div>
       </DialogContent>
+      {confirmDialog}
     </Dialog>
   );
 }

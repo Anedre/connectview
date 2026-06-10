@@ -14,6 +14,7 @@ import {
 import { PageHeader } from "@/components/vox/PageHeader";
 import { NotIntegrated } from "@/components/vox/NotIntegrated";
 import { useConnections } from "@/hooks/useConnections";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const STATUS_CHIP: Record<string, string> = {
   DRAFT: "",
@@ -57,6 +58,7 @@ export function CampaignsPage() {
   const [activeTab, setActiveTab] = useState<TabId>("active");
   const [query, setQuery] = useState("");
   const mutations = useCampaignMutations();
+  const { confirm, confirmDialog } = useConfirm();
 
   const tabCounts = useMemo(() => {
     const acc: Record<TabId, number> = {
@@ -104,7 +106,14 @@ export function CampaignsPage() {
 
   const handleRelaunch = async (e: React.MouseEvent, campaign: Campaign) => {
     e.stopPropagation();
-    if (!confirm(`¿Relanzar "${campaign.name}" con TODOS los contactos?`)) return;
+    if (
+      !(await confirm({
+        title: `¿Relanzar "${campaign.name}" con TODOS los contactos?`,
+        destructive: true,
+        confirmLabel: "Relanzar",
+      }))
+    )
+      return;
     try {
       const res = await mutations.relaunch(campaign.campaignId, "all");
       toast.success(`Relanzada · ${res.rowsReset} contactos reseteados`);
@@ -441,6 +450,7 @@ export function CampaignsPage() {
         </CardBody>
       </Card>
 
+      {confirmDialog}
     </div>
   );
 }

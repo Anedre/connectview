@@ -11,6 +11,7 @@ import {
   type WhatsAppConn,
   type WhatsAppNumber,
 } from "@/hooks/useConnections";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * IntegrationsManager — Configuración → Integraciones. El cliente conecta SU
@@ -470,6 +471,7 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
   const [inboundToken, setInboundToken] = useState("");
   const [genningToken, setGenningToken] = useState(false);
   const ep = getApiEndpoints();
+  const { confirm, confirmDialog } = useConfirm();
 
   const tone: Tone = sf.connected ? "ok" : "idle";
   const statusLabel = sf.connected ? "Conectado" : "No conectado";
@@ -482,10 +484,14 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
       toast.message("Disponible al desplegar el backend de integraciones.");
       return;
     }
-    if (sf.inboundTokenSet && !window.confirm(
-      "Rotar el token invalida el anterior: el Flow de Salesforce dejará de " +
-        "sincronizar hasta que pegues el token nuevo en su header. ¿Continuar?"
-    )) return;
+    if (sf.inboundTokenSet && !(await confirm({
+      title: "¿Rotar el token de entrada?",
+      description:
+        "Rotar el token invalida el anterior: el Flow de Salesforce dejará de " +
+        "sincronizar hasta que pegues el token nuevo en su header.",
+      destructive: true,
+      confirmLabel: "Rotar token",
+    }))) return;
     setGenningToken(true);
     try {
       const r = await authedFetch(ep.manageConnections, {
@@ -615,6 +621,7 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
           )}
         </div>
       </div>
+      {confirmDialog}
     </ConnCard>
   );
 }

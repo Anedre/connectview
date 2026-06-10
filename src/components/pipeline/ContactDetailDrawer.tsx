@@ -30,6 +30,7 @@ import {
 import { toast } from "sonner";
 import { useAdminActions } from "@/hooks/useAdminActions";
 import { useAuth } from "@/hooks/useAuth";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import type { PipelineContact } from "@/hooks/usePipelineStages";
 import type { LiveAgent, QueueMeta } from "@/hooks/useLiveQueue";
 
@@ -79,6 +80,7 @@ export function ContactDetailDrawer({
   const { user } = useAuth();
   const { transferContact, stopContact, monitorContact, pending } =
     useAdminActions();
+  const { confirm, confirmDialog } = useConfirm();
   const [targetAgent, setTargetAgent] = useState("");
   const [targetQueue, setTargetQueue] = useState("");
 
@@ -114,7 +116,7 @@ export function ContactDetailDrawer({
   };
 
   const handleStop = async () => {
-    if (!confirm("¿Forzar disconnect de esta llamada?")) return;
+    if (!(await confirm({ title: "¿Forzar disconnect de esta llamada?", description: "Fuerza el disconnect. Irreversible.", destructive: true, confirmLabel: "Forzar disconnect" }))) return;
     try {
       await stopContact(contact.contactId);
       toast.success("Llamada terminada");
@@ -392,6 +394,7 @@ export function ContactDetailDrawer({
             Cerrar
           </Button>
         </div>
+        {confirmDialog}
       </SheetContent>
     </Sheet>
   );

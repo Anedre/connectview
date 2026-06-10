@@ -21,6 +21,7 @@ import { PacingControlCard } from "@/components/campaigns/PacingControlCard";
 import { WhatsAppTemplateSummary } from "@/components/campaigns/WhatsAppTemplateSummary";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 // UUID heuristic — matches the v4 ARN-suffix form Connect emits. Used in
 // the contacts table to detect legacy rows where agentUsername was written
@@ -118,6 +119,7 @@ export function CampaignDetailPage() {
   );
   const mutations = useCampaignMutations();
   const contactMutations = useCampaignContactMutations();
+  const { confirm, confirmDialog } = useConfirm();
   // Pull assigned agents so we can resolve user-ids (assignedAgentUserId on
   // the contact row, and any UUID that snuck into agentUsername on legacy
   // rows) into human-readable usernames in the table.
@@ -140,7 +142,13 @@ export function CampaignDetailPage() {
 
   const handleDeleteContact = async (row: CampaignContactRow) => {
     if (!campaignId) return;
-    if (!confirm(`¿Eliminar ${row.phone} (${row.customerName || "sin nombre"})?`))
+    if (
+      !(await confirm({
+        title: `¿Eliminar ${row.phone} (${row.customerName || "sin nombre"})?`,
+        destructive: true,
+        confirmLabel: "Eliminar",
+      }))
+    )
       return;
     try {
       const res = await contactMutations.deleteContacts(campaignId, [row.rowId]);
@@ -198,7 +206,15 @@ export function CampaignDetailPage() {
       scope === "all"
         ? "TODOS los contactos (se reenvían)"
         : "solo los failed / no-answer";
-    if (!confirm(`¿Relanzar ${label}?`)) return;
+    if (
+      !(await confirm({
+        title: "¿Relanzar la campaña?",
+        description: `Se relanzará ${label}.`,
+        destructive: true,
+        confirmLabel: "Relanzar",
+      }))
+    )
+      return;
     try {
       const res = await mutations.relaunch(campaignId, scope);
       toast.success(
@@ -337,7 +353,13 @@ export function CampaignDetailPage() {
       return row && row.status !== "dialing" && row.status !== "connected";
     });
     if (rowIds.length === 0) return;
-    if (!confirm(`¿Eliminar ${rowIds.length} contacto${rowIds.length === 1 ? "" : "s"}?`)) {
+    if (
+      !(await confirm({
+        title: `¿Eliminar ${rowIds.length} contacto${rowIds.length === 1 ? "" : "s"}?`,
+        destructive: true,
+        confirmLabel: "Eliminar",
+      }))
+    ) {
       return;
     }
     try {
@@ -1449,6 +1471,7 @@ export function CampaignDetailPage() {
           </div>
         </CardBody>
       </Card>
+      {confirmDialog}
     </div>
   );
 }

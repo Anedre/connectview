@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import type { LiveAgent, AgentStatus } from "@/hooks/useLiveQueue";
 import { useAdminActions } from "@/hooks/useAdminActions";
 import { useAuth } from "@/hooks/useAuth";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 interface Props {
   agent: LiveAgent | null;
@@ -43,6 +44,7 @@ const STATE_COLOR: Record<string, string> = {
 export function AgentActionsDialog({ agent, statuses, open, onClose, onActionCompleted }: Props) {
   const { user } = useAuth();
   const { changeAgentStatus, stopContact, monitorContact, pending } = useAdminActions();
+  const { confirm, confirmDialog } = useConfirm();
   const [targetStatus, setTargetStatus] = useState("");
 
   if (!agent) return null;
@@ -68,7 +70,7 @@ export function AgentActionsDialog({ agent, statuses, open, onClose, onActionCom
 
   const handleStopCall = async () => {
     if (!live) return;
-    if (!confirm(`¿Terminar la llamada activa de ${agent.username}?`)) return;
+    if (!(await confirm({ title: `¿Terminar la llamada activa de ${agent.username}?`, destructive: true, confirmLabel: "Terminar llamada" }))) return;
     try {
       await stopContact(live.contactId);
       toast.success("Llamada terminada");
@@ -216,6 +218,7 @@ export function AgentActionsDialog({ agent, statuses, open, onClose, onActionCom
           </div>
         </div>
       </DialogContent>
+      {confirmDialog}
     </Dialog>
   );
 }

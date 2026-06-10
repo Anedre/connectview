@@ -6,6 +6,7 @@ import { type Bot, BOT_TEMPLATES } from "@/lib/botFlow";
 import * as Icon from "@/components/vox/primitives";
 import { PageHeader } from "@/components/vox/PageHeader";
 import { FLOW_ICONS } from "@/components/bots/icons";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * FlowBuilderPage — the real /bot page (roadmap #16). Lists saved bots from
@@ -39,6 +40,7 @@ export function FlowBuilderPage() {
   const [autoTest, setAutoTest] = useState(false);
 
   const ep = getApiEndpoints();
+  const { confirm, confirmDialog } = useConfirm();
 
   const loadList = async () => {
     if (!ep?.manageBot) {
@@ -107,7 +109,7 @@ export function FlowBuilderPage() {
   const remove = async (botId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!ep?.manageBot) return;
-    if (!confirm("¿Eliminar este bot? No se puede deshacer.")) return;
+    if (!(await confirm({ title: "¿Eliminar este bot?", description: "No se puede deshacer.", destructive: true, confirmLabel: "Eliminar" }))) return;
     try {
       await fetch(`${ep.manageBot}?botId=${encodeURIComponent(botId)}`, { method: "DELETE" });
       toast.success("Bot eliminado");
@@ -328,6 +330,7 @@ export function FlowBuilderPage() {
           )}
         </>
       )}
+      {confirmDialog}
     </div>
   );
 }

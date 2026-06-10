@@ -7,6 +7,7 @@ import { useConnections } from "@/hooks/useConnections";
 import * as Icon from "@/components/vox/primitives";
 import { colorFromName as avatarColor, initialsOf } from "@/components/vox/primitives";
 import { NotIntegrated } from "@/components/vox/NotIntegrated";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { displayCustomerName } from "@/lib/customerName";
 
 /**
@@ -259,6 +260,7 @@ export function AppointmentsPage() {
     [callbacks]
   );
   const { config } = useConnections();
+  const { confirm, confirmDialog } = useConfirm();
   // Las citas persisten como callbacks en la base de datos del tenant (BYO Data
   // Plane). Sin ella, avisamos que falta integrar en vez de un calendario vacío.
   const dataPlaneEnabled = !!config?.connect?.dataPlaneEnabled;
@@ -407,7 +409,7 @@ export function AppointmentsPage() {
   };
 
   const del = async (apptId: string) => {
-    if (!confirm("¿Eliminar esta cita?")) return;
+    if (!(await confirm({ title: "¿Eliminar esta cita?", destructive: true, confirmLabel: "Eliminar" }))) return;
     try {
       await cancelCallbackRow(apptId);
       setSelectedId(null);
@@ -854,6 +856,7 @@ export function AppointmentsPage() {
         );
       })()}
     </div>
+    {confirmDialog}
     </>
   );
 }

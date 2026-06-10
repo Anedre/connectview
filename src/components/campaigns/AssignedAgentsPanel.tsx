@@ -15,6 +15,7 @@ import { useFlowQueues } from "@/hooks/useFlowQueues";
 import type { Campaign } from "@/hooks/useCampaigns";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 interface Props {
   campaign: Campaign;
@@ -31,6 +32,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
     10000
   );
   const { data: liveQueue } = useLiveQueue(5000);
+  const { confirm, confirmDialog } = useConfirm();
   // Discover which queues THIS campaign's flow actually routes to.
   // For UDEP-Outbound-Smart this returns Pregrado/Posgrado/Diplomados/
   // Alumnos (lead-attribute routing). For UDEP-Campaign-Outbound it
@@ -174,7 +176,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
   };
 
   const handleRemove = async (userId: string, username: string) => {
-    if (!confirm(`¿Desasignar ${username} de esta campaña?`)) return;
+    if (!(await confirm({ title: `¿Desasignar ${username} de esta campaña?`, destructive: true, confirmLabel: "Desasignar" }))) return;
     try {
       await assign([], [userId], {});
       toast.success(`${username} desasignado`);
@@ -644,6 +646,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </Card>
   );
 }

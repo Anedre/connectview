@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { useMyCampaignLeads, type MyLead } from "@/hooks/useMyCampaignLeads";
 import { useCCP } from "@/hooks/useCCP";
 import * as Icon from "@/components/vox/primitives";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const RESCHEDULE_PRESETS: { label: string; ms: number }[] = [
   { label: "+30 min", ms: 30 * 60 * 1000 },
@@ -30,6 +31,7 @@ export function MyCampaignLeadsPanel() {
     5000
   );
   const { placeCall, agentState } = useCCP();
+  const { confirm, confirmDialog } = useConfirm();
   const [busy, setBusy] = useState<string | null>(null); // rowId currently mutating
   const [reschedulingId, setReschedulingId] = useState<string | null>(null);
 
@@ -88,9 +90,12 @@ export function MyCampaignLeadsPanel() {
   const handleSkip = async (lead: MyLead) => {
     if (busy) return;
     if (
-      !confirm(
-        `¿Saltar este lead?\n\n${lead.customerName || lead.phone}\n\nNo va a reintentarse.`
-      )
+      !(await confirm({
+        title: "¿Saltar este lead?",
+        description: `${lead.customerName || lead.phone}. No va a reintentarse.`,
+        destructive: true,
+        confirmLabel: "Saltar lead",
+      }))
     )
       return;
     setBusy(lead.rowId);
@@ -294,6 +299,7 @@ export function MyCampaignLeadsPanel() {
           );
         })}
       </div>
+      {confirmDialog}
     </div>
   );
 }

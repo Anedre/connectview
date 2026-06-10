@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import * as Icon from "@/components/vox/primitives";
 import { BotTester } from "@/components/bots/BotTester";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import type { Bot } from "@/lib/botFlow";
 
 /**
@@ -118,6 +119,7 @@ export function AgentePage() {
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
   const [convs, setConvs] = useState<ConvData | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
   const ep = getApiEndpoints();
 
   const loadConvs = async () => {
@@ -177,7 +179,7 @@ export function AgentePage() {
   const remove = async (botId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!ep?.manageBot) return;
-    if (!confirm("¿Eliminar este agente? No se puede deshacer.")) return;
+    if (!(await confirm({ title: "¿Eliminar este agente?", description: "No se puede deshacer.", destructive: true, confirmLabel: "Eliminar" }))) return;
     try {
       await fetch(`${ep.manageBot}?botId=${encodeURIComponent(botId)}`, { method: "DELETE" });
       toast.success("Agente eliminado");
@@ -290,6 +292,7 @@ export function AgentePage() {
           )}
         </>
       )}
+      {confirmDialog}
     </div>
   );
 }
