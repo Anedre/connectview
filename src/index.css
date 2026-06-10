@@ -4117,3 +4117,82 @@ a { color: inherit; text-decoration: none; }
 .watc__novars { font-size: 12px; color: var(--text-3); }
 .watc__note { font-size: 10.5px; color: var(--text-3); font-style: italic; }
 @media (max-width: 700px) { .watc__var-ctx { display: none; } }
+
+/* ============================================================
+   DESIGN SYSTEM v2 — Fase 0 (brief premium en design/)
+   Bloque ADITIVO: no edita el :root original (evita choques con
+   otras sesiones). Tokens nuevos + foco global + reduced-motion.
+   Ref: design/02-sistema-de-diseno-premium.md
+   ============================================================ */
+:root {
+  /* Foco (P2) — un solo anillo tokenizado */
+  --ring: var(--accent-amber);
+  --ring-offset: var(--bg-0);
+
+  /* Overlays / modales — unifica las 3 recetas de scrim */
+  --scrim: rgba(8, 10, 16, 0.6);
+  --shadow-modal: 0 24px 64px -16px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--border-1);
+
+  /* Escala tipográfica (P9) — mata los 9.5/10.5/11.5/12.5 mágicos */
+  --text-2xs: 10px; --text-xs: 11px; --text-sm: 12.5px; --text-base: 13.5px;
+  --text-md: 15px;  --text-lg: 18px; --text-xl: 22px;   --text-2xl: 28px; --text-3xl: 34px;
+  --leading-tight: 1.2; --leading-normal: 1.45;
+  --weight-regular: 400; --weight-medium: 500; --weight-semibold: 600; --weight-bold: 700;
+
+  /* Espaciado (P9) — escala de 4px */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px;
+
+  /* Z-index (P9) — mata 20/50/60/200 mágicos */
+  --z-base: 0; --z-sticky: 10; --z-dropdown: 30; --z-overlay: 40;
+  --z-modal: 50; --z-toast: 60; --z-max: 9999;
+
+  /* Paleta de DATOS (P7) — fuente única para charts; hereda el tema vía --accent-* */
+  --data-1: var(--accent-amber);  --data-2: var(--accent-cyan);
+  --data-3: var(--accent-green);  --data-4: var(--accent-violet);
+  --data-5: var(--accent-pink);   --data-6: var(--accent-red);
+  --data-7: #6E8BFF;              --data-8: #E0A458;
+
+  /* Color de CANAL (P7) — unifica las taxonomías contradictorias */
+  --ch-voice: var(--accent-cyan);      --ch-chat: var(--accent-violet);
+  --ch-whatsapp: var(--brand-whatsapp); --ch-email: var(--accent-amber);
+  --ch-sms: var(--accent-pink);        --ch-task: var(--accent-green);
+
+  /* SEVERIDAD (P2) — usar SIEMPRE con forma+icono+texto, no solo color */
+  --sev-ok: var(--accent-green);    --sev-info: var(--accent-cyan);
+  --sev-warn: var(--accent-amber);  --sev-crit: var(--accent-red);
+
+  /* Marca de terceros — saca los hex mágicos repetidos inline */
+  --brand-whatsapp: #25D366; --brand-salesforce: #00A1E0; --brand-connect: #FF9900;
+}
+
+[data-theme="light"] {
+  /* En claro, --accent-* ya cambia, así que --data y --ch heredan solos.
+     Solo ablandamos el scrim para que no sea tan duro sobre fondo claro. */
+  --scrim: rgba(15, 22, 36, 0.45);
+  --shadow-modal: 0 24px 64px -16px rgba(15, 22, 36, 0.28), 0 0 0 1px var(--border-1);
+}
+
+/* ── Foco de teclado global (P2 · WCAG 2.4.7) ──────────────────
+   :where() = especificidad 0 → no pisa estilos existentes y es
+   fácil de sobreescribir por componente. Solo aplica con teclado. */
+:where(a[href], button, input, select, textarea, summary,
+  [role="button"], [role="link"], [role="tab"], [role="option"],
+  [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"],
+  [role="switch"], [role="checkbox"], [role="radio"],
+  [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-1);
+}
+
+/* ── prefers-reduced-motion global (P12) ──────────────────────
+   Reemplaza la cobertura parcial (solo 3 animaciones) por una total. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
