@@ -22,11 +22,11 @@ import {
   ExecAreaEChart,
   ExecBarsEChart,
   ExecDonutEChart,
-  ExecFunnelEChart,
   ExecGaugeEChart,
 } from "./ExecEcharts";
 import {
   ExecCampaigns,
+  ExecFunnel,
   ExecHeatmap,
   ExecLiveQueues,
   ExecPillBars,
@@ -440,7 +440,7 @@ export function ExecutiveView({
           </div>
         </ExecPanel>
         <ExecPanel title="Embudo de leads" hint={`${data.funnel.reduce((s, f) => s + f.value, 0)} leads`}>
-          <ExecFunnelEChart data={data.funnel} />
+          <ExecFunnel data={data.funnel} />
         </ExecPanel>
       </div>
 

@@ -53,7 +53,13 @@ export function ExecRank({
   );
 }
 
-/* ---------- Embudo de leads ---------- */
+/* ---------- Embudo de leads (barras horizontales, color por etapa + conversión) ---------- */
+// Paleta diversa: un color único por etapa (cicla si hay más etapas).
+const FUNNEL_PALETTE = [
+  "#2BC6E6", "#25B873", "#A3D63B", "#F5C518", "#F5A524",
+  "#F2722E", "#9B8CF0", "#ED84C2", "#ED5257", "#6E8BFF",
+];
+
 export function ExecFunnel({
   data,
 }: {
@@ -61,25 +67,75 @@ export function ExecFunnel({
 }) {
   const max = Math.max(...data.map((d) => d.value), 1);
   return (
-    <div className="exec-funnel">
-      {data.map((s, i) => (
-        <div key={s.label} className="exec-funnel__stage">
-          <span className="exec-funnel__label">{s.label}</span>
-          <div className="exec-funnel__barwrap">
-            <div
-              className="exec-funnel__bar"
+    <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 2 }}>
+      {data.map((s, i) => {
+        const c = FUNNEL_PALETTE[i % FUNNEL_PALETTE.length];
+        const pct = Math.round((s.value / max) * 100);
+        // % de conversión respecto de la etapa anterior del embudo.
+        const conv =
+          i > 0 && data[i - 1].value > 0
+            ? Math.round((s.value / data[i - 1].value) * 100)
+            : null;
+        return (
+          <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span
+              title={s.label}
               style={{
-                background: `linear-gradient(180deg, ${lighten(s.color, 0.38)}, ${s.color} 58%, ${saturate(s.color, 1)})`,
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -2px 4px rgba(0,0,0,0.3)",
-                width: `${(s.value / max) * 100}%`,
-                animationDelay: `${i * 0.08}s`,
+                width: 96,
+                flexShrink: 0,
+                fontSize: 11.5,
+                color: "var(--e-t2)",
+                textAlign: "right",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {s.label}
+            </span>
+            <div
+              style={{
+                flex: 1,
+                height: 20,
+                background: "var(--e-card)",
+                borderRadius: 6,
+                overflow: "hidden",
+                boxShadow: "inset 0 1px 2px rgba(0,0,0,0.3)",
+              }}
+            >
+              <div
+                style={{
+                  width: `${pct}%`,
+                  height: "100%",
+                  borderRadius: 6,
+                  transformOrigin: "left",
+                  animation: "exec-grow-x 0.7s cubic-bezier(0.2,0.7,0.2,1) both",
+                  animationDelay: `${i * 0.05}s`,
+                  background: `linear-gradient(90deg, ${lighten(c, 0.18)}, ${c} 70%, ${saturate(c, 1)})`,
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35)",
+                }}
+              />
+            </div>
+            <span
+              style={{
+                width: 70,
+                flexShrink: 0,
+                fontSize: 13,
+                fontWeight: 700,
+                color: "var(--e-t1)",
+                fontVariantNumeric: "tabular-nums",
               }}
             >
               {s.value}
-            </div>
+              {conv != null && (
+                <span style={{ color: "var(--e-t3)", fontWeight: 400, fontSize: 10, marginLeft: 4 }}>
+                  {conv}%
+                </span>
+              )}
+            </span>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
