@@ -24,6 +24,14 @@ import {
   ExecDonutEChart,
   ExecGaugeEChart,
 } from "./ExecEcharts";
+import {
+  ExecCampaigns,
+  ExecFunnel,
+  ExecHeatmap,
+  ExecLiveQueues,
+  ExecPillBars,
+  ExecRank,
+} from "./ExecCharts";
 import type { ExecData, ExecInsight, ExecPeriod, ExecSlice } from "./execMock";
 import "@/styles/exec.css";
 
@@ -176,11 +184,6 @@ function ExecPanel({
       {children}
     </div>
   );
-}
-
-/** Placeholder de panel (se reemplaza por el componente real en el Paso 3). */
-function PanelSkeleton({ h = 180 }: { h?: number }) {
-  return <div className="exec-skel" style={{ height: h, borderRadius: 10 }} />;
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {
@@ -412,10 +415,10 @@ export function ExecutiveView({
           </div>
         </ExecPanel>
         <ExecPanel title="Ranking de agentes" hint="por contactos">
-          <PanelSkeleton h={200} />
+          <ExecRank data={data.agentRank} />
         </ExecPanel>
         <ExecPanel title="Contactos por cola" hint={`${queueTotal} total`}>
-          <PanelSkeleton h={200} />
+          <ExecPillBars data={data.byQueue} />
         </ExecPanel>
       </div>
 
@@ -435,24 +438,24 @@ export function ExecutiveView({
           </div>
         </ExecPanel>
         <ExecPanel title="Embudo de leads" hint="tasa de cierre 10.6%">
-          <PanelSkeleton h={200} />
+          <ExecFunnel data={data.funnel} />
         </ExecPanel>
       </div>
 
       {/* Bottom row: campañas + colas en vivo */}
       <div className="exec-row exec-row--bottom">
         <ExecPanel title="Campañas activas">
-          <PanelSkeleton h={140} />
+          <ExecCampaigns data={data.campaigns} />
         </ExecPanel>
         <ExecPanel title="Colas en tiempo real">
-          <PanelSkeleton h={140} />
+          <ExecLiveQueues data={data.liveQueues} />
         </ExecPanel>
       </div>
 
       {/* Heatmap */}
       <div className="exec-row" style={{ gridTemplateColumns: "1fr" }}>
         <ExecPanel title="Contactos por hora × día de semana" hint="08:00 – 20:00">
-          <PanelSkeleton h={160} />
+          <ExecHeatmap />
         </ExecPanel>
       </div>
     </div>
