@@ -238,11 +238,16 @@ export function InsightsPanel({ metrics, lastRefresh, onRefresh }: InsightsPanel
     return [...m.entries()].map(([name, value], i) => ({ name, value, color: DATA_PALETTE[i % DATA_PALETTE.length] }));
   }, [periodLeads]);
 
+  // El embudo es un snapshot del PIPELINE (stock), no del período (flujo):
+  // cuenta TODOS los leads por etapa, no solo los actualizados en el período
+  // (si no, los leads viejos quedan fuera y el embudo se ve vacío).
   const funnel = useMemo(() => {
     const m = new Map<string, number>();
-    for (const l of periodLeads) m.set(l.stageId || "—", (m.get(l.stageId || "—") || 0) + 1);
-    return tree.map((s) => ({ label: s.label, value: m.get(s.id) || 0, color: valColor(s.valoracion) }));
-  }, [periodLeads, tree]);
+    for (const l of leads) m.set(l.stageId || "—", (m.get(l.stageId || "—") || 0) + 1);
+    return tree
+      .map((s) => ({ label: s.label, value: m.get(s.id) || 0, color: valColor(s.valoracion) }))
+      .filter((s) => s.value > 0);
+  }, [leads, tree]);
 
   const upcoming = appts.filter((a) => a.status !== "cancelled" && a.whenISO && new Date(a.whenISO).getTime() >= Date.now()).length;
   const apptTotal = appts.filter((a) => a.status !== "cancelled").length;

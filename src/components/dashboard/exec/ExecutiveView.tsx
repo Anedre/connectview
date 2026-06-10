@@ -22,11 +22,11 @@ import {
   ExecAreaEChart,
   ExecBarsEChart,
   ExecDonutEChart,
+  ExecFunnelEChart,
   ExecGaugeEChart,
 } from "./ExecEcharts";
 import {
   ExecCampaigns,
-  ExecFunnel,
   ExecHeatmap,
   ExecLiveQueues,
   ExecPillBars,
@@ -439,8 +439,8 @@ export function ExecutiveView({
             <DonutLegend data={data.leadSources} total={leadTotal} />
           </div>
         </ExecPanel>
-        <ExecPanel title="Embudo de leads" hint="tasa de cierre 10.6%">
-          <ExecFunnel data={data.funnel} />
+        <ExecPanel title="Embudo de leads" hint={`${data.funnel.reduce((s, f) => s + f.value, 0)} leads`}>
+          <ExecFunnelEChart data={data.funnel} />
         </ExecPanel>
       </div>
 
