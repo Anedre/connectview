@@ -780,8 +780,110 @@ function WhatsAppCard({
             <div className="row"><button className="btn btn--primary btn--sm" onClick={onSaveMeta}>Guardar</button></div>
           </>
         )}
+
+        {/* ── Formularios (WhatsApp Flows, #10) — común a ambos modos ──
+            El Flow (las pantallas) se diseña y publica en Meta Business
+            Manager → WhatsApp Manager → Flows; acá se registra su flow_id
+            para que el agente pueda enviarlo desde el chat. La respuesta
+            del cliente vuelve sola al CRM (lead + automatizaciones). */}
+        <WaFlowsEditor wa={wa} persist={persist} />
       </div>
     </ConnCard>
+  );
+}
+
+function WaFlowsEditor({
+  wa,
+  persist,
+}: {
+  wa: WhatsAppConn;
+  persist: (next: WhatsAppConn) => Promise<boolean>;
+}) {
+  const flows = wa.flows || [];
+  const [nId, setNId] = useState("");
+  const [nName, setNName] = useState("");
+  const [nCta, setNCta] = useState("");
+  const [nScreen, setNScreen] = useState("");
+
+  const save = async (next: WhatsAppConn["flows"]) => {
+    const ok = await persist({ ...wa, flows: next });
+    if (ok) toast.success("Formularios actualizados");
+  };
+
+  const add = async () => {
+    if (!nId.trim() || !nName.trim()) {
+      toast.error("Pegá el flow_id y un nombre");
+      return;
+    }
+    await save([
+      ...flows,
+      {
+        id: nId.trim(),
+        name: nName.trim(),
+        cta: nCta.trim() || undefined,
+        screen: nScreen.trim() || undefined,
+      },
+    ]);
+    setNId(""); setNName(""); setNCta(""); setNScreen("");
+  };
+
+  return (
+    <div style={{ borderTop: "1px solid var(--border-1)", paddingTop: 12 }}>
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
+        Formularios (WhatsApp Flows)
+      </div>
+      <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, marginBottom: 10 }}>
+        Formularios multi-pantalla DENTRO del chat. Diseñalos y publicalos en{" "}
+        <b>Meta Business Manager → WhatsApp Manager → Flows</b> y pegá acá su{" "}
+        <b>flow_id</b>. El agente los envía desde el chat; la respuesta crea/actualiza
+        el lead y dispara Automatizaciones ("Formulario completado").
+      </div>
+      {flows.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+          {flows.map((f, i) => (
+            <div key={f.id + i} className="row" style={{ gap: 10, padding: "8px 10px", background: "var(--bg-2)", borderRadius: 8, alignItems: "center" }}>
+              <ClipboardList size={14} style={{ flexShrink: 0, color: "var(--accent-pink)" }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600 }}>{f.name}</div>
+                <div className="muted" style={{ fontSize: 10.5 }}>
+                  id {f.id}
+                  {f.cta ? ` · botón "${f.cta}"` : ""}
+                  {f.screen ? ` · pantalla ${f.screen}` : ""}
+                </div>
+              </div>
+              <button
+                className="btn btn--ghost btn--sm"
+                aria-label={`Quitar ${f.name}`}
+                onClick={() => save(flows.filter((_, j) => j !== i))}
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 0.7fr 0.7fr auto", gap: 8, alignItems: "end" }}>
+        <label>
+          <span style={labelStyle}>flow_id</span>
+          <input style={inputStyle} placeholder="1234567890…" value={nId} onChange={(e) => setNId(e.target.value)} />
+        </label>
+        <label>
+          <span style={labelStyle}>Nombre</span>
+          <input style={inputStyle} placeholder="Solicitud de info" value={nName} onChange={(e) => setNName(e.target.value)} />
+        </label>
+        <label>
+          <span style={labelStyle}>Botón (opc.)</span>
+          <input style={inputStyle} placeholder="Completar" value={nCta} onChange={(e) => setNCta(e.target.value)} />
+        </label>
+        <label>
+          <span style={labelStyle}>Pantalla (opc.)</span>
+          <input style={inputStyle} placeholder="INICIO" value={nScreen} onChange={(e) => setNScreen(e.target.value)} />
+        </label>
+        <button className="btn btn--sm" onClick={add} style={{ height: 34 }}>
+          Agregar
+        </button>
+      </div>
+    </div>
   );
 }
 

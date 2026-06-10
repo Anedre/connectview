@@ -4,6 +4,7 @@ import { useChatSession, type ChatMessage } from "@/hooks/useChatSession";
 import * as Icon from "@/components/vox/primitives";
 import { useDebugRender } from "@/lib/debugTrace";
 import { TemplatesPopover } from "@/components/workspace/TemplatesPopover";
+import { FlowsPopover } from "@/components/workspace/FlowsPopover";
 import { EmojiPicker } from "@/components/workspace/EmojiPicker";
 import { RewriterButton } from "@/components/workspace/RewriterButton";
 import { SuggestedReplies } from "@/components/workspace/SuggestedReplies";
@@ -386,6 +387,14 @@ export function ChatThreadPanel({
               queueName,
             }}
             onPick={insertAtCursor}
+            disabled={status !== "connected"}
+          />
+          {/* WhatsApp Flows (#10): enviar un formulario nativo al cliente. */}
+          <FlowsPopover
+            messages={messages}
+            channel={channel}
+            channelLabel={channelLabel}
+            customerPhone={customerPhone}
             disabled={status !== "connected"}
           />
           <EmojiPicker

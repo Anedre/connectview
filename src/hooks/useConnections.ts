@@ -48,6 +48,19 @@ export interface SalesforceConn {
   inboundTokenSet?: boolean;
   inboundTokenRotatedAt?: string;
 }
+/** Un WhatsApp Flow (formulario nativo de Meta, #10) registrado por el tenant.
+ *  El Flow se diseña/publica en Meta Business Manager; acá vive solo su
+ *  referencia para que el composer del agente pueda enviarlo. */
+export interface WaFlowDef {
+  /** flow_id del Flow publicado en Meta. */
+  id: string;
+  name: string;
+  /** Texto del botón (≤30 chars). Default "Completar". */
+  cta?: string;
+  /** Pantalla inicial (id del screen en el Flow JSON). */
+  screen?: string;
+}
+
 export interface WhatsAppConn {
   phoneNumberId?: string;
   wabaId?: string;
@@ -57,6 +70,8 @@ export interface WhatsAppConn {
    *  número de Meta aparte (Cloud API, solo plantillas/bots). */
   mode?: "aws" | "meta";
   metaPhoneNumberId?: string;
+  /** Formularios (WhatsApp Flows, #10) disponibles para enviar desde el chat. */
+  flows?: WaFlowDef[];
 }
 
 /** Número de WhatsApp ya vinculado a la instancia de Connect (AWS End User
