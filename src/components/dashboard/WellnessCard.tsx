@@ -54,11 +54,11 @@ export function WellnessCard({ userId }: WellnessCardProps) {
 
   return (
     <Card className="relative overflow-hidden">
-      <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-emerald-400/20 to-teal-500/20 blur-2xl" />
+      <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-[var(--accent-green)] to-[var(--accent-green-soft)] blur-2xl" />
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--accent-green)] to-[var(--accent-green-soft)] text-white shadow">
               <Heart className="h-4 w-4" />
             </div>
             Bienestar del agente
@@ -76,7 +76,7 @@ export function WellnessCard({ userId }: WellnessCardProps) {
           </div>
         )}
         {error && !data && (
-          <p className="py-4 text-center text-xs text-rose-600">{error}</p>
+          <p className="py-4 text-center text-xs text-[var(--accent-red)]">{error}</p>
         )}
         {data && (
           <>
@@ -84,21 +84,21 @@ export function WellnessCard({ userId }: WellnessCardProps) {
               label="Nivel de energía"
               value={data.energy}
               max={100}
-              color="from-emerald-400 to-teal-500"
+              color="from-[var(--accent-green)] to-[var(--accent-green-soft)]"
               icon={Zap}
             />
             <MetricBar
               label="Tiempo de foco (min)"
               value={data.focusMinutes}
               max={480}
-              color="from-blue-400 to-indigo-500"
+              color="from-[var(--accent-cyan)] to-[var(--accent-cyan-soft)]"
               icon={Brain}
             />
             <MetricBar
               label="Ánimo"
               value={data.moodScore}
               max={100}
-              color="from-pink-400 to-rose-500"
+              color="from-[var(--accent-pink)] to-[var(--accent-pink-soft)]"
               icon={Heart}
             />
 
@@ -106,13 +106,13 @@ export function WellnessCard({ userId }: WellnessCardProps) {
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30"
+                className="rounded-lg border border-[var(--accent-amber-soft)] bg-[var(--accent-amber-soft)] p-3"
               >
-                <div className="flex items-center gap-2 text-sm font-medium text-amber-900 dark:text-amber-200">
+                <div className="flex items-center gap-2 text-sm font-medium text-[var(--accent-amber)]">
                   <Coffee className="h-4 w-4" />
                   ¡Hora de un break!
                 </div>
-                <p className="mt-1 text-xs text-amber-800 dark:text-amber-300/80">
+                <p className="mt-1 text-xs text-[var(--accent-amber)]">
                   Llevas {data.focusMinutes} min en llamadas.
                   {data.negativeContactCount > 0
                     ? ` ${data.negativeContactCount} ${
@@ -125,14 +125,14 @@ export function WellnessCard({ userId }: WellnessCardProps) {
                 </p>
               </motion.div>
             ) : (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
-                <div className="flex items-center gap-2 text-sm font-medium text-emerald-900 dark:text-emerald-200">
+              <div className="rounded-lg border border-[var(--accent-green-soft)] bg-[var(--accent-green-soft)] p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-[var(--accent-green)]">
                   <Zap className="h-4 w-4" />
                   {data.contactsToday === 0
                     ? "Listo para empezar el día"
                     : "¡Estás en racha!"}
                 </div>
-                <p className="mt-1 text-xs text-emerald-800 dark:text-emerald-300/80">
+                <p className="mt-1 text-xs text-[var(--accent-green)]">
                   {data.contactsToday === 0
                     ? "Sin contactos todavía. Que el primero cuente."
                     : `${data.contactsToday} contactos, ${data.focusMinutes} min de foco. Sigue así.`}

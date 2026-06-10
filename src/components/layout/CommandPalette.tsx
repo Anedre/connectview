@@ -78,36 +78,36 @@ export function CommandPalette() {
 
         <CommandGroup heading="Navegación">
           <CommandItem onSelect={run(() => navigate("/"))}>
-            <LayoutDashboard className="mr-2 h-4 w-4 text-blue-500" />
+            <LayoutDashboard className="mr-2 h-4 w-4 text-[var(--accent-cyan)]" />
             Inicio
             <CommandShortcut>G luego D</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/agent"))}>
-            <Headset className="mr-2 h-4 w-4 text-emerald-500" />
+            <Headset className="mr-2 h-4 w-4 text-[var(--accent-green)]" />
             Agent Desktop
             <CommandShortcut>G luego A</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/queue"))}>
-            <Activity className="mr-2 h-4 w-4 text-amber-500" />
+            <Activity className="mr-2 h-4 w-4 text-[var(--accent-amber)]" />
             Cola en vivo
             <CommandShortcut>G luego Q</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/campaigns"))}>
-            <BarChart3 className="mr-2 h-4 w-4 text-orange-500" />
+            <BarChart3 className="mr-2 h-4 w-4 text-[var(--accent-amber)]" />
             Campañas
             <CommandShortcut>G luego C</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/reports"))}>
-            <BarChart3 className="mr-2 h-4 w-4 text-purple-500" />
+            <BarChart3 className="mr-2 h-4 w-4 text-[var(--accent-violet)]" />
             Reportes
             <CommandShortcut>G luego R</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/recordings"))}>
-            <Disc className="mr-2 h-4 w-4 text-pink-500" />
+            <Disc className="mr-2 h-4 w-4 text-[var(--accent-pink)]" />
             Grabaciones
           </CommandItem>
           <CommandItem onSelect={run(() => navigate("/admin"))}>
-            <Settings className="mr-2 h-4 w-4 text-rose-500" />
+            <Settings className="mr-2 h-4 w-4 text-[var(--accent-red)]" />
             Configuración
           </CommandItem>
         </CommandGroup>
@@ -116,21 +116,21 @@ export function CommandPalette() {
 
         <CommandGroup heading="Acciones del agente">
           <CommandItem onSelect={run(() => setAgentState("Available"))}>
-            <UserCheck className="mr-2 h-4 w-4 text-emerald-500" />
+            <UserCheck className="mr-2 h-4 w-4 text-[var(--accent-green)]" />
             Marcarme Disponible
             <CommandShortcut>A</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => setAgentState("Offline"))}>
-            <UserX className="mr-2 h-4 w-4 text-slate-500" />
+            <UserX className="mr-2 h-4 w-4 text-[var(--text-3)]" />
             Marcarme Offline
             <CommandShortcut>O</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={run(() => toast.info("Abriendo marcador…"))}>
-            <Phone className="mr-2 h-4 w-4 text-blue-500" />
+            <Phone className="mr-2 h-4 w-4 text-[var(--accent-cyan)]" />
             Llamada saliente
           </CommandItem>
           <CommandItem onSelect={run(() => toast.info("Terminando llamada actual…"))}>
-            <PhoneOff className="mr-2 h-4 w-4 text-rose-500" />
+            <PhoneOff className="mr-2 h-4 w-4 text-[var(--accent-red)]" />
             Colgar llamada actual
           </CommandItem>
         </CommandGroup>
@@ -140,9 +140,9 @@ export function CommandPalette() {
         <CommandGroup heading="Preferencias">
           <CommandItem onSelect={run(toggleTheme)}>
             {resolvedTheme === "dark" ? (
-              <Sun className="mr-2 h-4 w-4 text-amber-500" />
+              <Sun className="mr-2 h-4 w-4 text-[var(--accent-amber)]" />
             ) : (
-              <Moon className="mr-2 h-4 w-4 text-indigo-500" />
+              <Moon className="mr-2 h-4 w-4 text-[var(--accent-violet)]" />
             )}
             Cambiar a modo {resolvedTheme === "dark" ? "claro" : "oscuro"}
             <CommandShortcut>Ctrl ⇧ D</CommandShortcut>
@@ -163,7 +163,7 @@ export function CommandPalette() {
               })
             )}
           >
-            <Sparkles className="mr-2 h-4 w-4 text-purple-500" />
+            <Sparkles className="mr-2 h-4 w-4 text-[var(--accent-violet)]" />
             Activar AI Assist
           </CommandItem>
         </CommandGroup>

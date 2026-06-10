@@ -252,11 +252,11 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
               </p>
             )}
             {flowQueues?.primaryQueue && !flowQueues.primaryQueue.isDynamic && (
-              <p className="text-xs text-emerald-700 dark:text-emerald-300">
+              <p className="text-xs text-[var(--accent-green)]">
                 ✓ Detectada automáticamente del flow:{" "}
                 <strong>{flowQueues.primaryQueue.queueName}</strong>
                 {flowQueues.literalQueues.length > 1 && (
-                  <span className="block text-amber-600">
+                  <span className="block text-[var(--accent-amber)]">
                     El flow referencia {flowQueues.literalQueues.length}{" "}
                     queues. Elegimos la principal — puedes cambiarla.
                   </span>
@@ -266,7 +266,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
             {flowQueues &&
               flowQueues.literalQueues.length === 0 &&
               flowQueues.dynamicQueues.length > 0 && (
-                <p className="text-xs text-amber-700 dark:text-amber-300">
+                <p className="text-xs text-[var(--accent-amber)]">
                   ⚠️ El flow usa queue dinámica (desde atributos) — elige
                   manualmente la que quieras usar.
                 </p>
@@ -275,7 +275,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
               flowQueues.literalQueues.length === 0 &&
               flowQueues.dynamicQueues.length === 0 &&
               contactFlowId && (
-                <p className="text-xs text-amber-700 dark:text-amber-300">
+                <p className="text-xs text-[var(--accent-amber)]">
                   ⚠️ No se detectó ninguna queue en el flow. Elige manualmente.
                 </p>
               )}
@@ -287,13 +287,13 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
           </div>
 
           {/* AMD notice — currently blocked for PE */}
-          <div className="rounded-lg border border-amber-300 bg-gradient-to-br from-amber-50/50 to-orange-50/50 p-3 dark:border-amber-900 dark:from-amber-950/20 dark:to-orange-950/20">
+          <div className="rounded-lg border border-[var(--accent-amber-soft)] bg-gradient-to-br from-[var(--accent-amber-soft)] to-[var(--accent-amber-soft)] p-3">
             <div className="flex items-start gap-2">
-              <Badge className="mt-0.5 bg-amber-100 text-[10px] text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              <Badge className="mt-0.5 bg-[var(--accent-amber-soft)] text-[10px] text-[var(--accent-amber)]">
                 PRÓXIMAMENTE
               </Badge>
               <div className="flex-1 text-xs">
-                <div className="font-semibold text-amber-900 dark:text-amber-200">
+                <div className="font-semibold text-[var(--accent-amber)]">
                   AMD bloqueado por AWS en Perú
                 </div>
                 <p className="mt-0.5 text-muted-foreground">

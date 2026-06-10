@@ -309,7 +309,7 @@ function QueueManagerInner() {
         </div>
       )}
       {error && !data && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
+        <div className="rounded-lg border border-[var(--accent-red-soft)] bg-[var(--accent-red-soft)] p-4 text-sm text-[var(--accent-red)]">
           {error}
         </div>
       )}
@@ -398,7 +398,7 @@ function QueueManagerInner() {
                 kpis.totalActive === 0 &&
                 (data.finished?.length || 0) === 0)) && (
               <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed bg-card/40 p-12 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-400 to-cyan-500 text-white shadow-md">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--accent-cyan)] to-[var(--accent-cyan-soft)] text-white shadow-md">
                   <Megaphone className="h-6 w-6" />
                 </div>
                 <div>

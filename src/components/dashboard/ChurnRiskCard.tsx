@@ -21,16 +21,16 @@ export function ChurnRiskCard() {
 
   return (
     <Card className="relative overflow-hidden">
-      <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-rose-400/20 to-red-500/20 blur-2xl" />
+      <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-[var(--accent-red)] to-[var(--accent-red-soft)] blur-2xl" />
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-red-600 text-white shadow">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--accent-red)] to-[var(--accent-red-soft)] text-white shadow">
               <AlertTriangle className="h-4 w-4" />
             </div>
             Churn Risk
           </CardTitle>
-          <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--accent-red-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent-red)]">
             {count} customer{count === 1 ? "" : "s"}
           </span>
         </div>
@@ -43,7 +43,7 @@ export function ChurnRiskCard() {
           </div>
         )}
         {error && !data && (
-          <p className="py-4 text-center text-xs text-rose-600">{error}</p>
+          <p className="py-4 text-center text-xs text-[var(--accent-red)]">{error}</p>
         )}
         {data && data.atRisk.length === 0 && (
           <p className="py-6 text-center text-xs text-muted-foreground">
@@ -61,13 +61,13 @@ export function ChurnRiskCard() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.08 }}
-            className="group flex items-center gap-3 rounded-lg border p-2.5 transition-all hover:border-rose-300 hover:shadow-sm dark:hover:border-rose-800"
+            className="group flex items-center gap-3 rounded-lg border p-2.5 transition-all hover:border-[var(--accent-red)] hover:shadow-sm"
           >
             <div className="relative">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-slate-200 to-slate-300 text-xs font-semibold text-slate-700 dark:from-slate-700 dark:to-slate-800 dark:text-slate-200">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--bg-3)] text-xs font-semibold text-[var(--text-2)]">
                 {formatInitials(customer.name) || "?"}
               </div>
-              <div className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white ring-2 ring-background">
+              <div className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--accent-red)] text-[9px] font-bold text-white ring-2 ring-background">
                 !
               </div>
             </div>
@@ -76,7 +76,7 @@ export function ChurnRiskCard() {
                 <span className="text-sm font-medium truncate">
                   {customer.name}
                 </span>
-                <span className="rounded-full bg-rose-100 px-1.5 py-0 text-[9px] font-bold text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+                <span className="rounded-full bg-[var(--accent-red-soft)] px-1.5 py-0 text-[9px] font-bold text-[var(--accent-red)]">
                   {customer.riskScore}
                 </span>
               </div>

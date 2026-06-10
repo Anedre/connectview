@@ -110,7 +110,7 @@ export function EditContactDialog({
             Status actual: <strong>{contact.status}</strong> · {contact.attempts}{" "}
             intento{contact.attempts === 1 ? "" : "s"}
             {locked && (
-              <span className="block text-rose-600">
+              <span className="block text-[var(--accent-red)]">
                 No se puede editar mientras la llamada está {contact.status}.
               </span>
             )}

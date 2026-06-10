@@ -187,7 +187,7 @@ export function AddContactsDialog({ campaignId, open, onClose, onAdded }: Props)
         )}
 
         {parseError && (
-          <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
+          <div className="flex items-center gap-2 rounded-md border border-[var(--accent-red-soft)] bg-[var(--accent-red-soft)] px-3 py-2 text-sm text-[var(--accent-red)]">
             <AlertTriangle className="h-4 w-4" />
             {parseError}
           </div>
@@ -196,7 +196,7 @@ export function AddContactsDialog({ campaignId, open, onClose, onAdded }: Props)
         {contacts.length > 0 && (
           <div className="space-y-2">
             <div className="text-sm font-medium">
-              <CheckCircle2 className="mr-1 inline h-4 w-4 text-emerald-600" />
+              <CheckCircle2 className="mr-1 inline h-4 w-4 text-[var(--accent-green)]" />
               {contacts.length} contactos listos
               {skipped.length > 0 && (
                 <Badge variant="outline" className="ml-2 text-xs">

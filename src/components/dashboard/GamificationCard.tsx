@@ -5,9 +5,9 @@ import { useAgentLeaderboard } from "@/hooks/useAgentLeaderboard";
 
 // Badges derived from live leaderboard badge counts (real aggregations, not hard-coded).
 const BADGE_META = [
-  { key: "onFire" as const, icon: Flame, label: "On Fire", color: "from-orange-400 to-red-500" },
-  { key: "topCsat" as const, icon: Award, label: "Top CSAT", color: "from-amber-400 to-yellow-500" },
-  { key: "risingStar" as const, icon: TrendingUp, label: "Rising Star", color: "from-emerald-400 to-teal-500" },
+  { key: "onFire" as const, icon: Flame, label: "On Fire", color: "from-[var(--accent-amber)] to-[var(--accent-amber-soft)]" },
+  { key: "topCsat" as const, icon: Award, label: "Top CSAT", color: "from-[var(--accent-amber)] to-[var(--accent-amber-soft)]" },
+  { key: "risingStar" as const, icon: TrendingUp, label: "Rising Star", color: "from-[var(--accent-green)] to-[var(--accent-green-soft)]" },
 ];
 
 export function GamificationCard() {
@@ -15,11 +15,11 @@ export function GamificationCard() {
 
   return (
     <Card className="relative overflow-hidden">
-      <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-amber-400/20 to-orange-500/20 blur-2xl" />
+      <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-[var(--accent-amber)] to-[var(--accent-amber-soft)] blur-2xl" />
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--accent-amber)] to-[var(--accent-amber-soft)] text-white shadow">
               <Trophy className="h-4 w-4" />
             </div>
             Team Leaderboard
@@ -64,7 +64,7 @@ export function GamificationCard() {
             </div>
           )}
           {error && !data && (
-            <p className="py-4 text-center text-xs text-rose-600">
+            <p className="py-4 text-center text-xs text-[var(--accent-red)]">
               {error}
             </p>
           )}
@@ -86,17 +86,17 @@ export function GamificationCard() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 + i * 0.05 }}
                 className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/50 ${
-                  agent.rank === 1 ? "bg-gradient-to-r from-amber-50/50 to-orange-50/50 dark:from-amber-950/20 dark:to-orange-950/20" : ""
+                  agent.rank === 1 ? "bg-gradient-to-r from-[var(--accent-amber-soft)] to-[var(--accent-amber-soft)]" : ""
                 }`}
               >
                 <div
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
                     agent.rank === 1
-                      ? "bg-gradient-to-br from-amber-400 to-orange-500 text-white"
+                      ? "bg-gradient-to-br from-[var(--accent-amber)] to-[var(--accent-amber-soft)] text-white"
                       : agent.rank === 2
-                      ? "bg-gradient-to-br from-slate-300 to-slate-400 text-white"
+                      ? "bg-[var(--bg-3)] text-white"
                       : agent.rank === 3
-                      ? "bg-gradient-to-br from-orange-300 to-orange-400 text-white"
+                      ? "bg-gradient-to-br from-[var(--accent-amber)] to-[var(--accent-amber-soft)] text-white"
                       : "bg-muted text-muted-foreground"
                   }`}
                 >
@@ -118,8 +118,8 @@ export function GamificationCard() {
                     agent.changePct === 0
                       ? "text-muted-foreground"
                       : isUp
-                      ? "text-emerald-600"
-                      : "text-rose-600"
+                      ? "text-[var(--accent-green)]"
+                      : "text-[var(--accent-red)]"
                   }`}
                 >
                   {changeLabel}

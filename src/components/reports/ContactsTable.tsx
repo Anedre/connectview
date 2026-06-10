@@ -19,11 +19,11 @@ interface ContactsTableProps {
 }
 
 const SENTIMENT_STYLES: Record<string, string> = {
-  POSITIVE: "bg-green-100 text-green-800",
-  NEGATIVE: "bg-red-100 text-red-800",
-  NEUTRAL: "bg-gray-100 text-gray-800",
-  MIXED: "bg-yellow-100 text-yellow-800",
-  UNKNOWN: "bg-gray-50 text-gray-500",
+  POSITIVE: "bg-[var(--accent-green-soft)] text-[var(--accent-green)]",
+  NEGATIVE: "bg-[var(--accent-red-soft)] text-[var(--accent-red)]",
+  NEUTRAL: "bg-[var(--bg-2)] text-[var(--text-2)]",
+  MIXED: "bg-[var(--accent-amber-soft)] text-[var(--accent-amber)]",
+  UNKNOWN: "bg-[var(--bg-2)] text-[var(--text-3)]",
 };
 
 export function ContactsTable({ contacts }: ContactsTableProps) {
