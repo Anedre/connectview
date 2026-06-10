@@ -305,9 +305,11 @@ export function ExecutiveView({
                 <Layers />
                 <b>{data.liveQueues.length}</b> colas activas
               </span>
-              <span className="exec-meta__chip">
-                <Building2 /> {data.org}
-              </span>
+              {data.org && (
+                <span className="exec-meta__chip">
+                  <Building2 /> {data.org}
+                </span>
+              )}
             </div>
           </div>
         </div>
