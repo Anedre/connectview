@@ -14,6 +14,7 @@ import { NotIntegrated } from "@/components/vox/NotIntegrated";
 import { VALORACION_META, type Valoracion } from "@/lib/dispositions";
 import * as Icon from "@/components/vox/primitives";
 import { PageHeader } from "@/components/vox/PageHeader";
+import { PipelineSummary } from "@/components/leads/PipelineSummary";
 import { WhatsAppQuickSendModal } from "@/components/workspace/WhatsAppQuickSendModal";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 
@@ -27,7 +28,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
  * (call/WhatsApp/email), age badges, source filter, and a centered detail
  * modal (overlay) for view/edit/delete.
  */
-interface Lead {
+export interface Lead {
   leadId: string;
   phone: string;
   name?: string;
@@ -96,7 +97,7 @@ function ageInfo(iso?: string): { label: string; stale: boolean } {
 }
 
 /* ── Draggable lead card with hover quick-actions ──────────────────── */
-function LeadCard({
+export function LeadCard({
   lead,
   color,
   canManage,
@@ -158,8 +159,8 @@ function LeadCard({
           ? "1px solid var(--accent-cyan)"
           : "1px solid var(--border-1)",
         borderLeft: `3px solid ${color}`,
-        borderRadius: 9,
-        padding: "10px 11px",
+        borderRadius: 11,
+        padding: "14px",
         boxShadow: selected
           ? "0 4px 16px -6px color-mix(in srgb, var(--accent-cyan) 40%, transparent)"
           : hover
@@ -202,76 +203,83 @@ function LeadCard({
           {selected && <Icon.Check size={11} />}
         </button>
       )}
-      <div className="row" style={{ gap: 8 }}>
-        <span
-          style={{
-            flex: "0 0 auto", width: 26, height: 26, borderRadius: "50%",
-            display: "grid", placeItems: "center", fontSize: 10.5, fontWeight: 700,
-            background: `${color}22`, color,
-          }}
-        >
-          {initialsOf(lead.name || lead.phone)}
-        </span>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {lead.name || lead.phone}
-          </div>
-          <div className="muted" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {lead.phone}{lead.company ? ` · ${lead.company}` : ""}
-          </div>
-          {lead.email && (
-            <div className="muted" style={{ fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
-              {lead.email}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="row" style={{ justifyContent: "space-between", marginTop: 9, gap: 6 }}>
-        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-          {/* Origen: Salesforce (sincronizado) vs Vox (nativo). SIEMPRE mostramos
-              uno de los dos para diferenciar de un vistazo de dónde salió el lead. */}
-          {lead.sfLeadId ? (
-            <span
-              className="sf-badge"
-              title={`Sincronizado con Salesforce${lead.attributes?.sf_lead_status ? ` · Status: ${lead.attributes.sf_lead_status}` : ""}`}
-            >
-              <Icon.Cloud size={11} strokeWidth={2.4} />
-              Salesforce
-            </span>
-          ) : (
-            <span
-              title="Lead nativo de AIRA (no vino de Salesforce)"
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 4, height: 18,
-                padding: "0 8px", borderRadius: 999, fontSize: 9.5, fontWeight: 700,
-                background: "var(--accent-violet-soft)", color: "var(--accent-violet)",
-                border: "1px solid color-mix(in srgb, var(--accent-violet) 30%, transparent)",
-              }}
-            >
-              AIRA
-            </span>
-          )}
-          {/* Sub-origen para leads de Vox (manual / campaña / web / whatsapp). */}
-          {lead.source && lead.source !== "salesforce" ? (
-            <span className="chip" style={{ height: 18, fontSize: 9.5 }}>
-              {SOURCE_LABEL[lead.source] || lead.source}
-            </span>
-          ) : null}
-          {lead.montoEstimado ? (
-            <span className="chip chip--green" style={{ height: 18, fontSize: 9.5, fontWeight: 700 }}>
-              {fmtMoney(lead.montoEstimado)}
-            </span>
-          ) : null}
+      {/* Título (nombre) + fecha — estilo Kommo: el nombre manda arriba, la
+          fecha de última actividad a la derecha. */}
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {lead.name || lead.phone}
         </div>
         {age.label && (
           <span
-            style={{ fontSize: 10, fontWeight: 600, color: age.stale ? "var(--accent-red)" : "var(--text-3)", display: "inline-flex", alignItems: "center", gap: 3 }}
+            style={{ fontSize: 10.5, fontWeight: 600, color: age.stale ? "var(--accent-red)" : "var(--text-3)", flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}
             title={age.stale ? "Lead estancado (>7 días sin cambios)" : "Última actualización"}
           >
             {age.stale && <AlertTriangle size={10} style={{ flexShrink: 0 }} />}{age.label}
           </span>
         )}
       </div>
+
+      {/* Avatar + empresa / teléfono */}
+      <div className="row" style={{ gap: 10, marginTop: 11, alignItems: "center" }}>
+        <span
+          style={{
+            flex: "0 0 auto", width: 32, height: 32, borderRadius: "50%",
+            display: "grid", placeItems: "center", fontSize: 11.5, fontWeight: 700,
+            background: `${color}22`, color,
+          }}
+        >
+          {initialsOf(lead.name || lead.phone)}
+        </span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 12, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {lead.company || lead.phone}
+          </div>
+          {lead.company && lead.phone && (
+            <div className="muted" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
+              {lead.phone}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Tags / origen */}
+      <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 12 }}>
+        {/* Origen: Salesforce (sincronizado) vs AIRA (nativo). */}
+        {lead.sfLeadId ? (
+          <span
+            className="sf-badge"
+            title={`Sincronizado con Salesforce${lead.attributes?.sf_lead_status ? ` · Status: ${lead.attributes.sf_lead_status}` : ""}`}
+          >
+            <Icon.Cloud size={11} strokeWidth={2.4} />
+            Salesforce
+          </span>
+        ) : (
+          <span
+            title="Lead nativo de AIRA (no vino de Salesforce)"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 4, height: 19,
+              padding: "0 9px", borderRadius: 999, fontSize: 10, fontWeight: 700,
+              background: "var(--accent-violet-soft)", color: "var(--accent-violet)",
+              border: "1px solid color-mix(in srgb, var(--accent-violet) 30%, transparent)",
+            }}
+          >
+            AIRA
+          </span>
+        )}
+        {lead.source && lead.source !== "salesforce" ? (
+          <span className="chip" style={{ height: 19, fontSize: 10 }}>
+            {SOURCE_LABEL[lead.source] || lead.source}
+          </span>
+        ) : null}
+      </div>
+
+      {/* Footer: valor estimado — separado y prominente (deal value). */}
+      {lead.montoEstimado ? (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 10, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Valor</span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: "var(--accent-green)", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(lead.montoEstimado)}</span>
+        </div>
+      ) : null}
 
       {/* Hover quick-actions: call / WhatsApp / email.
           Call + WhatsApp go through Amazon Connect (placeCall +
@@ -320,7 +328,7 @@ function LeadCard({
 }
 
 /* ── Droppable stage column (with inline create + weighted/conversion) ── */
-function StageColumn({
+export function StageColumn({
   stageId,
   label,
   color,
@@ -380,7 +388,7 @@ function StageColumn({
     <div
       ref={dropRef as unknown as React.Ref<HTMLDivElement>}
       style={{
-        minWidth: 256, maxWidth: 288, flex: "0 0 auto",
+        minWidth: 280, maxWidth: 304, flex: "0 0 auto",
         background: isOver ? `${color}10` : "var(--bg-2)",
         border: `1px solid ${isOver ? color : "var(--border-1)"}`,
         borderRadius: 12, overflow: "hidden",
@@ -389,9 +397,9 @@ function StageColumn({
       }}
     >
       <div style={{ height: 3, background: color }} />
-      <div style={{ padding: "10px 12px 9px", background: `linear-gradient(180deg, ${color}14, transparent)`, borderBottom: "1px solid var(--border-1)" }}>
+      <div style={{ padding: "13px 14px 12px", background: `linear-gradient(180deg, ${color}14, transparent)`, borderBottom: "1px solid var(--border-1)" }}>
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <span style={{ fontWeight: 700, fontSize: 12.5, textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</span>
+          <span style={{ fontWeight: 700, fontSize: 12.5, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-1)" }}>{label}</span>
           <div className="row" style={{ gap: 6 }}>
             {conversionPct != null && (
               <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-3)" }} title="Conversión desde la etapa anterior (acotada a 100%)">
@@ -412,9 +420,10 @@ function StageColumn({
             )}
           </div>
         </div>
-        <div className="muted" style={{ fontSize: 10.5, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
-          {totalValue > 0 ? fmtMoney(totalValue) : "Sin valor"}
-          {weightedValue > 0 ? ` · pond. ${fmtMoney(weightedValue)}` : ""}
+        <div style={{ fontSize: 11.5, marginTop: 5, fontVariantNumeric: "tabular-nums", color: "var(--text-2)", fontWeight: 600 }}>
+          {items.length} {items.length === 1 ? "lead" : "leads"}
+          {totalValue > 0 ? <span style={{ color: "var(--text-1)", fontWeight: 700 }}>{` · ${fmtMoney(totalValue)}`}</span> : null}
+          {weightedValue > 0 ? <span className="muted" style={{ fontWeight: 500 }}>{` · pond. ${fmtMoney(weightedValue)}`}</span> : null}
         </div>
       </div>
 
@@ -438,7 +447,7 @@ function StageColumn({
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 60, padding: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 11, minHeight: 60, padding: 10 }}>
         {items.map((l) => (
           <LeadCard
             key={l.leadId}
@@ -1125,6 +1134,23 @@ export function LeadsPage() {
     return { shownCount: count, totalValue: value, weightedTotal: weighted };
   }, [byStage, tree]);
 
+  // Stats por etapa para la franja de resumen del embudo (PipelineSummary).
+  const pipelineStages = useMemo(
+    () =>
+      tree.map((s) => {
+        const items = byStage.get(s.id) || [];
+        const tone = VALORACION_META[s.valoracion];
+        return {
+          id: s.id,
+          label: s.label,
+          color: TONE_COLOR[tone.chip] || "var(--accent-cyan)",
+          count: items.length,
+          value: items.reduce((a, l) => a + (l.montoEstimado || 0), 0),
+        };
+      }),
+    [tree, byStage]
+  );
+
   const move = async (leadId: string, stageId: string) => {
     const ep = getApiEndpoints();
     if (!ep?.manageLeads) return;
@@ -1412,8 +1438,15 @@ export function LeadsPage() {
           )}
         </div>
       ) : view === "board" ? (
+      <>
+      <PipelineSummary
+        stages={pipelineStages}
+        totalLeads={shownCount}
+        totalValue={totalValue}
+        weightedValue={weightedTotal}
+      />
       <DndProvider backend={HTML5Backend}>
-        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 12, alignItems: "flex-start" }}>
+        <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12, alignItems: "flex-start" }}>
           {loading && leads.length === 0
             ? Array.from({ length: 5 }).map((_, ci) => (
                 <div key={ci} style={{ minWidth: 256, maxWidth: 288, flex: "0 0 auto", background: "var(--bg-2)", border: "1px solid var(--border-1)", borderRadius: 12, overflow: "hidden" }}>
@@ -1469,6 +1502,7 @@ export function LeadsPage() {
           })}
         </div>
       </DndProvider>
+      </>
       ) : (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>

@@ -35,6 +35,7 @@ import { WizardDemoPage } from "@/pages/WizardDemoPage";
 import { GrabacionesDemoPage } from "@/pages/GrabacionesDemoPage";
 import { ConversationCanvasDemoPage } from "@/pages/ConversationCanvasDemoPage";
 import { AgenteDemoPage } from "@/pages/AgenteDemoPage";
+import { LeadsDemoPage } from "@/pages/LeadsDemoPage";
 import { FlowBuilderPage } from "@/pages/FlowBuilderPage";
 import { AutomationsPage } from "@/pages/AutomationsPage";
 import { AgentePage } from "@/pages/AgentePage";
@@ -673,6 +674,19 @@ export default function App() {
     return (
       <ThemeProvider>
         <AgenteDemoPage />
+      </ThemeProvider>
+    );
+  }
+
+  // Auth-free preview of the premium Leads board (PipelineSummary + board). DEV only.
+  if (
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    window.location.pathname === "/leads-demo"
+  ) {
+    return (
+      <ThemeProvider>
+        <LeadsDemoPage />
       </ThemeProvider>
     );
   }
