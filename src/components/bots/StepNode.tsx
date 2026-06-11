@@ -22,6 +22,18 @@ import { useBuilder } from "@/components/bots/builderCtx";
  */
 type StepData = { kind: NodeKind } & Record<string, unknown>;
 
+/** Resalta los {{tokens}} de variable como chips para que el flujo se lea solo. */
+function renderWithVars(text: string): React.ReactNode {
+  const parts = text.split(/(\{\{[^}]+\}\})/g);
+  return parts.map((p, i) =>
+    /^\{\{[^}]+\}\}$/.test(p) ? (
+      <span key={i} className="fb-var">{p}</span>
+    ) : (
+      <span key={i}>{p}</span>
+    )
+  );
+}
+
 function StepNodeImpl({ id, data, selected }: NodeProps) {
   const d = data as StepData;
   const def = NODE_KINDS[d.kind];
@@ -95,7 +107,7 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
       {/* Body */}
       <div className="fb-node__body">
         <div className="fb-node__summary">
-          {summary || <span style={{ color: "var(--text-3)", fontStyle: "italic" }}>Sin configurar…</span>}
+          {summary ? renderWithVars(summary) : <span style={{ color: "var(--text-3)", fontStyle: "italic" }}>Sin configurar…</span>}
         </div>
 
         {/* Action buttons (url / phone) — chips, no branch */}

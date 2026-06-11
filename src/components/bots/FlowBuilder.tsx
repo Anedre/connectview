@@ -16,7 +16,7 @@ import {
   type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Save, Trash2, AlertTriangle, Check, Play, Bot as BotIcon, Search, Network } from "lucide-react";
+import { Plus, Save, Trash2, AlertTriangle, Check, Play, Bot as BotIcon, Search, Network, Braces } from "lucide-react";
 import {
   NODE_KINDS,
   PALETTE_GROUPS,
@@ -487,6 +487,21 @@ function FlowBuilderInner({
               />
             </ReactFlow>
           </div>
+          {nodes.filter((n) => (n.data as { kind?: string }).kind !== "start").length === 0 && (
+            <div className="fb-coach">
+              <div className="fb-coach__card">
+                <span className="fb-coach__arrow" aria-hidden>←</span>
+                <div>
+                  <div className="fb-coach__h">Armá tu primer flujo</div>
+                  <div className="fb-coach__p">
+                    Arrastrá un paso desde la izquierda (o hacé click en uno). Para conectar dos
+                    pasos, tirá una línea de un punto al siguiente — o soltá un paso cerca de la
+                    salida de otro y se conecta solo.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {testing && <BotTester bot={currentBot} onClose={() => setTesting(false)} />}
         </div>
 
@@ -625,6 +640,7 @@ function Inspector({
                 value={data[f.key]}
                 allNodes={allNodes}
                 selfId={node.id}
+                flowVars={flowVars}
                 onChange={(v) => onChange({ [f.key]: v })}
               />
             ))}
@@ -660,21 +676,73 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
+/** Fila de chips para insertar una variable guardada en el cursor del campo. */
+function VarInsert({ vars, onInsert }: { vars: string[]; onInsert: (name: string) => void }) {
+  return (
+    <div className="fb-varins">
+      <span className="fb-varins__lbl"><Braces size={11} /> Insertar variable</span>
+      {vars.map((vn) => (
+        <button
+          key={vn}
+          type="button"
+          className="fb-varchip"
+          onClick={() => onInsert(vn)}
+          title={`Insertar {{${vn}}}`}
+        >
+          {vn}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Field({
   field,
   value,
   allNodes,
   selfId,
+  flowVars,
   onChange,
 }: {
   field: FieldDef;
   value: unknown;
   allNodes: Node[];
   selfId: string;
+  flowVars: string[];
   onChange: (v: unknown) => void;
 }) {
   const v = value;
   const labelMap = SELECT_LABELS[field.key];
+  const fieldRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+
+  const isDefine = field.variable === "define";
+  const isUse = field.variable === "use";
+  const isContent = !field.variable && (field.type === "textarea" || field.type === "text");
+  const mono = isDefine || field.type === "var";
+  const dataListId = `vars-${selfId}-${field.key}`;
+
+  // Inserta {{nombre}} en la posición del cursor (o al final si no hay foco).
+  const insertVar = (name: string) => {
+    const token = `{{${name}}}`;
+    const el = fieldRef.current;
+    const cur = String(v ?? "");
+    if (!el || el.selectionStart == null) {
+      onChange(cur + token);
+      return;
+    }
+    const s = el.selectionStart;
+    const e = el.selectionEnd ?? s;
+    onChange(cur.slice(0, s) + token + cur.slice(e));
+    requestAnimationFrame(() => {
+      try {
+        el.focus();
+        const p = s + token.length;
+        el.setSelectionRange(p, p);
+      } catch {
+        /* el puede haberse desmontado */
+      }
+    });
+  };
 
   return (
     <div>
@@ -682,6 +750,7 @@ function Field({
 
       {field.type === "textarea" && (
         <textarea
+          ref={fieldRef as React.RefObject<HTMLTextAreaElement>}
           value={String(v ?? "")}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
@@ -692,14 +761,20 @@ function Field({
 
       {(field.type === "text" || field.type === "var") && (
         <input
+          ref={fieldRef as React.RefObject<HTMLInputElement>}
           value={String(v ?? "")}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
-          style={{
-            ...inputStyle,
-            fontFamily: field.type === "var" ? "var(--font-mono, monospace)" : "inherit",
-          }}
+          list={isUse ? dataListId : undefined}
+          style={{ ...inputStyle, fontFamily: mono ? "var(--font-mono, monospace)" : "inherit" }}
         />
+      )}
+      {isUse && (
+        <datalist id={dataListId}>
+          {flowVars.map((vn) => (
+            <option key={vn} value={vn} />
+          ))}
+        </datalist>
       )}
 
       {field.type === "number" && (
@@ -748,6 +823,29 @@ function Field({
 
       {field.type === "listrows" && (
         <ListRowsEditor value={Array.isArray(v) ? (v as ListRow[]) : []} onChange={onChange} />
+      )}
+
+      {/* Afford. didáctica de variables */}
+      {isDefine && (
+        <div className="fb-vardef">
+          <Braces size={11} />
+          {String(v ?? "").trim() ? (
+            <span>Se crea la variable <span className="fb-var">{`{{${String(v).trim()}}}`}</span></span>
+          ) : (
+            <span>Ponele un nombre y se crea una variable reutilizable.</span>
+          )}
+        </div>
+      )}
+      {isUse && flowVars.length === 0 && (
+        <div className="fb-varhint">
+          <Braces size={11} /> Primero guardá una variable con un paso «Preguntar y guardar».
+        </div>
+      )}
+      {isContent && flowVars.length > 0 && <VarInsert vars={flowVars} onInsert={insertVar} />}
+      {isContent && flowVars.length === 0 && field.type === "textarea" && (
+        <div className="fb-varhint">
+          <Braces size={11} /> Guardá datos con un paso «Preguntar y guardar» y aparecerán acá para insertarlos.
+        </div>
       )}
 
       {field.help && (

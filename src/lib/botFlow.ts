@@ -69,6 +69,13 @@ export interface FieldDef {
   placeholder?: string;
   options?: string[];
   help?: string;
+  /**
+   * Rol del campo respecto a las variables del flujo (UX didáctica #16):
+   * "define" → este campo CREA una variable reutilizable (p. ej. Guardar en).
+   * "use"    → este campo ELIGE una variable ya creada (p. ej. Condición).
+   * Sin valor → texto normal (puede insertar variables con {{ }}).
+   */
+  variable?: "define" | "use";
 }
 
 export interface Outlet {
@@ -174,6 +181,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         label: "Mensaje",
         type: "textarea",
         placeholder: "Escribe lo que el bot dirá…",
+        help: "Podés personalizarlo con datos guardados usando «Insertar variable» (p. ej. ¡Hola {{nombre}}!).",
       },
       { key: "buttons", label: "Botones", type: "buttons" },
     ],
@@ -228,18 +236,22 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         label: "Pregunta",
         type: "textarea",
         placeholder: "¿Cuál es tu nombre completo?",
+        help: "Lo que el bot le pregunta al cliente. La respuesta se guarda en la variable de abajo.",
       },
       {
         key: "saveAs",
-        label: "Guardar en variable",
+        label: "Guardar la respuesta como",
         type: "var",
         placeholder: "nombre",
+        variable: "define",
+        help: "Le ponés un nombre para reutilizarla después (p. ej. en un mensaje) con «Insertar variable».",
       },
       {
         key: "validate",
         label: "Validar como",
         type: "select",
         options: ["ninguna", "email", "teléfono", "número"],
+        help: "El bot vuelve a preguntar si la respuesta no tiene el formato elegido.",
       },
     ],
     outlets: () => [{ id: "out" }],
@@ -255,12 +267,20 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "branch",
     blurb: "Ramifica según una variable o respuesta",
     fields: [
-      { key: "variable", label: "Variable", type: "var", placeholder: "carrera" },
+      {
+        key: "variable",
+        label: "¿Qué variable evaluar?",
+        type: "var",
+        placeholder: "carrera",
+        variable: "use",
+        help: "Elegí una variable guardada antes (p. ej. con «Preguntar y guardar»).",
+      },
       {
         key: "op",
         label: "Operador",
         type: "select",
         options: ["equals", "contains", "exists", "gt", "lt", "regex"],
+        help: "Cómo se compara la variable con el valor.",
       },
       { key: "value", label: "Valor", type: "text", placeholder: "Ingeniería" },
     ],
@@ -336,8 +356,21 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "tag",
     blurb: "Actualiza un campo del lead/perfil",
     fields: [
-      { key: "field", label: "Campo", type: "text", placeholder: "etapa" },
-      { key: "value", label: "Valor", type: "text", placeholder: "Interesado" },
+      {
+        key: "field",
+        label: "Campo a guardar",
+        type: "text",
+        placeholder: "etapa",
+        variable: "define",
+        help: "Nombre del dato del lead/perfil que vas a actualizar. Queda como variable reutilizable.",
+      },
+      {
+        key: "value",
+        label: "Valor",
+        type: "text",
+        placeholder: "Interesado",
+        help: "Texto fijo o una variable con «Insertar variable» (p. ej. {{nombre}}).",
+      },
     ],
     outlets: () => [{ id: "out" }],
     defaultData: () => ({ field: "", value: "" }),
