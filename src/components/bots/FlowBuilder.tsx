@@ -104,6 +104,42 @@ function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
   return nodes.map((n) => ({ ...n, position: pos.get(n.id) || n.position }));
 }
 
+/**
+ * Conectar-al-soltar: si el punto donde se suelta un paso cae cerca de la
+ * salida de otro nodo (a su derecha y a la altura adecuada, para respetar el
+ * flujo L→R) y esa salida está libre, devuelve {source, sourceHandle} para
+ * autoconectar. Heurística por posición — usa las medidas reales si existen.
+ */
+const NODE_W_APPROX = 246;
+function findDropConnection(
+  p: { x: number; y: number },
+  nodes: Node[],
+  edges: Edge[]
+): { source: string; sourceHandle: string } | null {
+  let best: { source: string; sourceHandle: string } | null = null;
+  let bestDist = Infinity;
+  for (const n of nodes) {
+    const kind = (n.data as { kind?: NodeKind }).kind;
+    if (!kind) continue;
+    const outlets = NODE_KINDS[kind]?.outlets(n.data as Record<string, unknown>) || [];
+    const free = outlets.find(
+      (o) => !edges.some((e) => e.source === n.id && e.sourceHandle === o.id)
+    );
+    if (!free) continue;
+    const w = n.measured?.width ?? NODE_W_APPROX;
+    const h = n.measured?.height ?? 90;
+    const dx = p.x - (n.position.x + w);
+    const dy = p.y - (n.position.y + h / 2);
+    if (dx < -60 || dx > 320 || Math.abs(dy) > 170) continue;
+    const dist = Math.hypot(dx, dy);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = { source: n.id, sourceHandle: free.id };
+    }
+  }
+  return best;
+}
+
 // Friendly labels for selects whose stored value differs from the display.
 const SELECT_LABELS: Record<string, Record<string, string>> = {
   op: {
@@ -229,9 +265,13 @@ function FlowBuilderInner({
   const issues = useMemo(() => validateBot(currentBot), [currentBot]);
 
   const addNode = useCallback(
-    (kind: NodeKind, dropPos?: { x: number; y: number }) => {
-      // Soltar (arrastrar desde la paleta) = posición exacta del cursor, sin
-      // autoconexión. Click = a la derecha del nodo seleccionado y autoconecta.
+    (
+      kind: NodeKind,
+      dropPos?: { x: number; y: number },
+      autoConnect?: { source: string; sourceHandle: string }
+    ) => {
+      // Soltar (arrastrar desde la paleta) = posición exacta del cursor. Click =
+      // a la derecha del nodo seleccionado. En ambos casos puede autoconectar.
       const sel = !dropPos && selectedId ? nodes.find((n) => n.id === selectedId) : null;
       let pos: { x: number; y: number };
       if (dropPos) {
@@ -249,8 +289,12 @@ function FlowBuilderInner({
         ...nds,
         { id: node.id, type: "step", position: node.position, data: { ...node.data, kind } },
       ]);
-      // Conexión AUTOMÁTICA desde el nodo seleccionado (su primer outlet libre).
-      if (sel) {
+      // Conexión AUTOMÁTICA: al soltar cerca de una salida (autoConnect) o, en
+      // click-add, desde el primer outlet libre del nodo seleccionado.
+      if (autoConnect) {
+        const conn: Connection = { source: autoConnect.source, sourceHandle: autoConnect.sourceHandle, target: node.id, targetHandle: null };
+        setEdges((eds) => addEdge({ ...conn, ...edgeDefaults }, eds));
+      } else if (sel) {
         const def = NODE_KINDS[(sel.data as { kind: NodeKind }).kind];
         const firstOutlet = def?.outlets(sel.data as Record<string, unknown>)[0];
         const taken = edges.some((e) => e.source === sel.id && e.sourceHandle === firstOutlet?.id);
@@ -282,11 +326,12 @@ function FlowBuilderInner({
       const kind = e.dataTransfer.getData("application/aira-node") as NodeKind;
       if (!kind || !NODE_KINDS[kind]) return;
       // Convierte el punto del cursor a coordenadas del lienzo (respeta zoom/pan)
-      // y centra el nodo (~234px de ancho) bajo el puntero.
+      // y centra el nodo bajo el puntero. Si cae cerca de una salida, autoconecta.
       const p = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      addNode(kind, { x: p.x - 117, y: p.y - 20 });
+      const conn = findDropConnection(p, nodes, edges);
+      addNode(kind, { x: p.x - 117, y: p.y - 20 }, conn ?? undefined);
     },
-    [screenToFlowPosition, addNode]
+    [screenToFlowPosition, addNode, nodes, edges]
   );
 
   const updateNodeData = useCallback(
