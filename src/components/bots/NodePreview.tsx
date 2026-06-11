@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link2, PhoneCall, List as ListIcon, Eye, StickyNote, GitBranch, Clock, Play, Sparkles, Paperclip, Webhook } from "lucide-react";
+import { Link2, PhoneCall, List as ListIcon, Eye, StickyNote, GitBranch, Clock, Play, Sparkles, Paperclip, Webhook, UserRound } from "lucide-react";
 import { OP_LABEL, UNIT_LABEL, type ButtonDef, type ListRow, type NodeKind } from "@/lib/botFlow";
 
 /**
@@ -186,6 +186,33 @@ export function BusinessHoursPreview({ data }: { data: Record<string, unknown> }
         <div className="fb-cond__branches">
           <span className="fb-cond__branch fb-cond__branch--yes">→ sale por «Abierto»</span>
           <span className="fb-cond__branch fb-cond__branch--no">si no, por «Cerrado»</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Derivar a agente: a qué cola entra, prioridad y asignación. */
+export function HandoffPreview({ data }: { data: Record<string, unknown> }) {
+  const queue = String(data.queue || "");
+  const priority = String(data.priority || "normal");
+  const assignTo = String(data.assignTo || "");
+  const prioStyle =
+    priority === "urgente"
+      ? { color: "var(--accent-red)", background: "var(--accent-red-soft)" }
+      : priority === "alta"
+      ? { color: "var(--accent-amber)", background: "var(--accent-amber-soft, rgba(224,162,59,0.14))" }
+      : undefined;
+  return (
+    <div className="fb-prev">
+      <div className="fb-prev__top"><UserRound size={12} /> Vista previa</div>
+      <div className="fb-cond">
+        <div className="fb-cond__rule">
+          La conversación pasa a {queue ? <b>la cola «{queue}»</b> : <span className="fb-prev__ph">una cola</span>}
+          {assignTo ? <> y se asigna a <b>{assignTo}</b></> : " (cualquier agente disponible)"}.
+        </div>
+        <div className="fb-cond__branches">
+          <span className="fb-cond__branch fb-cond__branch--yes" style={prioStyle}>prioridad {priority}</span>
         </div>
       </div>
     </div>

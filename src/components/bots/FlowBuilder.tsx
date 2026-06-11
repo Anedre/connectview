@@ -34,7 +34,7 @@ import { StepNode } from "@/components/bots/StepNode";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { BuilderCtx } from "@/components/bots/builderCtx";
 import { BotTester } from "@/components/bots/BotTester";
-import { NodePreview, ConditionPreview, DelayPresets, StartPreview, AiPersonaPresets, BusinessHoursPreview, ABSplitPreview, WebhookTester } from "@/components/bots/NodePreview";
+import { NodePreview, ConditionPreview, DelayPresets, StartPreview, AiPersonaPresets, BusinessHoursPreview, ABSplitPreview, WebhookTester, HandoffPreview } from "@/components/bots/NodePreview";
 import { getApiEndpoints } from "@/lib/api";
 import { WaTemplateConfigurator, type WaTemplate } from "@/components/whatsapp/WaTemplateConfigurator";
 
@@ -677,6 +677,7 @@ function Inspector({
         {kind === "ab_split" && <ABSplitPreview data={data} />}
         {kind === "delay" && <DelayPresets data={data} onChange={onChange} />}
         {kind === "ai_agent" && <AiPersonaPresets onChange={onChange} />}
+        {kind === "handoff" && <HandoffPreview data={data} />}
         {kind === "webhook" && <WebhookTester data={data} />}
         {kind === "template" ? (
           <WaTemplateConfigurator
@@ -733,6 +734,8 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
+const EMOJIS = ["😊", "👋", "🎉", "✅", "❤️", "🙌", "👍", "📅", "📞", "💳", "🎁", "⭐", "🔥", "💡", "📌", "🛒", "🤖", "🙏", "✨", "📎"];
+
 /** Fila de chips para insertar una variable guardada en el cursor del campo. */
 function VarInsert({ vars, onInsert }: { vars: string[]; onInsert: (name: string) => void }) {
   return (
@@ -771,6 +774,7 @@ function Field({
   const v = value;
   const labelMap = SELECT_LABELS[field.key];
   const fieldRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const [showEmoji, setShowEmoji] = useState(false);
 
   const isDefine = field.variable === "define";
   const isUse = field.variable === "use";
@@ -792,28 +796,28 @@ function Field({
         })()
       : false;
 
-  // Inserta {{nombre}} en la posición del cursor (o al final si no hay foco).
-  const insertVar = (name: string) => {
-    const token = `{{${name}}}`;
+  // Inserta texto en la posición del cursor (o al final si no hay foco).
+  const insertAtCursor = (text: string) => {
     const el = fieldRef.current;
     const cur = String(v ?? "");
     if (!el || el.selectionStart == null) {
-      onChange(cur + token);
+      onChange(cur + text);
       return;
     }
     const s = el.selectionStart;
     const e = el.selectionEnd ?? s;
-    onChange(cur.slice(0, s) + token + cur.slice(e));
+    onChange(cur.slice(0, s) + text + cur.slice(e));
     requestAnimationFrame(() => {
       try {
         el.focus();
-        const p = s + token.length;
+        const p = s + text.length;
         el.setSelectionRange(p, p);
       } catch {
         /* el puede haberse desmontado */
       }
     });
   };
+  const insertVar = (name: string) => insertAtCursor(`{{${name}}}`);
 
   return (
     <div>
@@ -828,6 +832,20 @@ function Field({
           rows={3}
           style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
         />
+      )}
+      {field.type === "textarea" && (
+        <div style={{ marginTop: 4 }}>
+          <button type="button" className="fb-emoji-btn" onClick={() => setShowEmoji((s) => !s)} title="Insertar emoji">
+            <span style={{ fontSize: 13 }}>😊</span> Emoji
+          </button>
+          {showEmoji && (
+            <div className="fb-emoji-grid">
+              {EMOJIS.map((em) => (
+                <button key={em} type="button" className="fb-emoji" onClick={() => insertAtCursor(em)}>{em}</button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {(field.type === "text" || field.type === "var") && (
@@ -1078,7 +1096,7 @@ function ButtonsEditor({
         disabled={value.length >= max}
         style={{ ...addBtnStyle, opacity: value.length >= max ? 0.5 : 1, cursor: value.length >= max ? "default" : "pointer" }}
       >
-        <Plus size={12} /> Agregar botón {value.length >= max ? "(máx 3)" : ""}
+        <Plus size={12} /> Agregar botón · {value.length}/{max}
       </button>
       <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>
         Solo los botones de <strong>Respuesta</strong> crean ramas en el flujo.
@@ -1123,11 +1141,21 @@ function ListRowsEditor({ value, onChange }: { value: ListRow[]; onChange: (v: L
   const update = (id: string, patch: Partial<ListRow>) =>
     onChange(value.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const remove = (id: string) => onChange(value.filter((r) => r.id !== id));
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const move = (from: number, to: number) => {
+    if (from === to) return;
+    const next = [...value];
+    const [it] = next.splice(from, 1);
+    next.splice(to, 0, it);
+    onChange(next);
+  };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {value.map((r) => (
+      {value.map((r, i) => (
         <div
           key={r.id}
+          onDragOver={(e) => { if (dragIdx !== null) e.preventDefault(); }}
+          onDrop={() => { if (dragIdx !== null) move(dragIdx, i); setDragIdx(null); }}
           style={{
             display: "flex",
             flexDirection: "column",
@@ -1136,9 +1164,13 @@ function ListRowsEditor({ value, onChange }: { value: ListRow[]; onChange: (v: L
             border: "1px solid var(--border-1)",
             borderRadius: 8,
             background: "var(--bg-1)",
+            opacity: dragIdx === i ? 0.5 : 1,
           }}
         >
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span className="fb-grip" draggable onDragStart={() => setDragIdx(i)} onDragEnd={() => setDragIdx(null)} title="Arrastrar para reordenar">
+              <GripVertical size={13} />
+            </span>
             <input
               value={r.title}
               onChange={(e) => update(r.id, { title: e.target.value })}
@@ -1160,7 +1192,7 @@ function ListRowsEditor({ value, onChange }: { value: ListRow[]; onChange: (v: L
         disabled={value.length >= max}
         style={{ ...addBtnStyle, opacity: value.length >= max ? 0.5 : 1, cursor: value.length >= max ? "default" : "pointer" }}
       >
-        <Plus size={12} /> Agregar opción {value.length >= max ? "(máx 10)" : ""}
+        <Plus size={12} /> Agregar opción · {value.length}/{max}
       </button>
     </div>
   );

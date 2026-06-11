@@ -376,7 +376,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "clock",
     blurb: "Pausa antes del siguiente paso",
     fields: [
-      { key: "amount", label: "Cantidad", type: "number", placeholder: "30" },
+      { key: "amount", label: "Cantidad", type: "number", placeholder: "30", slider: { min: 1, max: 60 }, help: "Cuánto espera el bot antes de seguir al próximo paso." },
       {
         key: "unit",
         label: "Unidad",
@@ -404,6 +404,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         type: "text",
         placeholder: "etapa",
         variable: "define",
+        suggestions: ["etapa", "origen", "interes", "presupuesto", "ciudad", "prioridad"],
         help: "Nombre del dato del lead/perfil que vas a actualizar. Queda como variable reutilizable.",
       },
       {
@@ -726,7 +727,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "tag",
     blurb: "Agrega o quita una etiqueta al contacto",
     fields: [
-      { key: "tag", label: "Etiqueta", type: "text", placeholder: "VIP", variable: "insert" },
+      { key: "tag", label: "Etiqueta", type: "text", placeholder: "VIP", variable: "insert", suggestions: ["VIP", "Caliente", "Frío", "Seguimiento", "Cliente", "No molestar"] },
       { key: "action", label: "Acción", type: "select", options: ["Agregar", "Quitar"] },
     ],
     outlets: () => [{ id: "out" }],
