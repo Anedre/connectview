@@ -9,6 +9,7 @@ import { WhatsAppThreadView } from "@/components/recordings/WhatsAppThreadView";
 import { CallLogView } from "@/components/recordings/CallLogView";
 import { EmailThreadsView } from "@/components/recordings/EmailThreadsView";
 import { AttachmentsGrid } from "@/components/recordings/AttachmentsGrid";
+import { ConversationCanvas } from "@/components/recordings/ConversationCanvas";
 
 /**
  * Lead360View — vista única del lead estilo "cuenta" de Salesforce, en GRID:
@@ -17,9 +18,9 @@ import { AttachmentsGrid } from "@/components/recordings/AttachmentsGrid";
  * tiene un botón "Ver más detalles" que abre el detalle completo en un modal.
  * Sin barra de tabs — todo a la vista, conectado por el nombre del lead.
  */
-type Lens = "history" | "calls" | "whatsapp" | "emails" | "files";
+type Lens = "conversation" | "history" | "calls" | "whatsapp" | "emails" | "files";
 
-const CHANNELS: { id: Exclude<Lens, "history">; label: string; icon: React.ElementType; tone: string }[] = [
+const CHANNELS: { id: Exclude<Lens, "history" | "conversation">; label: string; icon: React.ElementType; tone: string }[] = [
   { id: "calls", label: "Llamadas", icon: Phone, tone: "var(--accent-cyan)" },
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle, tone: "var(--accent-green)" },
   { id: "emails", label: "Emails", icon: Mail, tone: "var(--accent-amber)" },
@@ -99,6 +100,9 @@ export function Lead360View({ lead, onBack }: { lead: RecentLead; onBack: () => 
           </div>
         </div>
         <div className="row" style={{ gap: 6 }}>
+          <button onClick={() => setDetail("conversation")} className="btn btn--primary btn--sm" style={{ gap: 5 }} title="Ver toda la conversación en un solo hilo">
+            <Icon.Chat size={13} /> Conversación
+          </button>
           {lead.phone ? <a className="btn btn--sm" href={`tel:${lead.phone}`} title={lead.phone}><Icon.Phone size={13} /></a> : null}
           {lead.phone ? <a className="btn btn--sm" href={`https://wa.me/${lead.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" title="WhatsApp"><Icon.WhatsApp size={13} /></a> : null}
           {lead.email ? <a className="btn btn--sm" href={`mailto:${lead.email}`} title={lead.email}><Icon.Mail size={13} /></a> : null}
@@ -172,6 +176,7 @@ export function Lead360View({ lead, onBack }: { lead: RecentLead; onBack: () => 
 
 function DetailModal({ lens, lead, name, onClose }: { lens: Lens; lead: RecentLead; name: string; onClose: () => void }) {
   const TITLES: Record<Lens, string> = {
+    conversation: "Conversación · hilo omnicanal",
     history: "Historial completo",
     calls: "Llamadas",
     whatsapp: "WhatsApp",
@@ -186,6 +191,11 @@ function DetailModal({ lens, lead, name, onClose }: { lens: Lens; lead: RecentLe
           <button onClick={onClose} className="btn btn--ghost btn--sm" title="Cerrar"><Icon.Close size={15} /></button>
         </div>
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          {lens === "conversation" && (
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16 }}>
+              <ConversationCanvas phone={lead.phone} name={name} />
+            </div>
+          )}
           {lens === "history" && <HistoryTimelineView phone={lead.phone} name={name} />}
           {lens === "calls" && <CallLogView phone={lead.phone} />}
           {lens === "whatsapp" && <WhatsAppThreadView phone={lead.phone} />}

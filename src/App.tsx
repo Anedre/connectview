@@ -32,6 +32,8 @@ import { WrapUpDemoPage } from "@/pages/WrapUpDemoPage";
 import { MonitorDemoPage } from "@/pages/MonitorDemoPage";
 import { FlowBuilderDemoPage } from "@/pages/FlowBuilderDemoPage";
 import { WizardDemoPage } from "@/pages/WizardDemoPage";
+import { GrabacionesDemoPage } from "@/pages/GrabacionesDemoPage";
+import { ConversationCanvasDemoPage } from "@/pages/ConversationCanvasDemoPage";
 import { FlowBuilderPage } from "@/pages/FlowBuilderPage";
 import { AutomationsPage } from "@/pages/AutomationsPage";
 import { AgentePage } from "@/pages/AgentePage";
@@ -629,6 +631,33 @@ export default function App() {
     return (
       <ThemeProvider>
         <WizardDemoPage />
+      </ThemeProvider>
+    );
+  }
+
+  // Auth-free design preview of the premium recording experience (waveform +
+  // sentiment + click-to-seek transcript). DEV only — for screenshots / QA.
+  if (
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    window.location.pathname === "/grabaciones-demo"
+  ) {
+    return (
+      <ThemeProvider>
+        <GrabacionesDemoPage />
+      </ThemeProvider>
+    );
+  }
+
+  // Auth-free preview of the omnichannel ConversationCanvas. DEV only.
+  if (
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    window.location.pathname === "/canvas-demo"
+  ) {
+    return (
+      <ThemeProvider>
+        <ConversationCanvasDemoPage />
       </ThemeProvider>
     );
   }
