@@ -29,6 +29,15 @@ const STATUS_LABEL: Record<string, string> = {
   paused: "Pausado",
 };
 
+// Acento por bot — variedad visual (como los colores por etapa del embudo de
+// Leads) en vez de todo violeta. Cicla por índice.
+const BOT_ACCENTS = [
+  "#9B8CF0", "#6366F1", "#38BDF8", "#06B6D4", "#14B8A6", "#10B981", "#A855F7", "#EC4899",
+];
+export function botColor(i: number): string {
+  return BOT_ACCENTS[i % BOT_ACCENTS.length];
+}
+
 export function FlowBuilderPage() {
   const [list, setList] = useState<BotSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -295,8 +304,8 @@ export function FlowBuilderPage() {
             </div>
           ) : (
             <div className="bots-grid">
-              {kept.map((b) => (
-                <div key={b.botId} className="bot-card" onClick={() => openBot(b.botId)} role="button" tabIndex={0}>
+              {kept.map((b, i) => (
+                <div key={b.botId} className="bot-card" style={{ "--bot-accent": botColor(i) } as React.CSSProperties} onClick={() => openBot(b.botId)} role="button" tabIndex={0}>
                   <div className="bot-card__top">
                     <span className="bot-card__icon"><CardIcon size={17} /></span>
                     <span className={`bot-card__status bot-card__status--${b.status}`}>
