@@ -151,6 +151,9 @@ interface ApiEndpoints {
   // Webhooks salientes con retry (#17): visibilidad de las entregas
   // (connectview-webhook-deliveries). GET lista · POST { deliveryId } reintenta.
   getWebhookDeliveries?: string;
+  // Exports programados (#7): CRUD de los jobs (connectview-scheduled-exports)
+  // + "generar ahora". El runner arma XLSX y lo manda por SES.
+  manageScheduledExports?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

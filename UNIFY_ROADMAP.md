@@ -78,11 +78,11 @@
 - **Build:** tabla nueva `connectview-hsm-sends` (PK=`sendId`, GSI por `campaignId`, `phone`, `templateName`). Cada `send-whatsapp-template` escribe una fila. Webhook de status de Meta (sent→delivered→read→failed) actualiza la fila (nuevo Lambda `whatsapp-status-webhook`). Reporte agrega todo + cruza con wrap-up para conversion.
 - **Esfuerzo:** L · **Dependencias:** #14 (status webhook) · **Toca:** nueva tabla, `send-whatsapp-template` (+escritura), nuevo webhook Lambda
 
-### 7. Exports programados (Excel/CSV daily/weekly/monthly)
-- **Estado:** no hay exports automáticos.
-- **Gap:** Chattigo envía reportes por mail en schedule.
-- **Build:** tabla `connectview-report-schedules`. EventBridge cron dispara `run-scheduled-reports` que genera el reporte (#5), lo convierte a XLSX (lib `xlsx`), y lo manda por **SES** a los destinatarios. UI para configurar el schedule.
-- **Esfuerzo:** M · **Dependencias:** #5 · **Toca:** nuevo Lambda + tabla + cron, SES setup
+### 7. Exports programados (Excel/CSV daily/weekly/monthly) — ✅ v1 HECHO (2026-06-10, verificado en vivo)
+- **Build entregado:** tabla `connectview-scheduled-exports` (job = dataset + frecuencia + hora UTC + destinatarios). `scheduled-export-runner` (dual-entry: tick EventBridge 1h + `runNow`) consulta el dataset → arma **XLSX con `exceljs`** → lo manda como adjunto por **SES** (email MIME raw, FROM verificado `@novasys.com.pe`) → calcula `nextRunAt`. `manage-scheduled-exports` (Function URL, CRUD + "generar ahora"). UI: botón **"Programar"** en `/reportes` (form + lista + activar/pausar + generar ahora + borrar).
+- **Verificado en vivo (2026-06-10):** job de leads → runner devolvió `{ok:true, rows:30, messageId:…}` (SES aceptó el XLSX adjunto, enviado al **simulador** para no spamear); `nextRunAt` recalculado al día siguiente 13:00 UTC. SES en **producción** (no sandbox), dominio verificado.
+- **v1 = dataset `leads`.** Extensible a otros datasets (contacts/HSM/reportes de #5) sumando casos en `buildSheet`. Pooled/Novasys; BYO data-plane queda pendiente.
+- **Esfuerzo:** M · **Toca:** `scheduled-export-runner` + `manage-scheduled-exports` + tabla + cron + SES + UI
 
 ### 8. Dashboard custom con widgets real-time — ✅ HECHO (2026-05-29)
 - **Entregado:** `CustomWidgets.tsx` en DashboardPage — fila "Mis widgets" toggleable (Personalizar, persiste en localStorage) con datos reales: Leads en embudo, Citas próximas, Plantillas WA enviadas, Catálogos. **Verificado** en vivo (3 leads, 1 cita). Drag-drop/grid libre = futuro.

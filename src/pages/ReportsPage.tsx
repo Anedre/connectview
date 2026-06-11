@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { EChartsOption } from "echarts";
-import { Activity, Download, Headphones, Timer, TrendingUp } from "lucide-react";
+import { Activity, Download, Headphones, Timer, TrendingUp, CalendarClock } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
+import { ScheduledExportsPanel } from "@/components/reports/ScheduledExportsPanel";
 import { useContacts } from "@/hooks/useContacts";
 import { ContactFilters } from "@/components/reports/ContactFilters";
 import { SentimentChart } from "@/components/reports/SentimentChart";
@@ -217,6 +219,7 @@ type PeriodId = (typeof PERIODS)[number]["id"];
 export function ReportsPage() {
   const { contacts, loading, searchContacts } = useContacts();
   const [period, setPeriod] = useState<PeriodId>("7d");
+  const [showSchedule, setShowSchedule] = useState(false);
   const segRef = useRef<HTMLDivElement>(null);
   const [thumb, setThumb] = useState({ left: 4, width: 0 });
 
@@ -286,20 +289,41 @@ export function ReportsPage() {
         title="Reportes"
         sub={`Contact Lens · ${contacts.length} contactos en el período`}
         actions={
-          <button
-            className="btn"
-            disabled={contacts.length === 0}
-            onClick={() => exportContactsToCsv(contacts)}
-            title={
-              contacts.length === 0
-                ? "No hay contactos para exportar"
-                : `Descargar ${contacts.length} contactos como CSV`
-            }
-          >
-            <Download size={14} /> Exportar
-          </button>
+          <>
+            <button
+              className="btn"
+              onClick={() => setShowSchedule(true)}
+              title="Programar el envío automático de un reporte por email (XLSX)"
+            >
+              <CalendarClock size={14} /> Programar
+            </button>
+            <button
+              className="btn"
+              disabled={contacts.length === 0}
+              onClick={() => exportContactsToCsv(contacts)}
+              title={
+                contacts.length === 0
+                  ? "No hay contactos para exportar"
+                  : `Descargar ${contacts.length} contactos como CSV`
+              }
+            >
+              <Download size={14} /> Exportar
+            </button>
+          </>
         }
       />
+
+      {/* Exports programados (#7) */}
+      <Modal
+        open={showSchedule}
+        onOpenChange={setShowSchedule}
+        title="Exports programados · XLSX por email"
+        className="max-w-3xl"
+      >
+        <div style={{ marginTop: 12, maxHeight: 560, overflow: "auto" }}>
+          <ScheduledExportsPanel />
+        </div>
+      </Modal>
 
       <FeatureNotice feature="contactLens" />
 
