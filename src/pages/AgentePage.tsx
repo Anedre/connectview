@@ -5,6 +5,7 @@ import { getApiEndpoints } from "@/lib/api";
 import * as Icon from "@/components/vox/primitives";
 import { BotTester } from "@/components/bots/BotTester";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { botColor } from "@/pages/FlowBuilderPage";
 import type { Bot } from "@/lib/botFlow";
 
 /**
@@ -230,10 +231,10 @@ export function AgentePage() {
           </div>
 
           <div className="bots-grid">
-            {kept.map((b) => {
+            {kept.map((b, i) => {
               const cv = convByAgent[b.botId];
               return (
-              <div key={b.botId} className="bot-card ag-card" onClick={() => openAgent(b.botId)} role="button" tabIndex={0}>
+              <div key={b.botId} className="bot-card ag-card" style={{ "--bot-accent": botColor(i) } as React.CSSProperties} onClick={() => openAgent(b.botId)} role="button" tabIndex={0}>
                 <div className="bot-card__top">
                   <span className="bot-card__icon ag-card__icon"><Icon.Sparkles size={17} /></span>
                   <span className={`bot-card__status bot-card__status--${b.status}`}>
@@ -314,10 +315,10 @@ function AgentHero({ onCreate }: { onCreate: () => void }) {
         <button className="btn btn--primary" style={{ marginTop: 20 }} onClick={onCreate}><Icon.Sparkles size={14} /> Crear mi primer agente</button>
       </div>
       <div className="bots-grid" style={{ marginTop: 16 }}>
-        {FEATURES.map((f) => {
+        {FEATURES.map((f, i) => {
           const Icn = f.icon;
           return (
-            <div key={f.title} className="card" style={{ padding: 18 }}>
+            <div key={f.title} className="card" style={{ padding: 18, "--bot-accent": botColor(i + 2) } as React.CSSProperties}>
               <span className="ag-card__icon" style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center" }}><Icn size={18} /></span>
               <div style={{ fontWeight: 700, fontSize: 14.5, marginTop: 12 }}>{f.title}</div>
               <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55, marginTop: 5 }}>{f.body}</div>

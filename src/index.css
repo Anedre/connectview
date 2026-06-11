@@ -4055,9 +4055,9 @@ a { color: inherit; text-decoration: none; }
 /* ============================================================
    Agentes IA hub — identity: violet→cyan AI gradient + sparkle
    ============================================================ */
-.ag-card__icon { background: linear-gradient(140deg, var(--accent-violet), var(--accent-cyan)) !important; color: #fff !important; }
+.ag-card__icon { background: linear-gradient(140deg, var(--bot-accent, var(--accent-violet)), color-mix(in srgb, var(--bot-accent, var(--accent-violet)) 55%, var(--accent-cyan))) !important; color: #fff !important; }
 .ag-bar__icon { background: linear-gradient(140deg, var(--accent-violet), var(--accent-cyan)) !important; color: #fff !important; }
-.ag-card:hover { border-color: var(--accent-violet); }
+.ag-card:hover { border-color: var(--bot-accent, var(--accent-violet)); }
 .ag-hero { position: relative; overflow: hidden; border-radius: 18px; border: 1px solid var(--border-1); padding: 40px 36px; background: radial-gradient(120% 140% at 85% -20%, rgba(139,126,232,0.28), transparent 55%), radial-gradient(90% 120% at 0% 120%, rgba(34,184,217,0.16), transparent 50%), linear-gradient(135deg, var(--bg-2), var(--bg-1)); }
 .ag-hero__badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--accent-violet); background: var(--accent-violet-soft); border: 1px solid var(--accent-violet); border-radius: 999px; padding: 4px 11px; }
 .ag-hero__title { font-size: 30px; font-weight: 800; line-height: 1.15; margin: 16px 0 10px; max-width: 620px; }
