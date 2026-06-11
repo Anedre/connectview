@@ -8,6 +8,7 @@ import {
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
+import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { randomUUID } from "node:crypto";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { isLegacyTenant } from "../_shared/cognitoAuth";
@@ -49,6 +50,10 @@ const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
 const CALLBACKS_TABLE = process.env.CALLBACKS_TABLE || "connectview-callbacks";
 const SEND_WA_URL = process.env.SEND_WHATSAPP_TEMPLATE_URL || "";
 const INTERNAL_SECRET = process.env.VOX_INTERNAL_SECRET || "";
+// #17: cola de entrega durable de webhooks. Si está vacía, actWebhook cae al
+// intento único legacy (rollout seguro: sin la cola, el comportamiento no cambia).
+const WEBHOOK_QUEUE_URL = process.env.WEBHOOK_QUEUE_URL || "";
+const sqs = new SQSClient({});
 const RUN_TTL_DAYS = Number(process.env.RUN_TTL_DAYS || 60);
 /** Tope de disparos por regla por tick (paracaídas anti-blast de WhatsApp). */
 const MAX_FIRES_PER_TICK = Number(process.env.MAX_FIRES_PER_TICK || 25);
@@ -404,26 +409,51 @@ async function actScheduleCallback(ctx: Ctx, params: Record<string, unknown>): P
   return null;
 }
 
-async function actWebhook(ctx: Ctx, params: Record<string, unknown>, ruleName: string): Promise<string | null> {
+async function actWebhook(
+  ctx: Ctx,
+  params: Record<string, unknown>,
+  ruleName: string,
+  ruleId?: string
+): Promise<string | null> {
   const url = String(params.url || "");
   if (!/^https?:\/\//.test(url)) return "url inválida";
+  const payload = {
+    source: "aira-automation",
+    rule: ruleName,
+    tenantId: ctx.tenantId,
+    leadId: ctx.leadId,
+    contactId: ctx.contactId,
+    phone: ctx.phone,
+    name: ctx.name,
+    stageId: ctx.stageId,
+    at: new Date().toISOString(),
+  };
+
+  // #17: entrega DURABLE. Encolamos a SQS; el webhook-dispatcher reintenta con
+  // backoff exponencial multi-día y lo registra en connectview-webhook-deliveries.
+  // Devolvemos null (encolado) — el resultado real de la entrega vive en la tabla.
+  if (WEBHOOK_QUEUE_URL) {
+    try {
+      await sqs.send(
+        new SendMessageCommand({
+          QueueUrl: WEBHOOK_QUEUE_URL,
+          MessageBody: JSON.stringify({ kind: "new", url, payload, tenantId: ctx.tenantId, ruleId, ruleName }),
+        })
+      );
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : "no se pudo encolar el webhook";
+    }
+  }
+
+  // Fallback legacy (sin cola configurada aún): 1 intento directo.
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 5000);
   try {
     const r = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source: "aira-automation",
-        rule: ruleName,
-        tenantId: ctx.tenantId,
-        leadId: ctx.leadId,
-        contactId: ctx.contactId,
-        phone: ctx.phone,
-        name: ctx.name,
-        stageId: ctx.stageId,
-        at: new Date().toISOString(),
-      }),
+      body: JSON.stringify(payload),
       signal: ac.signal,
     });
     if (!r.ok) return `webhook HTTP ${r.status}`;
@@ -496,7 +526,7 @@ async function executeRule(rule: Rule, triggerType: string, ctx: Ctx): Promise<n
       else if (action.type === "schedule_callback")
         error = await actScheduleCallback(ctx, action.params || {});
       else if (action.type === "webhook")
-        error = await actWebhook(ctx, action.params || {}, rule.name);
+        error = await actWebhook(ctx, action.params || {}, rule.name, rule.ruleId);
       else error = `acción desconocida: ${action.type}`;
     } catch (err) {
       error = err instanceof Error ? err.message : "error";

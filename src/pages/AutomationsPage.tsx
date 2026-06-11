@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Plus, RefreshCw, Trash2, History, Pencil, ChevronLeft } from "lucide-react";
+import { Plus, RefreshCw, Trash2, History, Pencil, ChevronLeft, Webhook } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { PageHeader } from "@/components/vox/PageHeader";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -24,6 +24,7 @@ import {
   type TriggerType,
 } from "@/lib/automations";
 import type { WaTemplate } from "@/components/whatsapp/WaTemplateConfigurator";
+import { WebhookDeliveriesPanel } from "@/components/automations/WebhookDeliveriesPanel";
 
 /**
  * AutomationsPage — /automations (#15, "Digital Pipeline" de AIRA): reglas
@@ -200,6 +201,7 @@ export function AutomationsPage() {
   const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
   const [runsFor, setRunsFor] = useState<AutomationRule | null>(null);
   const [runs, setRuns] = useState<AutomationRun[] | null>(null);
+  const [showWebhooks, setShowWebhooks] = useState(false);
 
   const ctx: PickersCtx = useMemo(
     () => ({
@@ -586,12 +588,27 @@ export function AutomationsPage() {
             <button className="btn" onClick={load} disabled={loading}>
               <RefreshCw size={14} /> Actualizar
             </button>
+            <button className="btn" onClick={() => setShowWebhooks(true)} title="Entregas de webhooks salientes (#17)">
+              <Webhook size={14} /> Webhooks
+            </button>
             <button className="btn btn--primary" onClick={() => setPicking(true)}>
               <Plus size={14} /> Nueva regla
             </button>
           </>
         }
       />
+
+      {/* Entregas de webhooks (#17) — visibilidad + reintentar */}
+      <Modal
+        open={showWebhooks}
+        onOpenChange={setShowWebhooks}
+        title="Entregas de webhooks · retry"
+        className="max-w-3xl"
+      >
+        <div style={{ marginTop: 12, maxHeight: 540, overflow: "auto" }}>
+          <WebhookDeliveriesPanel />
+        </div>
+      </Modal>
 
       {loading ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>

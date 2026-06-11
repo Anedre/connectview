@@ -148,6 +148,9 @@ interface ApiEndpoints {
   // WhatsApp Flows (#10): envía un formulario nativo de Meta (interactive
   // flow) a un teléfono. La respuesta vuelve por whatsapp-meta-webhook.
   sendWhatsAppFlow?: string;
+  // Webhooks salientes con retry (#17): visibilidad de las entregas
+  // (connectview-webhook-deliveries). GET lista · POST { deliveryId } reintenta.
+  getWebhookDeliveries?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;
