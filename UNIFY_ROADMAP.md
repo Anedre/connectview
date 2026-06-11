@@ -163,10 +163,10 @@
 - **Build:** acción `send_webhook` en #15. Cola SQS con DLQ + reintentos exponenciales hasta N días. Tabla `connectview-webhook-deliveries` para visibilidad.
 - **Esfuerzo:** M · **Dependencias:** #15 · **Toca:** nuevo Lambda + SQS
 
-### 18. Flows de reactivación / carrito abandonado
-- **Estado:** las campañas son one-shot.
-- **Gap:** "reactivar bases antiguas desde landing" (dolor explícito) + Chattigo abandoned-cart.
-- **Build:** un tipo de automatización (#15) con trigger temporal: "lead sin actividad en X días → mandar template de reactivación". El landing carga la base vía `createCampaign` (ya existe el contrato HTTP — ver `DIALER_FOR_SALESFORCE.md`).
+### 18. Flows de reactivación / carrito abandonado — ✅ HECHO (2026-06-10, vía #15)
+- **Build entregado:** cubierto por el motor de Automatizaciones (#15). Plantilla de regla `reactivate-7d` ("Reactivación · 7 días inactivo") en `src/lib/automations.ts`: trigger temporal **`lead_inactive`** (días configurable, default 7) → acción `send_whatsapp_template`. El trigger corre de verdad en `automation-engine` `processTick()` (EventBridge rate 5 min): escanea leads, calcula el `cutoff` por días, filtra por stage, anti-doble-disparo por episodio (`autoFired_<ruleId>`) y ejecuta las acciones. El supervisor la crea/activa desde `/automations` y elige el template. El landing carga la base vía `createCampaign` (contrato HTTP ya existente — `DIALER_FOR_SALESFORCE.md`).
+- **Abandoned-cart de Chattigo** = misma regla `lead_inactive` con ventana corta + filtro de stage.
+- **Pendiente menor:** validar el barrido temporal en producción con una base real (asegurar que el tick EventBridge rate(5 min) esté habilitado en el tenant).
 - **Esfuerzo:** S (sobre #15) · **Dependencias:** #15 · **Toca:** config de regla
 
 ---
@@ -182,10 +182,11 @@
 - **Build entregado:** `SuggestedReplies.tsx` — cuando el último mensaje es del cliente y el agente no empezó a tipear, Claude sugiere 2-3 respuestas (mode `suggest-replies`, ventana de los últimos 6 mensajes). Chips violetas clickeables sobre el composer → llenan el draft. **Verificado:** sugerencias relevantes con placeholders `[precio]` cuando falta el dato.
 - **Esfuerzo:** M (real) · **Toca:** `SuggestedReplies.tsx`, `ChatThreadPanel.tsx`, `generate-call-summary`
 
-### 21. Auto-resumen post-conversación
-- **Estado:** `generate-call-summary` existe pero es manual.
-- **Build:** al cerrar wrap-up, auto-generar el resumen y guardarlo en la fila de wrap-up. Aparece en el historial del cliente sin que el agente lo pida.
-- **Esfuerzo:** S · **Dependencias:** #1 · **Toca:** `WrapUpPanel.tsx`, `save-agent-notes`
+### 21. Auto-resumen post-conversación — ✅ v1 (2026-06-10, pendiente deploy + e2e real)
+- **Estado previo:** el resumen YA se auto-generaba al montar el wrap-up (`fetchSummary` on mount), pero solo se **persistía** si el agente presionaba "Enviar resumen". Si cerraba sin tipificar (o un contacto nuevo desplazaba la pantalla), el resumen se perdía.
+- **Build entregado:** `WrapUpView` persiste el resumen ya generado al **desmontarse sin haber enviado** (cleanup de un `useEffect`, best-effort, `fetch keepalive`) → aparece en el historial del cliente sin que el agente lo pida. Para no pisar una tipificación previa, el front manda `summaryOnly:true` y `save-agent-notes` hace **`UpdateItem`** (setea solo `summary`) en vez de `PutItem`, + fila de historial marcada `auto:true`; no crea tareas ni dispara #15. Guard anti-doble-POST (`sentRef`/`autoSavedRef`, seguro en StrictMode).
+- **Pendiente:** deploy de `save-agent-notes` (esbuild → `update-function-code`) + e2e con un contacto real (cerrar sin tipificar → ver el resumen en el detalle del contacto).
+- **Esfuerzo:** S · **Dependencias:** #1 · **Toca:** `WrapUpView.tsx`, `save-agent-notes`
 
 ### 22. Sentiment en vivo destacado + alerta — 🟡 TREND + COACHING POR DURACIÓN HECHOS (2026-06-01)
 - **Entregado:** barra de tendencia de sentiment por segmento en `LiveTranscriptPanel` (un tick por segmento, rojo/verde/neutro, cliente vs agente). Aprovecha el `sentiment` por segmento que ya devuelve get-live-transcript. **Falta:** alerta cross-contacto al supervisor en MonitoringPage — requiere agregar sentiment a `get-live-queue` (N llamadas a transcript por contacto activo, con costo) — diferido.

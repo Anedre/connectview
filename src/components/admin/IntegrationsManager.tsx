@@ -1,6 +1,6 @@
 import { useState, type ReactNode, type CSSProperties } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, Send, Lock, Palette } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Send, Lock, Palette, ClipboardList, Trash2 } from "lucide-react";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
 import { getApiEndpoints } from "@/lib/api";
