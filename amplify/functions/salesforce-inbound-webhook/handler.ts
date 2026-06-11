@@ -15,6 +15,7 @@ import {
   resolveCustomerProfiles,
 } from "../_shared/tenantConnect";
 import { resolveTenantFromInboundToken } from "../_shared/sfInboundToken";
+import { fireAutomation } from "../_shared/automationHook";
 
 /**
  * salesforce-inbound-webhook — Salesforce → Vox (inbound). A record-triggered
@@ -188,6 +189,25 @@ export const handler: Handler = async (event: any) => {
         stageLabel: await stageIdToLabel(stageId),
         summary: `Actualización desde Salesforce${lead.status ? ` · ${lead.status}` : ""}`,
       });
+    }
+
+    // Automatizaciones (#15): un lead NUEVO que entra desde Salesforce dispara
+    // `lead_created` (welcome flows, etc.). Solo en "created" (no en updates) y
+    // de a uno (inbound) → sin riesgo de blast. Best-effort: nunca rompe el sync.
+    //
+    // NOTA: la carga CSV masiva de campañas (create-campaign → bulkUpsertVoxLeads)
+    // NO dispara `lead_created` a propósito: serían miles de eventos sincrónicos
+    // (blast de WhatsApp) y la campaña ya tiene su propio envío de salida.
+    if (result.voxAction === "created" && result.leadId) {
+      try {
+        await fireAutomation({
+          type: "lead_created",
+          tenantId,
+          lead: { leadId: result.leadId, phone, name: customerName, stageId, source: lead.source || "Salesforce" },
+        });
+      } catch {
+        /* no romper el inbound sync por una automatización */
+      }
     }
     return {
       statusCode: 200,
