@@ -3976,6 +3976,29 @@ a { color: inherit; text-decoration: none; }
 @keyframes fb-coach-bob { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-5px); } }
 .fb-coach__h { font-size: 14px; font-weight: 700; color: var(--text-1); margin-bottom: 3px; }
 .fb-coach__p { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+
+/* ── Vista previa de paso (estilo WhatsApp) en el inspector ── */
+.fb-prev { border: 1px solid var(--border-1); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
+.fb-prev__top { display: flex; align-items: center; gap: 5px; padding: 6px 10px; background: var(--bg-2); color: var(--text-3); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--border-1); }
+.fb-prev__screen { background: #e5ddd5; padding: 12px 10px; display: flex; flex-direction: column; gap: 7px; }
+.fb-prev__screen--note { background: var(--bg-2); }
+.fb-prev__bubble { align-self: flex-start; max-width: 92%; background: #fff; color: #111b21; font-size: 12px; line-height: 1.45; padding: 7px 10px; border-radius: 0 9px 9px 9px; box-shadow: 0 1px 1px rgba(0,0,0,0.13); white-space: pre-wrap; word-break: break-word; }
+.fb-prev__bold { font-weight: 700; margin-bottom: 2px; }
+.fb-prev__code { font-family: var(--font-mono, monospace); font-size: 11.5px; color: #075e54; }
+.fb-prev__ph { color: #8696a0; font-style: italic; }
+.fb-prev__btns { align-self: stretch; display: flex; flex-direction: column; gap: 4px; }
+.fb-prev__btn { display: flex; align-items: center; justify-content: center; gap: 6px; background: #fff; color: #027eb5; font-size: 12px; font-weight: 600; padding: 8px; border-radius: 8px; box-shadow: 0 1px 1px rgba(0,0,0,0.13); }
+.fb-prev__listbtn { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 7px; padding-top: 7px; border-top: 1px solid #e9edef; color: #027eb5; font-weight: 600; }
+.fb-prev__list { align-self: stretch; background: #fff; border-radius: 9px; overflow: hidden; box-shadow: 0 1px 1px rgba(0,0,0,0.13); }
+.fb-prev__row { padding: 8px 11px; border-bottom: 1px solid #f0f2f5; display: flex; flex-direction: column; gap: 1px; }
+.fb-prev__row:last-child { border-bottom: none; }
+.fb-prev__rowt { font-size: 12px; color: #111b21; font-weight: 600; }
+.fb-prev__rowd { font-size: 11px; color: #667781; }
+.fb-prev__hintline { align-self: flex-start; font-size: 10.5px; color: #54656f; font-style: italic; padding: 0 2px; }
+.fb-prev__note { align-self: stretch; background: #fff7d6; border: 1px solid #f3e6a8; color: #6b5e1e; font-size: 12px; line-height: 1.45; padding: 8px 10px; border-radius: 8px; display: flex; gap: 6px; align-items: flex-start; }
+.fb-prev__note svg { flex: 0 0 auto; margin-top: 1px; }
+/* Chips de variable legibles sobre la burbuja blanca, en cualquier tema. */
+.fb-prev .fb-var { background: #ede9fe; color: #6d28d9; }
 .fb-pal__item + .fb-pal__item { margin-top: 3px; }
 .fb-pal__item:hover { background: var(--bg-1); border-color: var(--border-1); }
 .fb-pal__icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; flex: 0 0 auto; }

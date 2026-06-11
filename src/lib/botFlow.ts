@@ -73,9 +73,10 @@ export interface FieldDef {
    * Rol del campo respecto a las variables del flujo (UX didáctica #16):
    * "define" → este campo CREA una variable reutilizable (p. ej. Guardar en).
    * "use"    → este campo ELIGE una variable ya creada (p. ej. Condición).
-   * Sin valor → texto normal (puede insertar variables con {{ }}).
+   * "insert" → contenido que puede INSERTAR variables con {{ }} (mensaje, nota…).
+   * Sin valor → campo normal SIN UI de variables (p. ej. Cola, Prioridad).
    */
-  variable?: "define" | "use";
+  variable?: "define" | "use" | "insert";
 }
 
 export interface Outlet {
@@ -181,9 +182,15 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         label: "Mensaje",
         type: "textarea",
         placeholder: "Escribe lo que el bot dirá…",
+        variable: "insert",
         help: "Podés personalizarlo con datos guardados usando «Insertar variable» (p. ej. ¡Hola {{nombre}}!).",
       },
-      { key: "buttons", label: "Botones", type: "buttons" },
+      {
+        key: "buttons",
+        label: "Botones",
+        type: "buttons",
+        help: "Hasta 3. Los de «Respuesta» abren una rama en el flujo; los de enlace/llamada no.",
+      },
     ],
     outlets: (d) => {
       const reply = replyButtons(d.buttons);
@@ -203,15 +210,34 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "list",
     blurb: "Menú de hasta 10 opciones con descripción",
     fields: [
-      { key: "header", label: "Encabezado", type: "text", placeholder: "Programas UDEP" },
+      {
+        key: "header",
+        label: "Encabezado",
+        type: "text",
+        placeholder: "Programas UDEP",
+        variable: "insert",
+        help: "Título corto que aparece arriba de la lista.",
+      },
       {
         key: "body",
         label: "Mensaje",
         type: "textarea",
         placeholder: "Elegí una opción para continuar:",
+        variable: "insert",
       },
-      { key: "buttonLabel", label: "Texto del botón", type: "text", placeholder: "Ver opciones" },
-      { key: "rows", label: "Opciones de la lista", type: "listrows" },
+      {
+        key: "buttonLabel",
+        label: "Texto del botón",
+        type: "text",
+        placeholder: "Ver opciones",
+        help: "El botón que abre la lista de opciones en WhatsApp.",
+      },
+      {
+        key: "rows",
+        label: "Opciones de la lista",
+        type: "listrows",
+        help: "Cada opción crea una rama: conectá su salida al siguiente paso.",
+      },
     ],
     outlets: (d) => {
       const rows = Array.isArray(d.rows) ? (d.rows as ListRow[]) : [];
@@ -236,6 +262,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         label: "Pregunta",
         type: "textarea",
         placeholder: "¿Cuál es tu nombre completo?",
+        variable: "insert",
         help: "Lo que el bot le pregunta al cliente. La respuesta se guarda en la variable de abajo.",
       },
       {
@@ -369,6 +396,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         label: "Valor",
         type: "text",
         placeholder: "Interesado",
+        variable: "insert",
         help: "Texto fijo o una variable con «Insertar variable» (p. ej. {{nombre}}).",
       },
     ],
@@ -385,19 +413,34 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "agent",
     blurb: "Pasa la conversación a una persona",
     fields: [
-      { key: "queue", label: "Cola / equipo", type: "text", placeholder: "Admisión" },
+      {
+        key: "queue",
+        label: "Cola / equipo",
+        type: "text",
+        placeholder: "Admisión",
+        help: "A qué equipo de Connect entra la conversación.",
+      },
       {
         key: "priority",
         label: "Prioridad",
         type: "select",
         options: ["normal", "alta", "urgente"],
+        help: "Ordena la conversación en la cola del agente.",
       },
-      { key: "assignTo", label: "Asignar a (opcional)", type: "text", placeholder: "usuario o vacío" },
+      {
+        key: "assignTo",
+        label: "Asignar a (opcional)",
+        type: "text",
+        placeholder: "usuario o vacío",
+        help: "Dejá vacío para que tome cualquier agente disponible de la cola.",
+      },
       {
         key: "note",
         label: "Nota para el agente",
         type: "textarea",
         placeholder: "Contexto del lead…",
+        variable: "insert",
+        help: "Contexto que ve el agente al recibir el chat. Podés insertar variables.",
       },
     ],
     outlets: () => [{ id: "out", label: "Tras derivar" }],
@@ -418,8 +461,10 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         label: "Texto",
         type: "textarea",
         placeholder: "Lead caliente — llamar hoy",
+        variable: "insert",
+        help: "Aviso solo para tu equipo (no lo ve el cliente). Podés insertar variables.",
       },
-      { key: "to", label: "Para (usuario)", type: "text", placeholder: "supervisor" },
+      { key: "to", label: "Para (usuario)", type: "text", placeholder: "supervisor", help: "Opcional: a quién avisar." },
     ],
     outlets: () => [{ id: "out" }],
     defaultData: () => ({ text: "", to: "" }),
@@ -434,18 +479,22 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "webhook",
     blurb: "Llama a un servicio externo (HTTP)",
     fields: [
-      { key: "method", label: "Método", type: "select", options: ["POST", "GET"] },
+      { key: "method", label: "Método", type: "select", options: ["POST", "GET"], help: "POST para enviar datos, GET para consultarlos." },
       {
         key: "url",
         label: "URL",
         type: "text",
         placeholder: "https://api.tu-sistema.com/lead",
+        variable: "insert",
+        help: "A dónde llama el bot. Podés meter variables en la ruta (p. ej. /lead/{{id}}).",
       },
       {
         key: "body",
         label: "Cuerpo (JSON)",
         type: "textarea",
         placeholder: '{ "phone": "{{phone}}" }',
+        variable: "insert",
+        help: "Datos que se envían. Usá variables con «Insertar variable».",
       },
     ],
     outlets: () => [
@@ -481,20 +530,25 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         label: "Objetivo",
         type: "textarea",
         placeholder: "Calificar al lead: presupuesto, plazo y carrera de interés.",
+        variable: "insert",
+        help: "Qué tiene que lograr la IA en la conversación.",
       },
       {
         key: "instructions",
         label: "Instrucciones / persona",
         type: "textarea",
         placeholder: "Sos un asesor de admisión cordial. Respondé corto, en español…",
+        variable: "insert",
+        help: "Tono y reglas de la IA. Podés insertar variables ya capturadas.",
       },
       {
         key: "handoffWhen",
         label: "Derivar a humano cuando",
         type: "text",
         placeholder: "el cliente lo pida o se frustre",
+        help: "Si pasa esto, la IA pasa la conversación a un agente (rama «Derivar»).",
       },
-      { key: "maxTurns", label: "Máx. de turnos", type: "number", placeholder: "6" },
+      { key: "maxTurns", label: "Máx. de turnos", type: "number", placeholder: "6", help: "Tope de idas y vueltas antes de cerrar o derivar." },
     ],
     outlets: () => [
       { id: "resolved", label: "Resuelto" },

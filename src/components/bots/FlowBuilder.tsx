@@ -34,6 +34,7 @@ import { StepNode } from "@/components/bots/StepNode";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { BuilderCtx } from "@/components/bots/builderCtx";
 import { BotTester } from "@/components/bots/BotTester";
+import { NodePreview } from "@/components/bots/NodePreview";
 import { getApiEndpoints } from "@/lib/api";
 import { WaTemplateConfigurator, type WaTemplate } from "@/components/whatsapp/WaTemplateConfigurator";
 
@@ -621,6 +622,7 @@ function Inspector({
       </div>
 
       <div className="fb-insp__body">
+        <NodePreview kind={kind} data={data} />
         {kind === "template" ? (
           <WaTemplateConfigurator
             mode="flow"
@@ -717,8 +719,8 @@ function Field({
 
   const isDefine = field.variable === "define";
   const isUse = field.variable === "use";
-  const isContent = !field.variable && (field.type === "textarea" || field.type === "text");
-  const mono = isDefine || field.type === "var";
+  const isInsert = field.variable === "insert";
+  const mono = isDefine || isUse;
   const dataListId = `vars-${selfId}-${field.key}`;
 
   // Inserta {{nombre}} en la posición del cursor (o al final si no hay foco).
@@ -841,8 +843,8 @@ function Field({
           <Braces size={11} /> Primero guardá una variable con un paso «Preguntar y guardar».
         </div>
       )}
-      {isContent && flowVars.length > 0 && <VarInsert vars={flowVars} onInsert={insertVar} />}
-      {isContent && flowVars.length === 0 && field.type === "textarea" && (
+      {isInsert && flowVars.length > 0 && <VarInsert vars={flowVars} onInsert={insertVar} />}
+      {isInsert && flowVars.length === 0 && field.type === "textarea" && (
         <div className="fb-varhint">
           <Braces size={11} /> Guardá datos con un paso «Preguntar y guardar» y aparecerán acá para insertarlos.
         </div>
