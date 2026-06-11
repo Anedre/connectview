@@ -567,6 +567,38 @@ export const handler: Handler = async (event: any) => {
         cur = nextFrom(cur.id, booked ? "booked" : "failed");
         continue;
       }
+      if (k === "payment") {
+        const concept = fill(str(d.concept), state.vars);
+        const amount = fill(str(d.amount), state.vars);
+        const currency = str(d.currency, "PEN");
+        const url = fill(str(d.url), state.vars);
+        const text = `💳 ${concept || "Pago"}${amount ? ` — ${currency} ${amount}` : ""}\n${url ? `Pagá acá: ${url}` : "(Falta el link de pago)"}`;
+        messages.push({ kind: "bot", text });
+        state.history.push({ role: "bot", text });
+        cur = nextFrom(cur.id, "out");
+        continue;
+      }
+      if (k === "ab_split") {
+        const pa = Number(d.percentA);
+        const a = Math.random() * 100 < (Number.isFinite(pa) ? pa : 50);
+        messages.push({ kind: "note", text: `🔀 División A/B → rama ${a ? "A" : "B"}` });
+        cur = nextFrom(cur.id, a ? "a" : "b");
+        continue;
+      }
+      if (k === "tag") {
+        const tag = fill(str(d.tag), state.vars).trim();
+        const action = str(d.action, "Agregar");
+        const list = (state.vars["tags"] || "").split(",").map((s) => s.trim()).filter(Boolean);
+        let next = list;
+        if (tag) {
+          if (action === "Quitar") next = list.filter((t) => t !== tag);
+          else if (!list.includes(tag)) next = [...list, tag];
+        }
+        state.vars["tags"] = next.join(", ");
+        messages.push({ kind: "note", text: `🏷 ${action === "Quitar" ? "Quité" : "Agregué"} «${tag}» → [${state.vars["tags"]}]` });
+        cur = nextFrom(cur.id, "out");
+        continue;
+      }
       // Unknown node — try to move on.
       cur = nextFrom(cur.id, "out");
     }

@@ -1,4 +1,5 @@
-import { Link2, PhoneCall, List as ListIcon, Eye, StickyNote, GitBranch, Clock, Play, Sparkles, Paperclip } from "lucide-react";
+import { useState } from "react";
+import { Link2, PhoneCall, List as ListIcon, Eye, StickyNote, GitBranch, Clock, Play, Sparkles, Paperclip, Webhook } from "lucide-react";
 import { OP_LABEL, UNIT_LABEL, type ButtonDef, type ListRow, type NodeKind } from "@/lib/botFlow";
 
 /**
@@ -17,7 +18,7 @@ function vars(text: string): React.ReactNode {
   );
 }
 
-const PREVIEWABLE: NodeKind[] = ["message", "media", "list", "question", "template", "internal_note"];
+const PREVIEWABLE: NodeKind[] = ["message", "media", "list", "question", "template", "internal_note", "payment"];
 
 export function NodePreview({ kind, data }: { kind: NodeKind; data: Record<string, unknown> }) {
   if (!PREVIEWABLE.includes(kind)) return null;
@@ -118,6 +119,21 @@ export function NodePreview({ kind, data }: { kind: NodeKind; data: Record<strin
         <span>{text ? vars(text) : <span className="fb-prev__ph">Nota interna…</span>}</span>
       </div>
     );
+  } else if (kind === "payment") {
+    const concept = String(data.concept || "");
+    const amount = String(data.amount || "");
+    const currency = String(data.currency || "PEN");
+    const url = String(data.url || "");
+    body = (
+      <div className="fb-prev__bubble">
+        💳 <b>{concept || "Pago"}</b>{amount ? ` — ${currency} ${amount}` : ""}
+        {url ? (
+          <div className="fb-prev__listbtn"><Link2 size={12} /> Pagar ahora</div>
+        ) : (
+          <div style={{ marginTop: 5 }}><span className="fb-prev__ph">Pegá el link de pago…</span></div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -171,6 +187,64 @@ export function BusinessHoursPreview({ data }: { data: Record<string, unknown> }
           <span className="fb-cond__branch fb-cond__branch--yes">→ sale por «Abierto»</span>
           <span className="fb-cond__branch fb-cond__branch--no">si no, por «Cerrado»</span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** División A/B en lenguaje natural + ramas A/B con sus porcentajes. */
+export function ABSplitPreview({ data }: { data: Record<string, unknown> }) {
+  const raw = Number(data.percentA);
+  const pa = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 50;
+  return (
+    <div className="fb-prev">
+      <div className="fb-prev__top"><GitBranch size={12} /> Vista previa</div>
+      <div className="fb-cond">
+        <div className="fb-cond__rule">
+          Al azar: <b>{pa}%</b> sale por A y <b>{100 - pa}%</b> por B.
+        </div>
+        <div className="fb-cond__branches">
+          <span className="fb-cond__branch fb-cond__branch--yes">→ A ({pa}%)</span>
+          <span className="fb-cond__branch fb-cond__branch--no">→ B ({100 - pa}%)</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Botón "Probar" que llama al webhook desde el navegador y muestra la respuesta. */
+export function WebhookTester({ data }: { data: Record<string, unknown> }) {
+  const [st, setSt] = useState<{ loading: boolean; out?: string; ok?: boolean }>({ loading: false });
+  const run = async () => {
+    const url = String(data.url || "");
+    if (!url) {
+      setSt({ loading: false, out: "Pegá una URL primero.", ok: false });
+      return;
+    }
+    setSt({ loading: true });
+    try {
+      const method = String(data.method || "POST");
+      const bodyStr = String(data.body || "");
+      const r = await fetch(url, {
+        method,
+        headers: method === "POST" ? { "Content-Type": "application/json" } : undefined,
+        body: method === "POST" && bodyStr ? bodyStr : undefined,
+      });
+      const txt = (await r.text()).slice(0, 280);
+      setSt({ loading: false, ok: r.ok, out: `${r.status} ${r.statusText}\n${txt}` });
+    } catch (e) {
+      setSt({ loading: false, ok: false, out: "No se pudo llamar (¿CORS o URL inválida?).\n" + (e instanceof Error ? e.message : "error") });
+    }
+  };
+  return (
+    <div className="fb-prev">
+      <div className="fb-prev__top"><Webhook size={12} /> Probar webhook</div>
+      <div className="fb-whtest">
+        <button type="button" className="btn btn--sm" onClick={run} disabled={st.loading}>
+          {st.loading ? "Llamando…" : "Probar ahora"}
+        </button>
+        {st.out && <pre className={`fb-whtest__out ${st.ok ? "is-ok" : "is-bad"}`}>{st.out}</pre>}
+        <div className="fb-whtest__note">Se ejecuta desde tu navegador; algunos servidores bloquean por CORS aunque en producción sí funcionen.</div>
       </div>
     </div>
   );

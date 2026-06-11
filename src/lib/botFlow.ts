@@ -18,10 +18,13 @@ export type NodeKind =
   | "question"
   | "condition"
   | "business_hours"
+  | "ab_split"
   | "template"
   | "delay"
   | "set_field"
   | "appointment"
+  | "payment"
+  | "tag"
   | "handoff"
   | "internal_note"
   | "ai_agent"
@@ -86,6 +89,8 @@ export interface FieldDef {
   json?: boolean;
   /** Sugerencias para autocompletar (datalist) manteniendo texto libre. */
   suggestions?: string[];
+  /** Para campos numéricos: muestra además un slider con estos límites. */
+  slider?: { min: number; max: number; step?: number };
 }
 
 export interface Outlet {
@@ -560,7 +565,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         placeholder: "el cliente lo pida o se frustre",
         help: "Si pasa esto, la IA pasa la conversación a un agente (rama «Derivar»).",
       },
-      { key: "maxTurns", label: "Máx. de turnos", type: "number", placeholder: "6", help: "Tope de idas y vueltas antes de cerrar o derivar." },
+      { key: "maxTurns", label: "Máx. de turnos", type: "number", placeholder: "6", slider: { min: 1, max: 12 }, help: "Tope de idas y vueltas antes de cerrar o derivar." },
     ],
     outlets: () => [
       { id: "resolved", label: "Resuelto" },
@@ -668,6 +673,65 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     ],
     defaultData: () => ({ title: "", phone: "{{telefono}}", whenISO: "{{fecha}}", durationMin: 30 }),
     summary: (d) => (str(d.title) ? `Agenda: ${str(d.title)}` : "Agendar una cita"),
+  },
+
+  payment: {
+    kind: "payment",
+    label: "Link de pago",
+    group: "Acciones",
+    accent: "#16A34A",
+    icon: "card",
+    blurb: "Envía un enlace de pago al cliente",
+    fields: [
+      { key: "concept", label: "Concepto", type: "text", placeholder: "Matrícula 2026", variable: "insert" },
+      { key: "amount", label: "Monto", type: "text", placeholder: "150.00", variable: "insert" },
+      { key: "currency", label: "Moneda", type: "select", options: ["PEN", "USD", "MXN", "COP", "ARS", "CLP"] },
+      {
+        key: "url",
+        label: "Link de pago",
+        type: "text",
+        placeholder: "https://pago.tu-empresa.com/…",
+        variable: "insert",
+        help: "El enlace de tu pasarela (Izipay, Mercado Pago, Stripe…).",
+      },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ concept: "", amount: "", currency: "PEN", url: "" }),
+    summary: (d) => (str(d.amount) ? `${str(d.currency, "PEN")} ${str(d.amount)}` : "Link de pago"),
+  },
+
+  ab_split: {
+    kind: "ab_split",
+    label: "División A/B",
+    group: "Lógica",
+    accent: "#A855F7",
+    icon: "split",
+    blurb: "Divide el tráfico al azar para probar variantes",
+    fields: [
+      { key: "percentA", label: "% que va por A", type: "number", placeholder: "50", help: "El resto va por la rama B. Útil para A/B testing." },
+    ],
+    outlets: () => [
+      { id: "a", label: "A" },
+      { id: "b", label: "B" },
+    ],
+    defaultData: () => ({ percentA: 50 }),
+    summary: (d) => `${str(String(d.percentA), "50")}% A · ${100 - (Number(d.percentA) || 50)}% B`,
+  },
+
+  tag: {
+    kind: "tag",
+    label: "Etiquetar",
+    group: "Acciones",
+    accent: "#0EA5E9",
+    icon: "tag",
+    blurb: "Agrega o quita una etiqueta al contacto",
+    fields: [
+      { key: "tag", label: "Etiqueta", type: "text", placeholder: "VIP", variable: "insert" },
+      { key: "action", label: "Acción", type: "select", options: ["Agregar", "Quitar"] },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ tag: "", action: "Agregar" }),
+    summary: (d) => `${str(d.action, "Agregar")}: ${str(d.tag, "etiqueta")}`,
   },
 };
 

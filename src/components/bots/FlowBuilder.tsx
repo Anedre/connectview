@@ -16,7 +16,7 @@ import {
   type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Save, Trash2, AlertTriangle, Check, Play, Bot as BotIcon, Search, Network, Braces, HelpCircle, X } from "lucide-react";
+import { Plus, Save, Trash2, AlertTriangle, Check, Play, Bot as BotIcon, Search, Network, Braces, HelpCircle, X, GripVertical } from "lucide-react";
 import {
   NODE_KINDS,
   PALETTE_GROUPS,
@@ -34,7 +34,7 @@ import { StepNode } from "@/components/bots/StepNode";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { BuilderCtx } from "@/components/bots/builderCtx";
 import { BotTester } from "@/components/bots/BotTester";
-import { NodePreview, ConditionPreview, DelayPresets, StartPreview, AiPersonaPresets, BusinessHoursPreview } from "@/components/bots/NodePreview";
+import { NodePreview, ConditionPreview, DelayPresets, StartPreview, AiPersonaPresets, BusinessHoursPreview, ABSplitPreview, WebhookTester } from "@/components/bots/NodePreview";
 import { getApiEndpoints } from "@/lib/api";
 import { WaTemplateConfigurator, type WaTemplate } from "@/components/whatsapp/WaTemplateConfigurator";
 
@@ -674,8 +674,10 @@ function Inspector({
         {kind === "start" && <StartPreview data={data} />}
         {kind === "condition" && <ConditionPreview data={data} />}
         {kind === "business_hours" && <BusinessHoursPreview data={data} />}
+        {kind === "ab_split" && <ABSplitPreview data={data} />}
         {kind === "delay" && <DelayPresets data={data} onChange={onChange} />}
         {kind === "ai_agent" && <AiPersonaPresets onChange={onChange} />}
+        {kind === "webhook" && <WebhookTester data={data} />}
         {kind === "template" ? (
           <WaTemplateConfigurator
             mode="flow"
@@ -846,7 +848,23 @@ function Field({
         </datalist>
       )}
 
-      {field.type === "number" && (
+      {field.type === "number" && field.slider && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <input
+            type="range"
+            min={field.slider.min}
+            max={field.slider.max}
+            step={field.slider.step ?? 1}
+            value={Number(v) || field.slider.min}
+            onChange={(e) => onChange(Number(e.target.value))}
+            style={{ flex: 1 }}
+          />
+          <span style={{ minWidth: 26, textAlign: "right", fontSize: 13, fontWeight: 700, color: "var(--text-1)", fontVariantNumeric: "tabular-nums" }}>
+            {Number(v) || field.slider.min}
+          </span>
+        </div>
+      )}
+      {field.type === "number" && !field.slider && (
         <input
           type="number"
           value={String(v ?? "")}
@@ -979,10 +997,18 @@ function ButtonsEditor({
   const update = (id: string, patch: Partial<ButtonDef>) =>
     onChange(value.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   const remove = (id: string) => onChange(value.filter((b) => b.id !== id));
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const move = (from: number, to: number) => {
+    if (from === to) return;
+    const next = [...value];
+    const [it] = next.splice(from, 1);
+    next.splice(to, 0, it);
+    onChange(next);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {value.map((b) => {
+      {value.map((b, i) => {
         const type = b.type || "reply";
         const valErr =
           type === "url" && b.value && !/^https?:\/\/.+/i.test(b.value.trim())
@@ -993,6 +1019,8 @@ function ButtonsEditor({
         return (
           <div
             key={b.id}
+            onDragOver={(e) => { if (dragIdx !== null) e.preventDefault(); }}
+            onDrop={() => { if (dragIdx !== null) move(dragIdx, i); setDragIdx(null); }}
             style={{
               display: "flex",
               flexDirection: "column",
@@ -1001,9 +1029,19 @@ function ButtonsEditor({
               border: "1px solid var(--border-1)",
               borderRadius: 8,
               background: "var(--bg-1)",
+              opacity: dragIdx === i ? 0.5 : 1,
             }}
           >
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <span
+                className="fb-grip"
+                draggable
+                onDragStart={() => setDragIdx(i)}
+                onDragEnd={() => setDragIdx(null)}
+                title="Arrastrar para reordenar"
+              >
+                <GripVertical size={13} />
+              </span>
               <input
                 value={b.label}
                 onChange={(e) => update(b.id, { label: e.target.value })}
