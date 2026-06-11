@@ -56,12 +56,21 @@ interface BotMsg {
   text?: string;
   buttons?: { id: string; label?: string; type?: string }[];
   rows?: { id: string; title?: string; description?: string }[];
+  media?: { type: string; url: string; caption?: string };
 }
 
 /** Bot message → WhatsApp Cloud API message object (text / interactive).
  *  Espejo del mismo helper en agent-channel-adapter. */
 function buildMetaMessage(to: string, m: BotMsg): Record<string, unknown> {
   const base = { messaging_product: "whatsapp", recipient_type: "individual", to };
+  if (m.media && m.media.url) {
+    const TYPE: Record<string, string> = { Imagen: "image", Video: "video", Documento: "document", Audio: "audio" };
+    const t = TYPE[m.media.type] || "image";
+    const payload: Record<string, unknown> = { link: m.media.url };
+    if (t !== "audio" && m.media.caption) payload.caption = String(m.media.caption).slice(0, 1024);
+    if (t === "document") payload.filename = "archivo";
+    return { ...base, type: t, [t]: payload };
+  }
   const buttons = (m.buttons || []).filter((b) => !b.type || b.type === "reply").slice(0, 3);
   const rows = (m.rows || []).slice(0, 10);
   if (rows.length > 0) {
