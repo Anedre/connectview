@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeMetrics } from "@/hooks/useRealtimeMetrics";
 import { useRoles } from "@/hooks/useRoles";
 import { useCampaigns } from "@/hooks/useCampaigns";
+import { useContacts } from "@/hooks/useContacts";
 import { pluralES } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
 import { CustomWidgets } from "@/components/dashboard/CustomWidgets";
+import { AgentDayHero } from "@/components/dashboard/AgentDayHero";
 import { InsightsPanel } from "@/components/dashboard/InsightsPanel";
 import { PageHeader } from "@/components/vox/PageHeader";
 import {
@@ -15,7 +17,6 @@ import {
   CardBody,
   CardHead,
   ChannelChip,
-  Kpi,
   StatusPill,
 } from "@/components/vox/primitives";
 
@@ -25,143 +26,6 @@ function fmtWait(seconds: number) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-interface DashKpi {
-  label: string;
-  value: string;
-  delta?: string;
-  dir?: "up" | "down" | "flat";
-  color?: string;
-  spark?: number[];
-}
-
-type MetricsHistory = {
-  queue: number[];
-  available: number[];
-  online: number[];
-  longest: number[];
-};
-
-const HISTORY_CAP = 12;
-
-function useMetricsHistory(
-  metrics: ReturnType<typeof useRealtimeMetrics>["metrics"]
-): MetricsHistory {
-  const ref = useRef<MetricsHistory>({
-    queue: [],
-    available: [],
-    online: [],
-    longest: [],
-  });
-  // El historial vive en state, NO en ref leído durante el render: leer
-  // ref.current en render no dispara re-render y deja los sparklines stale.
-  // El ref sólo acumula las muestras; el state es lo que la UI consume.
-  const [history, setHistory] = useState<MetricsHistory>({
-    queue: [],
-    available: [],
-    online: [],
-    longest: [],
-  });
-  const stamp = metrics?.timestamp;
-  useEffect(() => {
-    if (!metrics) return;
-    const push = (arr: number[], v: number) => {
-      arr.push(v);
-      if (arr.length > HISTORY_CAP) arr.shift();
-    };
-    push(ref.current.queue, metrics.summary.totalContactsInQueue);
-    push(ref.current.available, metrics.summary.totalAgentsAvailable);
-    push(ref.current.online, metrics.summary.totalAgentsOnline);
-    push(ref.current.longest, metrics.summary.longestWaitSeconds);
-    setHistory({
-      queue: [...ref.current.queue],
-      available: [...ref.current.available],
-      online: [...ref.current.online],
-      longest: [...ref.current.longest],
-    });
-  }, [stamp, metrics]);
-  return history;
-}
-
-function buildKpis(
-  role: Role,
-  metrics: ReturnType<typeof useRealtimeMetrics>["metrics"],
-  history: MetricsHistory
-): DashKpi[] {
-  const queue = metrics?.summary.totalContactsInQueue ?? 0;
-  const online = metrics?.summary.totalAgentsOnline ?? 0;
-  const available = metrics?.summary.totalAgentsAvailable ?? 0;
-  const longest = metrics?.summary.longestWaitSeconds ?? 0;
-
-  if (role === "Admins" || role === "Supervisors") {
-    return [
-      {
-        label: "Agentes activos",
-        value: `${available} / ${online}`,
-        delta: "en línea ahora",
-        dir: "flat",
-        color: "var(--accent-cyan)",
-      },
-      {
-        label: "Cola global",
-        value: String(queue),
-        delta: queue === 0 ? "Sin contactos" : "Contactos esperando",
-        dir: queue > 10 ? "up" : "flat",
-        color: queue > 10 ? "var(--accent-red)" : "var(--accent-green)",
-      },
-      {
-        label: "Espera más larga",
-        value: fmtWait(longest),
-        delta: longest === 0 ? "Sin espera" : longest > 120 ? "Sobre meta" : "Bajo meta",
-        dir: longest > 120 ? "down" : "flat",
-        color: longest > 120 ? "var(--accent-red)" : "var(--accent-green)",
-      },
-      {
-        label: "Colas reportadas",
-        value: String(metrics?.queues.length ?? 0),
-        delta: "Activas",
-        dir: "flat",
-        color: "var(--accent-violet)",
-      },
-    ];
-  }
-  // Agent view — per-agent metrics endpoint is not wired yet, so we show
-  // the global realtime values as Kpi cards with sparklines built from
-  // recent samples (mirror of the design handoff's Inicio for agents).
-  return [
-    {
-      label: "Cola global",
-      value: String(queue),
-      delta: queue === 0 ? "Sin contactos en espera" : `${queue} ${pluralES(queue, "esperando", "esperando")}`,
-      dir: queue > 5 ? "up" : "flat",
-      color: queue > 10 ? "var(--accent-red)" : "var(--accent-cyan)",
-      spark: history.queue.length > 1 ? history.queue : undefined,
-    },
-    {
-      label: "Agentes disponibles",
-      value: String(available),
-      delta: `de ${online} en línea`,
-      dir: "flat",
-      color: "var(--accent-green)",
-      spark: history.available.length > 1 ? history.available : undefined,
-    },
-    {
-      label: "Espera más larga",
-      value: fmtWait(longest),
-      delta: longest === 0 ? "Sin espera" : longest > 120 ? "Sobre meta" : "Bajo meta",
-      dir: longest > 120 ? "down" : "flat",
-      color: longest > 120 ? "var(--accent-red)" : "var(--accent-amber)",
-      spark: history.longest.length > 1 ? history.longest : undefined,
-    },
-    {
-      label: "Colas activas",
-      value: String(metrics?.queues.length ?? 0),
-      delta: "En tiempo real",
-      dir: "flat",
-      color: "var(--accent-violet)",
-    },
-  ];
 }
 
 function EmptyCardBody({
@@ -475,8 +339,30 @@ export function DashboardPage() {
     ? "Agents"
     : "";
 
-  const history = useMetricsHistory(metrics);
-  const kpis = buildKpis(role, metrics, history);
+  // Vista de agente: su día (atendidos / AHT / sentiment) desde sus contactos
+  // de HOY. Degradación elegante — sin permiso/sin match → 0 con nota honesta.
+  const isAgentRole = role === "Agents";
+  const { contacts: agentContacts, loading: agentLoading, searchContacts } = useContacts();
+  useEffect(() => {
+    if (!isAgentRole) return;
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    searchContacts({ startDate: start.toISOString(), endDate: new Date().toISOString() });
+  }, [isAgentRole, searchContacts]);
+  const agentDay = useMemo(() => {
+    const uname = (user?.username || "").toLowerCase();
+    const mine = agentContacts.filter((c) => (c.agentUsername || "").toLowerCase() === uname);
+    const durs = mine
+      .map((c) => c.duration)
+      .filter((d): d is number => typeof d === "number" && d > 0);
+    const aht = durs.length ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length) : 0;
+    const pos = mine.filter((c) => c.sentiment === "POSITIVE").length;
+    return {
+      atendidos: mine.length,
+      ahtSec: aht,
+      sentimentPosPct: mine.length ? Math.round((pos / mine.length) * 100) : 0,
+    };
+  }, [agentContacts, user?.username]);
   // Friendlier first-name greeting for the agent home, matching the handoff.
   const firstName = (user?.username || "").trim().split(/\s+/)[0] || "Agente";
   const greeting =
@@ -552,19 +438,13 @@ export function DashboardPage() {
           onRefresh={refresh}
         />
       ) : (
-        <div className="kpi-grid">
-          {kpis.map((k) => (
-            <Kpi
-              key={k.label}
-              label={k.label}
-              value={k.value}
-              delta={k.delta}
-              deltaDir={k.dir}
-              spark={k.spark}
-              color={k.color}
-            />
-          ))}
-        </div>
+        <AgentDayHero
+          atendidos={agentDay.atendidos}
+          ahtSec={agentDay.ahtSec}
+          sentimentPosPct={agentDay.sentimentPosPct}
+          enCola={contactsInQueue}
+          loading={agentLoading && agentContacts.length === 0}
+        />
       )}
 
       <div style={{ height: 16 }} />
