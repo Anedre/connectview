@@ -1,10 +1,10 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { explainIntegrationError } from "@/lib/integrationErrors";
-import { AudioPlayer } from "@/components/recordings/AudioPlayer";
+import { AudioPlayer, type AudioPlayerHandle } from "@/components/recordings/AudioPlayer";
 import { TranscriptViewer } from "@/components/recordings/TranscriptViewer";
 import { ChatTranscriptView } from "@/components/recordings/ChatTranscriptView";
 import type { ChatSegment, ChatAttachment } from "@/components/recordings/ChatTranscriptView";
@@ -321,18 +321,23 @@ function VoiceDetail({
     sentiment: s.sentiment || s.Sentiment,
   }));
 
+  const audioRef = useRef<AudioPlayerHandle>(null);
+
   return (
     <div className="grid-2" style={{ gap: 14 }}>
       <Card>
         <CardHead title="Reproducción de audio" />
         <CardBody>
           <AudioPlayer
+            ref={audioRef}
             src={data.recording?.url || ""}
             onTimeUpdate={setCurrentTimeMs}
+            segments={transcript}
+            durationSecHint={data.duration}
           />
           <p className="muted" style={{ marginTop: 8, fontSize: 11.5 }}>
             {data.recording?.url
-              ? "Grabación cargada desde S3 (presigned URL · expira en 1 h)."
+              ? "Grabación desde S3 (URL firmada · expira en 1 h). El color de la onda es el sentiment de cada tramo; hacé clic en una frase para saltar ahí."
               : "Este contacto no tiene grabación disponible en S3."}
           </p>
         </CardBody>
@@ -343,6 +348,7 @@ function VoiceDetail({
           <TranscriptViewer
             segments={transcript}
             currentTimeMs={currentTimeMs}
+            onSeek={(ms) => audioRef.current?.seekTo(ms)}
           />
         </CardBody>
       </Card>

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { getApiEndpoints } from "@/lib/api";
-import { AudioPlayer } from "@/components/recordings/AudioPlayer";
+import { AudioPlayer, type AudioPlayerHandle } from "@/components/recordings/AudioPlayer";
 import { TranscriptViewer } from "@/components/recordings/TranscriptViewer";
 import { useContactDetail } from "@/hooks/useContactDetail";
 import { VALORACION_META } from "@/lib/dispositions";
@@ -232,6 +232,8 @@ function CallCard({
 
   // Sync current playback position into the TranscriptViewer for highlight.
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
+  // Lets the transcript drive the audio (click-to-seek).
+  const audioRef = useRef<AudioPlayerHandle>(null);
 
   // Normalise the transcript segments into TranscriptSegment shape.
   const transcript: TranscriptSegment[] = useMemo(() => {
@@ -409,8 +411,11 @@ function CallCard({
             <>
               {detail.recording?.url ? (
                 <AudioPlayer
+                  ref={audioRef}
                   src={detail.recording.url}
                   onTimeUpdate={setCurrentTimeMs}
+                  segments={transcript}
+                  durationSecHint={detail.duration ?? row.duration}
                 />
               ) : (
                 <div
@@ -438,6 +443,7 @@ function CallCard({
                   <TranscriptViewer
                     segments={transcript}
                     currentTimeMs={currentTimeMs}
+                    onSeek={(ms) => audioRef.current?.seekTo(ms)}
                   />
                 </div>
               ) : (
