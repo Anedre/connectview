@@ -1,4 +1,4 @@
-import { Link2, PhoneCall, List as ListIcon, Eye, StickyNote, GitBranch, Clock, Play, Sparkles } from "lucide-react";
+import { Link2, PhoneCall, List as ListIcon, Eye, StickyNote, GitBranch, Clock, Play, Sparkles, Paperclip } from "lucide-react";
 import { OP_LABEL, UNIT_LABEL, type ButtonDef, type ListRow, type NodeKind } from "@/lib/botFlow";
 
 /**
@@ -17,7 +17,7 @@ function vars(text: string): React.ReactNode {
   );
 }
 
-const PREVIEWABLE: NodeKind[] = ["message", "list", "question", "template", "internal_note"];
+const PREVIEWABLE: NodeKind[] = ["message", "media", "list", "question", "template", "internal_note"];
 
 export function NodePreview({ kind, data }: { kind: NodeKind; data: Record<string, unknown> }) {
   if (!PREVIEWABLE.includes(kind)) return null;
@@ -42,6 +42,26 @@ export function NodePreview({ kind, data }: { kind: NodeKind; data: Record<strin
             ))}
           </div>
         )}
+      </>
+    );
+  } else if (kind === "media") {
+    const mtype = String(data.mediaType || "Imagen");
+    const url = String(data.url || "");
+    const caption = String(data.caption || "");
+    body = (
+      <>
+        {url ? (
+          mtype === "Video" ? (
+            <video src={url} controls className="fb-prev__img" />
+          ) : mtype === "Imagen" ? (
+            <img src={url} alt="" className="fb-prev__img" />
+          ) : (
+            <div className="fb-prev__bubble"><Paperclip size={13} /> {mtype}</div>
+          )
+        ) : (
+          <div className="fb-prev__bubble"><span className="fb-prev__ph">Pegá la URL del archivo…</span></div>
+        )}
+        {caption && <div className="fb-prev__bubble">{vars(caption)}</div>}
       </>
     );
   } else if (kind === "list") {
@@ -129,6 +149,27 @@ export function ConditionPreview({ data }: { data: Record<string, unknown> }) {
         <div className="fb-cond__branches">
           <span className="fb-cond__branch fb-cond__branch--yes">→ sale por «Sí»</span>
           <span className="fb-cond__branch fb-cond__branch--no">si no, por «No»</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Horario de atención en lenguaje natural + ramas Abierto/Cerrado. */
+export function BusinessHoursPreview({ data }: { data: Record<string, unknown> }) {
+  const days = String(data.daysPreset || "Lunes a viernes");
+  const from = String(data.from || "09:00");
+  const to = String(data.to || "18:00");
+  return (
+    <div className="fb-prev">
+      <div className="fb-prev__top"><Clock size={12} /> Vista previa</div>
+      <div className="fb-cond">
+        <div className="fb-cond__rule">
+          Si es <b>{days}</b> entre <b>{from}</b> y <b>{to}</b>…
+        </div>
+        <div className="fb-cond__branches">
+          <span className="fb-cond__branch fb-cond__branch--yes">→ sale por «Abierto»</span>
+          <span className="fb-cond__branch fb-cond__branch--no">si no, por «Cerrado»</span>
         </div>
       </div>
     </div>

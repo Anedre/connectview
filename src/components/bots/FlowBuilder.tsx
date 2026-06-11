@@ -34,7 +34,7 @@ import { StepNode } from "@/components/bots/StepNode";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { BuilderCtx } from "@/components/bots/builderCtx";
 import { BotTester } from "@/components/bots/BotTester";
-import { NodePreview, ConditionPreview, DelayPresets, StartPreview, AiPersonaPresets } from "@/components/bots/NodePreview";
+import { NodePreview, ConditionPreview, DelayPresets, StartPreview, AiPersonaPresets, BusinessHoursPreview } from "@/components/bots/NodePreview";
 import { getApiEndpoints } from "@/lib/api";
 import { WaTemplateConfigurator, type WaTemplate } from "@/components/whatsapp/WaTemplateConfigurator";
 
@@ -673,6 +673,7 @@ function Inspector({
         <NodePreview kind={kind} data={data} />
         {kind === "start" && <StartPreview data={data} />}
         {kind === "condition" && <ConditionPreview data={data} />}
+        {kind === "business_hours" && <BusinessHoursPreview data={data} />}
         {kind === "delay" && <DelayPresets data={data} onChange={onChange} />}
         {kind === "ai_agent" && <AiPersonaPresets onChange={onChange} />}
         {kind === "template" ? (

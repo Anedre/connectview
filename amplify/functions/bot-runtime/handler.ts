@@ -77,9 +77,18 @@ interface OutMsg {
   text: string;
   buttons?: { id: string; label: string }[];
   rows?: { id: string; title: string; description?: string }[];
+  media?: { type: string; url: string; caption?: string };
 }
 
 const str = (v: unknown, d = ""): string => (typeof v === "string" && v ? v : d);
+
+/** Reemplaza {{variable}} por su valor capturado (o deja el token si no existe). */
+function fill(text: string, vars: Record<string, string>): string {
+  return text.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, name) => {
+    const v = vars[String(name).trim()];
+    return v != null && v !== "" ? v : `{{${String(name).trim()}}}`;
+  });
+}
 
 function replyButtons(buttons: unknown): { id: string; label: string }[] {
   const arr = Array.isArray(buttons) ? (buttons as { id: string; label: string; type?: string }[]) : [];
@@ -293,6 +302,38 @@ async function runAiWithTools(
   return { reply, status, modelUsed, toolNotes };
 }
 
+function daysOf(preset: string): string[] {
+  if (/s[áa]bado/i.test(preset)) return ["mon", "tue", "wed", "thu", "fri", "sat"];
+  if (/todos/i.test(preset)) return ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  return ["mon", "tue", "wed", "thu", "fri"];
+}
+
+/** ¿La hora actual (en la zona del paso) cae dentro del horario de atención? */
+function isWithinHours(d: Record<string, unknown>): boolean {
+  const tz = str(d.timezone, "America/Lima");
+  const from = str(d.from, "09:00");
+  const to = str(d.to, "18:00");
+  const days = daysOf(str(d.daysPreset, "Lunes a viernes"));
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date());
+    const wd = (parts.find((p) => p.type === "weekday")?.value || "").toLowerCase().slice(0, 3);
+    let hh = parts.find((p) => p.type === "hour")?.value || "00";
+    if (hh === "24") hh = "00";
+    const mm = parts.find((p) => p.type === "minute")?.value || "00";
+    const now = `${hh}:${mm}`;
+    if (!days.includes(wd)) return false;
+    return now >= from && now <= to;
+  } catch {
+    return true; // ante un timezone inválido, no bloquees el flujo
+  }
+}
+
 function evalCond(data: Record<string, unknown>, vars: Record<string, string>): boolean {
   const v = (vars[str(data.variable)] || "").toLowerCase();
   const target = str(data.value).toLowerCase();
@@ -388,7 +429,7 @@ export const handler: Handler = async (event: any) => {
       const d = cur.data || {};
 
       if (k === "message") {
-        const text = str(d.text);
+        const text = fill(str(d.text), state.vars);
         const reply = replyButtons(d.buttons);
         const msg: OutMsg = { kind: "bot", text };
         if (reply.length > 0) msg.buttons = reply.map((b) => ({ id: `b:${b.id}`, label: b.label || "Botón" }));
@@ -400,7 +441,7 @@ export const handler: Handler = async (event: any) => {
         continue;
       }
       if (k === "list") {
-        const text = str(d.body, str(d.header, "Elegí una opción:"));
+        const text = fill(str(d.body, str(d.header, "Elegí una opción:")), state.vars);
         const rows = Array.isArray(d.rows)
           ? (d.rows as { id: string; title: string; description?: string }[]).map((r) => ({ id: `r:${r.id}`, title: r.title, description: r.description }))
           : [];
@@ -409,7 +450,7 @@ export const handler: Handler = async (event: any) => {
         return done(false, "choice", cur.id);
       }
       if (k === "question") {
-        const text = str(d.prompt);
+        const text = fill(str(d.prompt), state.vars);
         messages.push({ kind: "bot", text });
         state.history.push({ role: "bot", text });
         return done(false, "text", cur.id);
@@ -437,8 +478,9 @@ export const handler: Handler = async (event: any) => {
         continue;
       }
       if (k === "set_field") {
-        if (str(d.field)) state.vars[str(d.field)] = str(d.value);
-        messages.push({ kind: "note", text: `✏️ ${str(d.field, "campo")} = ${str(d.value, "—")}` });
+        const val = fill(str(d.value), state.vars);
+        if (str(d.field)) state.vars[str(d.field)] = val;
+        messages.push({ kind: "note", text: `✏️ ${str(d.field, "campo")} = ${val || "—"}` });
         cur = nextFrom(cur.id, "out");
         continue;
       }
@@ -448,7 +490,7 @@ export const handler: Handler = async (event: any) => {
         continue;
       }
       if (k === "internal_note") {
-        messages.push({ kind: "note", text: `📌 Nota interna: ${str(d.text)}` });
+        messages.push({ kind: "note", text: `📌 Nota interna: ${fill(str(d.text), state.vars)}` });
         cur = nextFrom(cur.id, "out");
         continue;
       }
@@ -474,6 +516,56 @@ export const handler: Handler = async (event: any) => {
         messages.push({ kind: "note", text: "🏁 Fin del bot" });
         await logConversation("resolved");
         return done(false, null, undefined, true);
+      }
+      if (k === "media") {
+        const url = fill(str(d.url), state.vars);
+        const caption = fill(str(d.caption), state.vars);
+        const mtype = str(d.mediaType, "Imagen");
+        if (url) {
+          messages.push({ kind: "bot", text: caption, media: { type: mtype, url, caption } });
+          state.history.push({ role: "bot", text: caption || `[${mtype}]` });
+        } else {
+          messages.push({ kind: "note", text: "🖼 (Falta la URL del archivo)" });
+        }
+        cur = nextFrom(cur.id, "out");
+        continue;
+      }
+      if (k === "business_hours") {
+        const open = isWithinHours(d);
+        messages.push({ kind: "note", text: open ? "🟢 Dentro del horario de atención" : "🔴 Fuera del horario de atención" });
+        cur = nextFrom(cur.id, open ? "open" : "closed");
+        continue;
+      }
+      if (k === "appointment") {
+        const apptUrl = toolEndpoints["manageAppointment"];
+        const phone = fill(str(d.phone), state.vars);
+        const whenISO = fill(str(d.whenISO), state.vars);
+        const title = fill(str(d.title, "Cita"), state.vars);
+        const durationMin = Number(d.durationMin) || 30;
+        const ready = !!(phone && whenISO && !phone.startsWith("{{") && !whenISO.startsWith("{{"));
+        let booked = false;
+        let detail = "";
+        if (source === "playground") {
+          booked = ready;
+          detail = ready ? "(Prueba) En producción se agendaría la cita." : "(Prueba) Falta teléfono o fecha válidos.";
+        } else if (apptUrl && ready) {
+          try {
+            const r = await fetch(apptUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ customerPhone: phone, whenISO, title, durationMin, channel: "bot" }),
+            });
+            booked = r.ok;
+            detail = (await r.text()).slice(0, 160);
+          } catch (e) {
+            detail = e instanceof Error ? e.message : "error";
+          }
+        } else {
+          detail = "Falta endpoint, teléfono o fecha.";
+        }
+        messages.push({ kind: "note", text: booked ? `📅 Cita agendada: ${title}` : `📅 No se pudo agendar — ${detail}` });
+        cur = nextFrom(cur.id, booked ? "booked" : "failed");
+        continue;
       }
       // Unknown node — try to move on.
       cur = nextFrom(cur.id, "out");

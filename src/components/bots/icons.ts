@@ -18,6 +18,9 @@ import {
   PhoneCall,
   Star,
   Gift,
+  Image,
+  CalendarClock,
+  CalendarCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -47,6 +50,9 @@ export const FLOW_ICONS: Record<string, LucideIcon> = {
   phone: PhoneCall,
   star: Star,
   gift: Gift,
+  image: Image,
+  hours: CalendarClock,
+  appointment: CalendarCheck,
 };
 
 export function flowIcon(key: string): LucideIcon {

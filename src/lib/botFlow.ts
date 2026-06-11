@@ -13,12 +13,15 @@
 export type NodeKind =
   | "start"
   | "message"
+  | "media"
   | "list"
   | "question"
   | "condition"
+  | "business_hours"
   | "template"
   | "delay"
   | "set_field"
+  | "appointment"
   | "handoff"
   | "internal_note"
   | "ai_agent"
@@ -601,6 +604,70 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     outlets: () => [],
     defaultData: () => ({}),
     summary: () => "Fin del bot",
+  },
+
+  media: {
+    kind: "media",
+    label: "Enviar imagen / archivo",
+    group: "Mensajes",
+    accent: "#0EA5E9",
+    icon: "image",
+    blurb: "Manda una foto, video, documento o audio",
+    fields: [
+      { key: "mediaType", label: "Tipo", type: "select", options: ["Imagen", "Video", "Documento", "Audio"], help: "Qué clase de archivo se envía." },
+      { key: "url", label: "URL del archivo", type: "text", placeholder: "https://…/foto.jpg", variable: "insert", help: "Link público al archivo. Podés usar una variable." },
+      { key: "caption", label: "Texto (opcional)", type: "textarea", placeholder: "Mirá esto 👇", variable: "insert" },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ mediaType: "Imagen", url: "", caption: "" }),
+    summary: (d) => `${str(d.mediaType, "Imagen")}${str(d.url) ? ` · ${str(d.url)}` : ""}`,
+  },
+
+  business_hours: {
+    kind: "business_hours",
+    label: "Horario de atención",
+    group: "Lógica",
+    accent: "#E0A23B",
+    icon: "hours",
+    blurb: "Ramifica según si estás abierto o cerrado",
+    fields: [
+      { key: "daysPreset", label: "Días", type: "select", options: ["Lunes a viernes", "Lunes a sábado", "Todos los días"] },
+      { key: "from", label: "Desde", type: "text", placeholder: "09:00", help: "Hora de apertura (HH:MM, 24h)." },
+      { key: "to", label: "Hasta", type: "text", placeholder: "18:00", help: "Hora de cierre (HH:MM, 24h)." },
+      {
+        key: "timezone",
+        label: "Zona horaria",
+        type: "select",
+        options: ["America/Lima", "America/Bogota", "America/Mexico_City", "America/Argentina/Buenos_Aires", "America/Santiago"],
+      },
+    ],
+    outlets: () => [
+      { id: "open", label: "Abierto" },
+      { id: "closed", label: "Cerrado" },
+    ],
+    defaultData: () => ({ daysPreset: "Lunes a viernes", from: "09:00", to: "18:00", timezone: "America/Lima" }),
+    summary: (d) => `${str(d.daysPreset, "Lun a Vie")} · ${str(d.from, "09:00")}–${str(d.to, "18:00")}`,
+  },
+
+  appointment: {
+    kind: "appointment",
+    label: "Agendar cita",
+    group: "Acciones",
+    accent: "#1FAE6C",
+    icon: "appointment",
+    blurb: "Reserva una cita en el calendario",
+    fields: [
+      { key: "title", label: "Asunto", type: "text", placeholder: "Asesoría de admisión", variable: "insert" },
+      { key: "phone", label: "Teléfono del cliente", type: "text", placeholder: "{{telefono}}", variable: "insert", help: "Usá una variable capturada antes (p. ej. {{telefono}})." },
+      { key: "whenISO", label: "Fecha y hora", type: "text", placeholder: "{{fecha}}", variable: "insert", help: "Fecha/hora ISO 8601 o una variable con esa info." },
+      { key: "durationMin", label: "Duración (min)", type: "number", placeholder: "30" },
+    ],
+    outlets: () => [
+      { id: "booked", label: "Agendada" },
+      { id: "failed", label: "No se pudo" },
+    ],
+    defaultData: () => ({ title: "", phone: "{{telefono}}", whenISO: "{{fecha}}", durationMin: 30 }),
+    summary: (d) => (str(d.title) ? `Agenda: ${str(d.title)}` : "Agendar una cita"),
   },
 };
 

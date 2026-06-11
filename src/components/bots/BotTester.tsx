@@ -18,17 +18,24 @@ const TOOL_LABELS: Record<string, string> = {
  * in-memory graph (so unsaved flows can be tested). Quick-reply buttons / list
  * rows render as clickable chips; free text for questions / AI-agent turns.
  */
+interface MediaRef {
+  type: string;
+  url: string;
+  caption?: string;
+}
 interface OutMsg {
   kind: "bot" | "note";
   text: string;
   buttons?: { id: string; label: string }[];
   rows?: { id: string; title: string; description?: string }[];
+  media?: MediaRef;
 }
 interface ChatItem {
   from: "bot" | "user" | "note";
   text: string;
   buttons?: { id: string; label: string }[];
   rows?: { id: string; title: string; description?: string }[];
+  media?: MediaRef;
 }
 
 export function BotTester({ bot, onClose }: { bot: Bot; onClose: () => void }) {
@@ -79,6 +86,7 @@ export function BotTester({ bot, onClose }: { bot: Bot; onClose: () => void }) {
           text: m.text,
           buttons: m.buttons,
           rows: m.rows,
+          media: m.media,
         })),
       ]);
       setConvState(d.state);
@@ -166,6 +174,15 @@ export function BotTester({ bot, onClose }: { bot: Bot; onClose: () => void }) {
             <div key={idx} className="fb-wa__note">{m.text}</div>
           ) : (
             <div key={idx} className={`fb-wa__bubble ${m.from === "user" ? "fb-wa__bubble--me" : "fb-wa__bubble--bot"}`}>
+              {m.media && (
+                m.media.type === "Video" ? (
+                  <video src={m.media.url} controls className="fb-wa__media" />
+                ) : m.media.type === "Imagen" ? (
+                  <img src={m.media.url} alt={m.media.caption || ""} className="fb-wa__media" />
+                ) : (
+                  <a href={m.media.url} target="_blank" rel="noreferrer" className="fb-wa__file">📎 {m.media.type}</a>
+                )
+              )}
               {m.text}
               {m.rows && m.rows.length > 0 && (
                 <div className="fb-wa__rows">
