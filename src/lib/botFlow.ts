@@ -77,6 +77,12 @@ export interface FieldDef {
    * Sin valor → campo normal SIN UI de variables (p. ej. Cola, Prioridad).
    */
   variable?: "define" | "use" | "insert";
+  /** Muestra un contador de caracteres (p. ej. el texto de un mensaje). */
+  counter?: number;
+  /** Valida en vivo que el contenido sea JSON correcto. */
+  json?: boolean;
+  /** Sugerencias para autocompletar (datalist) manteniendo texto libre. */
+  suggestions?: string[];
 }
 
 export interface Outlet {
@@ -183,6 +189,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         type: "textarea",
         placeholder: "Escribe lo que el bot dirá…",
         variable: "insert",
+        counter: 4096,
         help: "Podés personalizarlo con datos guardados usando «Insertar variable» (p. ej. ¡Hola {{nombre}}!).",
       },
       {
@@ -418,6 +425,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         label: "Cola / equipo",
         type: "text",
         placeholder: "Admisión",
+        suggestions: ["Admisión", "Ventas", "Soporte", "Facturación", "Agenda"],
         help: "A qué equipo de Connect entra la conversación.",
       },
       {
@@ -494,6 +502,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         type: "textarea",
         placeholder: '{ "phone": "{{phone}}" }',
         variable: "insert",
+        json: true,
         help: "Datos que se envían. Usá variables con «Insertar variable».",
       },
     ],

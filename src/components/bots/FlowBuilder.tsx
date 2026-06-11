@@ -16,7 +16,7 @@ import {
   type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Save, Trash2, AlertTriangle, Check, Play, Bot as BotIcon, Search, Network, Braces } from "lucide-react";
+import { Plus, Save, Trash2, AlertTriangle, Check, Play, Bot as BotIcon, Search, Network, Braces, HelpCircle, X } from "lucide-react";
 import {
   NODE_KINDS,
   PALETTE_GROUPS,
@@ -34,7 +34,7 @@ import { StepNode } from "@/components/bots/StepNode";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { BuilderCtx } from "@/components/bots/builderCtx";
 import { BotTester } from "@/components/bots/BotTester";
-import { NodePreview, ConditionPreview, DelayPresets } from "@/components/bots/NodePreview";
+import { NodePreview, ConditionPreview, DelayPresets, StartPreview, AiPersonaPresets } from "@/components/bots/NodePreview";
 import { getApiEndpoints } from "@/lib/api";
 import { WaTemplateConfigurator, type WaTemplate } from "@/components/whatsapp/WaTemplateConfigurator";
 
@@ -212,6 +212,19 @@ function FlowBuilderInner({
   const [testing, setTesting] = useState(!!autoTest);
   const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
   const [isDropping, setIsDropping] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+
+  // Mini-tour: abre los tips la primera vez (luego, con el botón «?»).
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem("aira.bot.tips.v1")) {
+        setShowHelp(true);
+        localStorage.setItem("aira.bot.tips.v1", "1");
+      }
+    } catch {
+      /* localStorage puede estar bloqueado */
+    }
+  }, []);
 
   // Approved WhatsApp templates — powers the "Plantilla" node's configurator.
   useEffect(() => {
@@ -413,6 +426,13 @@ function FlowBuilderInner({
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
           <button
+            onClick={() => setShowHelp((s) => !s)}
+            title="¿Cómo funciona el constructor?"
+            className={`fb-chip ${showHelp ? "fb-chip--ok" : ""}`}
+          >
+            <HelpCircle size={13} /> Ayuda
+          </button>
+          <button
             onClick={() => setShowIssues((s) => !s)}
             title="Validación del flujo"
             className={`fb-chip ${issues.length ? "fb-chip--warn" : "fb-chip--ok"}`}
@@ -451,6 +471,22 @@ function FlowBuilderInner({
               {i.nodeId && <span className="fb-issue__go">Ver paso →</span>}
             </button>
           ))}
+        </div>
+      )}
+
+      {showHelp && (
+        <div className="fb-tips">
+          <div className="fb-tips__head">
+            <HelpCircle size={14} /> Primeros pasos
+            <button className="fb-tips__close" onClick={() => setShowHelp(false)} title="Cerrar"><X size={14} /></button>
+          </div>
+          <ul className="fb-tips__list">
+            <li>Arrastrá pasos desde la izquierda al lienzo (o hacé click para agregarlos).</li>
+            <li>Conectá dos pasos tirando una línea de un punto al siguiente — o soltá un paso cerca de la salida de otro y se conecta solo.</li>
+            <li>Guardá datos con «Preguntar y guardar» y reutilizalos con «Insertar variable».</li>
+            <li>Mirá la «Vista previa» del inspector para ver cómo le llega el mensaje al cliente.</li>
+            <li>Tocá «Ordenar» para acomodar el flujo y «Probar» para chatear con el bot.</li>
+          </ul>
         </div>
       )}
 
@@ -635,8 +671,10 @@ function Inspector({
 
       <div className="fb-insp__body">
         <NodePreview kind={kind} data={data} />
+        {kind === "start" && <StartPreview data={data} />}
         {kind === "condition" && <ConditionPreview data={data} />}
         {kind === "delay" && <DelayPresets data={data} onChange={onChange} />}
+        {kind === "ai_agent" && <AiPersonaPresets onChange={onChange} />}
         {kind === "template" ? (
           <WaTemplateConfigurator
             mode="flow"
@@ -736,6 +774,20 @@ function Field({
   const isInsert = field.variable === "insert";
   const mono = isDefine || isUse;
   const dataListId = `vars-${selfId}-${field.key}`;
+  const hasList = isUse || (field.suggestions?.length ?? 0) > 0;
+  const txt = String(v ?? "");
+  // Validación de JSON en vivo (reemplaza {{vars}} por null para chequear estructura).
+  const jsonError =
+    field.json && txt.trim()
+      ? (() => {
+          try {
+            JSON.parse(txt.replace(/\{\{[^}]+\}\}/g, "null"));
+            return false;
+          } catch {
+            return true;
+          }
+        })()
+      : false;
 
   // Inserta {{nombre}} en la posición del cursor (o al final si no hay foco).
   const insertVar = (name: string) => {
@@ -781,14 +833,14 @@ function Field({
           value={String(v ?? "")}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
-          list={isUse ? dataListId : undefined}
+          list={hasList ? dataListId : undefined}
           style={{ ...inputStyle, fontFamily: mono ? "var(--font-mono, monospace)" : "inherit" }}
         />
       )}
-      {isUse && (
+      {hasList && (
         <datalist id={dataListId}>
-          {flowVars.map((vn) => (
-            <option key={vn} value={vn} />
+          {(isUse ? flowVars : field.suggestions ?? []).map((opt) => (
+            <option key={opt} value={opt} />
           ))}
         </datalist>
       )}
@@ -864,6 +916,21 @@ function Field({
         </div>
       )}
 
+      {(field.counter || (field.json && txt.trim())) && (
+        <div className="fb-fieldmeta">
+          {field.json && txt.trim() && (
+            <span className={jsonError ? "fb-meta-bad" : "fb-meta-ok"}>
+              {jsonError ? <><AlertTriangle size={11} /> Revisá el JSON</> : <><Check size={11} /> JSON válido</>}
+            </span>
+          )}
+          {field.counter && (
+            <span className={txt.length > field.counter ? "fb-meta-bad" : "fb-meta-count"}>
+              {txt.length}/{field.counter}
+            </span>
+          )}
+        </div>
+      )}
+
       {field.help && (
         <div style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 4 }}>{field.help}</div>
       )}
@@ -916,6 +983,12 @@ function ButtonsEditor({
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {value.map((b) => {
         const type = b.type || "reply";
+        const valErr =
+          type === "url" && b.value && !/^https?:\/\/.+/i.test(b.value.trim())
+            ? "Empezá con http:// o https://"
+            : type === "phone" && b.value && !/^\+?[\d\s().-]{6,}$/.test(b.value.trim())
+            ? "Usá formato internacional, p. ej. +51 999 888 777"
+            : null;
         return (
           <div
             key={b.id}
@@ -953,10 +1026,11 @@ function ButtonsEditor({
                   value={b.value || ""}
                   onChange={(e) => update(b.id, { value: e.target.value })}
                   placeholder={type === "url" ? "https://…" : "+51…"}
-                  style={{ ...inputStyle, flex: 1 }}
+                  style={{ ...inputStyle, flex: 1, borderColor: valErr ? "var(--accent-red)" : undefined }}
                 />
               )}
             </div>
+            {valErr && <div className="fb-btnerr"><AlertTriangle size={10} /> {valErr}</div>}
           </div>
         );
       })}

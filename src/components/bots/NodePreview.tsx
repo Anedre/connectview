@@ -1,4 +1,4 @@
-import { Link2, PhoneCall, List as ListIcon, Eye, StickyNote, GitBranch, Clock } from "lucide-react";
+import { Link2, PhoneCall, List as ListIcon, Eye, StickyNote, GitBranch, Clock, Play, Sparkles } from "lucide-react";
 import { OP_LABEL, UNIT_LABEL, type ButtonDef, type ListRow, type NodeKind } from "@/lib/botFlow";
 
 /**
@@ -142,6 +142,54 @@ const DELAY_PRESETS: { label: string; amount: number; unit: string }[] = [
   { label: "3 días", amount: 3, unit: "days" },
   { label: "1 semana", amount: 7, unit: "days" },
 ];
+
+const TRIGGER_EXPLAIN: Record<string, string> = {
+  "Mensaje entrante (WhatsApp)": "Arranca cuando un cliente te escribe por WhatsApp.",
+  "Nuevo lead": "Arranca solo cuando entra un lead nuevo a tu sistema.",
+  "Palabra clave": "Arranca cuando el cliente escribe una palabra clave (p. ej. «PROMO»).",
+  "Manual / prueba": "Lo disparás vos a mano — útil para probar el flujo.",
+  "Lead sin actividad": "Arranca cuando un lead lleva un tiempo sin responder.",
+};
+
+/** Explica en una frase qué dispara el bot, según el disparador elegido. */
+export function StartPreview({ data }: { data: Record<string, unknown> }) {
+  const trigger = String(data.trigger || "");
+  return (
+    <div className="fb-prev">
+      <div className="fb-prev__top"><Play size={12} /> Vista previa</div>
+      <div className="fb-start">
+        <div className="fb-start__trigger">{trigger || "Sin disparador"}</div>
+        <div className="fb-start__explain">{TRIGGER_EXPLAIN[trigger] || "Define cuándo arranca el bot."}</div>
+      </div>
+    </div>
+  );
+}
+
+const PERSONAS: { label: string; instructions: string }[] = [
+  { label: "Asesor cordial", instructions: "Sos un asesor cordial y conciso. Respondé en español, claro y al grano. Tuteá al cliente." },
+  { label: "Soporte técnico", instructions: "Sos soporte técnico paciente. Pedí los datos concretos que necesitás y guiá paso a paso, sin tecnicismos innecesarios." },
+  { label: "Ventas consultivas", instructions: "Sos un vendedor consultivo. Primero entendé la necesidad del cliente con preguntas; recién después recomendá. No presiones." },
+  { label: "Recepción formal", instructions: "Sos la recepción de la empresa, con tono formal y amable. Tratá de «usted». Derivá a un humano si la consulta excede lo básico." },
+];
+
+/** Chips de personalidad que rellenan las instrucciones del Agente IA. */
+export function AiPersonaPresets({ onChange }: { onChange: (patch: Record<string, unknown>) => void }) {
+  return (
+    <div className="fb-prev">
+      <div className="fb-prev__top"><Sparkles size={12} /> Personalidad rápida</div>
+      <div className="fb-persona">
+        <div className="fb-persona__hint">Elegí una base para las instrucciones (después la editás):</div>
+        <div className="fb-persona__chips">
+          {PERSONAS.map((p) => (
+            <button key={p.label} type="button" className="fb-persona__chip" onClick={() => onChange({ instructions: p.instructions })}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Presets rápidos + frase en lenguaje natural para el paso "Esperar". */
 export function DelayPresets({
