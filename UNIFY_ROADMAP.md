@@ -157,11 +157,10 @@
 - **Build (por fases):** **Fase A** — bot lineal con steps básicos (Message, Condition, Collect field, Handoff a agente). **Fase B** — branching visual (react-flow), validation, pause/timer. **Fase C** — custom code / webhook steps. Persistir el flow JSON en `connectview-bots`. Runtime: Lambda `bot-runtime` invocado por inbound webhook. **Considerar:** Amazon Lex como backend del NLP en vez de construir from scratch.
 - **Esfuerzo:** XL (cada fase L) · **Dependencias:** #14, #15 · **Toca:** nueva tabla + runtime Lambda, nueva `BotBuilder.tsx` (react-flow)
 
-### 17. Webhooks salientes con retry multi-día
-- **Estado:** no hay webhooks out.
-- **Gap:** Chattigo reintenta 7 días si tu endpoint está caído. Esencial para integraciones (Salesforce, etc.).
-- **Build:** acción `send_webhook` en #15. Cola SQS con DLQ + reintentos exponenciales hasta N días. Tabla `connectview-webhook-deliveries` para visibilidad.
-- **Esfuerzo:** M · **Dependencias:** #15 · **Toca:** nuevo Lambda + SQS
+### 17. Webhooks salientes con retry multi-día — ✅ HECHO (2026-06-10, verificado en vivo)
+- **Build entregado:** la acción `webhook` de #15 ya NO hace 1 intento — `actWebhook` encola a **SQS** (`connectview-webhook-queue` + DLQ). El nuevo Lambda **`webhook-dispatcher`** (dual-entry SQS + tick EventBridge 5 min) entrega y, en fallo, escribe `retrying` + `nextAttemptAt` en **`connectview-webhook-deliveries`** con **backoff exponencial** (1m→5m→30m→2h→6h→12h→24h×6 ≈ 7 días); al agotar → `exhausted`; DLQ para fallos de proceso. El tick re-encola los vencidos (query GSI `byStatusNextAttempt`). Visibilidad: `get-webhook-deliveries` + panel en `/automations` (botón "Webhooks": estado/intentos/último error/próximo reintento + "reintentar ahora"). Provisioning idempotente: `scripts/create-webhook-retry.mjs`. Rollout seguro: sin `WEBHOOK_QUEUE_URL` cae al intento único legacy.
+- **Verificado en vivo (2026-06-10):** endpoint 200 → `delivered`; 503 → `retrying` (attempt 1, backoff 5min); tick forzado → re-encola → la ESM reintenta solo → attempt 2, backoff 30min. Function URL del getter con los 2 permisos públicos (gotcha de la cuenta).
+- **Esfuerzo:** M · **Dependencias:** #15 · **Toca:** `webhook-dispatcher` + `get-webhook-deliveries` + SQS/DLQ + tabla + `automation-engine` (enqueue) + UI
 
 ### 18. Flows de reactivación / carrito abandonado — ✅ HECHO (2026-06-10, vía #15)
 - **Build entregado:** cubierto por el motor de Automatizaciones (#15). Plantilla de regla `reactivate-7d` ("Reactivación · 7 días inactivo") en `src/lib/automations.ts`: trigger temporal **`lead_inactive`** (días configurable, default 7) → acción `send_whatsapp_template`. El trigger corre de verdad en `automation-engine` `processTick()` (EventBridge rate 5 min): escanea leads, calcula el `cutoff` por días, filtra por stage, anti-doble-disparo por episodio (`autoFired_<ruleId>`) y ejecuta las acciones. El supervisor la crea/activa desde `/automations` y elige el template. El landing carga la base vía `createCampaign` (contrato HTTP ya existente — `DIALER_FOR_SALESFORCE.md`).
