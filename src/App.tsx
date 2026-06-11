@@ -37,6 +37,7 @@ import { ConversationCanvasDemoPage } from "@/pages/ConversationCanvasDemoPage";
 import { AgenteDemoPage } from "@/pages/AgenteDemoPage";
 import { LeadsDemoPage } from "@/pages/LeadsDemoPage";
 import { BotsDemoPage } from "@/pages/BotsDemoPage";
+import { BotTemplateGallery } from "@/components/bots/BotTemplateGallery";
 import { FlowBuilderPage } from "@/pages/FlowBuilderPage";
 import { AutomationsPage } from "@/pages/AutomationsPage";
 import { AgentePage } from "@/pages/AgentePage";
@@ -701,6 +702,24 @@ export default function App() {
     return (
       <ThemeProvider>
         <BotsDemoPage />
+      </ThemeProvider>
+    );
+  }
+
+  // Auth-free preview of the premium template gallery ("Crear un bot"). DEV only.
+  if (
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    window.location.pathname === "/plantillas-demo"
+  ) {
+    return (
+      <ThemeProvider>
+        <div style={{ height: "100vh", background: "var(--bg-0)" }}>
+          <BotTemplateGallery
+            onPick={(b) => console.log("[plantillas-demo] pick", b.name)}
+            onBack={() => window.history.back()}
+          />
+        </div>
       </ThemeProvider>
     );
   }

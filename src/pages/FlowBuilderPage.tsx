@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import { FlowBuilder } from "@/components/bots/FlowBuilder";
-import { type Bot, BOT_TEMPLATES } from "@/lib/botFlow";
+import { BotTemplateGallery } from "@/components/bots/BotTemplateGallery";
+import { type Bot } from "@/lib/botFlow";
 import * as Icon from "@/components/vox/primitives";
 import { PageHeader } from "@/components/vox/PageHeader";
 import { FLOW_ICONS } from "@/components/bots/icons";
@@ -147,72 +148,16 @@ export function FlowBuilderPage() {
     );
   }
 
-  // ── Template picker ──
+  // ── Template picker (premium Kommo-style gallery) ──
   if (picking) {
     return (
-      <div className="view" style={{ maxWidth: 1100 }}>
-        <PageHeader
-          crumb="Automatización · Nuevo bot"
-          title="Elegí un punto de partida"
-          sub="Empezá con una plantilla lista o desde cero — todo es editable después."
-          actions={
-            <button className="btn" onClick={() => setPicking(false)}>
-              ← Volver
-            </button>
-          }
-        />
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-            gap: 14,
-          }}
-        >
-          {BOT_TEMPLATES.map((t) => {
-            const Icn = FLOW_ICONS[t.icon] || FLOW_ICONS.message;
-            return (
-              <button
-                key={t.id}
-                onClick={() => {
-                  setPicking(false);
-                  setCurrent(t.build());
-                }}
-                className="card"
-                style={{
-                  textAlign: "left",
-                  padding: 18,
-                  cursor: "pointer",
-                  border: "1px solid var(--border-1)",
-                  background: `linear-gradient(160deg, ${t.accent}10, var(--bg-1) 60%)`,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                  transition: "border-color .15s, transform .15s",
-                }}
-              >
-                <span
-                  style={{
-                    display: "grid",
-                    placeItems: "center",
-                    width: 40,
-                    height: 40,
-                    borderRadius: 11,
-                    background: `linear-gradient(150deg, ${t.accent}, ${t.accent}b0)`,
-                    color: "#fff",
-                    boxShadow: `0 4px 12px ${t.accent}55`,
-                  }}
-                >
-                  <Icn size={20} />
-                </span>
-                <div style={{ fontWeight: 700, fontSize: 14.5 }}>{t.name}</div>
-                <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
-                  {t.description}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <BotTemplateGallery
+        onBack={() => setPicking(false)}
+        onPick={(bot) => {
+          setPicking(false);
+          setCurrent(bot);
+        }}
+      />
     );
   }
 

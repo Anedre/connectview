@@ -14,6 +14,10 @@ import {
   CircleStop,
   Bot,
   Plus,
+  CalendarDays,
+  PhoneCall,
+  Star,
+  Gift,
   type LucideIcon,
 } from "lucide-react";
 
@@ -39,6 +43,10 @@ export const FLOW_ICONS: Record<string, LucideIcon> = {
   stop: CircleStop,
   bot: Bot,
   plus: Plus,
+  calendar: CalendarDays,
+  phone: PhoneCall,
+  star: Star,
+  gift: Gift,
 };
 
 export function flowIcon(key: string): LucideIcon {

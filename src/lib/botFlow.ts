@@ -622,6 +622,54 @@ export function defaultBot(): Bot {
  * (botId "" so saving creates a new one). Surfaced in the "Nuevo bot"
  * picker so users start from a real flow, not a blank canvas.
  */
+/** Channels a template can run on — drives the badge in the card preview and
+ * the channel filter in the gallery (Kommo-style). */
+export type BotChannel =
+  | "whatsapp"
+  | "instagram"
+  | "telegram"
+  | "messenger"
+  | "tiktok"
+  | "email"
+  | "webchat";
+export interface ChannelDef {
+  id: BotChannel;
+  label: string;
+  color: string;
+}
+export const BOT_CHANNELS: ChannelDef[] = [
+  { id: "whatsapp", label: "WhatsApp", color: "#25D366" },
+  { id: "instagram", label: "Instagram", color: "#E1306C" },
+  { id: "telegram", label: "Telegram", color: "#229ED9" },
+  { id: "messenger", label: "Messenger", color: "#0084FF" },
+  { id: "tiktok", label: "TikTok", color: "#111111" },
+  { id: "email", label: "Correo", color: "#6B7A99" },
+  { id: "webchat", label: "Chat en vivo", color: "#22B8D9" },
+];
+
+/** Catalog categories — the tabs across the top of the gallery. */
+export type BotCategory = "leads" | "comercial" | "cultivar" | "trabajo";
+export interface CategoryDef {
+  id: BotCategory;
+  label: string;
+}
+export const BOT_CATEGORIES: CategoryDef[] = [
+  { id: "leads", label: "Generar leads" },
+  { id: "comercial", label: "Información comercial" },
+  { id: "cultivar", label: "Cultivar leads" },
+  { id: "trabajo", label: "Reducir trabajo" },
+];
+
+/** Short chat-mockup shown on a template card — the "imagen alusiva". */
+export interface TemplatePreview {
+  /** Bot's opening line, shown in the chat bubble. */
+  bubble: string;
+  /** Optional user reply chip. */
+  reply?: string;
+  /** Big decorative emoji. */
+  emoji?: string;
+}
+
 export interface BotTemplate {
   id: string;
   name: string;
@@ -629,6 +677,12 @@ export interface BotTemplate {
   /** lucide icon key handled in the picker. */
   icon: string;
   accent: string;
+  /** Catalog tab. Omit for the always-first "blank" entry. */
+  category?: BotCategory;
+  /** Channels this template targets — first one drives the card badge. */
+  channels?: BotChannel[];
+  /** Card chat-mockup. */
+  preview?: TemplatePreview;
   build: () => Bot;
 }
 
@@ -661,6 +715,9 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     description: "Saluda y ofrece opciones (Pregrado / Posgrado / Asesor).",
     icon: "message",
     accent: "#22B8D9",
+    category: "comercial",
+    channels: ["whatsapp"],
+    preview: { bubble: "¡Hola! 👋 Soy el asistente. ¿En qué te puedo ayudar?", reply: "Pregrado", emoji: "👋" },
     build: () => defaultBot(),
   },
   {
@@ -669,6 +726,9 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     description: "Pide nombre, interés y presupuesto, y deriva a un asesor.",
     icon: "help",
     accent: "#8B7EE8",
+    category: "leads",
+    channels: ["whatsapp", "instagram"],
+    preview: { bubble: "Para ayudarte mejor, ¿cuál es tu nombre completo?", reply: "María 😊", emoji: "📝" },
     build: () => ({
       botId: "",
       name: "Calificación de lead",
@@ -697,6 +757,9 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     description: "Menú tipo lista de WhatsApp con respuestas automáticas.",
     icon: "list",
     accent: "#17A2B8",
+    category: "trabajo",
+    channels: ["whatsapp", "webchat"],
+    preview: { bubble: "Elegí un tema y te respondo al instante:", reply: "Pagos y becas", emoji: "💡" },
     build: () => ({
       botId: "",
       name: "Preguntas frecuentes",
@@ -743,6 +806,9 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     description: "Una IA conduce la conversación y deriva si hace falta.",
     icon: "bot",
     accent: "#9B6DFF",
+    category: "comercial",
+    channels: ["whatsapp", "instagram", "messenger"],
+    preview: { bubble: "Soy tu asesor con IA, disponible 24/7 🤖", reply: "¿Cuánto cuesta?", emoji: "🤖" },
     build: () => ({
       botId: "",
       name: "Agente IA · admisión",
@@ -780,6 +846,9 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     description: "Plantilla de seguimiento para leads inactivos + espera.",
     icon: "clock",
     accent: "#E0A23B",
+    category: "cultivar",
+    channels: ["whatsapp"],
+    preview: { bubble: "¿Seguís interesado? Estoy para ayudarte 😊", reply: "Sí, cuéntame", emoji: "🔔" },
     build: () => ({
       botId: "",
       name: "Reactivación de lead",
@@ -806,6 +875,128 @@ export const BOT_TEMPLATES: BotTemplate[] = [
         { id: "e3", source: "msg1", sourceHandle: "b:si", target: "hand1" },
         { id: "e4", source: "msg1", sourceHandle: "b:no", target: "s2" },
         { id: "e5", source: "hand1", sourceHandle: "out", target: "s1" },
+      ],
+    }),
+  },
+  {
+    id: "citas",
+    name: "Reserva de citas",
+    description: "Agenda citas automáticamente y deriva el horario a tu equipo.",
+    icon: "calendar",
+    accent: "#E0A23B",
+    category: "leads",
+    channels: ["whatsapp"],
+    preview: { bubble: "¡Hola! 👋 ¿Querés agendar una cita con nosotros?", reply: "Sí, agendar ✅", emoji: "📅" },
+    build: () => ({
+      botId: "",
+      name: "Reserva de citas",
+      status: "draft",
+      trigger: "Mensaje entrante (WhatsApp)",
+      nodes: [
+        blankStart(),
+        { id: "m1", kind: "message", position: { x: 240, y: 120 }, data: { text: "¡Hola! 👋 ¿Querés agendar una cita con nosotros?", buttons: [{ id: "si", label: "Sí, agendar", type: "reply" }, { id: "no", label: "Ahora no", type: "reply" }] } },
+        { id: "q1", kind: "question", position: { x: -40, y: 360 }, data: { prompt: "¿Qué día y horario te queda mejor?", saveAs: "horario", validate: "ninguna" } },
+        { id: "h1", kind: "handoff", position: { x: -40, y: 560 }, data: { queue: "Agenda", priority: "normal", assignTo: "", note: "Quiere cita: {{horario}}" } },
+        { id: "s1", kind: "stop", position: { x: -40, y: 740 }, data: {} },
+        { id: "s2", kind: "stop", position: { x: 480, y: 360 }, data: {} },
+      ],
+      edges: [
+        { id: "e0", source: "start", sourceHandle: "out", target: "m1" },
+        { id: "e1", source: "m1", sourceHandle: "b:si", target: "q1" },
+        { id: "e2", source: "m1", sourceHandle: "b:no", target: "s2" },
+        { id: "e3", source: "q1", sourceHandle: "out", target: "h1" },
+        { id: "e4", source: "h1", sourceHandle: "out", target: "s1" },
+      ],
+    }),
+  },
+  {
+    id: "telefono",
+    name: "Te llamamos",
+    description: "Captura el teléfono de leads que quieren que los llames.",
+    icon: "phone",
+    accent: "#10B981",
+    category: "leads",
+    channels: ["instagram", "tiktok"],
+    preview: { bubble: "Dejá tu número y un asesor te llama 📞", reply: "+51 9...", emoji: "📞" },
+    build: () => ({
+      botId: "",
+      name: "Te llamamos",
+      status: "draft",
+      trigger: "Mensaje entrante (WhatsApp)",
+      nodes: [
+        blankStart(),
+        { id: "m1", kind: "message", position: { x: 240, y: 120 }, data: { text: "¡Te llamamos! 📞 Dejanos tu número y un asesor se comunica con vos.", buttons: [] } },
+        { id: "q1", kind: "question", position: { x: 240, y: 300 }, data: { prompt: "¿A qué número te llamamos?", saveAs: "telefono", validate: "teléfono" } },
+        { id: "set1", kind: "set_field", position: { x: 240, y: 480 }, data: { field: "telefono", value: "{{telefono}}" } },
+        { id: "h1", kind: "handoff", position: { x: 240, y: 620 }, data: { queue: "Ventas", priority: "alta", assignTo: "", note: "Pidió llamada al {{telefono}}" } },
+        { id: "s1", kind: "stop", position: { x: 240, y: 800 }, data: {} },
+      ],
+      edges: [
+        { id: "e0", source: "start", sourceHandle: "out", target: "m1" },
+        { id: "e1", source: "m1", sourceHandle: "out", target: "q1" },
+        { id: "e2", source: "q1", sourceHandle: "out", target: "set1" },
+        { id: "e3", source: "set1", sourceHandle: "out", target: "h1" },
+        { id: "e4", source: "h1", sourceHandle: "out", target: "s1" },
+      ],
+    }),
+  },
+  {
+    id: "nps",
+    name: "Encuesta NPS",
+    description: "Mide la satisfacción del 1 al 10 y ramifica según el puntaje.",
+    icon: "star",
+    accent: "#8B7EE8",
+    category: "trabajo",
+    channels: ["whatsapp"],
+    preview: { bubble: "Del 1 al 10, ¿qué tan probable es que nos recomiendes? 🌟", reply: "9 🌟", emoji: "⭐" },
+    build: () => ({
+      botId: "",
+      name: "Encuesta NPS",
+      status: "draft",
+      trigger: "Mensaje entrante (WhatsApp)",
+      nodes: [
+        blankStart(),
+        { id: "q1", kind: "question", position: { x: 240, y: 120 }, data: { prompt: "Del 1 al 10, ¿qué tan probable es que nos recomiendes? 🌟", saveAs: "nps", validate: "número" } },
+        { id: "c1", kind: "condition", position: { x: 240, y: 320 }, data: { variable: "nps", op: "gt", value: "8" } },
+        { id: "mok", kind: "message", position: { x: -40, y: 520 }, data: { text: "¡Gracias! 🙌 Nos alegra que tengas una buena experiencia.", buttons: [] } },
+        { id: "mlow", kind: "question", position: { x: 480, y: 520 }, data: { prompt: "Gracias por tu honestidad. ¿Qué podríamos mejorar?", saveAs: "feedback", validate: "ninguna" } },
+        { id: "s1", kind: "stop", position: { x: -40, y: 700 }, data: {} },
+        { id: "s2", kind: "stop", position: { x: 480, y: 720 }, data: {} },
+      ],
+      edges: [
+        { id: "e0", source: "start", sourceHandle: "out", target: "q1" },
+        { id: "e1", source: "q1", sourceHandle: "out", target: "c1" },
+        { id: "e2", source: "c1", sourceHandle: "true", target: "mok" },
+        { id: "e3", source: "c1", sourceHandle: "false", target: "mlow" },
+        { id: "e4", source: "mok", sourceHandle: "out", target: "s1" },
+        { id: "e5", source: "mlow", sourceHandle: "out", target: "s2" },
+      ],
+    }),
+  },
+  {
+    id: "descuento",
+    name: "Código de descuento",
+    description: "Recompensá a tus seguidores con un código por palabra clave.",
+    icon: "gift",
+    accent: "#EC4899",
+    category: "cultivar",
+    channels: ["instagram"],
+    preview: { bubble: "¡Gracias por seguirnos! 🎁 Tu código: DESC20", reply: "¡Genial!", emoji: "🎁" },
+    build: () => ({
+      botId: "",
+      name: "Código de descuento",
+      status: "draft",
+      trigger: "Palabra clave",
+      nodes: [
+        { id: "start", kind: "start", position: { x: 260, y: 0 }, data: { trigger: "Palabra clave" } },
+        { id: "m1", kind: "message", position: { x: 240, y: 130 }, data: { text: "¡Gracias por seguirnos! 🎁 Acá tenés tu código: DESC20 — 20% off en tu primera compra.", buttons: [{ id: "comprar", label: "Quiero comprar", type: "reply" }] } },
+        { id: "h1", kind: "handoff", position: { x: 240, y: 360 }, data: { queue: "Ventas", priority: "normal", assignTo: "", note: "Usó el código DESC20." } },
+        { id: "s1", kind: "stop", position: { x: 240, y: 560 }, data: {} },
+      ],
+      edges: [
+        { id: "e0", source: "start", sourceHandle: "out", target: "m1" },
+        { id: "e1", source: "m1", sourceHandle: "b:comprar", target: "h1" },
+        { id: "e2", source: "h1", sourceHandle: "out", target: "s1" },
       ],
     }),
   },
