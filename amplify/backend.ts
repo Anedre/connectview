@@ -30,6 +30,15 @@ const REGION = "us-east-1";
 const CONTACTS_TABLE_NAME = "connectview-contacts";
 const CUSTOMER_PROFILES_DOMAIN = "amazon-connect-novasys";
 
+// Config de save-agent-notes (follow-up tasks + hook de automatizaciones).
+// Estaban seteadas por CLI → el próximo `ampx` deploy las borraba (drift). Ahora
+// viven acá para que persistan. (El secreto VOX_INTERNAL_SECRET NO va acá — ver
+// nota abajo en el bloque de notesLambda.)
+const FOLLOWUP_FLOW_ID = "29bb28ad-0419-40d4-97db-332f2c8d50c7";
+const FOLLOWUP_QUEUE_ID = "9ff3b0a1-90aa-4d2a-8029-c4526a22adc8";
+const AUTOMATION_ENGINE_URL =
+  "https://qs6iucpkdm2uashflmlrfvxnha0isdzz.lambda-url.us-east-1.on.aws/";
+
 const backend = defineBackend({
   auth,
   getRealtimeMetrics,
@@ -285,6 +294,16 @@ asFunction(notesLambda).addEnvironment(
   "CONTACTS_TABLE_NAME",
   CONTACTS_TABLE_NAME
 );
+// Config que estaba seteada por CLI (drift en ampx). Ahora persiste vía backend.ts.
+asFunction(notesLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
+asFunction(notesLambda).addEnvironment("FOLLOWUP_FLOW_ID", FOLLOWUP_FLOW_ID);
+asFunction(notesLambda).addEnvironment("FOLLOWUP_QUEUE_ID", FOLLOWUP_QUEUE_ID);
+asFunction(notesLambda).addEnvironment("AUTOMATION_ENGINE_URL", AUTOMATION_ENGINE_URL);
+// NOTA: VOX_INTERNAL_SECRET (lo usa fireAutomation para disparar #15 desde el
+// wrap-up) NO se setea acá a propósito — es un SECRETO. Setealo como secret de
+// Amplify (`npx ampx sandbox secret set VOX_INTERNAL_SECRET`) o por CLI tras el
+// deploy. Sin él, el wrap-up guarda igual pero las automatizaciones no se
+// disparan desde save-agent-notes (degrada sin romper).
 
 // ---- generate-call-summary (Bedrock + Contact Lens) ----
 const summaryLambda = backend.generateCallSummary.resources.lambda;
