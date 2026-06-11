@@ -174,6 +174,7 @@ function FlowBuilderInner({
   const [showIssues, setShowIssues] = useState(false);
   const [testing, setTesting] = useState(!!autoTest);
   const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
+  const [isDropping, setIsDropping] = useState(false);
 
   // Approved WhatsApp templates — powers the "Plantilla" node's configurator.
   useEffect(() => {
@@ -228,12 +229,14 @@ function FlowBuilderInner({
   const issues = useMemo(() => validateBot(currentBot), [currentBot]);
 
   const addNode = useCallback(
-    (kind: NodeKind) => {
-      // Posición: a la derecha del nodo seleccionado (flujo L→R); sin selección,
-      // al centro del viewport.
-      const sel = selectedId ? nodes.find((n) => n.id === selectedId) : null;
+    (kind: NodeKind, dropPos?: { x: number; y: number }) => {
+      // Soltar (arrastrar desde la paleta) = posición exacta del cursor, sin
+      // autoconexión. Click = a la derecha del nodo seleccionado y autoconecta.
+      const sel = !dropPos && selectedId ? nodes.find((n) => n.id === selectedId) : null;
       let pos: { x: number; y: number };
-      if (sel) {
+      if (dropPos) {
+        pos = dropPos;
+      } else if (sel) {
         pos = { x: sel.position.x + COL_GAP, y: sel.position.y };
       } else {
         const rect = wrapperRef.current?.getBoundingClientRect();
@@ -266,6 +269,25 @@ function FlowBuilderInner({
     setNodes((nds) => layoutLR(nds, edges));
     window.setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 60);
   }, [setNodes, edges, fitView]);
+
+  // ── Arrastrar pasos desde la paleta al lienzo (HTML5 drag-and-drop) ──
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDropping(false);
+      const kind = e.dataTransfer.getData("application/aira-node") as NodeKind;
+      if (!kind || !NODE_KINDS[kind]) return;
+      // Convierte el punto del cursor a coordenadas del lienzo (respeta zoom/pan)
+      // y centra el nodo (~234px de ancho) bajo el puntero.
+      const p = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      addNode(kind, { x: p.x - 117, y: p.y - 20 });
+    },
+    [screenToFlowPosition, addNode]
+  );
 
   const updateNodeData = useCallback(
     (id: string, patch: Record<string, unknown>) => {
@@ -381,7 +403,17 @@ function FlowBuilderInner({
         <div ref={wrapperRef} style={{ flex: 1, position: "relative", minWidth: 0 }}>
           {/* Absolute-fill so react-flow always measures a concrete size
               (avoids the #004 "needs width and height" warning under flex). */}
-          <div style={{ position: "absolute", inset: 0 }}>
+          <div
+            style={{ position: "absolute", inset: 0 }}
+            className={isDropping ? "fb-canvas--drop" : undefined}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            onDragEnter={() => setIsDropping(true)}
+            onDragLeave={(e) => {
+              // Solo apaga el resaltado al salir del lienzo (no al pasar sobre hijos).
+              if (!e.currentTarget.contains(e.relatedTarget as HTMLElement)) setIsDropping(false);
+            }}
+          >
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -453,7 +485,17 @@ function Palette({ onAdd }: { onAdd: (kind: NodeKind) => void }) {
             {items.map((def) => {
               const Icn = FLOW_ICONS[def.icon] || FLOW_ICONS.message;
               return (
-                <button key={def.kind} onClick={() => onAdd(def.kind)} title={def.blurb} className="fb-pal__item">
+                <button
+                  key={def.kind}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("application/aira-node", def.kind);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onClick={() => onAdd(def.kind)}
+                  title={`${def.blurb} — clic para agregar o arrastrá al lienzo`}
+                  className="fb-pal__item"
+                >
                   <span className="fb-pal__icon" style={{ background: `${def.accent}1a`, color: def.accent }}>
                     <Icn size={14} strokeWidth={2.2} />
                   </span>
