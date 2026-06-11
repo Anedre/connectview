@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import { StageColumn, type Lead } from "@/pages/LeadsPage";
+import { StageColumn, stageColor, type Lead } from "@/pages/LeadsPage";
 import { PipelineSummary, type PipelineStageStat } from "@/components/leads/PipelineSummary";
 
 /**
@@ -10,13 +10,19 @@ import { PipelineSummary, type PipelineStageStat } from "@/components/leads/Pipe
  * visual sin login (la página real está tras Cognito).
  */
 
-const STAGES: { id: string; label: string; color: string }[] = [
-  { id: "nuevo", label: "Nuevo", color: "var(--accent-cyan)" },
-  { id: "contactado", label: "Contactado", color: "var(--accent-amber)" },
-  { id: "interesado", label: "Interesado", color: "var(--accent-green)" },
-  { id: "negociando", label: "Negociando", color: "var(--accent-violet)" },
-  { id: "cerrado", label: "Cerrado", color: "var(--accent-pink)" },
+// Mock de una taxonomía con VARIAS etapas — el color sale de stageColor(i)
+// (paleta por posición), igual que en la página real, para mostrar que cada
+// etapa tiene su propio color por más etapas que cree el usuario.
+const STAGE_DEFS: { id: string; label: string }[] = [
+  { id: "nuevo", label: "Nuevo" },
+  { id: "calificacion", label: "Calificación" },
+  { id: "contactado", label: "Contactado" },
+  { id: "interesado", label: "Interesado" },
+  { id: "propuesta", label: "Propuesta" },
+  { id: "negociando", label: "Negociando" },
+  { id: "cerrado", label: "Cerrado" },
 ];
+const STAGES = STAGE_DEFS.map((s, i) => ({ ...s, color: stageColor(i) }));
 
 const now = Date.now();
 const ago = (h: number) => new Date(now - h * 3600000).toISOString();
@@ -24,10 +30,10 @@ const ago = (h: number) => new Date(now - h * 3600000).toISOString();
 const LEADS: Lead[] = [
   { leadId: "1", name: "María Quispe", phone: "+51 987 654 321", company: "Bodega Alata", email: "maria@alata.pe", stageId: "nuevo", source: "web_form", montoEstimado: 1200, updatedAt: ago(2), createdAt: ago(2) },
   { leadId: "2", name: "Carlos Mendoza", phone: "+51 911 222 333", company: "Ferretería Sur", stageId: "nuevo", source: "campaign", montoEstimado: 800, updatedAt: ago(20), createdAt: ago(20) },
-  { leadId: "3", name: "Lucía Ramos", phone: "+51 955 888 777", company: "Clínica Dental Norte", email: "lucia@dentalnorte.pe", stageId: "contactado", source: "whatsapp", montoEstimado: 4500, updatedAt: ago(5), createdAt: ago(48), sfLeadId: "00Q1" },
+  { leadId: "3", name: "Lucía Ramos", phone: "+51 955 888 777", company: "Clínica Dental Norte", email: "lucia@dentalnorte.pe", stageId: "calificacion", source: "whatsapp", montoEstimado: 4500, updatedAt: ago(5), createdAt: ago(48), sfLeadId: "00Q1" },
   { leadId: "4", name: "Jorge Salas", phone: "+51 933 444 555", stageId: "contactado", source: "manual", updatedAt: ago(190), createdAt: ago(200) },
   { leadId: "5", name: "Andrea Flores", phone: "+51 944 111 999", company: "Distribuidora ABC", email: "andrea@abc.pe", stageId: "interesado", source: "salesforce", montoEstimado: 12000, updatedAt: ago(8), createdAt: ago(72), sfLeadId: "00Q2" },
-  { leadId: "6", name: "Pedro Vega", phone: "+51 922 333 111", company: "Transportes Vega", stageId: "interesado", source: "web_form", montoEstimado: 7800, updatedAt: ago(30), createdAt: ago(120) },
+  { leadId: "6", name: "Pedro Vega", phone: "+51 922 333 111", company: "Transportes Vega", stageId: "propuesta", source: "web_form", montoEstimado: 7800, updatedAt: ago(30), createdAt: ago(120) },
   { leadId: "7", name: "Sofía Núñez", phone: "+51 988 777 666", company: "Estudio Núñez", email: "sofia@nunez.pe", stageId: "negociando", source: "whatsapp", montoEstimado: 25000, updatedAt: ago(3), createdAt: ago(96), sfLeadId: "00Q3" },
   { leadId: "8", name: "Diego Torres", phone: "+51 977 555 444", company: "Importadora Torres", stageId: "cerrado", source: "campaign", montoEstimado: 18000, updatedAt: ago(12), createdAt: ago(240), sfLeadId: "00Q4" },
 ];

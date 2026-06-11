@@ -11,7 +11,7 @@ import { useCan } from "@/hooks/usePermissions";
 import { useCCP } from "@/hooks/useCCP";
 import { useConnections } from "@/hooks/useConnections";
 import { NotIntegrated } from "@/components/vox/NotIntegrated";
-import { VALORACION_META, type Valoracion } from "@/lib/dispositions";
+import { type Valoracion } from "@/lib/dispositions";
 import * as Icon from "@/components/vox/primitives";
 import { PageHeader } from "@/components/vox/PageHeader";
 import { PipelineSummary } from "@/components/leads/PipelineSummary";
@@ -53,14 +53,22 @@ const SOURCE_LABEL: Record<string, string> = {
   manual: "Manual",
 };
 
-const TONE_COLOR: Record<string, string> = {
-  "chip--green": "var(--accent-green)",
-  "chip--cyan": "var(--accent-cyan)",
-  "chip--amber": "var(--accent-amber)",
-  "chip--red": "var(--accent-red)",
-  "chip--violet": "var(--accent-violet)",
-  "chip--pink": "var(--accent-pink)",
-};
+/**
+ * Paleta de color de etapa. El usuario controla CUÁNTAS etapas tiene su
+ * taxonomía, así que el color NO se deriva de la valoración (un set chico →
+ * columnas con colores repetidos) sino de la POSICIÓN de la etapa en el embudo:
+ * un color distinto por columna, estilo Kommo. Hex (no tokens) para tener una
+ * paleta amplia y para que el tinte `${color}22` funcione; son acentos vívidos
+ * que lucen bien tanto en tema claro como oscuro. Cicla si hay >14 etapas.
+ */
+const STAGE_PALETTE = [
+  "#38BDF8", "#6366F1", "#A855F7", "#EC4899", "#F59E0B", "#F97316", "#10B981",
+  "#14B8A6", "#84CC16", "#EAB308", "#EF4444", "#F43F5E", "#06B6D4", "#8B5CF6",
+];
+export function stageColor(index: number): string {
+  const n = STAGE_PALETTE.length;
+  return STAGE_PALETTE[((index % n) + n) % n];
+}
 
 const DND_LEAD = "lead";
 
@@ -1097,10 +1105,10 @@ export function LeadsPage() {
 
   // Etapa → label + color (for the table view chips).
   const stageMeta = (stageId?: string): { label: string; color: string } => {
-    const st = tree.find((s) => s.id === stageId) || tree.find((s) => s.id === firstStage);
+    const idx = tree.findIndex((s) => s.id === stageId);
+    const st = idx >= 0 ? tree[idx] : tree.find((s) => s.id === firstStage);
     if (!st) return { label: "—", color: "var(--text-3)" };
-    const tone = VALORACION_META[st.valoracion];
-    return { label: st.label, color: TONE_COLOR[tone.chip] || "var(--accent-cyan)" };
+    return { label: st.label, color: stageColor(idx >= 0 ? idx : 0) };
   };
 
   // Flat, filtered, sorted list for the raw-data table view (newest first).
@@ -1137,13 +1145,12 @@ export function LeadsPage() {
   // Stats por etapa para la franja de resumen del embudo (PipelineSummary).
   const pipelineStages = useMemo(
     () =>
-      tree.map((s) => {
+      tree.map((s, i) => {
         const items = byStage.get(s.id) || [];
-        const tone = VALORACION_META[s.valoracion];
         return {
           id: s.id,
           label: s.label,
-          color: TONE_COLOR[tone.chip] || "var(--accent-cyan)",
+          color: stageColor(i),
           count: items.length,
           value: items.reduce((a, l) => a + (l.montoEstimado || 0), 0),
         };
@@ -1464,8 +1471,7 @@ export function LeadsPage() {
               ))
             : tree.map((stage, i) => {
             const items = byStage.get(stage.id) || [];
-            const tone = VALORACION_META[stage.valoracion];
-            const color = TONE_COLOR[tone.chip] || "var(--accent-cyan)";
+            const color = stageColor(i);
             const colValue = items.reduce((a, l) => a + (l.montoEstimado || 0), 0);
             const prob = stageProbability(stage.valoracion, i, tree.length);
             const weighted = colValue * prob;
