@@ -127,6 +127,10 @@ export const handler: Handler = async (event: any) => {
         wrapUpCode,
         summary,
         agentUsername,
+        // #21 Auto-resumen: el front manda solo el resumen (sin tipificación)
+        // cuando el agente sale del wrap-up sin enviar. Cambia el modo de
+        // escritura a UpdateItem para no pisar una gestión previa.
+        summaryOnly,
         // Wrap-up disposition tree
         stage,
         stageLabel,
@@ -148,6 +152,70 @@ export const handler: Handler = async (event: any) => {
           statusCode: 400,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ error: "contactId required" }),
+        };
+      }
+
+      // #21 Auto-resumen post-conversación. Cuando el agente sale del wrap-up
+      // SIN enviar (cierra sin tipificar, o un contacto nuevo desplaza la
+      // pantalla), el front manda solo el resumen ya generado. Usamos
+      // UpdateItem (NO PutItem) para setear únicamente `summary` sin pisar una
+      // tipificación previa de la misma fila, y anexamos al historial. No crea
+      // tareas de follow-up ni dispara automatizaciones (#15).
+      if (summaryOnly) {
+        const now = new Date().toISOString();
+        const names: Record<string, string> = {
+          "#summary": "summary",
+          "#updatedAt": "updatedAt",
+        };
+        const setParts = ["#summary = :s", "#updatedAt = :u"];
+        const vals: Record<string, unknown> = { ":s": summary ?? "", ":u": now };
+        if (agentUsername !== undefined) {
+          names["#agentUsername"] = "agentUsername";
+          setParts.push("#agentUsername = :a");
+          vals[":a"] = agentUsername;
+        }
+        if (channel !== undefined) {
+          names["#channel"] = "channel";
+          setParts.push("#channel = :c");
+          vals[":c"] = channel;
+        }
+        await dynamo.send(
+          new UpdateItemCommand({
+            TableName: TABLE_NAME,
+            Key: { contactId: { S: contactId } },
+            UpdateExpression: "SET " + setParts.join(", "),
+            ExpressionAttributeNames: names,
+            ExpressionAttributeValues: marshall(vals, {
+              removeUndefinedValues: true,
+            }),
+          })
+        );
+        // Fila de historial (best-effort), marcada auto:true para que la
+        // auditoría distinga el resumen automático de un guardado manual.
+        try {
+          await dynamo.send(
+            new PutItemCommand({
+              TableName: HISTORY_TABLE,
+              Item: marshall(
+                {
+                  contactId,
+                  savedAt: now,
+                  agentUsername: agentUsername || "",
+                  summary: summary ?? "",
+                  channel,
+                  auto: true,
+                },
+                { removeUndefinedValues: true }
+              ),
+            })
+          );
+        } catch (err) {
+          console.warn("auto-summary history write failed:", err);
+        }
+        return {
+          statusCode: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ success: true, contactId, summaryOnly: true }),
         };
       }
 

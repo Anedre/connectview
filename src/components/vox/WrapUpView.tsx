@@ -73,6 +73,27 @@ function confidenceColor(c: number): string {
   return "var(--accent-red)";
 }
 
+// #21 Auto-resumen: textos de relleno que NO son un resumen real. Si el
+// `summary` quedó en uno de estos (backend caído / sin transcript / Bedrock
+// sin suscripción), no lo persistimos al salir del wrap-up.
+const SUMMARY_UNAVAILABLE =
+  "El resumen automático no está disponible para este contacto. Puedes redactarlo manualmente.";
+const SUMMARY_NOT_READY =
+  "El resumen no está disponible aún. Intenta regenerar en unos segundos.";
+const SUMMARY_FAILED =
+  "No se pudo generar el resumen automático. Puedes redactarlo manualmente o reintentar.";
+const SUMMARY_PLACEHOLDERS = [
+  SUMMARY_UNAVAILABLE,
+  SUMMARY_NOT_READY,
+  SUMMARY_FAILED,
+];
+
+/** True si `s` es un resumen real (no vacío y no un texto de relleno). */
+function isRealSummary(s: string): boolean {
+  const t = (s || "").trim();
+  return t.length > 0 && !SUMMARY_PLACEHOLDERS.includes(t);
+}
+
 interface WrapUpViewProps {
   contactId: string;
   customerPhone: string | null;
@@ -168,6 +189,44 @@ export function WrapUpView({
   });
   const [saving, setSaving] = useState(false);
 
+  // #21 Auto-resumen post-conversación. Si el agente se va del wrap-up SIN
+  // presionar "Enviar resumen" (cierra sin tipificar, o un contacto nuevo
+  // desplaza la pantalla), persistimos el resumen ya generado para que
+  // aparezca en el historial del cliente sin que el agente lo pida. Refs
+  // porque el cleanup de desmontaje lee el último valor, no el del 1er render.
+  const sentRef = useRef(false); // true tras un "Enviar resumen" exitoso
+  const autoSavedRef = useRef(false); // evita doble POST (StrictMode/dev)
+  const autoSaveRef = useRef({ summary: "", agentUsername: "" });
+  autoSaveRef.current = { summary, agentUsername: user?.username || "" };
+  useEffect(() => {
+    // Solo corre al desmontar. Persiste el resumen una vez, best-effort.
+    return () => {
+      if (sentRef.current || autoSavedRef.current) return;
+      const { summary: s, agentUsername: au } = autoSaveRef.current;
+      if (!isRealSummary(s)) return; // vacío/placeholder → no guardar
+      const endpoints = getApiEndpoints();
+      if (!endpoints?.saveAgentNotes) return;
+      autoSavedRef.current = true;
+      // summaryOnly → el backend hace UpdateItem (no pisa tipificación previa).
+      // keepalive para que el POST sobreviva al desmontaje/navegación.
+      fetch(endpoints.saveAgentNotes, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+        body: JSON.stringify({
+          contactId,
+          summary: s,
+          agentUsername: au,
+          channel: channelKey,
+          summaryOnly: true,
+        }),
+      }).catch(() => {
+        /* best-effort — el auto-resumen no debe romper nada */
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const selectedStage: DispositionStage | null = useMemo(
     () => tree.find((s) => s.id === stageId) ?? null,
     [tree, stageId]
@@ -208,21 +267,14 @@ export function WrapUpView({
       });
       // Don't throw on non-2xx — just degrade to a friendly placeholder.
       if (!r.ok) {
-        setSummary(
-          "El resumen automático no está disponible para este contacto. Puedes redactarlo manualmente."
-        );
+        setSummary(SUMMARY_UNAVAILABLE);
         return;
       }
       const data = await r.json().catch(() => ({}));
-      const text =
-        data?.summary ||
-        data?.text ||
-        "El resumen no está disponible aún. Intenta regenerar en unos segundos.";
+      const text = data?.summary || data?.text || SUMMARY_NOT_READY;
       setSummary(text);
     } catch {
-      setSummary(
-        "No se pudo generar el resumen automático. Puedes redactarlo manualmente o reintentar."
-      );
+      setSummary(SUMMARY_FAILED);
     } finally {
       setSummaryLoading(false);
     }
@@ -411,6 +463,9 @@ export function WrapUpView({
         });
       }
 
+      // #21: el resumen ya quedó persistido por este envío — no re-guardar
+      // al desmontar.
+      sentRef.current = true;
       toast.success("Wrap-up enviado");
       // If the sub-stage commits to a follow-up, open the schedule
       // modal instead of finishing — the agent still needs to pick
