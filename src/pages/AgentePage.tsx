@@ -59,6 +59,71 @@ function blankAgent(): AgentCfg {
   };
 }
 
+/** Plantillas de arranque — prellenan persona, objetivo y herramientas. */
+interface AgentTemplate { id: string; label: string; desc: string; icon: React.ComponentType<{ size?: number }>; cfg: Partial<AgentCfg>; }
+const AGENT_TEMPLATES: AgentTemplate[] = [
+  {
+    id: "admision", label: "Asesor de admisión", desc: "Resuelve dudas de programas y agenda citas para postulantes.", icon: Icon.Sparkles,
+    cfg: {
+      name: "Asesor de admisión", model: MODELS[0],
+      instructions: "Sos un asesor de admisión cordial y conciso. Respondé en español, claro y al grano. Tuteá al postulante.",
+      objective: "Resolver dudas de admisión y agendar una cita con un asesor si hay interés.",
+      tools: ["book_appointment", "upsert_lead"], handoffWhen: "el postulante pide una persona o su caso es complejo", handoffQueue: "Admisión",
+    },
+  },
+  {
+    id: "soporte", label: "Soporte / Mesa de ayuda", desc: "Atiende consultas, busca al cliente y deriva lo complejo.", icon: Wrench,
+    cfg: {
+      name: "Soporte técnico", model: MODELS[1],
+      instructions: "Sos soporte técnico paciente. Pedí los datos concretos que necesitás y guiá paso a paso, sin tecnicismos.",
+      objective: "Resolver la consulta del cliente o derivar al equipo cuando excede lo básico.",
+      tools: ["lookup_customer"], handoffWhen: "el problema es técnico complejo o el cliente se frustra", handoffQueue: "Soporte",
+    },
+  },
+  {
+    id: "ventas", label: "Ventas / Calificación", desc: "Califica leads, responde precios y agenda demos.", icon: Icon.Users,
+    cfg: {
+      name: "Agente de ventas", model: MODELS[0],
+      instructions: "Sos un vendedor consultivo. Entendé la necesidad del cliente con preguntas antes de recomendar. No presiones.",
+      objective: "Calificar al lead (necesidad, presupuesto, plazo) y agendar una demo o pasarlo a ventas.",
+      tools: ["upsert_lead", "book_appointment"], handoffWhen: "el lead está listo para comprar o pide un humano", handoffQueue: "Ventas",
+    },
+  },
+  {
+    id: "recepcion", label: "Recepción y citas", desc: "Saluda, identifica al cliente y reserva turnos.", icon: Icon.Calendar,
+    cfg: {
+      name: "Recepción", model: MODELS[1],
+      instructions: "Sos la recepción del negocio, amable y eficiente. Saludá, identificá al cliente y ayudalo a reservar.",
+      objective: "Agendar una cita o turno para el cliente.",
+      tools: ["book_appointment", "lookup_customer"], handoffWhen: "el cliente pide algo distinto a agendar", handoffQueue: "Recepción",
+    },
+  },
+];
+function templateToAgent(t: AgentTemplate): AgentCfg { return { ...blankAgent(), ...t.cfg }; }
+
+/** Bases de "persona" para rellenar las instrucciones de un clic. */
+const PERSONAS: { label: string; text: string }[] = [
+  { label: "Cordial y conciso", text: "Sos un asesor cordial y conciso. Respondé en español, claro y al grano. Tuteá al cliente." },
+  { label: "Soporte paciente", text: "Sos soporte técnico paciente. Pedí los datos que necesitás y guiá paso a paso, sin tecnicismos innecesarios." },
+  { label: "Vendedor consultivo", text: "Sos un vendedor consultivo. Entendé la necesidad antes de ofrecer; no presiones." },
+  { label: "Recepción formal", text: "Sos la recepción de la empresa, con tono formal y amable. Tratá de «usted»." },
+];
+const MODEL_HINT: Record<string, string> = {
+  "Claude Sonnet 4.6 (Bedrock)": "Equilibrado: buen razonamiento a costo medio. Recomendado para la mayoría.",
+  "Claude Haiku 4.5 (Bedrock)": "El más rápido y económico. Ideal para FAQs y alto volumen.",
+  "Claude Opus 4.8 (Bedrock)": "El más capaz para tareas complejas; más lento y caro.",
+  "Amazon Q in Connect": "Responde con tu base de conocimiento de Amazon Q in Connect.",
+};
+/** Mensajes de prueba sugeridos según las herramientas activas del agente. */
+function testPrompts(a: AgentCfg): string[] {
+  const p = ["Hola, ¿en qué me pueden ayudar?"];
+  if (a.tools.includes("book_appointment")) p.push("Quiero agendar una cita");
+  if (a.tools.includes("upsert_lead")) p.push("Me interesa, ¿qué precios manejan?");
+  if (a.tools.includes("lookup_customer")) p.push("¿Tienen registrado mi número?");
+  p.push("Quiero hablar con una persona");
+  return p.slice(0, 4);
+}
+
 /** Agent config → a runnable 1-AI-node bot graph (manage-bot + bot-runtime). */
 function agentToBot(a: AgentCfg): Bot {
   return {
@@ -118,6 +183,7 @@ export function AgentePage() {
   const [list, setList] = useState<AgentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [current, setCurrent] = useState<AgentCfg | null>(null);
+  const [picking, setPicking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
   const [convs, setConvs] = useState<ConvData | null>(null);
@@ -192,6 +258,9 @@ export function AgentePage() {
   if (current) {
     return <AgentBuilder agent={current} saving={saving} onSave={save} onBack={() => { setCurrent(null); loadList(); }} />;
   }
+  if (picking) {
+    return <AgentPicker onPick={(a) => { setPicking(false); setCurrent(a); }} onBack={() => setPicking(false)} />;
+  }
 
   const kept = list.filter((b) => !q || (b.name || "").toLowerCase().includes(q.toLowerCase()));
   const active = list.filter((b) => b.status === "active").length;
@@ -208,14 +277,14 @@ export function AgentePage() {
         </div>
         <div className="row" style={{ gap: 8 }}>
           <button className="btn" onClick={loadList} disabled={loading}><Icon.Refresh size={14} /> Actualizar</button>
-          <button className="btn btn--primary" onClick={() => setCurrent(blankAgent())}><Icon.Sparkles size={14} /> Nuevo agente</button>
+          <button className="btn btn--primary" onClick={() => setPicking(true)}><Icon.Sparkles size={14} /> Nuevo agente</button>
         </div>
       </div>
 
       {loading ? (
         <div className="bots-grid">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skel" style={{ height: 176, borderRadius: 16 }} />)}</div>
       ) : list.length === 0 ? (
-        <AgentHero onCreate={() => setCurrent(blankAgent())} />
+        <AgentHero onCreate={() => setPicking(true)} />
       ) : (
         <>
           <div className="bots-kpis">
@@ -330,6 +399,54 @@ function AgentHero({ onCreate }: { onCreate: () => void }) {
   );
 }
 
+/* ── Starter-template picker ──────────────────────────────────────── */
+function AgentPicker({ onPick, onBack }: { onPick: (a: AgentCfg) => void; onBack: () => void }) {
+  return (
+    <div className="view" style={{ maxWidth: 1100 }}>
+      <div className="view__head">
+        <div>
+          <div className="view__crumb"><span>Inteligencia artificial · Nuevo agente</span></div>
+          <h1 className="view__title">Elegí un punto de partida</h1>
+          <div className="view__sub">Empezá con una plantilla lista (persona, objetivo y herramientas) o desde cero — todo es editable.</div>
+        </div>
+        <button className="btn" onClick={onBack}>← Volver</button>
+      </div>
+      <button className="ag-blank-card" onClick={() => onPick(blankAgent())}>
+        <span className="ag-blank-card__icon"><Icon.Plus size={18} /></span>
+        <div>
+          <div className="ag-blank-card__h">Comenzar desde cero</div>
+          <div className="ag-blank-card__d">Un agente vacío para configurar a tu gusto.</div>
+        </div>
+      </button>
+      <div className="bots-grid" style={{ marginTop: 14 }}>
+        {AGENT_TEMPLATES.map((t, i) => {
+          const Icn = t.icon;
+          return (
+            <button
+              key={t.id}
+              className="bot-card ag-card"
+              style={{ "--bot-accent": botColor(i), textAlign: "left", cursor: "pointer" } as React.CSSProperties}
+              onClick={() => onPick(templateToAgent(t))}
+            >
+              <div className="bot-card__top">
+                <span className="bot-card__icon ag-card__icon"><Icn size={17} /></span>
+              </div>
+              <div className="bot-card__name">{t.label}</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5, marginTop: 6 }}>{t.desc}</div>
+              <div className="bot-card__meta" style={{ marginTop: 11 }}>
+                {(t.cfg.tools || []).map((tk) => {
+                  const td = TOOLS.find((x) => x.key === tk);
+                  return td ? <span key={tk} className="bot-card__chip"><Icon.Tag size={12} /> {td.label}</span> : null;
+                })}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ── Builder: config (left) + live playground (right) ─────────────── */
 function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; saving: boolean; onSave: (a: AgentCfg) => void; onBack: () => void }) {
   const [a, setA] = useState<AgentCfg>(agent);
@@ -367,9 +484,15 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
           <Section title="Identidad" desc="Quién es el agente y cómo se comporta.">
             <label><span style={lbl}>Modelo</span>
               <select style={inp} value={a.model} onChange={(e) => set({ model: e.target.value })}>{MODELS.map((m) => <option key={m} value={m}>{m}</option>)}</select>
+              {MODEL_HINT[a.model] && <div className="ag-hint">{MODEL_HINT[a.model]}</div>}
             </label>
             <label><span style={lbl}>Persona / instrucciones</span>
               <textarea style={area} rows={3} placeholder="Sos un asesor de admisión cordial y conciso. Respondé en español…" value={a.instructions} onChange={(e) => set({ instructions: e.target.value })} />
+              <div className="ag-personas">
+                {PERSONAS.map((p) => (
+                  <button key={p.label} type="button" className="ag-persona" onClick={() => set({ instructions: p.text })} title="Usar como base">{p.label}</button>
+                ))}
+              </div>
             </label>
             <label><span style={lbl}>Objetivo</span>
               <textarea style={area} rows={2} placeholder="Resolver dudas de admisión y agendar una cita si hay interés." value={a.objective} onChange={(e) => set({ objective: e.target.value })} />
@@ -394,7 +517,7 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
                 );
               })}
             </div>
-            <div className="ag-note">La ejecución de herramientas (function-calling real) se conecta en el siguiente paso; por ahora se guardan y el agente ya conversa con su persona, objetivo y conocimiento.</div>
+            <div className="ag-note">El agente decide cuándo usar cada herramienta (function-calling de Claude). En el playground ya se ejecutan de verdad; en producción corren con tu cuenta.</div>
           </Section>
 
           <Section title="Guardrails" desc="Qué NO debe hacer el agente.">
@@ -412,8 +535,8 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
               <label style={{ flex: 1 }}><span style={lbl}>Cola al derivar</span>
                 <input style={inp} placeholder="Admisión" value={a.handoffQueue} onChange={(e) => set({ handoffQueue: e.target.value })} />
               </label>
-              <label style={{ width: 130 }}><span style={lbl}>Máx. turnos</span>
-                <input style={inp} type="number" min={1} value={a.maxTurns} onChange={(e) => set({ maxTurns: Number(e.target.value) || 8 })} />
+              <label style={{ width: 160 }}><span style={lbl}>Máx. turnos · {a.maxTurns}</span>
+                <input type="range" min={1} max={12} value={a.maxTurns} onChange={(e) => set({ maxTurns: Number(e.target.value) })} style={{ width: "100%", accentColor: "var(--accent-violet)", marginTop: 7 }} />
               </label>
             </div>
           </Section>
@@ -421,7 +544,7 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
 
         {/* Live playground */}
         <div className="ag-build__play">
-          <BotTester key={playKey} bot={playBot} onClose={() => setPlayKey((k) => k + 1)} />
+          <BotTester key={playKey} bot={playBot} suggestions={testPrompts(a)} onClose={() => setPlayKey((k) => k + 1)} />
         </div>
       </div>
     </div>

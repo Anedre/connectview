@@ -38,7 +38,7 @@ interface ChatItem {
   media?: MediaRef;
 }
 
-export function BotTester({ bot, onClose }: { bot: Bot; onClose: () => void }) {
+export function BotTester({ bot, onClose, suggestions }: { bot: Bot; onClose: () => void; suggestions?: string[] }) {
   const [items, setItems] = useState<ChatItem[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [convState, setConvState] = useState<any>(null);
@@ -118,6 +118,12 @@ export function BotTester({ bot, onClose }: { bot: Bot; onClose: () => void }) {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [items, loading]);
+
+  const sendQuick = (t: string) => {
+    if (loading || done || awaiting === "choice") return;
+    setItems((i) => [...i, { from: "user", text: t }]);
+    call({ text: t }, convState);
+  };
 
   const sendText = () => {
     const t = text.trim();
@@ -250,6 +256,17 @@ export function BotTester({ bot, onClose }: { bot: Bot; onClose: () => void }) {
           {choices.map((c) => (
             <button key={c.id} onClick={() => choose(c.id, c.label)} disabled={loading} className="fb-wa__chip">
               {c.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Suggested test prompts (agent playground) */}
+      {suggestions && suggestions.length > 0 && !done && awaiting !== "choice" && choices.length === 0 && (
+        <div className="fb-wa__suggest">
+          {suggestions.map((s) => (
+            <button key={s} onClick={() => sendQuick(s)} disabled={loading} className="fb-wa__suggest-chip" title="Enviar este mensaje de prueba">
+              {s}
             </button>
           ))}
         </div>
