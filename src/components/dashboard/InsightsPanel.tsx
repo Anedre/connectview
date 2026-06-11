@@ -24,7 +24,6 @@ import type {
 
 interface Lead { leadId: string; stageId?: string; source?: string; updatedAt?: string; montoEstimado?: number }
 interface Appt { apptId?: string; whenISO?: string; status?: string; customerName?: string; phone?: string }
-interface Callback { callbackId?: string; whenISO?: string; dueISO?: string; channel?: string; status?: string; customerName?: string; phone?: string; note?: string }
 interface Slice { name: string; value: number; color?: string }
 
 type Period = "today" | "yesterday" | "week" | "month";
@@ -53,7 +52,6 @@ function normChannel(c?: string): ChannelKey {
   if (k === "WHATSAPP" || k === "WA") return "wa";
   return "voz";
 }
-const CHANNEL_KEYS: ChannelKey[] = ["voz", "wa", "chat", "email", "sms"];
 const SENTIMENT_META: { key: string; label: string; color: string }[] = [
   { key: "POSITIVE", label: "Positivo", color: "#25B873" },
   { key: "NEUTRAL", label: "Neutral", color: "#6E8BFF" },
@@ -87,7 +85,6 @@ export function InsightsPanel({ metrics, lastRefresh, onRefresh }: InsightsPanel
   const [period, setPeriod] = useState<Period>("week");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [appts, setAppts] = useState<Appt[]>([]);
-  const [callbacks, setCallbacks] = useState<Callback[]>([]);
   const [hsmSent, setHsmSent] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -100,7 +97,6 @@ export function InsightsPanel({ metrics, lastRefresh, onRefresh }: InsightsPanel
     if (ep?.manageLeads) jobs.push(fetch(ep.manageLeads).then((r) => r.json()).then((d) => setLeads(d.leads || [])).catch(() => {}));
     if (ep?.manageAppointment) jobs.push(fetch(ep.manageAppointment).then((r) => r.json()).then((d) => setAppts(d.appointments || [])).catch(() => {}));
     if (ep?.getHsmReport) jobs.push(fetch(ep.getHsmReport).then((r) => r.json()).then((d) => setHsmSent(d.totals?.total || 0)).catch(() => {}));
-    if (ep?.listCallbacks) jobs.push(fetch(ep.listCallbacks).then((r) => r.json()).then((d) => setCallbacks(d.callbacks || d.items || [])).catch(() => {}));
     Promise.all(jobs).finally(() => setLoading(false));
   }, []);
 
