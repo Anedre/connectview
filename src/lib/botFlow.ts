@@ -125,7 +125,7 @@ export function replyButtons(buttons: unknown): ButtonDef[] {
 const str = (v: unknown, fallback = ""): string =>
   typeof v === "string" && v.length > 0 ? v : fallback;
 
-const OP_LABEL: Record<string, string> = {
+export const OP_LABEL: Record<string, string> = {
   equals: "es igual a",
   contains: "contiene",
   exists: "tiene algún valor",
@@ -134,7 +134,7 @@ const OP_LABEL: Record<string, string> = {
   regex: "coincide (regex)",
 };
 
-const UNIT_LABEL: Record<string, string> = {
+export const UNIT_LABEL: Record<string, string> = {
   minutes: "minutos",
   hours: "horas",
   days: "días",
@@ -619,23 +619,30 @@ export function makeNode(kind: NodeKind, position: { x: number; y: number }): Bo
   return { id: uid(), kind, position, data: NODE_KINDS[kind].defaultData() };
 }
 
+/** Un aviso de validación, con el paso al que apunta (para saltar a él). */
+export interface BotIssue {
+  message: string;
+  nodeId?: string;
+}
+
 /** Lightweight validation surfaced in the builder (non-blocking warnings). */
-export function validateBot(bot: Bot): string[] {
-  const issues: string[] = [];
+export function validateBot(bot: Bot): BotIssue[] {
+  const issues: BotIssue[] = [];
   const starts = bot.nodes.filter((n) => n.kind === "start");
-  if (starts.length === 0) issues.push("Falta un paso de Inicio.");
-  if (starts.length > 1) issues.push("Hay más de un paso de Inicio.");
+  if (starts.length === 0) issues.push({ message: "Falta un paso de Inicio." });
+  if (starts.length > 1) issues.push({ message: "Hay más de un paso de Inicio.", nodeId: starts[1].id });
 
   const targets = new Set(bot.edges.map((e) => e.target));
   const sources = new Set(bot.edges.map((e) => e.source));
   for (const n of bot.nodes) {
     if (n.kind === "start") continue;
-    if (!targets.has(n.id)) issues.push(`«${NODE_KINDS[n.kind].label}» no está conectado.`);
+    if (!targets.has(n.id))
+      issues.push({ message: `«${NODE_KINDS[n.kind].label}» no está conectado.`, nodeId: n.id });
   }
   for (const n of bot.nodes) {
     const hasOutlets = NODE_KINDS[n.kind].outlets(n.data).length > 0;
     if (hasOutlets && n.kind !== "stop" && !sources.has(n.id)) {
-      issues.push(`«${NODE_KINDS[n.kind].label}» no lleva a ningún lado.`);
+      issues.push({ message: `«${NODE_KINDS[n.kind].label}» no lleva a ningún lado.`, nodeId: n.id });
     }
   }
   return issues;

@@ -1,5 +1,5 @@
-import { Link2, PhoneCall, List as ListIcon, Eye, StickyNote } from "lucide-react";
-import type { ButtonDef, ListRow, NodeKind } from "@/lib/botFlow";
+import { Link2, PhoneCall, List as ListIcon, Eye, StickyNote, GitBranch, Clock } from "lucide-react";
+import { OP_LABEL, UNIT_LABEL, type ButtonDef, type ListRow, type NodeKind } from "@/lib/botFlow";
 
 /**
  * NodePreview — una vista previa estilo WhatsApp de lo que verá el cliente,
@@ -104,6 +104,78 @@ export function NodePreview({ kind, data }: { kind: NodeKind; data: Record<strin
     <div className="fb-prev">
       <div className="fb-prev__top"><Eye size={12} /> Vista previa</div>
       <div className={`fb-prev__screen ${kind === "internal_note" ? "fb-prev__screen--note" : ""}`}>{body}</div>
+    </div>
+  );
+}
+
+/** Condición en lenguaje natural: "Si X contiene 'Y' → Sí / No". */
+export function ConditionPreview({ data }: { data: Record<string, unknown> }) {
+  const variable = String(data.variable || "").trim();
+  const op = String(data.op || "equals");
+  const value = String(data.value || "").trim();
+  const needsValue = op !== "exists";
+  return (
+    <div className="fb-prev">
+      <div className="fb-prev__top"><GitBranch size={12} /> Vista previa</div>
+      <div className="fb-cond">
+        <div className="fb-cond__rule">
+          Si{" "}
+          {variable ? <span className="fb-var">{variable}</span> : <span className="fb-prev__ph">(elegí una variable)</span>}{" "}
+          <b>{OP_LABEL[op] || op}</b>
+          {needsValue && (
+            <> {value ? <span className="fb-cond__val">“{value}”</span> : <span className="fb-prev__ph">(valor)</span>}</>
+          )}
+        </div>
+        <div className="fb-cond__branches">
+          <span className="fb-cond__branch fb-cond__branch--yes">→ sale por «Sí»</span>
+          <span className="fb-cond__branch fb-cond__branch--no">si no, por «No»</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const DELAY_PRESETS: { label: string; amount: number; unit: string }[] = [
+  { label: "30 min", amount: 30, unit: "minutes" },
+  { label: "1 hora", amount: 1, unit: "hours" },
+  { label: "1 día", amount: 1, unit: "days" },
+  { label: "3 días", amount: 3, unit: "days" },
+  { label: "1 semana", amount: 7, unit: "days" },
+];
+
+/** Presets rápidos + frase en lenguaje natural para el paso "Esperar". */
+export function DelayPresets({
+  data,
+  onChange,
+}: {
+  data: Record<string, unknown>;
+  onChange: (patch: Record<string, unknown>) => void;
+}) {
+  const amount = Number(data.amount) || 0;
+  const unit = String(data.unit || "minutes");
+  return (
+    <div className="fb-prev">
+      <div className="fb-prev__top"><Clock size={12} /> Vista previa</div>
+      <div className="fb-delay">
+        <div className="fb-delay__line">
+          El bot <b>espera {amount} {UNIT_LABEL[unit] || unit}</b> y sigue al próximo paso.
+        </div>
+        <div className="fb-delay__presets">
+          {DELAY_PRESETS.map((p) => {
+            const on = amount === p.amount && unit === p.unit;
+            return (
+              <button
+                key={p.label}
+                type="button"
+                className={`fb-delay__chip ${on ? "is-on" : ""}`}
+                onClick={() => onChange({ amount: p.amount, unit: p.unit })}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

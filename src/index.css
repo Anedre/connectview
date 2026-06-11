@@ -3999,6 +3999,32 @@ a { color: inherit; text-decoration: none; }
 .fb-prev__note svg { flex: 0 0 auto; margin-top: 1px; }
 /* Chips de variable legibles sobre la burbuja blanca, en cualquier tema. */
 .fb-prev .fb-var { background: #ede9fe; color: #6d28d9; }
+
+/* Condición en lenguaje natural */
+.fb-cond { padding: 11px 12px; background: var(--bg-1); }
+.fb-cond__rule { font-size: 12.5px; line-height: 1.5; color: var(--text-1); }
+.fb-cond__val { font-weight: 600; color: var(--text-1); }
+.fb-cond__branches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.fb-cond__branch { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.fb-cond__branch--yes { color: var(--accent-green); background: var(--accent-green-soft); }
+.fb-cond__branch--no { color: var(--text-2); background: var(--bg-3); }
+
+/* Presets del paso Esperar */
+.fb-delay { padding: 11px 12px; background: var(--bg-1); }
+.fb-delay__line { font-size: 12.5px; line-height: 1.5; color: var(--text-1); margin-bottom: 9px; }
+.fb-delay__presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.fb-delay__chip { font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border-1); background: var(--bg-1); color: var(--text-2); cursor: pointer; transition: background .12s, border-color .12s, color .12s; }
+.fb-delay__chip:hover { border-color: var(--accent-violet); color: var(--accent-violet); }
+.fb-delay__chip.is-on { background: var(--accent-violet-soft); border-color: transparent; color: var(--accent-violet); }
+
+/* Avisos de validación clicleables */
+.fb-issues { background: var(--accent-red-soft, rgba(229,72,77,0.1)); border-bottom: 1px solid var(--border-1); padding: 6px 10px; display: flex; flex-direction: column; gap: 3px; }
+.fb-issue { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; padding: 5px 8px; border-radius: 7px; border: none; background: transparent; color: var(--accent-red); font-size: 12px; cursor: pointer; transition: background .12s; }
+.fb-issue:hover:not(:disabled) { background: rgba(229,72,77,0.14); }
+.fb-issue:disabled { cursor: default; opacity: 0.85; }
+.fb-issue svg { flex: 0 0 auto; }
+.fb-issue__msg { flex: 1; }
+.fb-issue__go { font-size: 11px; font-weight: 600; opacity: 0.8; flex: 0 0 auto; }
 .fb-pal__item + .fb-pal__item { margin-top: 3px; }
 .fb-pal__item:hover { background: var(--bg-1); border-color: var(--border-1); }
 .fb-pal__icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; flex: 0 0 auto; }

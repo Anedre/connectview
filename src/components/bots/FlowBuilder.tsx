@@ -34,7 +34,7 @@ import { StepNode } from "@/components/bots/StepNode";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { BuilderCtx } from "@/components/bots/builderCtx";
 import { BotTester } from "@/components/bots/BotTester";
-import { NodePreview } from "@/components/bots/NodePreview";
+import { NodePreview, ConditionPreview, DelayPresets } from "@/components/bots/NodePreview";
 import { getApiEndpoints } from "@/lib/api";
 import { WaTemplateConfigurator, type WaTemplate } from "@/components/whatsapp/WaTemplateConfigurator";
 
@@ -265,6 +265,16 @@ function FlowBuilderInner({
 
   const issues = useMemo(() => validateBot(currentBot), [currentBot]);
 
+  // Saltar al paso de un aviso de validación: lo selecciona y lo encuadra.
+  const goToIssue = useCallback(
+    (nodeId?: string) => {
+      if (!nodeId) return;
+      setSelectedId(nodeId);
+      window.setTimeout(() => fitView({ nodes: [{ id: nodeId }], duration: 400, maxZoom: 1.2, padding: 0.6 }), 30);
+    },
+    [fitView]
+  );
+
   const addNode = useCallback(
     (
       kind: NodeKind,
@@ -427,17 +437,19 @@ function FlowBuilderInner({
       </div>
 
       {showIssues && issues.length > 0 && (
-        <div
-          style={{
-            padding: "8px 14px",
-            background: "var(--accent-red-soft, rgba(229,72,77,0.1))",
-            borderBottom: "1px solid var(--border-1)",
-            fontSize: 12,
-            color: "var(--accent-red)",
-          }}
-        >
+        <div className="fb-issues">
           {issues.map((i, idx) => (
-            <div key={idx}>• {i}</div>
+            <button
+              key={idx}
+              className="fb-issue"
+              onClick={() => goToIssue(i.nodeId)}
+              disabled={!i.nodeId}
+              title={i.nodeId ? "Ir al paso" : undefined}
+            >
+              <AlertTriangle size={12} />
+              <span className="fb-issue__msg">{i.message}</span>
+              {i.nodeId && <span className="fb-issue__go">Ver paso →</span>}
+            </button>
           ))}
         </div>
       )}
@@ -623,6 +635,8 @@ function Inspector({
 
       <div className="fb-insp__body">
         <NodePreview kind={kind} data={data} />
+        {kind === "condition" && <ConditionPreview data={data} />}
+        {kind === "delay" && <DelayPresets data={data} onChange={onChange} />}
         {kind === "template" ? (
           <WaTemplateConfigurator
             mode="flow"
