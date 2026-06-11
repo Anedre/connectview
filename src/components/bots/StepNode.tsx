@@ -78,8 +78,8 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
       {hasTarget && (
         <Handle
           type="target"
-          position={Position.Top}
-          style={{ width: 10, height: 10, background: "var(--bg-1)", border: "2px solid var(--border-2)", top: -5 }}
+          position={Position.Left}
+          style={{ width: 10, height: 10, background: "var(--bg-1)", border: "2px solid var(--border-2)", left: -5, top: "50%" }}
         />
       )}
 
@@ -168,13 +168,13 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
         </div>
       )}
 
-      {/* Single unlabelled outlet → bottom-centre handle */}
+      {/* Single unlabelled outlet → right-centre handle (flujo L→R) */}
       {bottomOut && (
         <Handle
           type="source"
           id={bottomOut.id}
-          position={Position.Bottom}
-          style={{ width: 10, height: 10, background: accent, border: "2px solid var(--bg-1)", bottom: -5 }}
+          position={Position.Right}
+          style={{ width: 10, height: 10, background: accent, border: "2px solid var(--bg-1)", right: -5, top: "50%" }}
         />
       )}
     </div>

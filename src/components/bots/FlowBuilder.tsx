@@ -16,7 +16,7 @@ import {
   type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Save, Trash2, AlertTriangle, Check, Play, Bot as BotIcon, Search } from "lucide-react";
+import { Plus, Save, Trash2, AlertTriangle, Check, Play, Bot as BotIcon, Search, Network } from "lucide-react";
 import {
   NODE_KINDS,
   PALETTE_GROUPS,
@@ -53,6 +53,56 @@ const edgeDefaults = {
   style: { stroke: EDGE_COLOR, strokeWidth: 2 },
   markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR, width: 18, height: 18 },
 };
+
+/**
+ * Auto-layout izquierda→derecha. BFS desde el nodo de inicio: la profundidad de
+ * cada nodo = su columna (x), y dentro de la columna se apilan centrados (y).
+ * Los nodos no alcanzados van a la última columna. Sin dependencias (dagre/elk).
+ */
+const COL_GAP = 300;
+const ROW_GAP = 175;
+function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
+  const outgoing = new Map<string, string[]>();
+  const indeg = new Map<string, number>();
+  nodes.forEach((n) => { outgoing.set(n.id, []); indeg.set(n.id, 0); });
+  edges.forEach((e) => {
+    if (outgoing.has(e.source) && indeg.has(e.target)) {
+      outgoing.get(e.source)!.push(e.target);
+      indeg.set(e.target, (indeg.get(e.target) || 0) + 1);
+    }
+  });
+  const depth = new Map<string, number>();
+  const queue: string[] = [];
+  const start = nodes.find((n) => (n.data as { kind?: string }).kind === "start");
+  if (start) { depth.set(start.id, 0); queue.push(start.id); }
+  nodes.forEach((n) => {
+    if (!depth.has(n.id) && (indeg.get(n.id) || 0) === 0) { depth.set(n.id, 0); queue.push(n.id); }
+  });
+  let qi = 0;
+  while (qi < queue.length) {
+    const id = queue[qi++];
+    const d = depth.get(id)!;
+    for (const t of outgoing.get(id) || []) {
+      if (!depth.has(t)) { depth.set(t, d + 1); queue.push(t); }
+    }
+  }
+  const maxD = depth.size ? Math.max(...depth.values()) : 0;
+  nodes.forEach((n) => { if (!depth.has(n.id)) depth.set(n.id, maxD + 1); });
+  const cols = new Map<number, string[]>();
+  nodes.forEach((n) => {
+    const d = depth.get(n.id)!;
+    if (!cols.has(d)) cols.set(d, []);
+    cols.get(d)!.push(n.id);
+  });
+  const pos = new Map<string, { x: number; y: number }>();
+  [...cols.keys()].sort((a, b) => a - b).forEach((d) => {
+    const ids = cols.get(d)!;
+    ids.forEach((id, i) => {
+      pos.set(id, { x: d * COL_GAP, y: i * ROW_GAP - ((ids.length - 1) * ROW_GAP) / 2 });
+    });
+  });
+  return nodes.map((n) => ({ ...n, position: pos.get(n.id) || n.position }));
+}
 
 // Friendly labels for selects whose stored value differs from the display.
 const SELECT_LABELS: Record<string, Record<string, string>> = {
@@ -114,7 +164,7 @@ function FlowBuilderInner({
   autoTest?: boolean;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(toRFNodes(initial));
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(toRFEdges(initial));
@@ -179,19 +229,43 @@ function FlowBuilderInner({
 
   const addNode = useCallback(
     (kind: NodeKind) => {
-      const rect = wrapperRef.current?.getBoundingClientRect();
-      const pos = rect
-        ? screenToFlowPosition({ x: rect.x + rect.width / 2 - 117, y: rect.y + rect.height / 3 })
-        : { x: 120, y: 120 };
+      // Posición: a la derecha del nodo seleccionado (flujo L→R); sin selección,
+      // al centro del viewport.
+      const sel = selectedId ? nodes.find((n) => n.id === selectedId) : null;
+      let pos: { x: number; y: number };
+      if (sel) {
+        pos = { x: sel.position.x + COL_GAP, y: sel.position.y };
+      } else {
+        const rect = wrapperRef.current?.getBoundingClientRect();
+        pos = rect
+          ? screenToFlowPosition({ x: rect.x + rect.width / 2 - 117, y: rect.y + rect.height / 3 })
+          : { x: 120, y: 120 };
+      }
       const node = makeNode(kind, pos);
       setNodes((nds) => [
         ...nds,
         { id: node.id, type: "step", position: node.position, data: { ...node.data, kind } },
       ]);
+      // Conexión AUTOMÁTICA desde el nodo seleccionado (su primer outlet libre).
+      if (sel) {
+        const def = NODE_KINDS[(sel.data as { kind: NodeKind }).kind];
+        const firstOutlet = def?.outlets(sel.data as Record<string, unknown>)[0];
+        const taken = edges.some((e) => e.source === sel.id && e.sourceHandle === firstOutlet?.id);
+        if (firstOutlet && !taken) {
+          const conn: Connection = { source: sel.id, sourceHandle: firstOutlet.id, target: node.id, targetHandle: null };
+          setEdges((eds) => addEdge({ ...conn, ...edgeDefaults }, eds));
+        }
+      }
       setSelectedId(node.id);
     },
-    [screenToFlowPosition, setNodes]
+    [screenToFlowPosition, setNodes, setEdges, selectedId, nodes, edges]
   );
+
+  // "Ordenar" — auto-layout L→R + encuadrar.
+  const arrange = useCallback(() => {
+    setNodes((nds) => layoutLR(nds, edges));
+    window.setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 60);
+  }, [setNodes, edges, fitView]);
 
   const updateNodeData = useCallback(
     (id: string, patch: Record<string, unknown>) => {
@@ -267,6 +341,9 @@ function FlowBuilderInner({
           >
             {issues.length ? <AlertTriangle size={13} /> : <Check size={13} />}
             {issues.length ? `${issues.length} aviso${issues.length > 1 ? "s" : ""}` : "Sin avisos"}
+          </button>
+          <button onClick={arrange} title="Ordenar el flujo automáticamente (izquierda → derecha)" className="btn btn--sm">
+            <Network size={13} /> Ordenar
           </button>
           <button
             onClick={() => setTesting((t) => !t)}
