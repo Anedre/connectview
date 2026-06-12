@@ -5,7 +5,7 @@ import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useLeadOverview } from "@/hooks/useLeadOverview";
 import type { RecentLead } from "@/components/recordings/RecentContactsTable";
 import { ConversationCanvas } from "@/components/recordings/ConversationCanvas";
-import { CallLogView } from "@/components/recordings/CallLogView";
+import { CallPlayerView } from "@/components/recordings/CallPlayerView";
 import { WhatsAppThreadView } from "@/components/recordings/WhatsAppThreadView";
 import { EmailThreadsView } from "@/components/recordings/EmailThreadsView";
 import { AttachmentsGrid } from "@/components/recordings/AttachmentsGrid";
@@ -196,7 +196,7 @@ function LeadDetail({ lead }: { lead: RecentLead }) {
 
         <div className="rec-view">
           {tab === "conversation" && <div className="rec-view__scroll"><ConversationCanvas phone={lead.phone} name={name} /></div>}
-          {tab === "calls" && <CallLogView phone={lead.phone} />}
+          {tab === "calls" && <CallPlayerView phone={lead.phone} />}
           {tab === "whatsapp" && <WhatsAppThreadView phone={lead.phone} />}
           {tab === "emails" && <EmailThreadsView customerKey={customerKey} />}
           {tab === "files" && <AttachmentsGrid phone={lead.phone} />}
