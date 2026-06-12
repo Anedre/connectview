@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Phone, MessageCircle, Mail, Paperclip, History, MessagesSquare, Search, RefreshCw, Inbox } from "lucide-react";
+import { Phone, MessageCircle, Mail, Paperclip, History, MessagesSquare, Search, RefreshCw, Inbox, Sparkles } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useLeadOverview } from "@/hooks/useLeadOverview";
+import { useContactSummary } from "@/hooks/useContactSummary";
 import type { RecentLead } from "@/components/recordings/RecentContactsTable";
 import { ConversationCanvas } from "@/components/recordings/ConversationCanvas";
-import { CallPlayerView } from "@/components/recordings/CallPlayerView";
+import { CallPlayerView, type ActiveCall } from "@/components/recordings/CallPlayerView";
 import { WhatsAppThreadView } from "@/components/recordings/WhatsAppThreadView";
 import { EmailThreadsView } from "@/components/recordings/EmailThreadsView";
 import { AttachmentsGrid } from "@/components/recordings/AttachmentsGrid";
@@ -154,6 +155,8 @@ function LeadDetail({ lead }: { lead: RecentLead }) {
   const { tree } = useTaxonomy();
   const ov = useLeadOverview(lead.phone);
   const [tab, setTab] = useState<Lens>("conversation");
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  useEffect(() => { if (tab !== "calls") setActiveCall(null); }, [tab]);
   const name = lead.name || lead.phone;
   const origin = originTone(lead.source);
   const stageLabel = tree.find((s) => s.id === lead.stageId)?.label;
@@ -196,7 +199,7 @@ function LeadDetail({ lead }: { lead: RecentLead }) {
 
         <div className="rec-view">
           {tab === "conversation" && <div className="rec-view__scroll"><ConversationCanvas phone={lead.phone} name={name} /></div>}
-          {tab === "calls" && <CallPlayerView phone={lead.phone} />}
+          {tab === "calls" && <CallPlayerView phone={lead.phone} onActiveCall={setActiveCall} />}
           {tab === "whatsapp" && <WhatsAppThreadView phone={lead.phone} />}
           {tab === "emails" && <EmailThreadsView customerKey={customerKey} />}
           {tab === "files" && <AttachmentsGrid phone={lead.phone} />}
@@ -218,12 +221,51 @@ function LeadDetail({ lead }: { lead: RecentLead }) {
             );
           })}
         </div>
-        <div className="rec-ctx__ai">
-          <div className="rec-ctx__ai-h"><MessagesSquare size={13} /> Resumen IA</div>
-          <div className="rec-ctx__ai-b">Abrí una llamada para ver su resumen, temas y sentimiento. <span className="muted">(próximamente acá)</span></div>
-        </div>
+        {activeCall ? (
+          <LeadInsights call={activeCall} />
+        ) : (
+          <div className="rec-ctx__ai">
+            <div className="rec-ctx__ai-h"><Sparkles size={13} /> Resumen IA</div>
+            <div className="rec-ctx__ai-b">Abrí la pestaña <b>Llamadas</b> y elegí una llamada para ver su resumen y sentimiento acá.</div>
+          </div>
+        )}
       </aside>
     </>
+  );
+}
+
+/** Insights IA de la llamada abierta (panel derecho): resumen + sentimiento. */
+function LeadInsights({ call }: { call: ActiveCall }) {
+  const { summary, loading } = useContactSummary(call.contactId, call.segments);
+  const s = call.sentiment;
+  const total = s.positive + s.negative + s.neutral + s.mixed;
+  const seg = (n: number, color: string) => (n > 0 ? <span key={color} style={{ flex: n, background: color }} /> : null);
+  return (
+    <div className="rec-ctx__ai">
+      <div className="rec-ctx__ai-h"><Sparkles size={13} /> Resumen IA</div>
+      {loading ? (
+        <div className="muted" style={{ fontSize: 12 }}>Generando resumen…</div>
+      ) : summary ? (
+        <div className="rec-ctx__ai-b">{summary}</div>
+      ) : (
+        <div className="muted" style={{ fontSize: 12 }}>Sin transcripción para resumir esta llamada.</div>
+      )}
+      {total > 0 && (
+        <div className="rec-sent">
+          <div className="rec-sent__lbl">Sentimiento de la conversación</div>
+          <div className="rec-sent__bar">
+            {seg(s.positive, "var(--accent-green)")}
+            {seg(s.neutral, "var(--bg-3)")}
+            {seg(s.mixed, "var(--accent-amber)")}
+            {seg(s.negative, "var(--accent-red)")}
+          </div>
+          <div className="rec-sent__legend">
+            <span><span className="rec-sent__dot" style={{ background: "var(--accent-green)" }} /> {s.positive} positivo{s.positive === 1 ? "" : "s"}</span>
+            <span><span className="rec-sent__dot" style={{ background: "var(--accent-red)" }} /> {s.negative} negativo{s.negative === 1 ? "" : "s"}</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

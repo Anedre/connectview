@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Play, Pause, SkipBack, SkipForward, Gauge, Phone, Clock, Disc3 } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, Gauge, Phone, Clock, Disc3, Sparkles } from "lucide-react";
 import { WaveformTimeline } from "@/components/recordings/WaveformTimeline";
 import { TranscriptViewer } from "@/components/recordings/TranscriptViewer";
 import type { TranscriptSegment } from "@/types/recordings";
@@ -65,13 +65,14 @@ export function GrabacionesDemoPage() {
 
   return (
     <div style={{ height: "100vh", overflow: "auto", background: "var(--bg-0)" }}>
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: 22 }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: 22 }}>
         <div style={{ marginBottom: 6, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)" }}>
           Grabaciones · preview del rediseño (datos mock)
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 16px", color: "var(--text-1)" }}>Llamadas · reproductor protagonista</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 16px", color: "var(--text-1)" }}>Llamadas · reproductor protagonista + insights</h1>
 
-        <div className="cpv" style={{ height: 640, border: "1px solid var(--border-1)", borderRadius: 12, background: "var(--bg-1)", overflow: "hidden" }}>
+        <div style={{ display: "flex", gap: 14, alignItems: "stretch" }}>
+        <div className="cpv" style={{ flex: 1, minWidth: 0, height: 640, border: "1px solid var(--border-1)", borderRadius: 12, background: "var(--bg-1)", overflow: "hidden" }}>
           <div className="cpv__strip">
             {CALLS.map((c) => (
               <button key={c.id} className={`cpv__pill ${sel === c.id ? "cpv__pill--on" : ""}`} onClick={() => setSel(c.id)}>
@@ -107,6 +108,28 @@ export function GrabacionesDemoPage() {
               <TranscriptViewer segments={MOCK} currentTimeMs={posSec * 1000} onSeek={(ms) => setPosSec(ms / 1000)} />
             </div>
           </div>
+        </div>
+
+        <aside className="rec-ctx" style={{ height: 640, border: "1px solid var(--border-1)", borderRadius: 12 }}>
+          <div className="rec-ctx__title">Insights de la llamada</div>
+          <div className="rec-ctx__ai">
+            <div className="rec-ctx__ai-h"><Sparkles size={13} /> Resumen IA</div>
+            <div className="rec-ctx__ai-b">El cliente estaba molesto por la deuda y las llamadas constantes. La agente ofreció refinanciar a S/120 al mes congelando los intereses y cerró el primer pago para el 15. Terminó conforme.</div>
+            <div className="rec-sent">
+              <div className="rec-sent__lbl">Sentimiento de la conversación</div>
+              <div className="rec-sent__bar">
+                <span style={{ flex: 4, background: "var(--accent-green)" }} />
+                <span style={{ flex: 3, background: "var(--bg-3)" }} />
+                <span style={{ flex: 1, background: "var(--accent-amber)" }} />
+                <span style={{ flex: 2, background: "var(--accent-red)" }} />
+              </div>
+              <div className="rec-sent__legend">
+                <span><span className="rec-sent__dot" style={{ background: "var(--accent-green)" }} /> 4 positivos</span>
+                <span><span className="rec-sent__dot" style={{ background: "var(--accent-red)" }} /> 2 negativos</span>
+              </div>
+            </div>
+          </div>
+        </aside>
         </div>
       </div>
     </div>

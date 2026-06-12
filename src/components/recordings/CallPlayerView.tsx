@@ -5,7 +5,7 @@ import { Phone, Clock, Disc3 } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { AudioPlayer, type AudioPlayerHandle } from "@/components/recordings/AudioPlayer";
 import { TranscriptViewer } from "@/components/recordings/TranscriptViewer";
-import { useContactDetail } from "@/hooks/useContactDetail";
+import { useContactDetail, type ContactTranscriptSegment } from "@/hooks/useContactDetail";
 import { VALORACION_META } from "@/lib/dispositions";
 import { formatDurationSec, sanitizeText } from "@/lib/utils";
 import type { TranscriptSegment } from "@/types/recordings";
@@ -29,7 +29,13 @@ interface CallRow {
 }
 interface HistoryResponse { totalContacts: number; contacts: CallRow[] }
 
-export function CallPlayerView({ phone }: { phone: string | null }) {
+export interface ActiveCall {
+  contactId: string;
+  segments: ContactTranscriptSegment[];
+  sentiment: { positive: number; negative: number; neutral: number; mixed: number };
+}
+
+export function CallPlayerView({ phone, onActiveCall }: { phone: string | null; onActiveCall?: (c: ActiveCall | null) => void }) {
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,12 +90,12 @@ export function CallPlayerView({ phone }: { phone: string | null }) {
           );
         })}
       </div>
-      <CallPlayer key={selected.contactId} row={selected} />
+      <CallPlayer key={selected.contactId} row={selected} onActiveCall={onActiveCall} />
     </div>
   );
 }
 
-function CallPlayer({ row }: { row: CallRow }) {
+function CallPlayer({ row, onActiveCall }: { row: CallRow; onActiveCall?: (c: ActiveCall | null) => void }) {
   const { detail, loading } = useContactDetail(row.contactId);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const audioRef = useRef<AudioPlayerHandle>(null);
@@ -115,6 +121,22 @@ function CallPlayer({ row }: { row: CallRow }) {
   const valMeta = wrap?.valoracion && (wrap.valoracion as keyof typeof VALORACION_META) in VALORACION_META
     ? VALORACION_META[wrap.valoracion as keyof typeof VALORACION_META] : null;
   const dt = row.initiationTimestamp ? new Date(row.initiationTimestamp) : null;
+
+  // Reporta la llamada activa hacia arriba (para los insights del panel derecho).
+  useEffect(() => {
+    if (!onActiveCall || !detail) return;
+    const rawSegments = (detail.transcript?.segments || []) as ContactTranscriptSegment[];
+    const sentiment = { positive: 0, negative: 0, neutral: 0, mixed: 0 };
+    for (const s of transcript) {
+      const k = (s.sentiment || "").toUpperCase();
+      if (k === "POSITIVE") sentiment.positive++;
+      else if (k === "NEGATIVE") sentiment.negative++;
+      else if (k === "MIXED") sentiment.mixed++;
+      else sentiment.neutral++;
+    }
+    onActiveCall({ contactId: row.contactId, segments: rawSegments, sentiment });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail, row.contactId]);
 
   return (
     <div className="cpv__main">
