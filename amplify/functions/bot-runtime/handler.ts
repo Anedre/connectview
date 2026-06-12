@@ -622,6 +622,7 @@ export const handler: Handler = async (event: any) => {
         turns: aiTurns,
         toolsUsed: state.toolsUsed || [],
         lastUserText: (lastUser?.text || "").slice(0, 200),
+        history: (state.history || []).slice(-24).map((h) => ({ role: h.role, text: (h.text || "").slice(0, 600) })),
         createdAt: new Date().toISOString(),
       };
       try {

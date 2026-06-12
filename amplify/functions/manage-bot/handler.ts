@@ -80,6 +80,23 @@ export const handler: Handler = async (event: any) => {
         return ok({ bot: unmarshall(res.Item) });
       }
 
+      // Single conversation detail (transcript) for the drawer.
+      if (params.conversation) {
+        const res = await dynamo.send(
+          new GetItemCommand({ TableName: CONV_TABLE, Key: { botId: { S: params.conversation } } })
+        );
+        if (!res.Item) return ok({ conversation: null });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const c = unmarshall(res.Item) as any;
+        return ok({
+          conversation: {
+            convId: c.botId, agentName: c.agentName, outcome: c.outcome, turns: c.turns,
+            toolsUsed: c.toolsUsed, source: c.source, createdAt: c.createdAt,
+            history: Array.isArray(c.history) ? c.history : [],
+          },
+        });
+      }
+
       // Conversation monitoring: aggregate the conv# records written by
       // bot-runtime when an agent conversation finishes.
       if (params.conversations) {

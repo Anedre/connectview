@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { MessageCircle, Wrench, Check } from "lucide-react";
+import { MessageCircle, Wrench, Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import * as Icon from "@/components/vox/primitives";
@@ -26,12 +26,12 @@ const MODELS = [
 // Text channels only — WhatsApp / web chat (no voice / IVR).
 const CHANNELS = ["WhatsApp", "Chat web", "Nuevo lead", "Palabra clave"];
 
-interface ToolDef { key: string; label: string; desc: string; icon: React.ComponentType<{ size?: number }>; accent: string; }
+interface ToolDef { key: string; label: string; desc: string; icon: React.ComponentType<{ size?: number }>; accent: string; req: string; }
 const TOOLS: ToolDef[] = [
-  { key: "book_appointment", label: "Agendar cita", desc: "Reserva una cita para el cliente", icon: Icon.Calendar, accent: "var(--accent-cyan)" },
-  { key: "upsert_lead", label: "Crear / mover lead", desc: "Registra o avanza un lead en el embudo", icon: Icon.Users, accent: "var(--accent-green)" },
-  { key: "lookup_customer", label: "Buscar cliente", desc: "Consulta perfil e historial del cliente", icon: Icon.Search, accent: "var(--accent-violet)" },
-  { key: "send_whatsapp_template", label: "Enviar plantilla WhatsApp", desc: "Envía una plantilla aprobada al cliente", icon: Icon.WhatsApp, accent: "var(--accent-green)" },
+  { key: "book_appointment", label: "Agendar cita", desc: "Reserva una cita para el cliente", icon: Icon.Calendar, accent: "var(--accent-cyan)", req: "El agente pedirá teléfono y fecha/hora antes de agendar." },
+  { key: "upsert_lead", label: "Crear / mover lead", desc: "Registra o avanza un lead en el embudo", icon: Icon.Users, accent: "var(--accent-green)", req: "Necesita al menos el teléfono del cliente." },
+  { key: "lookup_customer", label: "Buscar cliente", desc: "Consulta perfil e historial del cliente", icon: Icon.Search, accent: "var(--accent-violet)", req: "Busca por número de teléfono." },
+  { key: "send_whatsapp_template", label: "Enviar plantilla WhatsApp", desc: "Envía una plantilla aprobada al cliente", icon: Icon.WhatsApp, accent: "var(--accent-green)", req: "Solo plantillas aprobadas; en el playground se simula." },
 ];
 
 interface AgentCfg {
@@ -164,6 +164,7 @@ interface AgentSummary { botId: string; name: string; status: string; trigger?: 
 
 interface ConvAgg { agentBotId: string; agentName: string; total: number; resolved: number; handoff: number; ended: number; turns: number; toolUses: number; avgTurns: number }
 interface ConvRecent { convId: string; agentBotId: string; agentName: string; source: string; outcome: string; turns: number; toolsUsed: string[]; lastUserText: string; createdAt: string }
+interface ConvDetail { convId: string; agentName: string; outcome: string; turns: number; toolsUsed: string[]; source: string; createdAt: string; history: { role: string; text: string }[] }
 interface ConvData { totals: { total: number; resolved: number; handoff: number }; byAgent: ConvAgg[]; recent: ConvRecent[] }
 const OUTCOME_META: Record<string, { label: string; color: string; soft: string }> = {
   resolved: { label: "Resuelta", color: "var(--accent-green)", soft: "var(--accent-green-soft)" },
@@ -187,6 +188,8 @@ export function AgentePage() {
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
   const [convs, setConvs] = useState<ConvData | null>(null);
+  const [convDetail, setConvDetail] = useState<ConvDetail | null>(null);
+  const [convLoading, setConvLoading] = useState(false);
   const { confirm, confirmDialog } = useConfirm();
   const ep = getApiEndpoints();
 
@@ -253,6 +256,32 @@ export function AgentePage() {
       toast.success("Agente eliminado");
       loadList();
     } catch { toast.error("No se pudo eliminar"); }
+  };
+
+  const duplicate = async (botId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!ep?.manageBot) return;
+    try {
+      const r = await fetch(`${ep.manageBot}?botId=${encodeURIComponent(botId)}`);
+      const d = await r.json();
+      if (d.bot) {
+        const cfg = botToAgent(d.bot as Bot);
+        setCurrent({ ...cfg, botId: "", name: `${cfg.name} (copia)`, status: "draft" });
+      } else toast.error("No se pudo duplicar");
+    } catch { toast.error("No se pudo duplicar"); }
+  };
+
+  const openConv = async (convId: string) => {
+    if (!ep?.manageBot) return;
+    setConvLoading(true);
+    setConvDetail(null);
+    try {
+      const r = await fetch(`${ep.manageBot}?conversation=${encodeURIComponent(convId)}`);
+      const d = await r.json();
+      if (d.conversation) setConvDetail(d.conversation as ConvDetail);
+      else toast.error("No se encontró la conversación");
+    } catch { toast.error("No se pudo abrir la conversación"); }
+    finally { setConvLoading(false); }
   };
 
   if (current) {
@@ -332,6 +361,7 @@ export function AgentePage() {
                     <button className="btn btn--ghost btn--sm" style={{ padding: "3px 10px", fontSize: 11.5, color: "var(--accent-violet)" }} onClick={(e) => { e.stopPropagation(); openAgent(b.botId); }} title="Probar este agente">
                       Probar
                     </button>
+                    <button className="bot-card__del" onClick={(e) => duplicate(b.botId, e)} title="Duplicar agente"><Copy size={13} /></button>
                     <button className="bot-card__del" onClick={(e) => remove(b.botId, e)} title="Eliminar agente"><Icon.Trash size={13} /></button>
                   </div>
                 </div>
@@ -349,7 +379,7 @@ export function AgentePage() {
               {convs.recent.slice(0, 12).map((c) => {
                 const m = OUTCOME_META[c.outcome] || OUTCOME_META.ended;
                 return (
-                  <div key={c.convId} className="ag-conv">
+                  <div key={c.convId} className="ag-conv" onClick={() => openConv(c.convId)} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
                     <span className="ag-conv__badge" style={{ background: m.soft, color: m.color }}>{m.label}</span>
                     <span className="ag-conv__name">{c.agentName || "Agente"}</span>
                     <span className="ag-conv__txt">{c.lastUserText || "—"}</span>
@@ -362,6 +392,33 @@ export function AgentePage() {
             </div>
           )}
         </>
+      )}
+
+      {(convLoading || convDetail) && (
+        <div className="ag-conv-modal" onClick={() => { if (!convLoading) setConvDetail(null); }}>
+          <div className="ag-conv-modal__card" onClick={(e) => e.stopPropagation()}>
+            <div className="ag-conv-modal__head">
+              <Icon.Sparkles size={15} style={{ color: "var(--accent-violet)" }} />
+              <span style={{ fontWeight: 700 }}>{convDetail?.agentName || "Conversación"}</span>
+              {convDetail && <span className="muted" style={{ fontSize: 12 }}>· {convDetail.turns} turnos · {OUTCOME_META[convDetail.outcome]?.label || convDetail.outcome}{convDetail.source === "playground" ? " · prueba" : ""}</span>}
+              <button className="ag-conv-modal__close" onClick={() => setConvDetail(null)} title="Cerrar">×</button>
+            </div>
+            <div className="ag-conv-modal__body">
+              {convLoading ? (
+                <div className="muted" style={{ padding: 24, textAlign: "center" }}>Cargando…</div>
+              ) : !convDetail ? null : convDetail.history.length === 0 ? (
+                <div className="muted" style={{ padding: 24, textAlign: "center" }}>Sin transcript guardado (conversación previa a esta función).</div>
+              ) : (
+                convDetail.history.map((h, i) => (
+                  <div key={i} className={`ag-msg ag-msg--${h.role === "user" ? "user" : "bot"}`}>{h.text}</div>
+                ))
+              )}
+            </div>
+            {convDetail && convDetail.toolsUsed?.length > 0 && (
+              <div className="ag-conv-modal__foot"><Wrench size={12} /> Herramientas usadas: {convDetail.toolsUsed.join(", ")}</div>
+            )}
+          </div>
+        </div>
       )}
       {confirmDialog}
     </div>
@@ -481,6 +538,7 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
       {/* Body */}
       <div className="ag-build">
         <div className="ag-build__form">
+          <AgentReadiness a={a} />
           <Section title="Identidad" desc="Quién es el agente y cómo se comporta.">
             <label><span style={lbl}>Modelo</span>
               <select style={inp} value={a.model} onChange={(e) => set({ model: e.target.value })}>{MODELS.map((m) => <option key={m} value={m}>{m}</option>)}</select>
@@ -511,7 +569,7 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
                 return (
                   <button key={t.key} className={`ag-tool ${on ? "ag-tool--on" : ""}`} onClick={() => toggleTool(t.key)}>
                     <span className="ag-tool__icon" style={{ background: on ? t.accent : "var(--bg-3)", color: on ? "#fff" : "var(--text-3)" }}><Icn size={15} /></span>
-                    <span className="ag-tool__meta"><span className="ag-tool__label">{t.label}</span><span className="ag-tool__desc">{t.desc}</span></span>
+                    <span className="ag-tool__meta"><span className="ag-tool__label">{t.label}</span><span className="ag-tool__desc">{t.desc}</span>{on && <span className="ag-tool__req">{t.req}</span>}</span>
                     <span className={`ag-tool__check ${on ? "ag-tool__check--on" : ""}`}>{on ? <Check size={13} /> : ""}</span>
                   </button>
                 );
@@ -557,6 +615,32 @@ function Section({ title, desc, children }: { title: string; desc: string; child
       <div className="ag-sec__h">{title}</div>
       <div className="ag-sec__d">{desc}</div>
       <div style={{ display: "grid", gap: 11 }}>{children}</div>
+    </div>
+  );
+}
+
+/** Checklist en vivo: qué le falta al agente para estar "listo". */
+function AgentReadiness({ a }: { a: AgentCfg }) {
+  const items = [
+    { ok: !!a.objective.trim(), label: "Definí un objetivo claro" },
+    { ok: a.tools.length > 0, label: "Activá al menos una herramienta" },
+    { ok: !!a.handoffQueue.trim(), label: "Configurá la cola de derivación" },
+  ];
+  const done = items.filter((i) => i.ok).length;
+  const ready = done === items.length;
+  return (
+    <div className={`ag-check ${ready ? "ag-check--ready" : ""}`}>
+      <div className="ag-check__head">
+        {ready ? <><Check size={14} /> Agente listo para publicar</> : <>Para dejarlo listo · {done}/{items.length}</>}
+      </div>
+      <div className="ag-check__items">
+        {items.map((it) => (
+          <div key={it.label} className={`ag-check__item ${it.ok ? "is-on" : ""}`}>
+            <span className="ag-check__dot">{it.ok ? <Check size={11} /> : ""}</span>
+            {it.label}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
