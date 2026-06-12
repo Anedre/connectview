@@ -38,6 +38,7 @@ import { AgenteDemoPage } from "@/pages/AgenteDemoPage";
 import { LeadsDemoPage } from "@/pages/LeadsDemoPage";
 import { BotsDemoPage } from "@/pages/BotsDemoPage";
 import { BotTemplateGallery } from "@/components/bots/BotTemplateGallery";
+import { RecordingsWorkspace } from "@/components/recordings/RecordingsWorkspace";
 import { FlowBuilderPage } from "@/pages/FlowBuilderPage";
 import { AutomationsPage } from "@/pages/AutomationsPage";
 import { AgentePage } from "@/pages/AgentePage";
@@ -719,6 +720,23 @@ export default function App() {
             onPick={(b) => console.log("[plantillas-demo] pick", b.name)}
             onBack={() => window.history.back()}
           />
+        </div>
+      </ThemeProvider>
+    );
+  }
+
+  // Auth-free preview of the redesigned Recordings workspace. DEV only.
+  if (
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    window.location.pathname === "/recordings-demo"
+  ) {
+    return (
+      <ThemeProvider>
+        <div style={{ height: "100vh", padding: 16, boxSizing: "border-box", background: "var(--bg-0)" }}>
+          <div style={{ height: "100%", border: "1px solid var(--border-1)", borderRadius: 10, overflow: "hidden", background: "var(--bg-1)" }}>
+            <RecordingsWorkspace initialLead={{ leadId: "demo", name: "Juan Pérez", phone: "+51999000111", company: "Cobranzas SAC", source: "phone" }} />
+          </div>
         </div>
       </ThemeProvider>
     );
