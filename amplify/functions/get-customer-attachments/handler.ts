@@ -29,7 +29,9 @@ const LEGACY_CUSTOMER_PROFILES_DOMAIN =
 let CUSTOMER_PROFILES_DOMAIN = LEGACY_CUSTOMER_PROFILES_DOMAIN;
 const REGION = process.env.AWS_REGION || "us-east-1";
 const ACCOUNT_ID = process.env.AWS_ACCOUNT_ID || "";
-const PRESIGN_EXPIRES = 3600;
+// GetAttachedFile topa UrlExpiryInSeconds en 300s; 3600 tiraba
+// InvalidRequestException → los adjuntos volvían sin URL. (#grabaciones)
+const PRESIGN_EXPIRES = 300;
 
 const CORS: Record<string, string> = { "Content-Type": "application/json" };
 

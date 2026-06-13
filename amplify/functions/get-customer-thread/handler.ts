@@ -30,7 +30,9 @@ const LEGACY_CUSTOMER_PROFILES_DOMAIN =
 let CUSTOMER_PROFILES_DOMAIN = LEGACY_CUSTOMER_PROFILES_DOMAIN;
 const REGION = process.env.AWS_REGION || "us-east-1";
 const ACCOUNT_ID = process.env.AWS_ACCOUNT_ID || "";
-const PRESIGN_EXPIRES = 3600;
+// GetAttachedFile topa UrlExpiryInSeconds en 300s; 3600 tiraba
+// InvalidRequestException → los adjuntos volvían sin URL. (#grabaciones)
+const PRESIGN_EXPIRES = 300;
 
 const CORS: Record<string, string> = { "Content-Type": "application/json" };
 const userNameCache = new Map<string, string>();
@@ -562,11 +564,22 @@ export const handler: Handler = async (event: any) => {
     }
 
     // 2. DescribeContact + read transcript for each, in parallel.
+    // Perf: cada sesión = DescribeContact + GetObject de la transcripción en S3.
+    // Para clientes con cientos de chats cargar TODO tardaba >9s; nos quedamos
+    // con las N conversaciones MÁS RECIENTES (las que se miran primero). El
+    // total real se reporta en diagnostics.sessionsAvailable. (#grabaciones)
+    const MAX_SESSIONS = 60;
+    const orderedIds = [...chatIds].sort(
+      (a, b) =>
+        (Date.parse(b.initiationTimestamp) || 0) -
+        (Date.parse(a.initiationTimestamp) || 0)
+    );
+    const loadIds = orderedIds.slice(0, MAX_SESSIONS);
     const sessions: ThreadSession[] = [];
     const messagesBySession = new Map<string, ThreadMessage[]>();
 
     await Promise.all(
-      chatIds.map(async (entry) => {
+      loadIds.map(async (entry) => {
         try {
           const detail = await connect.send(
             new DescribeContactCommand({
@@ -648,6 +661,7 @@ export const handler: Handler = async (event: any) => {
           ...diag,
           describedOk: sessions.length,
           withTranscript: sessions.filter((s) => s.messageCount > 0).length,
+          sessionsAvailable: chatIds.length,
         },
       }),
     };
