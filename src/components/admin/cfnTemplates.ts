@@ -259,6 +259,20 @@ Resources:
                   - s3:ListBucket
                   - s3:GetBucketLocation
                 Resource: !Sub "arn:aws:s3:::\${RecordingBucket}"
+              # Adjuntos de chat/WhatsApp + email viven en el bucket del storage
+              # config ATTACHMENTS/EMAIL (Connect lo crea como amazonconnect-*),
+              # distinto del de grabaciones. Read-only para presignarlos en
+              # Grabaciones (GetAttachedFile NO sirve para adjuntos de mensaje de
+              # chat → se leen directo de S3). (#grabaciones)
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: "arn:aws:s3:::amazonconnect-*/*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: "arn:aws:s3:::amazonconnect-*"
         - PolicyName: VoxCrmWhatsApp
           PolicyDocument:
             Version: "2012-10-17"

@@ -135,6 +135,18 @@ Resources:
                   - s3:ListBucket
                   - s3:GetBucketLocation
                 Resource: !Sub "arn:aws:s3:::${RecordingBucket}"
+              # Adjuntos de chat/WhatsApp + email (bucket del storage config
+              # ATTACHMENTS/EMAIL, típicamente amazonconnect-*). Read-only para
+              # presignarlos en Grabaciones. (#grabaciones)
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: "arn:aws:s3:::amazonconnect-*/*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: "arn:aws:s3:::amazonconnect-*"
         - PolicyName: VoxCrmDiagnostics
           PolicyDocument:
             Version: "2012-10-17"

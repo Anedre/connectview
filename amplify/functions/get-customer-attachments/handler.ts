@@ -13,6 +13,11 @@ import {
 } from "@aws-sdk/client-customer-profiles";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { resolveConnect } from "../_shared/tenantConnect";
+import {
+  getAttachmentsStore,
+  presignAttachment,
+  listContactAttachments,
+} from "../_shared/attachmentsS3";
 
 // BYO (#43+#46): module-active.
 const legacyConnect = new ConnectClient({ maxAttempts: 1 });
@@ -104,6 +109,8 @@ function deriveSubChannel(
 interface ContactBrief {
   contactId: string;
   channel: string;
+  initiationTimestamp: string;
+  recordings?: Array<{ Location?: string; MediaStreamType?: string }>;
 }
 
 async function findContacts(phone: string): Promise<ContactBrief[]> {
@@ -146,7 +153,26 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
           }
         })
         .filter((ctr) => ctr && ctr.contactId)
-        .map((ctr) => ({ contactId: ctr.contactId, channel: ctr.channel || "" }));
+        .map((ctr): ContactBrief => ({
+          contactId: ctr.contactId,
+          channel: String(ctr.channel ?? ctr.Channel ?? "").trim().toUpperCase(),
+          initiationTimestamp: ctr.initiationTimestamp
+            ? new Date(
+                typeof ctr.initiationTimestamp === "number"
+                  ? ctr.initiationTimestamp
+                  : Date.parse(ctr.initiationTimestamp)
+              ).toISOString()
+            : "",
+          recordings: Array.isArray(ctr.recordings)
+            ? ctr.recordings.map(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (r: any) => ({
+                  Location: r.location || r.Location,
+                  MediaStreamType: r.mediaStreamType || r.MediaStreamType,
+                })
+              )
+            : [],
+        }));
       if (out.length > 0) return out;
     }
   } catch (err) {
@@ -204,9 +230,13 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
           c.CustomerEndpoint?.Value === phone
       )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((c: any) => ({
+      .map((c: any): ContactBrief => ({
         contactId: (c.Id as string) || "",
-        channel: (c.Channel as string) || "",
+        channel: String(c.Channel ?? "").trim().toUpperCase(),
+        initiationTimestamp: c.InitiationTimestamp
+          ? new Date(c.InitiationTimestamp).toISOString()
+          : "",
+        recordings: c.Recordings || [],
       }))
       .filter((x) => x.contactId);
   } catch {
@@ -317,123 +347,93 @@ export const handler: Handler = async (event: any) => {
 
     const all: CustomerAttachment[] = [];
 
-    // Process contacts in parallel; per-contact attachments collected serially
-    // because GetAttachedFile doesn't batch.
-    await Promise.all(
-      briefs.map(async (b) => {
-        try {
-          const detail = await connect.send(
-            new DescribeContactCommand({
-              InstanceId: instanceId,
-              ContactId: b.contactId,
-            })
-          );
-          const c = detail.Contact;
-          if (!c) return;
+    // Resolución S3-directa (#grabaciones): GetAttachedFile NO sirve para
+    // adjuntos de MENSAJE de chat/WhatsApp (otro subsistema). Los archivos viven
+    // en el bucket del storage config ATTACHMENTS. Para CHAT leemos el transcript
+    // (del CTR.recordings, sin DescribeContact) para tener los nombres ORIGINALES
+    // y presignamos cada adjunto; para EMAIL listamos el prefijo S3 del contacto.
+    // Ordenado por fecha desc + cap para acotar clientes con cientos de CTRs.
+    const store = await getAttachmentsStore(connect, instanceId);
+    // Sólo CHAT/EMAIL tienen adjuntos de mensaje (VOICE no) → filtramos a esos
+    // canales y procesamos TODOS, sin tope por recencia: un adjunto viejo
+    // (de un contacto fuera de las 60 sesiones recientes del hilo) igual debe
+    // aparecer en la grilla de Archivos. Tope alto sólo como red de seguridad
+    // para clientes con cientos de chats. (#grabaciones)
+    const MAX_CONTACTS = 200;
+    const ordered = [...briefs]
+      .filter((b) => b.channel === "CHAT" || b.channel === "EMAIL")
+      .sort(
+        (a, b) =>
+          (Date.parse(b.initiationTimestamp) || 0) -
+          (Date.parse(a.initiationTimestamp) || 0)
+      )
+      .slice(0, MAX_CONTACTS);
 
-          const arn = `arn:aws:connect:${REGION}:${ACCOUNT_ID}:instance/${instanceId}/contact/${b.contactId}`;
-          const channel = c.Channel || b.channel || "UNKNOWN";
-          const subChannel = deriveSubChannel(
-            c.InitiationMethod,
-            c.CustomerEndpoint?.Type
-          );
-          const contactTs = c.InitiationTimestamp?.toISOString() || "";
-
-          // 1) Chat-transcript inline attachments — only meaningful for CHAT.
-          if (channel === "CHAT") {
-            const inlines = await readChatAttachments(c.Recordings || []);
-            for (const inline of inlines) {
-              try {
-                const r = await connect.send(
-                  new GetAttachedFileCommand({
-                    InstanceId: instanceId,
-                    FileId: inline.attachmentId,
-                    AssociatedResourceArn: arn,
-                    UrlExpiryInSeconds: PRESIGN_EXPIRES,
-                  })
-                );
-                all.push({
-                  id: inline.attachmentId,
-                  name: inline.name || inline.attachmentId,
-                  contentType: inline.contentType,
-                  sizeBytes: r.FileSizeInBytes,
-                  url: r.DownloadUrl ?? null,
-                  sourceContactId: b.contactId,
-                  sourceChannel: channel,
-                  sourceSubChannel: subChannel,
-                  from: inline.from,
-                  timestamp: inline.timestamp || contactTs,
-                  kind: classifyMedia(inline.contentType, inline.name),
-                });
-              } catch (err) {
-                console.warn(
-                  `GetAttachedFile (chat-inline) ${inline.attachmentId} failed:`,
-                  err
-                );
-              }
-            }
-          }
-
-          // 2) Contact-level ATTACHMENT references — covers EMAIL outbound,
-          //    EMAIL inbound, and agent-attached files on any channel.
+    if (store) {
+      await Promise.all(
+        ordered.map(async (b) => {
           try {
-            const refs = await connect.send(
-              new ListContactReferencesCommand({
-                InstanceId: instanceId,
-                ContactId: b.contactId,
-                ReferenceTypes: ["ATTACHMENT"],
-              })
-            );
-            // De-dupe by fileId so chat inlines (which we already added)
-            // don't appear twice if Connect also exposes them as references.
-            const already = new Set(
-              all
-                .filter((a) => a.sourceContactId === b.contactId)
-                .map((a) => a.id)
-            );
-            for (const ref of refs.ReferenceSummaryList || []) {
-              const att = ref.Attachment;
-              if (!att?.Name || already.has(att.Name)) continue;
-              const cleanedName =
-                (att.Value || "").split("/").pop() || att.Name;
-              try {
-                const r = await connect.send(
-                  new GetAttachedFileCommand({
-                    InstanceId: instanceId,
-                    FileId: att.Name,
-                    AssociatedResourceArn: arn,
-                    UrlExpiryInSeconds: PRESIGN_EXPIRES,
-                  })
-                );
+            if (b.channel === "CHAT") {
+              const inlines = await readChatAttachments(b.recordings || []);
+              await Promise.all(
+                inlines.map(async (inline) => {
+                  const ts = inline.timestamp || b.initiationTimestamp;
+                  const res = await presignAttachment(
+                    s3,
+                    store,
+                    "chat",
+                    b.contactId,
+                    inline.attachmentId,
+                    ts,
+                    PRESIGN_EXPIRES
+                  );
+                  if (!res) return;
+                  all.push({
+                    id: inline.attachmentId,
+                    name: inline.name || inline.attachmentId,
+                    contentType: inline.contentType,
+                    sizeBytes: res.sizeBytes,
+                    url: res.url,
+                    sourceContactId: b.contactId,
+                    sourceChannel: "CHAT",
+                    sourceSubChannel: "Chat/WhatsApp",
+                    from: inline.from,
+                    timestamp: ts,
+                    kind: classifyMedia(inline.contentType, inline.name),
+                  });
+                })
+              );
+            } else if (b.channel === "EMAIL") {
+              const listed = await listContactAttachments(
+                s3,
+                store,
+                "email",
+                b.contactId,
+                b.initiationTimestamp,
+                PRESIGN_EXPIRES
+              );
+              for (const a of listed) {
                 all.push({
-                  id: att.Name,
-                  name: cleanedName,
+                  id: a.attachmentId,
+                  name: a.name,
                   contentType: undefined,
-                  sizeBytes: r.FileSizeInBytes,
-                  url: r.DownloadUrl ?? null,
+                  sizeBytes: a.sizeBytes,
+                  url: a.url,
                   sourceContactId: b.contactId,
-                  sourceChannel: channel,
-                  sourceSubChannel: subChannel,
-                  // Most agent-uploaded files are sent BY the agent. Inbound
-                  // email attachments would also be tagged AGENT here because
-                  // Connect doesn't differentiate at the reference level —
-                  // accept this caveat for V1.
-                  from: "AGENT",
-                  timestamp: contactTs,
-                  kind: classifyMedia(undefined, cleanedName),
+                  sourceChannel: "EMAIL",
+                  sourceSubChannel: "Email",
+                  from: "UNKNOWN",
+                  timestamp: b.initiationTimestamp,
+                  kind: classifyMedia(undefined, a.name),
                 });
-              } catch (err) {
-                console.warn(`GetAttachedFile (ref) ${att.Name} failed:`, err);
               }
             }
           } catch (err) {
-            console.warn(`ListContactReferences ${b.contactId} failed:`, err);
+            console.warn(`brief ${b.contactId} failed:`, err);
           }
-        } catch (err) {
-          console.warn(`brief ${b.contactId} failed:`, err);
-        }
-      })
-    );
+        })
+      );
+    }
 
     // Newest first — usually what the user wants to see.
     all.sort(

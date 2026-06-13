@@ -14,6 +14,10 @@ import {
 } from "@aws-sdk/client-customer-profiles";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { resolveConnect } from "../_shared/tenantConnect";
+import {
+  getAttachmentsStore,
+  presignAttachment,
+} from "../_shared/attachmentsS3";
 
 // BYO (#43+#46): module-active. Connect + S3 + Customer Profiles + domain.
 const legacyConnect = new ConnectClient({ maxAttempts: 1 });
@@ -30,9 +34,9 @@ const LEGACY_CUSTOMER_PROFILES_DOMAIN =
 let CUSTOMER_PROFILES_DOMAIN = LEGACY_CUSTOMER_PROFILES_DOMAIN;
 const REGION = process.env.AWS_REGION || "us-east-1";
 const ACCOUNT_ID = process.env.AWS_ACCOUNT_ID || "";
-// GetAttachedFile topa UrlExpiryInSeconds en 300s; 3600 tiraba
-// InvalidRequestException → los adjuntos volvían sin URL. (#grabaciones)
-const PRESIGN_EXPIRES = 300;
+// Expiry de las URLs presignadas de S3 para adjuntos (S3 admite hasta 7 días;
+// 1h alcanza para que el manager los abra). (#grabaciones)
+const PRESIGN_EXPIRES = 3600;
 
 const CORS: Record<string, string> = { "Content-Type": "application/json" };
 const userNameCache = new Map<string, string>();
@@ -479,95 +483,42 @@ async function readChatTranscript(
 }
 
 /**
- * For each attachment segment, call GetAttachedFile to get a presigned
- * URL + the real fileSizeBytes. Done in one batch per contact so we issue
- * fewer Connect API calls when a session has many attachments.
+ * Resuelve la URL de cada adjunto de mensaje. Los de chat/WhatsApp NO se bajan
+ * con GetAttachedFile (es de otro subsistema → InvalidRequestException); viven
+ * en el bucket del storage config ATTACHMENTS y se presignan S3 directo,
+ * buscando por {contactId}_{attachmentId} en la fecha del mensaje. Paralelo
+ * (S3 tiene alta TPS, sin el throttle de Connect). (#grabaciones)
  */
 async function resolveAttachmentUrls(
   messagesBySession: Map<string, ThreadMessage[]>
 ): Promise<void> {
+  const store = await getAttachmentsStore(connect, instanceId);
+  if (!store) return; // sin storage config de adjuntos no hay nada que presignar
+  const jobs: Array<Promise<void>> = [];
   for (const [contactId, msgs] of messagesBySession) {
     const attachmentMsgs = msgs.filter(
       (m) => m.type === "attachment" && m.attachment?.id
     );
-    if (attachmentMsgs.length === 0) continue;
-
-    const arn = `arn:aws:connect:${REGION}:${ACCOUNT_ID}:instance/${instanceId}/contact/${contactId}`;
-    // GetAttachedFile is serial per file — Connect doesn't accept a batch.
-    // Cap at 50 per session to bound Lambda runtime.
     for (const m of attachmentMsgs.slice(0, 50)) {
-      try {
-        const r = await connect.send(
-          new GetAttachedFileCommand({
-            InstanceId: instanceId,
-            FileId: m.attachment!.id,
-            AssociatedResourceArn: arn,
-            UrlExpiryInSeconds: PRESIGN_EXPIRES,
-          })
-        );
-        m.attachment!.url = r.DownloadUrl ?? null;
-        m.attachment!.sizeBytes = r.FileSizeInBytes;
-      } catch (err) {
-        console.warn(
-          `GetAttachedFile failed for ${m.attachment!.id} in ${contactId}:`,
-          err
-        );
-      }
-    }
-
-    // Some chats also include ATTACHMENT references at the contact level
-    // (not embedded in the transcript) — pull them in too as synthetic
-    // attachment messages dated at the contact's last update.
-    try {
-      const refs = await connect.send(
-        new ListContactReferencesCommand({
-          InstanceId: instanceId,
-          ContactId: contactId,
-          ReferenceTypes: ["ATTACHMENT"],
+      jobs.push(
+        presignAttachment(
+          s3,
+          store,
+          "chat",
+          contactId,
+          m.attachment!.id,
+          m.timestamp,
+          PRESIGN_EXPIRES
+        ).then((res) => {
+          if (res) {
+            m.attachment!.url = res.url;
+            m.attachment!.sizeBytes = res.sizeBytes;
+          }
         })
       );
-      const existingIds = new Set(
-        attachmentMsgs.map((m) => m.attachment!.id)
-      );
-      for (const ref of refs.ReferenceSummaryList || []) {
-        const att = ref.Attachment;
-        if (!att?.Name || existingIds.has(att.Name)) continue;
-        try {
-          const r = await connect.send(
-            new GetAttachedFileCommand({
-              InstanceId: instanceId,
-              FileId: att.Name,
-              AssociatedResourceArn: arn,
-              UrlExpiryInSeconds: PRESIGN_EXPIRES,
-            })
-          );
-          // Use the last message's timestamp as a proxy, or "now" as fallback.
-          const fallbackTs =
-            msgs.length > 0
-              ? msgs[msgs.length - 1].timestamp
-              : new Date().toISOString();
-          msgs.push({
-            id: `${contactId}:contact-ref:${att.Name}`,
-            type: "attachment",
-            participant: "AGENT",
-            content: "",
-            timestamp: fallbackTs,
-            contactId,
-            attachment: {
-              id: att.Name,
-              name: (att.Value || "").split("/").pop() || att.Name,
-              url: r.DownloadUrl ?? null,
-              sizeBytes: r.FileSizeInBytes,
-            },
-          });
-        } catch {
-          // ignore individual file failures
-        }
-      }
-    } catch {
-      // ListContactReferences failure is non-fatal — skip
     }
   }
+  await Promise.all(jobs);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
