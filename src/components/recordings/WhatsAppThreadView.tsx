@@ -657,7 +657,32 @@ function AttachmentInline({
     );
   }
 
-  // Generic file chip
+  // Adjuntos de MENSAJE de chat/WhatsApp: Connect NO expone su descarga
+  // histórica (no es un attached-file de la API de archivos ni queda en el
+  // bucket S3 del cliente, sólo se baja en vivo vía ConnectParticipant). En vez
+  // de un link roto, mostramos QUÉ se compartió, marcado como no descargable.
+  if (!attachment.url) {
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "6px 8px",
+          background: "var(--bg-2)",
+          borderRadius: 6,
+          fontSize: 12,
+          color: "var(--text-2)",
+        }}
+        title="Adjunto de chat — Connect no permite descargarlo después de cerrada la conversación"
+      >
+        <Paperclip size={14} style={{ flexShrink: 0 }} /> {attachment.name || attachment.id}
+        <span className="muted" style={{ fontSize: 10.5 }}>· no descargable</span>
+      </span>
+    );
+  }
+
+  // Generic file chip (con URL presignada — adjuntos de email / archivos del agente)
   return (
     <a
       href={attachment.url || "#"}
