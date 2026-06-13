@@ -4,7 +4,7 @@ import { getApiEndpoints } from "@/lib/api";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useLeadOverview } from "@/hooks/useLeadOverview";
 import { useContactSummary } from "@/hooks/useContactSummary";
-import type { RecentLead } from "@/components/recordings/RecentContactsTable";
+import type { RecentLead } from "@/types/recordings";
 import { ConversationCanvas } from "@/components/recordings/ConversationCanvas";
 import { CallPlayerView, type ActiveCall } from "@/components/recordings/CallPlayerView";
 import { WhatsAppThreadView } from "@/components/recordings/WhatsAppThreadView";
@@ -65,12 +65,28 @@ function activityLabel(a?: RecentLead["lastActivity"]): string {
 }
 const initials = (s: string) => (s || "?").slice(0, 2).toUpperCase();
 
+const CHAN_FILTERS: { id: string; label: string }[] = [
+  { id: "all", label: "Todos" },
+  { id: "llam", label: "Llamadas" },
+  { id: "whatsapp", label: "WhatsApp" },
+  { id: "correo", label: "Correo" },
+];
+function matchChannel(ch: string | undefined, key: string): boolean {
+  if (key === "all") return true;
+  const c = (ch || "").toLowerCase();
+  if (key === "llam") return c.includes("llam") || c.includes("call") || c.includes("voz") || c.includes("voice") || c.includes("telef");
+  if (key === "whatsapp") return c.includes("whatsapp") || c.includes("wa");
+  if (key === "correo") return c.includes("correo") || c.includes("email") || c.includes("mail");
+  return true;
+}
+
 /* ───────────────────────── Lista de contactos (izq) ───────────────────────── */
 function ContactsList({ selectedId, onSelect }: { selectedId: string | null; onSelect: (l: RecentLead) => void }) {
   const [rows, setRows] = useState<RecentLead[]>([]);
   const [allRows, setAllRows] = useState<RecentLead[] | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "err">(() => (getApiEndpoints()?.manageLeads ? "loading" : "err"));
   const [q, setQ] = useState("");
+  const [chan, setChan] = useState("all");
 
   const reload = useCallback(() => {
     const ep = getApiEndpoints();
@@ -111,9 +127,10 @@ function ContactsList({ selectedId, onSelect }: { selectedId: string | null; onS
 
   const query = q.trim().toLowerCase();
   const sourceRows = query.length >= 2 && allRows ? allRows : rows;
-  const filtered = query
+  const base = query
     ? sourceRows.filter((r) => (r.name || "").toLowerCase().includes(query) || (r.company || "").toLowerCase().includes(query) || (r.phone || "").includes(query))
     : rows;
+  const filtered = query || chan === "all" ? base : base.filter((r) => matchChannel(r.lastActivity?.channel, chan));
 
   return (
     <aside className="rec-list">
@@ -121,6 +138,13 @@ function ContactsList({ selectedId, onSelect }: { selectedId: string | null; onS
         <Search size={13} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar contacto…" />
         <button onClick={reload} title="Actualizar" aria-label="Actualizar"><RefreshCw size={13} /></button>
+      </div>
+      <div className="rec-list__chips">
+        {CHAN_FILTERS.map((f) => (
+          <button key={f.id} className={`rec-list__chip ${chan === f.id ? "rec-list__chip--on" : ""}`} onClick={() => setChan(f.id)}>
+            {f.label}
+          </button>
+        ))}
       </div>
       <div className="rec-list__rows">
         {state === "loading" ? (
