@@ -124,9 +124,27 @@ function parseS3Location(location: string | undefined): { bucket: string; key: s
  * Customer Profiles (preferred — includes ALL channels via ingested CTRs)
  * and falling back to SearchContacts when no profile exists yet.
  */
-async function findChatContactIds(phone: string): Promise<
-  Array<{ contactId: string; initiationTimestamp: string; channel: string }>
-> {
+interface ThreadDiag {
+  strategy: "customer-profiles" | "search-contacts" | "none";
+  profileFound: boolean;
+  ctrTotal: number;
+  chatMatched: number;
+  /** Distinct raw channel values seen in the profile CTRs (case as stored). */
+  channelsSeen: string[];
+}
+
+async function findChatContactIds(phone: string): Promise<{
+  ids: Array<{ contactId: string; initiationTimestamp: string; channel: string }>;
+  diag: ThreadDiag;
+}> {
+  const diag: ThreadDiag = {
+    strategy: "none",
+    profileFound: false,
+    ctrTotal: 0,
+    chatMatched: 0,
+    channelsSeen: [],
+  };
+
   // Strategy 1: Customer Profiles CTRs.
   try {
     const sp = await profiles.send(
@@ -137,6 +155,7 @@ async function findChatContactIds(phone: string): Promise<
       })
     );
     const profileId = sp.Items?.[0]?.ProfileId;
+    diag.profileFound = !!profileId;
     if (profileId) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const items: any[] = [];
@@ -156,7 +175,7 @@ async function findChatContactIds(phone: string): Promise<
         if (!r.NextToken) break;
         nextToken = r.NextToken;
       }
-      const ids = items
+      const parsed = items
          
         .map((it) => {
           try {
@@ -165,7 +184,25 @@ async function findChatContactIds(phone: string): Promise<
             return null;
           }
         })
-        .filter((ctr) => ctr && ctr.contactId && ctr.channel === "CHAT")
+        .filter((ctr) => ctr && ctr.contactId);
+      diag.ctrTotal = parsed.length;
+      const seenChannels = new Set<string>();
+      for (const ctr of parsed)
+        seenChannels.add(String(ctr.channel ?? ctr.Channel ?? "(none)"));
+      diag.channelsSeen = [...seenChannels].slice(0, 10);
+
+      const ids = parsed
+        // Channel match must be case/space-insensitive: distintos tenants
+        // ingieren el CTR con "CHAT" / "chat" / "Chat" (y a veces la clave es
+        // `Channel`). El badge (useLeadOverview) ya normaliza con toUpperCase,
+        // así que si acá comparábamos `=== "CHAT"` exacto, el hilo encontraba 0
+        // mientras el badge contaba N → "sin mensajes" falso. (#grabaciones)
+        .filter(
+          (ctr) =>
+            String(ctr.channel ?? ctr.Channel ?? "")
+              .trim()
+              .toUpperCase() === "CHAT"
+        )
         .map((ctr) => ({
           contactId: ctr.contactId,
           initiationTimestamp: ctr.initiationTimestamp
@@ -177,7 +214,11 @@ async function findChatContactIds(phone: string): Promise<
             : "",
           channel: "CHAT",
         }));
-      if (ids.length > 0) return ids;
+      diag.chatMatched = ids.length;
+      if (ids.length > 0) {
+        diag.strategy = "customer-profiles";
+        return { ids, diag };
+      }
     }
   } catch (err) {
     console.warn("Customer Profiles lookup failed:", err);
@@ -200,7 +241,7 @@ async function findChatContactIds(phone: string): Promise<
         MaxResults: 100,
       })
     );
-    return ((sc.Contacts || []) as Array<{
+    const ids = ((sc.Contacts || []) as Array<{
       Id?: string;
       InitiationTimestamp?: Date;
       Channel?: string;
@@ -217,9 +258,12 @@ async function findChatContactIds(phone: string): Promise<
         channel: c.Channel || "CHAT",
       }))
       .filter((x) => x.contactId);
+    diag.strategy = "search-contacts";
+    diag.chatMatched = ids.length;
+    return { ids, diag };
   } catch (err) {
     console.warn("SearchContacts fallback failed:", err);
-    return [];
+    return { ids: [], diag };
   }
 }
 
@@ -470,7 +514,7 @@ export const handler: Handler = async (event: any) => {
 
   try {
     // 1. Find every CHAT contact for this customer.
-    const chatIds = await findChatContactIds(phone);
+    const { ids: chatIds, diag } = await findChatContactIds(phone);
     if (chatIds.length === 0) {
       return {
         statusCode: 200,
@@ -482,6 +526,7 @@ export const handler: Handler = async (event: any) => {
           sessions: [],
           messages: [],
           daysWithActivity: {},
+          diagnostics: { ...diag, describedOk: 0, withTranscript: 0 },
         }),
       };
     }
@@ -569,6 +614,11 @@ export const handler: Handler = async (event: any) => {
         sessions,
         messages: all,
         daysWithActivity,
+        diagnostics: {
+          ...diag,
+          describedOk: sessions.length,
+          withTranscript: sessions.filter((s) => s.messageCount > 0).length,
+        },
       }),
     };
   } catch (err) {

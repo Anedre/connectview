@@ -182,11 +182,17 @@ async function listProfileCtrs(
         ? Math.max(0, Math.round((disconnectMs - initiationMs) / 1000))
         : 0;
 
+      // Normalizá el canal (CHAT/chat/Chat → CHAT) para que deriveSubChannel
+      // pueda etiquetar "WhatsApp/SMS" y el frontend cuente bien. (#grabaciones)
+      const channel =
+        String(ctr.channel ?? ctr.Channel ?? "").trim().toUpperCase() ||
+        "UNKNOWN";
+
       return {
         contactId: ctr.contactId,
-        channel: ctr.channel || "UNKNOWN",
+        channel,
         subChannel: deriveSubChannel(
-          ctr.channel,
+          channel,
           ctr.initiationMethod,
           ctr.customerEndpoint?.type
         ),

@@ -249,9 +249,29 @@ export function WhatsAppThreadView({ phone }: Props) {
   if (data.totalMessages === 0) {
     // Sin ninguna conversación de chat → realmente vacío.
     if (data.totalSessions === 0) {
+      const dg = data.diagnostics;
+      // Si el backend halló CTRs para este teléfono pero ninguno quedó como
+      // chat, algo no cuadra (el badge cuenta canales con toUpperCase). Mostramos
+      // un diagnóstico discreto con los canales realmente vistos para depurar
+      // sin tener que mirar CloudWatch del tenant. (#grabaciones)
+      const showDiag = dg && dg.ctrTotal > 0 && dg.chatMatched === 0;
       return (
         <div style={{ padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 12.5 }}>
           Este cliente no tiene mensajes de WhatsApp/chat.
+          {showDiag && (
+            <div
+              style={{
+                marginTop: 16,
+                fontSize: 10.5,
+                color: "var(--text-3)",
+                fontFamily: "var(--font-mono, monospace)",
+                lineHeight: 1.7,
+                opacity: 0.75,
+              }}
+            >
+              diagnóstico · perfil: {dg!.profileFound ? "sí" : "no"} · CTRs: {dg!.ctrTotal} · chat: {dg!.chatMatched} · canales: [{dg!.channelsSeen.join(", ")}] · vía: {dg!.strategy}
+            </div>
+          )}
         </div>
       );
     }

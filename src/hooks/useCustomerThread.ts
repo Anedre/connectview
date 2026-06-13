@@ -37,6 +37,17 @@ export interface CustomerThread {
   messages: ThreadMessage[];
   /** YYYY-MM-DD → message count (excludes events). */
   daysWithActivity: Record<string, number>;
+  /** Backend diagnostics (counts only, no PII) — para entender por qué un hilo
+   *  vino vacío sin tener que mirar logs del tenant. (#grabaciones) */
+  diagnostics?: {
+    strategy: string;
+    profileFound: boolean;
+    ctrTotal: number;
+    chatMatched: number;
+    channelsSeen: string[];
+    describedOk: number;
+    withTranscript: number;
+  };
 }
 
 interface State {
