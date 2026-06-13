@@ -95,7 +95,14 @@ export async function presignAttachment(
     if (!obj?.Key) return null;
     const url = await getSignedUrl(
       s3,
-      new GetObjectCommand({ Bucket: store.bucket, Key: obj.Key }),
+      // Override Content-Disposition: Connect guarda los adjuntos con
+      // "attachment" → un iframe/visor los DESCARGA en vez de mostrarlos.
+      // "inline" fuerza que el visor (PDF/imagen) los renderice. (#grabaciones)
+      new GetObjectCommand({
+        Bucket: store.bucket,
+        Key: obj.Key,
+        ResponseContentDisposition: "inline",
+      }),
       { expiresIn }
     );
     return { url, sizeBytes: obj.Size };
@@ -147,7 +154,11 @@ export async function listContactAttachments(
       const attachmentId = rest.split("_")[0] || rest;
       const url = await getSignedUrl(
         s3,
-        new GetObjectCommand({ Bucket: store.bucket, Key: c.Key }),
+        new GetObjectCommand({
+          Bucket: store.bucket,
+          Key: c.Key,
+          ResponseContentDisposition: "inline",
+        }),
         { expiresIn }
       );
       out.push({ attachmentId, name: fname, url, sizeBytes: c.Size });
