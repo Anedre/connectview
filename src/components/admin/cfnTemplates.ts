@@ -161,6 +161,10 @@ Resources:
                   - connect:SearchContacts
                   - connect:DescribeContact
                   - connect:ListContactReferences
+                  # Descarga de adjuntos de chat/WhatsApp/email (genera URL
+                  # presignada para el visor de Grabaciones). Sin esto, los
+                  # archivos compartidos aparecen sin link de descarga.
+                  - connect:GetAttachedFile
                   - connect:DescribeRoutingProfile
                   - connect:ListHoursOfOperations
                   - connect:CreateQueue
@@ -180,6 +184,11 @@ Resources:
                   - profile:SearchProfiles
                   - profile:ListDomains
                   - profile:GetProfileObjectType
+                  # Lee los CTRs ingeridos del perfil (historial multicanal
+                  # rápido). Sin esto, las lentes de Grabaciones caen al barrido
+                  # lento de SearchContacts (50 DescribeContact) y los conteos
+                  # se topan → el badge no coincide con el hilo.
+                  - profile:ListProfileObjects
                   - profile:CreateProfile
                   - profile:UpdateProfile
                   - profile:PutProfileObject

@@ -151,10 +151,15 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
     console.warn("Customer Profiles lookup failed:", err);
   }
 
+  // SearchContacts fallback. Mismos dos fixes que get-customer-thread
+  // (#grabaciones): (1) ventana ≤55 días — SearchContacts tira 500 por encima
+  // de ~56d (1345h), lo que dejaba `briefs` en [] → 0 archivos; (2) el resumen
+  // de SearchContacts NO incluye CustomerEndpoint, así que filtrar sobre el
+  // summary daba siempre 0 — hay que DescribeContact y RECIÉN filtrar.
   try {
     const end = new Date();
     const start = new Date();
-    start.setDate(start.getDate() - 180);
+    start.setDate(start.getDate() - 55);
     const sc = await connect.send(
       new SearchContactsCommand({
         InstanceId: instanceId,
@@ -164,20 +169,43 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
           EndTime: end,
         },
         SearchCriteria: { Channels: ["VOICE", "CHAT", "EMAIL", "TASK"] },
+        Sort: { FieldName: "INITIATION_TIMESTAMP", Order: "DESCENDING" },
         MaxResults: 100,
       })
     );
-    return ((sc.Contacts || []) as Array<{
-      Id?: string;
-      Channel?: string;
-      CustomerEndpoint?: { Address?: string; Value?: string };
-    }>)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const summaries = ((sc.Contacts as any[]) || []).slice(0, 50);
+    const detailed = (
+      await Promise.all(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        summaries.map(async (c: any) => {
+          try {
+            const d = await connect.send(
+              new DescribeContactCommand({
+                InstanceId: instanceId,
+                ContactId: c.Id,
+              })
+            );
+            return d.Contact || null;
+          } catch {
+            return null;
+          }
+        })
+      )
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ).filter((x): x is any => !!x);
+    return detailed
       .filter(
-        (c) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (c: any) =>
           c.CustomerEndpoint?.Address === phone ||
           c.CustomerEndpoint?.Value === phone
       )
-      .map((c) => ({ contactId: c.Id || "", channel: c.Channel || "" }))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((c: any) => ({
+        contactId: (c.Id as string) || "",
+        channel: (c.Channel as string) || "",
+      }))
       .filter((x) => x.contactId);
   } catch {
     return [];

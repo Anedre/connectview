@@ -72,6 +72,7 @@ Resources:
                   - connect:SearchContacts
                   - connect:DescribeContact
                   - connect:ListContactReferences
+                  - connect:GetAttachedFile
                   - connect:DescribeRoutingProfile
                   - connect:ListHoursOfOperations
                   - connect:CreateQueue
@@ -94,6 +95,7 @@ Resources:
                   - profile:SearchProfiles
                   - profile:ListDomains
                   - profile:GetProfileObjectType
+                  - profile:ListProfileObjects
                   - profile:CreateProfile
                   - profile:UpdateProfile
                   - profile:PutProfileObject
