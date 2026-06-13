@@ -247,16 +247,44 @@ export function WhatsAppThreadView({ phone }: Props) {
     );
   }
   if (data.totalMessages === 0) {
+    // Sin ninguna conversación de chat → realmente vacío.
+    if (data.totalSessions === 0) {
+      return (
+        <div style={{ padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 12.5 }}>
+          Este cliente no tiene mensajes de WhatsApp/chat.
+        </div>
+      );
+    }
+    // Hay conversación(es) de WhatsApp pero su transcripción no está disponible
+    // (se archiva poco después de cerrar el chat). Mostramos que existen — antes
+    // decía "no tiene mensajes" y contradecía el conteo del canal.
     return (
-      <div
-        style={{
-          padding: 40,
-          textAlign: "center",
-          color: "var(--text-3)",
-          fontSize: 12.5,
-        }}
-      >
-        Este cliente no tiene mensajes de WhatsApp/chat.
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+        <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border-1)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <Icon.User size={14} style={{ color: "var(--text-3)" }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{phone}</div>
+            <div className="muted" style={{ fontSize: 10.5, marginTop: 1 }}>
+              {data.totalSessions} conversación{data.totalSessions === 1 ? "" : "es"} de WhatsApp
+            </div>
+          </div>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ background: "var(--accent-amber-soft)", color: "var(--accent-amber)", borderRadius: 8, padding: "10px 12px", fontSize: 12, lineHeight: 1.5 }}>
+            Hay {data.totalSessions} conversación{data.totalSessions === 1 ? "" : "es"} de WhatsApp con este cliente, pero su transcripción todavía no se pudo cargar. Las transcripciones se archivan poco después de que el chat se cierra; si la conversación es reciente, probá de nuevo en unos minutos.
+          </div>
+          {data.sessions.map((s) => (
+            <div key={s.contactId} style={{ border: "1px solid var(--border-1)", borderRadius: 10, background: "var(--bg-1)", padding: "10px 12px" }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                <Icon.WhatsApp size={13} style={{ color: "var(--accent-green)" }} /> WhatsApp{s.subChannel ? ` · ${s.subChannel}` : ""}
+              </div>
+              <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                {s.startTime ? new Date(s.startTime).toLocaleString("es-PE", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+                {s.agentUsername ? ` · ${s.agentUsername}` : ""}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
