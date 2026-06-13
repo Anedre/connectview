@@ -135,8 +135,23 @@ interface ThreadDiag {
   channelsSeen: string[];
 }
 
+/** Referencia a un contacto CHAT. Si trae `recordings` (de Customer Profiles o
+ *  de un DescribeContact ya hecho), el handler lee la transcripción directo de
+ *  S3 SIN un DescribeContact por sesión — el rate limit de Connect en ese paso
+ *  era la causa de la lentitud y de los conteos variables. (#grabaciones perf) */
+interface ChatContactRef {
+  contactId: string;
+  initiationTimestamp: string;
+  disconnectTimestamp?: string;
+  channel: string;
+  fromProfile: boolean;
+  recordings?: Array<{ Location?: string; MediaStreamType?: string }>;
+  initiationMethod?: string;
+  customerEndpointType?: string;
+}
+
 async function findChatContactIds(phone: string): Promise<{
-  ids: Array<{ contactId: string; initiationTimestamp: string; channel: string }>;
+  ids: ChatContactRef[];
   diag: ThreadDiag;
 }> {
   const diag: ThreadDiag = {
@@ -205,7 +220,7 @@ async function findChatContactIds(phone: string): Promise<{
               .trim()
               .toUpperCase() === "CHAT"
         )
-        .map((ctr) => ({
+        .map((ctr): ChatContactRef => ({
           contactId: ctr.contactId,
           initiationTimestamp: ctr.initiationTimestamp
             ? new Date(
@@ -214,7 +229,28 @@ async function findChatContactIds(phone: string): Promise<{
                   : Date.parse(ctr.initiationTimestamp)
               ).toISOString()
             : "",
+          disconnectTimestamp: ctr.disconnectTimestamp
+            ? new Date(
+                typeof ctr.disconnectTimestamp === "number"
+                  ? ctr.disconnectTimestamp
+                  : Date.parse(ctr.disconnectTimestamp)
+              ).toISOString()
+            : "",
           channel: "CHAT",
+          fromProfile: true,
+          // CTR.recordings (minúsculas) → forma {Location, MediaStreamType} que
+          // espera readChatTranscript; la de CHAT apunta a la transcripción S3.
+          recordings: Array.isArray(ctr.recordings)
+            ? ctr.recordings.map(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (r: any) => ({
+                  Location: r.location || r.Location,
+                  MediaStreamType: r.mediaStreamType || r.MediaStreamType,
+                })
+              )
+            : [],
+          initiationMethod: ctr.initiationMethod,
+          customerEndpointType: ctr.customerEndpoint?.type,
         }));
       diag.chatMatched = ids.length;
       if (ids.length > 0) {
@@ -281,12 +317,21 @@ async function findChatContactIds(phone: string): Promise<{
           c.CustomerEndpoint?.Value === phone
       )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((c: any) => ({
+      .map((c: any): ChatContactRef => ({
         contactId: (c.Id as string) || "",
         initiationTimestamp: c.InitiationTimestamp
           ? new Date(c.InitiationTimestamp).toISOString()
           : "",
+        disconnectTimestamp: c.DisconnectTimestamp
+          ? new Date(c.DisconnectTimestamp).toISOString()
+          : "",
         channel: (c.Channel as string) || "CHAT",
+        fromProfile: false,
+        // Ya hicimos DescribeContact para filtrar → reusamos sus Recordings
+        // así el loop principal NO vuelve a describir. (#grabaciones perf)
+        recordings: c.Recordings || [],
+        initiationMethod: c.InitiationMethod,
+        customerEndpointType: c.CustomerEndpoint?.Type,
       }))
       .filter((x) => x.contactId);
     diag.strategy = "search-contacts";
@@ -312,6 +357,8 @@ interface ChatRawSegment {
   absoluteTime?: string;
   Id?: string;
   id?: string;
+  DisplayName?: string;
+  displayName?: string;
   Attachments?: Array<{
     AttachmentId?: string;
     attachmentId?: string;
@@ -366,7 +413,13 @@ async function readChatTranscript(
       const id = s.Id || s.id || `${contactId}:${idx}`;
       const content = s.Content || s.content || "";
       const contentType = s.ContentType || s.contentType || undefined;
-      const baseAgent = participant === "AGENT" ? agentUsername : undefined;
+      // El nombre del agente sale del propio transcript (DisplayName) → así no
+      // hace falta DescribeContact+DescribeUser por sesión. (#grabaciones perf)
+      const displayName = s.DisplayName || s.displayName || "";
+      const baseAgent =
+        participant === "AGENT"
+          ? displayName || agentUsername || undefined
+          : undefined;
 
       if (
         sType === "ATTACHMENT" ||
@@ -581,36 +634,53 @@ export const handler: Handler = async (event: any) => {
     await Promise.all(
       loadIds.map(async (entry) => {
         try {
-          const detail = await connect.send(
-            new DescribeContactCommand({
-              InstanceId: instanceId,
-              ContactId: entry.contactId,
-            })
-          );
-          const c = detail.Contact;
-          if (!c) return;
+          // Camino rápido: el CTR (o el DescribeContact que ya hizo el fallback)
+          // trae recordings + método + timestamps → leemos la transcripción
+          // directo de S3 SIN DescribeContact por sesión. Sólo describimos si un
+          // CTR de Customer Profiles vino sin recordings (transcripción recién
+          // archivada). Esto saca del camino el throttle de Connect. (#grabaciones)
+          let recordings = entry.recordings || [];
+          let initiationMethod = entry.initiationMethod;
+          let customerEndpointType = entry.customerEndpointType;
+          let startTime = entry.initiationTimestamp;
+          let endTime = entry.disconnectTimestamp || "";
 
-          const agentId = c.AgentInfo?.Id || "";
-          const agentUsername = agentId
-            ? await resolveAgentUsername(agentId)
-            : "";
+          if (entry.fromProfile && recordings.length === 0) {
+            try {
+              const detail = await connect.send(
+                new DescribeContactCommand({
+                  InstanceId: instanceId,
+                  ContactId: entry.contactId,
+                })
+              );
+              const c = detail.Contact;
+              if (c) {
+                recordings = c.Recordings || [];
+                initiationMethod = c.InitiationMethod;
+                customerEndpointType = c.CustomerEndpoint?.Type;
+                startTime = c.InitiationTimestamp?.toISOString() || startTime;
+                endTime = c.DisconnectTimestamp?.toISOString() || endTime;
+              }
+            } catch {
+              // si DescribeContact falla, seguimos con lo que trae el CTR
+            }
+          }
 
-          const msgs = await readChatTranscript(
-            c.Recordings || [],
-            entry.contactId,
-            agentUsername
-          );
+          const msgs = await readChatTranscript(recordings, entry.contactId, "");
           messagesBySession.set(entry.contactId, msgs);
+
+          // Agente: DisplayName del primer segmento AGENT del transcript (sin
+          // DescribeUser).
+          const agentUsername =
+            msgs.find((m) => m.participant === "AGENT" && m.agentUsername)
+              ?.agentUsername || "";
 
           sessions.push({
             contactId: entry.contactId,
-            startTime: c.InitiationTimestamp?.toISOString() || "",
-            endTime: c.DisconnectTimestamp?.toISOString() || "",
+            startTime,
+            endTime,
             agentUsername,
-            subChannel: deriveSubChannel(
-              c.InitiationMethod,
-              c.CustomerEndpoint?.Type
-            ),
+            subChannel: deriveSubChannel(initiationMethod, customerEndpointType),
             messageCount: msgs.length,
           });
         } catch (err) {
