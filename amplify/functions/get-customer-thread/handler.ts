@@ -224,11 +224,18 @@ async function findChatContactIds(phone: string): Promise<{
     console.warn("Customer Profiles lookup failed:", err);
   }
 
-  // Strategy 2: SearchContacts fallback (last 90 days, CHAT only).
+  // Strategy 2: SearchContacts fallback (CHAT). DOS bugs que dejaban el hilo en
+  // 0 pese a que get-contact-history sí encontraba los chats (#grabaciones):
+  //   1) SearchContacts limita el TimeRange a ~56 días (1345h); pedíamos 90 →
+  //      tiraba 500, el catch devolvía 0 y la diag quedaba en strategy:"none".
+  //      Capamos a 55 (igual que get-contact-history).
+  //   2) El RESUMEN de SearchContacts NO incluye CustomerEndpoint, así que
+  //      filtrar c.CustomerEndpoint?.Address sobre el summary daba siempre 0.
+  //      Hay que DescribeContact cada uno y RECIÉN ahí filtrar por teléfono.
   try {
     const end = new Date();
     const start = new Date();
-    start.setDate(start.getDate() - 90);
+    start.setDate(start.getDate() - 55);
     const sc = await connect.send(
       new SearchContactsCommand({
         InstanceId: instanceId,
@@ -238,24 +245,46 @@ async function findChatContactIds(phone: string): Promise<{
           EndTime: end,
         },
         SearchCriteria: { Channels: ["CHAT"] },
+        // Más recientes primero → el slice(0,50) de describes toma los nuevos.
+        Sort: { FieldName: "INITIATION_TIMESTAMP", Order: "DESCENDING" },
         MaxResults: 100,
       })
     );
-    const ids = ((sc.Contacts || []) as Array<{
-      Id?: string;
-      InitiationTimestamp?: Date;
-      Channel?: string;
-      CustomerEndpoint?: { Address?: string; Value?: string };
-    }>)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const summaries = ((sc.Contacts as any[]) || []).slice(0, 50);
+    const detailed = (
+      await Promise.all(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        summaries.map(async (c: any) => {
+          try {
+            const d = await connect.send(
+              new DescribeContactCommand({
+                InstanceId: instanceId,
+                ContactId: c.Id,
+              })
+            );
+            return d.Contact || null;
+          } catch {
+            return null;
+          }
+        })
+      )
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ).filter((x): x is any => !!x);
+    const ids = detailed
       .filter(
-        (c) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (c: any) =>
           c.CustomerEndpoint?.Address === phone ||
           c.CustomerEndpoint?.Value === phone
       )
-      .map((c) => ({
-        contactId: c.Id || "",
-        initiationTimestamp: c.InitiationTimestamp?.toISOString() || "",
-        channel: c.Channel || "CHAT",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((c: any) => ({
+        contactId: (c.Id as string) || "",
+        initiationTimestamp: c.InitiationTimestamp
+          ? new Date(c.InitiationTimestamp).toISOString()
+          : "",
+        channel: (c.Channel as string) || "CHAT",
       }))
       .filter((x) => x.contactId);
     diag.strategy = "search-contacts";
@@ -263,6 +292,7 @@ async function findChatContactIds(phone: string): Promise<{
     return { ids, diag };
   } catch (err) {
     console.warn("SearchContacts fallback failed:", err);
+    diag.strategy = "search-contacts-error";
     return { ids: [], diag };
   }
 }
