@@ -572,7 +572,11 @@ export const handler: Handler = async (event: any) => {
     // Para clientes con cientos de chats cargar TODO tardaba >9s; nos quedamos
     // con las N conversaciones MÁS RECIENTES (las que se miran primero). El
     // total real se reporta en diagnostics.sessionsAvailable. (#grabaciones)
-    const MAX_SESSIONS = 60;
+    // Antes 60 (cuando cada sesión costaba un DescribeContact throttleado).
+    // Ahora el camino es S3-only (transcripción directa), así que cargamos
+    // bastantes más para que los adjuntos de conversaciones viejas también
+    // aparezcan inline en el hilo. (#grabaciones)
+    const MAX_SESSIONS = 120;
     const orderedIds = [...chatIds].sort(
       (a, b) =>
         (Date.parse(b.initiationTimestamp) || 0) -

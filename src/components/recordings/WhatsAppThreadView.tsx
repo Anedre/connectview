@@ -6,6 +6,7 @@ import { useCustomerThread, type ThreadMessage, type ThreadSession } from "@/hoo
 import { ThreadDatePicker } from "@/components/recordings/ThreadDatePicker";
 import * as Icon from "@/components/vox/primitives";
 import { sanitizeText } from "@/lib/utils";
+import { AttachmentLightbox, type PreviewItem } from "@/components/recordings/AttachmentLightbox";
 
 /**
  * Unified WhatsApp-style thread for a customer — merges every CHAT contact
@@ -183,6 +184,7 @@ export function WhatsAppThreadView({ phone }: Props) {
   // Used to flash-highlight the first message of a jumped-to day so the user
   // sees where they landed even if the day already had visible content.
   const [flashKey, setFlashKey] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PreviewItem | null>(null);
 
   const timeline = useMemo(() => {
     if (!data) return [];
@@ -405,10 +407,12 @@ export function WhatsAppThreadView({ phone }: Props) {
               key={`msg:${item.msg.id}:${i}`}
               msg={item.msg}
               dense={false}
+              onPreview={setPreview}
             />
           );
         })}
       </div>
+      <AttachmentLightbox item={preview} onClose={() => setPreview(null)} />
     </div>
   );
 }
@@ -476,9 +480,11 @@ function SessionSeparator({
 function MessageBubble({
   msg,
   dense,
+  onPreview,
 }: {
   msg: ThreadMessage;
   dense: boolean;
+  onPreview: (p: PreviewItem) => void;
 }) {
   // Connect "EVENT" segments are participant.joined / chat.ended / typing
   // / read — render as small centered system pills, not bubbles.
@@ -560,7 +566,7 @@ function MessageBubble({
         )}
 
         {msg.type === "attachment" && msg.attachment ? (
-          <AttachmentInline attachment={msg.attachment} />
+          <AttachmentInline attachment={msg.attachment} participant={msg.participant} onPreview={onPreview} />
         ) : (
           <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {displayContent || (
@@ -615,33 +621,44 @@ function eventLabel(kind: string | undefined, participant: string): string {
 
 function AttachmentInline({
   attachment,
+  participant,
+  onPreview,
 }: {
   attachment: NonNullable<ThreadMessage["attachment"]>;
+  participant: ThreadMessage["participant"];
+  onPreview: (p: PreviewItem) => void;
 }) {
   const ct = (attachment.contentType || "").toLowerCase();
   const isImage = ct.startsWith("image/");
   const isAudio = ct.startsWith("audio/");
   const isVideo = ct.startsWith("video/");
 
+  const open = () => {
+    if (!attachment.url) return;
+    onPreview({
+      url: attachment.url,
+      name: attachment.name || attachment.id,
+      contentType: attachment.contentType,
+      sizeBytes: attachment.sizeBytes,
+      meta: participant === "AGENT" ? "Agente" : participant === "CUSTOMER" ? "Cliente" : undefined,
+    });
+  };
+
   if (isImage && attachment.url) {
     return (
-      <a
-        href={attachment.url}
-        target="_blank"
-        rel="noopener noreferrer"
+      <img
+        src={attachment.url}
+        alt={attachment.name || "imagen"}
+        onClick={open}
         title={attachment.name}
-      >
-        <img
-          src={attachment.url}
-          alt={attachment.name || "imagen"}
-          style={{
-            maxWidth: "100%",
-            maxHeight: 240,
-            borderRadius: 6,
-            display: "block",
-          }}
-        />
-      </a>
+        style={{
+          maxWidth: "100%",
+          maxHeight: 240,
+          borderRadius: 8,
+          display: "block",
+          cursor: "zoom-in",
+        }}
+      />
     );
   }
   if (isAudio && attachment.url) {
@@ -682,22 +699,24 @@ function AttachmentInline({
     );
   }
 
-  // Generic file chip (con URL presignada — adjuntos de email / archivos del agente)
+  // Generic file chip (con URL presignada) — abre el visor. Cubre PDFs de chat,
+  // adjuntos de email y archivos subidos por el agente.
   return (
-    <a
-      href={attachment.url || "#"}
-      target="_blank"
-      rel="noopener noreferrer"
+    <button
+      type="button"
+      onClick={open}
+      title="Previsualizar"
       style={{
         display: "inline-flex",
         alignItems: "center",
         gap: 6,
-        padding: "6px 8px",
+        padding: "7px 10px",
         background: "var(--bg-2)",
-        borderRadius: 6,
+        border: "1px solid var(--border-1)",
+        borderRadius: 8,
         fontSize: 12,
-        textDecoration: "none",
         color: "var(--text-1)",
+        cursor: "pointer",
       }}
     >
       <Paperclip size={14} style={{ flexShrink: 0 }} /> {attachment.name || attachment.id}
@@ -706,6 +725,6 @@ function AttachmentInline({
           · {Math.round(attachment.sizeBytes / 1024)} KB
         </span>
       )}
-    </a>
+    </button>
   );
 }

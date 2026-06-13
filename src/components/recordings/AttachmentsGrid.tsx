@@ -4,6 +4,7 @@ import { es } from "date-fns/locale";
 import { Image, Film, Music, FileText, ClipboardList, Paperclip } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import * as Icon from "@/components/vox/primitives";
+import { AttachmentLightbox, type PreviewItem } from "@/components/recordings/AttachmentLightbox";
 
 /**
  * Cross-channel attachment grid — every file the customer has ever shared
@@ -110,6 +111,7 @@ export function AttachmentsGrid({ phone }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<KindFilter>("all");
+  const [preview, setPreview] = useState<PreviewItem | null>(null);
 
   useEffect(() => {
     setData(null);
@@ -275,15 +277,16 @@ export function AttachmentsGrid({ phone }: Props) {
           }}
         >
           {filtered.map((a) => (
-            <AttachmentTile key={`${a.sourceContactId}:${a.id}`} att={a} />
+            <AttachmentTile key={`${a.sourceContactId}:${a.id}`} att={a} onPreview={setPreview} />
           ))}
         </div>
       </div>
+      <AttachmentLightbox item={preview} onClose={() => setPreview(null)} />
     </div>
   );
 }
 
-function AttachmentTile({ att }: { att: CustomerAttachment }) {
+function AttachmentTile({ att, onPreview }: { att: CustomerAttachment; onPreview: (p: PreviewItem) => void }) {
   const dt = att.timestamp ? new Date(att.timestamp) : null;
   const rel = dt ? formatDistanceToNow(dt, { addSuffix: true, locale: es }) : "";
   const fromLabel = att.from === "AGENT" ? "Agente" : att.from === "CUSTOMER" ? "Cliente" : "—";
@@ -296,29 +299,39 @@ function AttachmentTile({ att }: { att: CustomerAttachment }) {
       ? "Llamada"
       : att.sourceChannel;
 
+  const open = () => {
+    if (!att.url) return;
+    onPreview({ url: att.url, name: att.name, contentType: att.contentType, sizeBytes: att.sizeBytes, meta: `${channelLabel} · ${fromLabel}` });
+  };
+
   return (
-    <a
-      href={att.url || "#"}
-      target="_blank"
-      rel="noopener noreferrer"
+    <button
+      type="button"
+      onClick={open}
+      disabled={!att.url}
       style={{
         display: "flex",
         flexDirection: "column",
+        textAlign: "left",
+        padding: 0,
         background: "var(--bg-1)",
         border: "1px solid var(--border-1)",
-        borderRadius: 8,
+        borderRadius: 12,
         overflow: "hidden",
-        textDecoration: "none",
         color: "inherit",
-        transition: "transform 0.12s, box-shadow 0.12s",
+        cursor: att.url ? "pointer" : "default",
+        transition: "transform 0.14s, box-shadow 0.14s, border-color 0.14s",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "translateY(-2px)";
-        e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,.10)";
+        if (!att.url) return;
+        e.currentTarget.style.transform = "translateY(-3px)";
+        e.currentTarget.style.boxShadow = "0 10px 24px rgba(0,0,0,.12)";
+        e.currentTarget.style.borderColor = "var(--border-2)";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = "";
         e.currentTarget.style.boxShadow = "";
+        e.currentTarget.style.borderColor = "var(--border-1)";
       }}
     >
       {/* Preview area */}
@@ -366,6 +379,6 @@ function AttachmentTile({ att }: { att: CustomerAttachment }) {
           {att.sizeBytes ? ` · ${humanSize(att.sizeBytes)}` : ""}
         </div>
       </div>
-    </a>
+    </button>
   );
 }
