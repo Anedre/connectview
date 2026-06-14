@@ -11,7 +11,12 @@
       "Bash(npx tsc:*)",
       "Bash(aws sts:*)",
       "Bash(aws connect:*)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(mkdir -p /tmp/design)",
+      "Read(//tmp/**)",
+      "Bash(rm -rf ./*)",
+      "Bash(cp '/c/Users/andre/.claude/projects/B--Connectview/0ba71d59-b364-45f0-b240-a6324f2abf25/tool-results/webfetch-1780468345661-x2zhqq.bin' design.tar.gz)",
+      "Bash(tar -xzf design.tar.gz)"
     ]
   }
 }

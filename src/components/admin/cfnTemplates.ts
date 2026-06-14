@@ -139,8 +139,8 @@ Resources:
                   - connect:UpdateUserSecurityProfiles
                   - connect:ListContactFlows
                   - connect:DescribeContactFlow
-                  # Provisión del set canónico de flows de AIRA (#1 onboarding):
-                  # crea/actualiza AIRA-Inbound / AIRA-Outbound / AIRA-Disconnect
+                  # Provisión del set canónico de flows de ARIA (#1 onboarding):
+                  # crea/actualiza ARIA-Inbound / ARIA-Outbound / ARIA-Disconnect
                   # en TU instancia. Es lo único de escritura del bloque.
                   - connect:CreateContactFlow
                   - connect:UpdateContactFlowContent

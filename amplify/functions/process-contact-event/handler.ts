@@ -10,7 +10,10 @@ import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import {
   ConnectClient,
   DescribeUserCommand,
+  DescribeContactCommand,
+  DescribeQueueCommand,
 } from "@aws-sdk/client-connect";
+import { upsertCachedContact } from "../_shared/recordingsCache";
 
 // BYO Data Plane (#46): module-active. TODO: para multi-tenant real, hacer
 // reverse lookup instanceArn (del evento) → tenantId vía connectview-connections.
@@ -51,6 +54,73 @@ async function resolveUsername(userId: string): Promise<string> {
   } catch (err) {
     console.warn("DescribeUser failed for", userId, err);
     return userId;
+  }
+}
+
+function deriveSub(channel: string, initiationMethod?: string, endpointType?: string): string | undefined {
+  if (channel !== "CHAT") return undefined;
+  if (initiationMethod === "API") return "Messaging API";
+  if (initiationMethod === "MESSAGING_PLATFORM")
+    return endpointType === "PHONE_NUMBER" || endpointType === "TELEPHONE_NUMBER" ? "WhatsApp/SMS" : "Messaging";
+  if (initiationMethod === "EXTERNAL_OUTBOUND") return "Outbound";
+  return undefined;
+}
+
+const MATERIALIZE_CHANNELS = new Set(["VOICE", "TELEPHONY", "CHAT", "EMAIL"]);
+const mUserCache = new Map<string, string>();
+const mQueueCache = new Map<string, string>();
+
+/**
+ * Materialización por eventos (#perf Nivel 3 Fase 2): al cerrarse un contacto,
+ * lo escribimos directo al caché del historial de Grabaciones (DynamoDB) — así
+ * aparece al instante, sin esperar a Customer Profiles. El instanceId se deriva
+ * del evento (el Lambda no tiene CONNECT_INSTANCE_ID). Best-effort: si algo
+ * falla, NO interrumpe el resto del procesamiento del evento.
+ */
+async function materializeContact(contactId: string, instanceId: string): Promise<void> {
+  if (!contactId || !instanceId) return;
+  try {
+    const desc = await connect.send(new DescribeContactCommand({ InstanceId: instanceId, ContactId: contactId }));
+    const c = desc.Contact;
+    const phone = c?.CustomerEndpoint?.Address;
+    const channel = String(c?.Channel || "").toUpperCase();
+    if (!c || !phone || !MATERIALIZE_CHANNELS.has(channel)) return;
+    const agentId = c.AgentInfo?.Id || "";
+    const queueId = c.QueueInfo?.Id || "";
+    let agentUsername = (agentId && mUserCache.get(agentId)) || "";
+    if (agentId && !agentUsername) {
+      try {
+        const u = await connect.send(new DescribeUserCommand({ InstanceId: instanceId, UserId: agentId }));
+        agentUsername = u.User?.Username || "";
+        if (agentUsername) mUserCache.set(agentId, agentUsername);
+      } catch { /* ignore */ }
+    }
+    let queueName = (queueId && mQueueCache.get(queueId)) || "";
+    if (queueId && !queueName) {
+      try {
+        const q = await connect.send(new DescribeQueueCommand({ InstanceId: instanceId, QueueId: queueId }));
+        queueName = q.Queue?.Name || "";
+        if (queueName) mQueueCache.set(queueId, queueName);
+      } catch { /* ignore */ }
+    }
+    const initMs = c.InitiationTimestamp?.getTime() || 0;
+    const discMs = c.DisconnectTimestamp?.getTime() || 0;
+    await upsertCachedContact(instanceId, phone, {
+      contactId,
+      channel,
+      subChannel: deriveSub(channel, c.InitiationMethod, c.CustomerEndpoint?.Type),
+      initiationTimestamp: c.InitiationTimestamp?.toISOString() || "",
+      disconnectTimestamp: c.DisconnectTimestamp?.toISOString() || "",
+      duration: initMs && discMs ? Math.max(0, Math.round((discMs - initMs) / 1000)) : 0,
+      agentUsername,
+      queueName,
+      initiationMethod: c.InitiationMethod,
+      disconnectReason: c.DisconnectReason,
+      customerEndpoint: phone,
+      hasRecording: (c.Recordings?.length || 0) > 0,
+    });
+  } catch (err) {
+    console.warn("materializeContact failed:", (err as Error)?.message || err);
   }
 }
 
@@ -326,6 +396,9 @@ export const handler: EventBridgeHandler<
           console.warn("analytics table Update failed, continuing:", err);
         }
       }
+      // Materializá el contacto al caché de Grabaciones (#perf Nivel 3 Fase 2) —
+      // aparece al instante sin esperar a Customer Profiles. Best-effort.
+      await materializeContact(contactId);
     }
 
     // ── 2. Campaign-contact link (if this contact belongs to a campaign) ─

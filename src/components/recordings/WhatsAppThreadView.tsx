@@ -281,7 +281,7 @@ export function WhatsAppThreadView({ phone }: Props) {
     // (se archiva poco después de cerrar el chat). Mostramos que existen — antes
     // decía "no tiene mensajes" y contradecía el conteo del canal.
     return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border-1)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <Icon.User size={14} style={{ color: "var(--text-3)" }} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -291,7 +291,7 @@ export function WhatsAppThreadView({ phone }: Props) {
             </div>
           </div>
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ maxHeight: "62vh", overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ background: "var(--accent-amber-soft)", color: "var(--accent-amber)", borderRadius: 8, padding: "10px 12px", fontSize: 12, lineHeight: 1.5 }}>
             Hay {data.totalSessions} conversación{data.totalSessions === 1 ? "" : "es"} de WhatsApp con este cliente, pero su transcripción todavía no se pudo cargar. Las transcripciones se archivan poco después de que el chat se cierra; si la conversación es reciente, probá de nuevo en unos minutos.
           </div>
@@ -316,8 +316,6 @@ export function WhatsAppThreadView({ phone }: Props) {
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100%",
-        minHeight: 0,
       }}
     >
       {/* Header */}
@@ -331,14 +329,16 @@ export function WhatsAppThreadView({ phone }: Props) {
           flexShrink: 0,
         }}
       >
-        <Icon.User size={14} style={{ color: "var(--text-3)" }} />
+        <span style={{ width: 34, height: 34, flex: "0 0 34px", borderRadius: 10, display: "grid", placeItems: "center", background: "var(--accent-green-soft)", color: "var(--accent-green)" }}>
+          <Icon.WhatsApp size={17} />
+        </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>{phone}</div>
+          <div style={{ fontSize: 13.5, fontWeight: 800 }}>Hilo unificado de WhatsApp</div>
           <div
             className="muted"
-            style={{ fontSize: 10.5, marginTop: 1 }}
+            style={{ fontSize: 11, marginTop: 1 }}
           >
-            {data.totalSessions} conversaciones · {data.totalMessages} mensajes
+            {data.totalMessages} mensajes · {data.totalSessions} conversaci{data.totalSessions === 1 ? "ón" : "ones"}
           </div>
         </div>
         <ThreadDatePicker
@@ -351,8 +351,7 @@ export function WhatsAppThreadView({ phone }: Props) {
       <div
         ref={scrollerRef}
         style={{
-          flex: 1,
-          minHeight: 0,
+          maxHeight: "62vh",
           overflowY: "auto",
           background:
             "linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%)",
@@ -408,6 +407,7 @@ export function WhatsAppThreadView({ phone }: Props) {
               msg={item.msg}
               dense={false}
               onPreview={setPreview}
+              index={i}
             />
           );
         })}
@@ -481,10 +481,12 @@ function MessageBubble({
   msg,
   dense,
   onPreview,
+  index = 0,
 }: {
   msg: ThreadMessage;
   dense: boolean;
   onPreview: (p: PreviewItem) => void;
+  index?: number;
 }) {
   // Connect "EVENT" segments are participant.joined / chat.ended / typing
   // / read — render as small centered system pills, not bubbles.
@@ -532,11 +534,13 @@ function MessageBubble({
 
   return (
     <div
+      className="hg-bubble-in"
       style={{
         display: "flex",
         justifyContent:
           align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start",
         marginBottom: dense ? 3 : 6,
+        animationDelay: `${((index % 16) * 0.03).toFixed(2)}s`,
       }}
     >
       <div

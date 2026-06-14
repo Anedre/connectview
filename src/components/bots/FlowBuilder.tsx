@@ -217,9 +217,9 @@ function FlowBuilderInner({
   // Mini-tour: abre los tips la primera vez (luego, con el botón «?»).
   useEffect(() => {
     try {
-      if (!localStorage.getItem("aira.bot.tips.v1")) {
+      if (!localStorage.getItem("aria.bot.tips.v1")) {
         setShowHelp(true);
-        localStorage.setItem("aira.bot.tips.v1", "1");
+        localStorage.setItem("aria.bot.tips.v1", "1");
       }
     } catch {
       /* localStorage puede estar bloqueado */
@@ -347,7 +347,7 @@ function FlowBuilderInner({
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDropping(false);
-      const kind = e.dataTransfer.getData("application/aira-node") as NodeKind;
+      const kind = e.dataTransfer.getData("application/aria-node") as NodeKind;
       if (!kind || !NODE_KINDS[kind]) return;
       // Convierte el punto del cursor a coordenadas del lienzo (respeta zoom/pan)
       // y centra el nodo bajo el puntero. Si cae cerca de una salida, autoconecta.
@@ -598,7 +598,7 @@ function Palette({ onAdd }: { onAdd: (kind: NodeKind) => void }) {
                   key={def.kind}
                   draggable
                   onDragStart={(e) => {
-                    e.dataTransfer.setData("application/aira-node", def.kind);
+                    e.dataTransfer.setData("application/aria-node", def.kind);
                     e.dataTransfer.effectAllowed = "move";
                   }}
                   onClick={() => onAdd(def.kind)}

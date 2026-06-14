@@ -60,7 +60,7 @@ const ORIGIN_STYLES: { match: string[]; label: string; bg: string }[] = [
   { match: ["web", "website", "pagina", "página", "landing", "formulario", "form"], label: "Web", bg: "#0a6bb5" },
   { match: ["referral", "referido", "recomend"], label: "Referido", bg: "#d98324" },
   { match: ["phone", "llamada", "inbound", "telefon"], label: "Teléfono", bg: "#0aa5b5" },
-  { match: ["vox"], label: "AIRA", bg: "#7c5cff" },
+  { match: ["vox"], label: "ARIA", bg: "#7c5cff" },
 ];
 function originBadge(src?: string): { label: string; bg: string } {
   const k = (src || "").toLowerCase();
@@ -184,7 +184,7 @@ export function HistoryTimelineView({ phone, name }: { phone: string | null; nam
   const timeline = buildTimeline(vox, sf?.activities || []);
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column" }}>
       {/* Encabezado: nombre del lead + cara de SF */}
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-1)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <span style={{ flex: "0 0 auto", width: 38, height: 38, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 14, fontWeight: 700, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }}>
@@ -209,7 +209,7 @@ export function HistoryTimelineView({ phone, name }: { phone: string | null; nam
       </div>
 
       {/* Timeline */}
-      <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+      <div style={{ padding: 16 }}>
         {state === "loading" ? (
           <div className="muted" style={{ fontSize: 13 }}>Cargando historial…</div>
         ) : timeline.length === 0 ? (

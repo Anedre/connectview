@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { Flag } from "lucide-react";
 import type { TranscriptSegment } from "@/types/recordings";
 
 /**
@@ -16,6 +17,26 @@ export function sentimentColor(sentiment?: string): string {
     default:
       return "var(--accent-cyan)"; // NEUTRAL / unknown but with speech
   }
+}
+
+export interface KeyMoment { sec: number; tone: "pos" | "neg"; label: string }
+
+/**
+ * "Momentos clave" de una llamada: los puntos donde el sentimiento VIRA hacia
+ * positivo o negativo (no uno por segmento). Compartido por la onda (pines) y
+ * por el slide-over de Resumen IA, para una sola fuente de verdad.
+ */
+export function keyMoments(segments: TranscriptSegment[]): KeyMoment[] {
+  const out: KeyMoment[] = [];
+  let prev = "";
+  for (const s of segments) {
+    const k = (s.sentiment || "").toUpperCase();
+    if ((k === "NEGATIVE" || k === "POSITIVE") && k !== prev) {
+      out.push({ sec: (s.beginOffsetMillis || 0) / 1000, tone: k === "POSITIVE" ? "pos" : "neg", label: k === "POSITIVE" ? "Momento positivo" : "Tensión" });
+    }
+    if (k === "NEGATIVE" || k === "POSITIVE") prev = k;
+  }
+  return out.slice(0, 6);
 }
 
 const BAR_COUNT = 120;
@@ -83,19 +104,16 @@ export function WaveformTimeline({
     });
   }, [segments, dur]);
 
-  // Pins above the track for the emotionally-charged moments.
+  // Flag pins above the track at the sentiment shifts (see keyMoments) — a
+  // handful of meaningful moments, clickable to seek.
   const markers = useMemo(
     () =>
-      segments
-        .filter((s) => {
-          const k = (s.sentiment || "").toUpperCase();
-          return k === "NEGATIVE" || k === "POSITIVE";
-        })
-        .map((s) => ({
-          left: Math.min(100, Math.max(0, (s.beginOffsetMillis / 1000 / dur) * 100)),
-          color: sentimentColor(s.sentiment),
-          label: `${(s.sentiment || "").toLowerCase()} · ${fmt(s.beginOffsetMillis)}`,
-        })),
+      keyMoments(segments).map((m) => ({
+        ...m,
+        left: Math.min(100, Math.max(0, (m.sec / dur) * 100)),
+        color: m.tone === "pos" ? sentimentColor("POSITIVE") : sentimentColor("NEGATIVE"),
+        label: `${m.label} · ${fmt(m.sec * 1000)}`,
+      })),
     [segments, dur]
   );
 
@@ -140,23 +158,40 @@ export function WaveformTimeline({
 
   return (
     <div style={{ position: "relative", paddingTop: 8 }}>
-      {/* Sentiment markers */}
-      <div style={{ position: "relative", height: 7 }}>
+      {/* Momentos clave — flag pins at sentiment shifts, clickable to seek */}
+      <div style={{ position: "relative", height: markers.length ? 24 : 6, marginBottom: 2 }}>
         {markers.map((m, i) => (
-          <div
+          <button
             key={i}
             title={m.label}
+            onClick={(e) => { e.stopPropagation(); onSeekSec(m.sec); }}
             style={{
               position: "absolute",
               left: `${m.left}%`,
               top: 0,
-              width: 2,
-              height: 7,
-              transform: "translateX(-1px)",
-              background: m.color,
-              borderRadius: 1,
+              transform: "translateX(-50%)",
+              border: "none",
+              background: "transparent",
+              padding: 0,
+              cursor: "pointer",
+              lineHeight: 0,
             }}
-          />
+          >
+            <span
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 6,
+                background: m.color,
+                display: "grid",
+                placeItems: "center",
+                color: "#fff",
+                boxShadow: "var(--sh-2, 0 2px 6px rgba(16,21,37,.18))",
+              }}
+            >
+              <Flag size={10} strokeWidth={2.4} />
+            </span>
+          </button>
         ))}
       </div>
 

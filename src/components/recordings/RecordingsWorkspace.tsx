@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Phone, MessageCircle, Mail, Paperclip, History, MessagesSquare, Search, RefreshCw, Inbox, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Phone, MessageCircle, Mail, Paperclip, History, Search, Sparkles,
+  ChevronDown, ArrowRight, LayoutGrid, X, Share2, Download, RefreshCw,
+} from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
-import { useLeadOverview } from "@/hooks/useLeadOverview";
+import { useLeadOverview, type LeadOverview } from "@/hooks/useLeadOverview";
 import { useContactSummary } from "@/hooks/useContactSummary";
+import { useCallHistory, fetchContactHistory, invalidateContactHistory } from "@/hooks/useCallHistory";
 import type { RecentLead } from "@/types/recordings";
 import { ConversationCanvas } from "@/components/recordings/ConversationCanvas";
 import { CallPlayerView, type ActiveCall } from "@/components/recordings/CallPlayerView";
@@ -13,21 +17,29 @@ import { AttachmentsGrid } from "@/components/recordings/AttachmentsGrid";
 import { HistoryTimelineView } from "@/components/recordings/HistoryTimelineView";
 
 /**
- * RecordingsWorkspace — el nuevo "Historial y Grabaciones" como workspace de
- * inteligencia conversacional (rediseño #fase1): lista de contactos (izq),
- * detalle del contacto con pestañas por canal embebidas SIN modales (centro),
- * y panel de contexto/insights del lead (der). Reemplaza la estructura
- * tabla → grid de tarjetas → modales por una sola vista persistente.
+ * RecordingsWorkspace — "Una sola historia" (rediseño a partir del mockup de
+ * Claude Design). Reemplaza el layout de 3 paneles por un workspace de una sola
+ * columna: barra de acciones + hero del contacto + navegador de canales + vista
+ * activa, con un command palette (⌘K) para cambiar de contacto y un slide-over
+ * de Resumen IA. Las vistas por canal (Llamadas/WhatsApp/Emails/Archivos/
+ * Actividad) se reutilizan tal cual; lo que cambia es la "envoltura" narrativa.
  */
 
-type Lens = "conversation" | "calls" | "whatsapp" | "emails" | "files" | "history";
-const TABS: { id: Lens; label: string; icon: React.ElementType; tone: string }[] = [
-  { id: "conversation", label: "Conversación", icon: MessagesSquare, tone: "var(--accent-violet)" },
-  { id: "calls", label: "Llamadas", icon: Phone, tone: "var(--accent-cyan)" },
-  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle, tone: "var(--accent-green)" },
-  { id: "emails", label: "Emails", icon: Mail, tone: "var(--accent-amber)" },
-  { id: "files", label: "Archivos", icon: Paperclip, tone: "var(--text-2)" },
-  { id: "history", label: "Historial", icon: History, tone: "var(--accent-violet)" },
+type Lens = "resumen" | "calls" | "whatsapp" | "emails" | "files" | "history";
+
+interface ChannelDef {
+  id: Exclude<Lens, "resumen">;
+  label: string;
+  icon: React.ElementType;
+  tone: string;
+  soft: string;
+}
+const CHANNELS: ChannelDef[] = [
+  { id: "calls", label: "Llamadas", icon: Phone, tone: "var(--cian)", soft: "var(--cian-soft)" },
+  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle, tone: "var(--verde)", soft: "var(--verde-soft)" },
+  { id: "emails", label: "Emails", icon: Mail, tone: "var(--ambar)", soft: "var(--ambar-soft)" },
+  { id: "files", label: "Archivos", icon: Paperclip, tone: "var(--violeta)", soft: "var(--violeta-soft)" },
+  { id: "history", label: "Actividad", icon: History, tone: "var(--text-2)", soft: "var(--bg-3)" },
 ];
 
 function originTone(src?: string): { label: string; bg: string } {
@@ -39,7 +51,7 @@ function originTone(src?: string): { label: string; bg: string } {
   if (k.includes("web") || k.includes("form") || k.includes("landing")) return { label: "Web", bg: "#0a6bb5" };
   if (k.includes("referido") || k.includes("referral")) return { label: "Referido", bg: "#d98324" };
   if (k.includes("phone") || k.includes("telefon") || k.includes("llamada")) return { label: "Teléfono", bg: "#0aa5b5" };
-  if (k.includes("vox")) return { label: "AIRA", bg: "#7c5cff" };
+  if (k.includes("vox")) return { label: "ARIA", bg: "#7c5cff" };
   return { label: src || "—", bg: "var(--text-3)" };
 }
 function relTime(iso?: string): string {
@@ -64,6 +76,7 @@ function activityLabel(a?: RecentLead["lastActivity"]): string {
   return a.channel || a.type || "Actividad";
 }
 const initials = (s: string) => (s || "?").slice(0, 2).toUpperCase();
+const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 
 const CHAN_FILTERS: { id: string; label: string }[] = [
   { id: "all", label: "Todos" },
@@ -79,34 +92,156 @@ function matchChannel(ch: string | undefined, key: string): boolean {
   if (key === "correo") return c.includes("correo") || c.includes("email") || c.includes("mail");
   return true;
 }
+function mapLead(l: Record<string, unknown>): RecentLead {
+  return {
+    leadId: String(l.leadId || ""), name: l.name as string | undefined, phone: String(l.phone || ""),
+    email: l.email as string | undefined, company: l.company as string | undefined, stageId: l.stageId as string | undefined,
+    source: l.source as string | undefined, sfLeadId: l.sfLeadId as string | undefined, updatedAt: l.updatedAt as string | undefined, lastActivity: null,
+  };
+}
 
-/* ───────────────────────── Lista de contactos (izq) ───────────────────────── */
-function ContactsList({ selectedId, onSelect }: { selectedId: string | null; onSelect: (l: RecentLead) => void }) {
+const MES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Mapa de actividad anual (estilo contribuciones): una celda por día de los
+ *  últimos ~6 meses, intensidad por nº de llamadas. Click → pestaña Llamadas. */
+function ActivityHeatmap({ phone, onGoto }: { phone: string; onGoto: (l: Lens) => void }) {
+  const { rows, loading } = useCallHistory(phone);
+  const byDay = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of rows) {
+      const ch = (r.channel || "").toUpperCase();
+      if (ch !== "VOICE" && ch !== "TELEPHONY") continue;
+      const d = new Date(r.initiationTimestamp);
+      if (Number.isNaN(d.getTime())) continue;
+      m[dayKey(d)] = (m[dayKey(d)] || 0) + 1;
+    }
+    return m;
+  }, [rows]);
+
+  const WEEKS = 26;
+  const { cols, monthLabels } = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const start = new Date(today);
+    start.setDate(start.getDate() - (WEEKS * 7 - 1));
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); // alinear a lunes
+    const grid: { date: Date; n: number; future: boolean }[][] = [];
+    const labels: { col: number; label: string }[] = [];
+    const cur = new Date(start);
+    let lastMonth = -1;
+    for (let w = 0; w < WEEKS; w++) {
+      const col: { date: Date; n: number; future: boolean }[] = [];
+      for (let d = 0; d < 7; d++) {
+        col.push({ date: new Date(cur), n: byDay[dayKey(cur)] || 0, future: cur > today });
+        if (d === 0 && cur.getMonth() !== lastMonth) { labels.push({ col: w, label: MES[cur.getMonth()] }); lastMonth = cur.getMonth(); }
+        cur.setDate(cur.getDate() + 1);
+      }
+      grid.push(col);
+    }
+    return { cols: grid, monthLabels: labels };
+  }, [byDay]);
+
+  const intensity = (n: number) => (n <= 0 ? 0 : n === 1 ? 0.34 : n <= 3 ? 0.55 : n <= 5 ? 0.78 : 1);
+
+  return (
+    <div className="hg-card" style={{ padding: "18px 20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12 }}>
+        <div style={{ fontWeight: 800, fontSize: 15 }}>Mapa de actividad</div>
+        <button className="hg-fchip" onClick={() => onGoto("calls")}>Ver llamadas <ArrowRight size={13} style={{ verticalAlign: -2 }} /></button>
+      </div>
+      {loading ? (
+        <div className="hg-heat" aria-label="Cargando actividad">
+          {Array.from({ length: 26 }).map((_, w) => (
+            <div className="hg-heat-col" key={w}>
+              {Array.from({ length: 7 }).map((_, d) => (
+                <span key={d} className="hg-heat-cell hg-sk" style={{ animationDelay: `${(((w * 7 + d) % 14) * 0.06).toFixed(2)}s` }} />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <div className="hg-heat-months">
+            {cols.map((_, w) => <span key={w} className="hg-heat-mlabel">{monthLabels.find((m) => m.col === w)?.label || ""}</span>)}
+          </div>
+          <div className="hg-heat">
+            {cols.map((col, w) => (
+              <div className="hg-heat-col" key={w}>
+                {col.map((cell, d) => (
+                  <span
+                    key={d}
+                    className="hg-heat-cell"
+                    title={cell.future ? "" : `${cell.date.getDate()} ${MES[cell.date.getMonth()]} · ${cell.n} llamada${cell.n === 1 ? "" : "s"}`}
+                    onClick={() => cell.n > 0 && onGoto("calls")}
+                    style={{
+                      background: cell.n > 0 ? "var(--cian)" : "var(--bg-3)",
+                      opacity: cell.future ? 0 : cell.n > 0 ? intensity(cell.n) : 1,
+                      cursor: cell.n > 0 ? "pointer" : "default",
+                    }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="hg-heat-legend">
+            <span>Menos</span>
+            <span className="hg-heat-cell" style={{ background: "var(--bg-3)" }} />
+            <span className="hg-heat-cell" style={{ background: "var(--cian)", opacity: 0.34 }} />
+            <span className="hg-heat-cell" style={{ background: "var(--cian)", opacity: 0.55 }} />
+            <span className="hg-heat-cell" style={{ background: "var(--cian)", opacity: 0.78 }} />
+            <span className="hg-heat-cell" style={{ background: "var(--cian)", opacity: 1 }} />
+            <span>Más</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Foto de la relación a partir de los conteos por canal de useLeadOverview. */
+function relationSummary(ov: LeadOverview) {
+  const ch = [
+    { key: "calls", label: "Llamadas", count: ov.calls?.count ?? 0, lastTs: ov.calls?.lastTs, tone: "--cian" },
+    { key: "whatsapp", label: "WhatsApp", count: ov.whatsapp?.count ?? 0, lastTs: ov.whatsapp?.lastTs, tone: "--verde" },
+    { key: "emails", label: "Emails", count: ov.emails?.count ?? 0, lastTs: ov.emails?.lastTs, tone: "--ambar" },
+    { key: "files", label: "Archivos", count: ov.files?.count ?? 0, lastTs: undefined as string | undefined, tone: "--violeta" },
+  ];
+  const total = ch.reduce((a, c) => a + c.count, 0);
+  const last = ch.filter((c) => c.lastTs).sort((a, b) => (a.lastTs! < b.lastTs! ? 1 : -1))[0];
+  const primary = [...ch].sort((a, b) => b.count - a.count)[0];
+  const daysSince = last?.lastTs ? Math.floor((Date.now() - new Date(last.lastTs).getTime()) / 86400000) : null;
+  const nba = daysSince == null ? null
+    : daysSince <= 1 ? "Conversación reciente — sin acción pendiente."
+    : daysSince <= 7 ? `Última actividad hace ${daysSince} días — buen momento para un seguimiento.`
+    : `Sin contacto hace ${daysSince} días — considerá reactivar al cliente.`;
+  return { ch, total, last, primary, daysSince, nba };
+}
+
+/* ───────────────────────── Command palette (cambiar de contacto) ───────────────────────── */
+function CommandPalette({ open, onClose, onPick, currentId }: {
+  open: boolean; onClose: () => void; onPick: (l: RecentLead) => void; currentId: string | null;
+}) {
   const [rows, setRows] = useState<RecentLead[]>([]);
   const [allRows, setAllRows] = useState<RecentLead[] | null>(null);
-  const [state, setState] = useState<"loading" | "ok" | "err">(() => (getApiEndpoints()?.manageLeads ? "loading" : "err"));
   const [q, setQ] = useState("");
   const [chan, setChan] = useState("all");
+  const [cursor, setCursor] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const reload = useCallback(() => {
+  useEffect(() => {
+    if (!open) return;
+    setQ(""); setChan("all"); setCursor(0);
     const ep = getApiEndpoints();
-    if (!ep?.manageLeads) return;
-    fetch(`${ep.manageLeads}?recent=50`)
-      .then((r) => r.json())
-      .then((j) => { setRows(Array.isArray(j.recent) ? j.recent : []); setState("ok"); setAllRows(null); })
-      .catch(() => setState((s) => (s === "loading" ? "err" : s)));
-  }, []);
+    if (ep?.manageLeads) {
+      fetch(`${ep.manageLeads}?recent=50`).then((r) => r.json())
+        .then((j) => setRows(Array.isArray(j.recent) ? j.recent : [])).catch(() => {});
+    }
+    const t = setTimeout(() => inputRef.current?.focus(), 30);
+    return () => clearTimeout(t);
+  }, [open]);
 
   useEffect(() => {
-    reload();
-    const onVisible = () => { if (document.visibilityState === "visible") reload(); };
-    window.addEventListener("focus", reload);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => { window.removeEventListener("focus", reload); document.removeEventListener("visibilitychange", onVisible); };
-  }, [reload]);
-
-  useEffect(() => {
-    if (q.trim().length < 2 || allRows) return;
+    if (!open || q.trim().length < 2 || allRows) return;
     const ep = getApiEndpoints();
     if (!ep?.manageLeads) return;
     const url = ep.manageLeads;
@@ -115,15 +250,11 @@ function ContactsList({ selectedId, onSelect }: { selectedId: string | null; onS
       try {
         const r = await fetch(url, { signal: ctrl.signal });
         const j = await r.json();
-        setAllRows((j.leads || []).map((l: Record<string, unknown>) => ({
-          leadId: String(l.leadId || ""), name: l.name as string | undefined, phone: String(l.phone || ""),
-          email: l.email as string | undefined, company: l.company as string | undefined, stageId: l.stageId as string | undefined,
-          source: l.source as string | undefined, sfLeadId: l.sfLeadId as string | undefined, updatedAt: l.updatedAt as string | undefined, lastActivity: null,
-        })));
+        setAllRows((j.leads || []).map(mapLead));
       } catch { /* búsqueda opcional */ }
     })();
     return () => ctrl.abort();
-  }, [q, allRows]);
+  }, [open, q, allRows]);
 
   const query = q.trim().toLowerCase();
   const sourceRows = query.length >= 2 && allRows ? allRows : rows;
@@ -132,183 +263,383 @@ function ContactsList({ selectedId, onSelect }: { selectedId: string | null; onS
     : rows;
   const filtered = query || chan === "all" ? base : base.filter((r) => matchChannel(r.lastActivity?.channel, chan));
 
-  return (
-    <aside className="rec-list">
-      <div className="rec-list__bar">
-        <Search size={13} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar contacto…" />
-        <button onClick={reload} title="Actualizar" aria-label="Actualizar"><RefreshCw size={13} /></button>
-      </div>
-      <div className="rec-list__chips">
-        {CHAN_FILTERS.map((f) => (
-          <button key={f.id} className={`rec-list__chip ${chan === f.id ? "rec-list__chip--on" : ""}`} onClick={() => setChan(f.id)}>
-            {f.label}
-          </button>
-        ))}
-      </div>
-      <div className="rec-list__rows">
-        {state === "loading" ? (
-          <div className="rec-list__msg">Cargando…</div>
-        ) : state === "err" ? (
-          <div className="rec-list__msg">No se pudo cargar.</div>
-        ) : filtered.length === 0 ? (
-          <div className="rec-list__msg">{query ? "Sin resultados." : "Sin contactos recientes."}</div>
-        ) : (
-          filtered.map((r) => {
-            const o = originTone(r.source);
-            const sel = selectedId === r.leadId;
-            return (
-              <button key={r.leadId} className={`rec-row ${sel ? "rec-row--sel" : ""}`} onClick={() => onSelect(r)}>
-                <span className="rec-row__av">{initials(r.name || r.phone)}</span>
-                <span className="rec-row__body">
-                  <span className="rec-row__name">{r.name || r.phone}</span>
-                  <span className="rec-row__sub">{activityLabel(r.lastActivity)} · {relTime(r.lastActivity?.ts || r.updatedAt)}</span>
-                </span>
-                <span className="rec-row__dot" title={o.label} style={{ background: o.bg }} />
-              </button>
-            );
-          })
-        )}
-      </div>
-    </aside>
-  );
-}
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); onClose(); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(filtered.length - 1, c + 1)); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); setCursor((c) => Math.max(0, c - 1)); }
+      else if (e.key === "Enter") { const r = filtered[cursor]; if (r) { onPick(r); onClose(); } }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [open, filtered, cursor, onClose, onPick]);
 
-/* ───────────────────────── Detalle del contacto (centro + der) ───────────────────────── */
-function LeadDetail({ lead }: { lead: RecentLead }) {
-  const { tree } = useTaxonomy();
-  const ov = useLeadOverview(lead.phone);
-  const [tab, setTab] = useState<Lens>("conversation");
-  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
-  useEffect(() => { if (tab !== "calls") setActiveCall(null); }, [tab]);
-  const name = lead.name || lead.phone;
-  const origin = originTone(lead.source);
-  const stageLabel = tree.find((s) => s.id === lead.stageId)?.label;
-  const counts: Record<string, number | undefined> = useMemo(() => ({
-    calls: ov.calls?.count, whatsapp: ov.whatsapp?.count, emails: ov.emails?.count, files: ov.files?.count, history: ov.history?.count,
-  }), [ov]);
-  const customerKey = lead.phone || lead.email || null;
-
+  if (!open) return null;
   return (
     <>
-      <main className="rec-main">
-        <div className="rec-main__head">
-          <span className="rec-main__av">{initials(name)}</span>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="rec-main__name">{name}</div>
-            <div className="rec-main__meta">
-              <span className="rec-origin" style={{ background: origin.bg }}>{origin.label}</span>
-              {stageLabel && <span className="chip" style={{ height: 18, fontSize: 9.5 }}>{stageLabel}</span>}
-              {lead.company && <span className="muted" style={{ fontSize: 11 }}>{lead.company}</span>}
-            </div>
-          </div>
-          <div className="rec-actions">
-            {lead.phone && <a className="btn btn--sm" href={`tel:${lead.phone}`} title={lead.phone}><Phone size={13} /></a>}
-            {lead.phone && <a className="btn btn--sm" href={`https://wa.me/${lead.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" title="WhatsApp"><MessageCircle size={13} /></a>}
-            {lead.email && <a className="btn btn--sm" href={`mailto:${lead.email}`} title={lead.email}><Mail size={13} /></a>}
-          </div>
+      <div className="hg-cmd-scrim" onClick={onClose} />
+      <div className="hg-cmd" role="dialog" aria-label="Buscar contacto">
+        <div className="hg-cmd__search">
+          <Search size={18} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
+          <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setCursor(0); }} placeholder="Buscar contacto por nombre, teléfono o empresa…" />
+          <span className="hg-chip">esc</span>
         </div>
-
-        <div className="rec-tabs">
-          {TABS.map((t) => {
-            const c = counts[t.id];
-            return (
-              <button key={t.id} className={`rec-tab ${tab === t.id ? "rec-tab--on" : ""}`} onClick={() => setTab(t.id)} style={tab === t.id ? ({ "--rec-tone": t.tone } as React.CSSProperties) : undefined}>
-                <t.icon size={14} /> {t.label}
-                {typeof c === "number" && c > 0 && <span className="rec-tab__n">{c}</span>}
-              </button>
-            );
-          })}
+        <div className="hg-cmd__filters">
+          {CHAN_FILTERS.map((f) => (
+            <button key={f.id} className={`hg-fchip ${chan === f.id ? "hg-fchip--on" : ""}`} onClick={() => { setChan(f.id); setCursor(0); }}>{f.label}</button>
+          ))}
         </div>
-
-        <div className="rec-view">
-          {tab === "conversation" && <div className="rec-view__scroll"><ConversationCanvas phone={lead.phone} name={name} /></div>}
-          {tab === "calls" && <CallPlayerView phone={lead.phone} onActiveCall={setActiveCall} />}
-          {tab === "whatsapp" && <WhatsAppThreadView phone={lead.phone} />}
-          {tab === "emails" && <EmailThreadsView customerKey={customerKey} />}
-          {tab === "files" && <AttachmentsGrid phone={lead.phone} />}
-          {tab === "history" && <HistoryTimelineView phone={lead.phone} name={name} />}
+        <div className="hg-cmd__list">
+          {filtered.length === 0 ? (
+            <div style={{ padding: 28, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>{query ? "Sin resultados." : "Sin contactos recientes."}</div>
+          ) : (
+            filtered.map((r, i) => {
+              const o = originTone(r.source);
+              return (
+                <button
+                  key={r.leadId}
+                  className={`hg-cmd__row ${i === cursor ? "hg-cmd__row--cursor" : ""} ${r.leadId === currentId ? "hg-cmd__row--sel" : ""}`}
+                  onMouseEnter={() => setCursor(i)}
+                  onClick={() => { onPick(r); onClose(); }}
+                >
+                  <span className="rec-row__av">{initials(r.name || r.phone)}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontWeight: 700, fontSize: 14, color: "var(--text-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name || r.phone}</span>
+                    <span style={{ display: "block", fontSize: 12, color: "var(--text-3)" }}>{activityLabel(r.lastActivity)} · {relTime(r.lastActivity?.ts || r.updatedAt)}</span>
+                  </span>
+                  <span className="rec-row__dot" title={o.label} style={{ background: o.bg }} />
+                </button>
+              );
+            })
+          )}
         </div>
-      </main>
-
-      <aside className="rec-ctx">
-        <div className="rec-ctx__title">Contexto del lead</div>
-        <div className="rec-ctx__counts">
-          {TABS.filter((t) => t.id !== "conversation").map((t) => {
-            const c = counts[t.id];
-            return (
-              <button key={t.id} className="rec-ctx__count" onClick={() => setTab(t.id)}>
-                <span className="rec-ctx__count-ic" style={{ color: t.tone }}><t.icon size={15} /></span>
-                <span className="rec-ctx__count-l">{t.label}</span>
-                <span className="rec-ctx__count-n" style={{ color: c ? t.tone : "var(--text-3)" }}>{typeof c === "number" ? c : "·"}</span>
-              </button>
-            );
-          })}
+        <div className="hg-cmd__foot">
+          <span>↑↓ navegar</span><span>↵ abrir</span><span>esc cerrar</span>
         </div>
-        {activeCall ? (
-          <LeadInsights call={activeCall} />
-        ) : (
-          <div className="rec-ctx__ai">
-            <div className="rec-ctx__ai-h"><Sparkles size={13} /> Resumen IA</div>
-            <div className="rec-ctx__ai-b">Abrí la pestaña <b>Llamadas</b> y elegí una llamada para ver su resumen y sentimiento acá.</div>
-          </div>
-        )}
-      </aside>
+      </div>
     </>
   );
 }
 
-/** Insights IA de la llamada abierta (panel derecho): resumen + sentimiento. */
-function LeadInsights({ call }: { call: ActiveCall }) {
-  const { summary, loading } = useContactSummary(call.contactId, call.segments);
-  const s = call.sentiment;
-  const total = s.positive + s.negative + s.neutral + s.mixed;
-  const seg = (n: number, color: string) => (n > 0 ? <span key={color} style={{ flex: n, background: color }} /> : null);
+/* ───────────────────────── Hero del contacto ───────────────────────── */
+function Hero({ lead, ov, stageLabel, onSwitch, onOpenAI }: {
+  lead: RecentLead; ov: LeadOverview; stageLabel?: string; onSwitch: () => void; onOpenAI: () => void;
+}) {
+  const name = lead.name || lead.phone;
+  const origin = originTone(lead.source);
+  const { last } = relationSummary(ov);
+  const digits = (lead.phone || "").replace(/\D/g, "");
   return (
-    <div className="rec-ctx__ai">
-      <div className="rec-ctx__ai-h"><Sparkles size={13} /> Resumen IA</div>
-      {loading ? (
-        <div className="muted" style={{ fontSize: 12 }}>Generando resumen…</div>
-      ) : summary ? (
-        <div className="rec-ctx__ai-b">{summary}</div>
-      ) : (
-        <div className="muted" style={{ fontSize: 12 }}>Sin transcripción para resumir esta llamada.</div>
-      )}
-      {total > 0 && (
-        <div className="rec-sent">
-          <div className="rec-sent__lbl">Sentimiento de la conversación</div>
-          <div className="rec-sent__bar">
-            {seg(s.positive, "var(--accent-green)")}
-            {seg(s.neutral, "var(--bg-3)")}
-            {seg(s.mixed, "var(--accent-amber)")}
-            {seg(s.negative, "var(--accent-red)")}
-          </div>
-          <div className="rec-sent__legend">
-            <span><span className="rec-sent__dot" style={{ background: "var(--accent-green)" }} /> {s.positive} positivo{s.positive === 1 ? "" : "s"}</span>
-            <span><span className="rec-sent__dot" style={{ background: "var(--accent-red)" }} /> {s.negative} negativo{s.negative === 1 ? "" : "s"}</span>
-          </div>
+    <div className="hg-card hg-hero">
+      <div className="hg-hero__av">{initials(name)}</div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <button className="hg-hero__switch" onClick={onSwitch} title="Cambiar de contacto (⌘K)">
+          <span className="hg-hero__name">{name}</span>
+          <ChevronDown size={18} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
+        </button>
+        <div className="hg-hero__meta">
+          <span className="hg-chip" style={{ background: origin.bg, color: "#fff" }}>{origin.label}</span>
+          {stageLabel && <span className="hg-chip">{stageLabel}</span>}
+          {lead.company && <span className="hg-chip">{lead.company}</span>}
+          {lead.phone && <span className="hg-chip mono">{lead.phone}</span>}
+          {last && <span className="hg-chip" style={{ background: "var(--cian-soft)", color: "var(--cian-2)" }}>Activo · {relTime(last.lastTs)}</span>}
         </div>
-      )}
+      </div>
+      <div className="hg-hero__actions">
+        {lead.phone && <a className="hg-act" href={`tel:${lead.phone}`} title="Llamar" style={{ color: "var(--cian)" }}><Phone size={17} /></a>}
+        {digits && <a className="hg-act" href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer" title="WhatsApp" style={{ color: "var(--verde)" }}><MessageCircle size={17} /></a>}
+        {lead.email && <a className="hg-act" href={`mailto:${lead.email}`} title="Email" style={{ color: "var(--ambar)" }}><Mail size={17} /></a>}
+        <button className="hg-btn hg-btn--primary" onClick={onOpenAI} style={{ background: "var(--violeta)" }}><Sparkles size={15} /> Resumen IA</button>
+      </div>
     </div>
   );
 }
 
-function EmptyCenter() {
+/* ───────────────────────── Navegador de canales ───────────────────────── */
+function ChannelNav({ active, onChange, counts }: {
+  active: Lens; onChange: (l: Lens) => void; counts: Record<string, number | undefined>;
+}) {
+  const resumenOn = active === "resumen";
   return (
-    <div className="rec-empty">
-      <Inbox size={34} style={{ opacity: 0.4 }} />
-      <div className="rec-empty__h">Elegí un contacto</div>
-      <div className="rec-empty__p">Su historial, llamadas con audio, WhatsApp, emails y archivos aparecen acá — todo en un solo lugar.</div>
+    <nav className="hg-chnav" aria-label="Canales">
+      <button
+        className={`hg-chnav__btn ${resumenOn ? "hg-chnav__btn--on" : ""}`}
+        onClick={() => onChange("resumen")}
+        style={resumenOn ? { background: "var(--bg-1)", boxShadow: "var(--sh-2)" } : undefined}
+      >
+        <span className="hg-chnav__chip" style={{ background: "var(--bg-3)", color: "var(--text-1)" }}><LayoutGrid size={17} /></span>
+        <span className="hg-chnav__col">
+          <span className="hg-chnav__label" style={{ fontWeight: 800, fontSize: 13, color: "var(--text-1)" }}>Resumen</span>
+          <span style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 600 }}>Vista general</span>
+        </span>
+      </button>
+      <span className="hg-chnav__div" />
+      {CHANNELS.map((c) => {
+        const on = active === c.id;
+        const n = counts[c.id];
+        return (
+          <button
+            key={c.id}
+            className={`hg-chnav__btn hg-chnav__btn--flex ${on ? "hg-chnav__btn--on" : ""}`}
+            onClick={() => onChange(c.id)}
+            style={on ? { background: c.tone, boxShadow: "var(--sh-2)" } : undefined}
+          >
+            <span className="hg-chnav__chip" style={{ background: on ? "rgba(255,255,255,.22)" : c.soft, color: on ? "#fff" : c.tone }}>
+              <c.icon size={17} />
+            </span>
+            <span className="hg-chnav__col">
+              <span className="hg-chnav__label" style={{ color: on ? "rgba(255,255,255,.88)" : "var(--text-3)" }}>{c.label}</span>
+              <span className="hg-chnav__count" style={{ color: on ? "#fff" : "var(--text-1)" }}>{typeof n === "number" ? n : "·"}</span>
+            </span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+/* ───────────────────────── Vista Resumen ───────────────────────── */
+function OverviewView({ lead, ov, onGoto, onOpenAI }: {
+  lead: RecentLead; ov: LeadOverview; onGoto: (l: Lens) => void; onOpenAI: () => void;
+}) {
+  const name = lead.name || lead.phone;
+  const { ch, total, last, primary, nba } = relationSummary(ov);
+  const mix = ch.filter((c) => c.count > 0);
+  return (
+    <div className="hg-ov">
+      <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+        {lead.phone && <ActivityHeatmap phone={lead.phone} onGoto={onGoto} />}
+        <div className="hg-card" style={{ padding: "20px 22px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 12 }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>Línea de tiempo · todos los canales</div>
+            <span style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 700, flex: "0 0 auto" }}>{total} interaccion{total === 1 ? "" : "es"}</span>
+          </div>
+          <ConversationCanvas phone={lead.phone} name={name} />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+        <div className="hg-card" style={{ padding: "18px 20px" }}>
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12 }}>Resumen del cliente</div>
+          <div className="hg-row"><span style={{ color: "var(--text-3)", fontWeight: 600 }}>Última interacción</span><b>{last ? `${last.label} · ${relTime(last.lastTs)}` : "—"}</b></div>
+          <div className="hg-row"><span style={{ color: "var(--text-3)", fontWeight: 600 }}>Canal principal</span><b>{primary.count ? primary.label : "—"}</b></div>
+          <div className="hg-row"><span style={{ color: "var(--text-3)", fontWeight: 600 }}>Total interacciones</span><b className="mono">{total}</b></div>
+          {total > 0 && (
+            <>
+              <div style={{ margin: "12px 0 8px", fontSize: 12, fontWeight: 700, color: "var(--text-3)" }}>Mezcla de canales</div>
+              <div style={{ display: "flex", gap: 2, height: 10 }}>
+                {mix.map((c) => <div key={c.key} title={`${c.label}: ${c.count}`} style={{ flex: c.count, background: `var(${c.tone})`, borderRadius: 99 }} />)}
+              </div>
+              <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 11.5, color: "var(--text-3)", fontWeight: 700, flexWrap: "wrap" }}>
+                {mix.map((c) => (
+                  <span key={c.key} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 99, background: `var(${c.tone})` }} /> {c.label} {c.count}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {nba && (
+          <button
+            onClick={onOpenAI}
+            className="hg-card hg-lift"
+            style={{ padding: "18px 20px", textAlign: "left", cursor: "pointer", background: "linear-gradient(135deg,var(--violeta-soft),var(--bg-1))", border: "1px solid var(--violeta-soft)" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+              <span style={{ width: 28, height: 28, borderRadius: 9, background: "var(--violeta)", color: "#fff", display: "grid", placeItems: "center" }}><Sparkles size={16} /></span>
+              <span style={{ fontWeight: 800, fontSize: 14, color: "var(--violeta-2)" }}>Sugerencia IA</span>
+            </div>
+            <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.55 }}>{nba}</div>
+            <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 800, color: "var(--violeta)", display: "flex", gap: 5, alignItems: "center" }}>Ver resumen IA <ArrowRight size={14} /></div>
+          </button>
+        )}
+
+        <button className="hg-fchip" style={{ alignSelf: "flex-start" }} onClick={() => onGoto("calls")}>Ver todas las llamadas <ArrowRight size={13} style={{ verticalAlign: -2 }} /></button>
+      </div>
     </div>
   );
 }
 
+/* ───────────────────────── Resumen IA (slide-over) ───────────────────────── */
+function AISlideOver({ lead, ov, activeCall, onClose }: {
+  lead: RecentLead | null; ov: LeadOverview; activeCall: ActiveCall | null; onClose: () => void;
+}) {
+  const { summary, loading } = useContactSummary(activeCall?.contactId ?? null, activeCall?.segments ?? null);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+  const { total, last, primary, nba } = relationSummary(ov);
+  const s = activeCall?.sentiment;
+  const sentTotal = s ? s.positive + s.negative + s.neutral + s.mixed : 0;
+  const seg = (n: number, color: string) => (n > 0 ? <span key={color} style={{ flex: n, background: color }} /> : null);
+  const lbl = (t: string) => <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-3)", marginBottom: 10 }}>{t}</div>;
+
+  return (
+    <>
+      <div className="hg-ai-scrim" onClick={onClose} />
+      <div className="hg-ai" role="dialog" aria-label="Resumen IA">
+        <div style={{ padding: "20px 22px", borderBottom: "1px solid var(--border-1)", display: "flex", alignItems: "center", gap: 11, position: "sticky", top: 0, background: "var(--bg-1)", zIndex: 2 }}>
+          <span style={{ width: 34, height: 34, borderRadius: 10, background: "var(--violeta)", color: "#fff", display: "grid", placeItems: "center", flex: "0 0 34px" }}><Sparkles size={18} /></span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>Resumen IA</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{lead?.name || lead?.phone || ""} · Amazon Bedrock</div>
+          </div>
+          <button className="hg-act" onClick={onClose} title="Cerrar" style={{ width: 34, height: 34 }}><X size={18} /></button>
+        </div>
+
+        <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 22, overflowY: "auto" }}>
+          {activeCall ? (
+            <>
+              <div>
+                {lbl("Resumen de la llamada")}
+                {loading ? (
+                  <div className="muted" style={{ fontSize: 13 }}>Generando resumen…</div>
+                ) : summary ? (
+                  <div style={{ fontSize: 14, color: "var(--text-1)", lineHeight: 1.65 }}>{summary}</div>
+                ) : (
+                  <div className="muted" style={{ fontSize: 13 }}>Sin transcripción para resumir esta llamada.</div>
+                )}
+              </div>
+              {sentTotal > 0 && s && (
+                <div>
+                  {lbl("Sentimiento (Contact Lens)")}
+                  <div className="rec-sent__bar">
+                    {seg(s.positive, "var(--verde)")}
+                    {seg(s.neutral, "var(--bg-3)")}
+                    {seg(s.mixed, "var(--ambar)")}
+                    {seg(s.negative, "var(--rojo)")}
+                  </div>
+                  <div className="rec-sent__legend" style={{ marginTop: 10 }}>
+                    <span><span className="rec-sent__dot" style={{ background: "var(--verde)" }} /> {s.positive} positivo{s.positive === 1 ? "" : "s"}</span>
+                    <span><span className="rec-sent__dot" style={{ background: "var(--rojo)" }} /> {s.negative} negativo{s.negative === 1 ? "" : "s"}</span>
+                  </div>
+                </div>
+              )}
+              {activeCall.moments.length > 0 && (
+                <div>
+                  {lbl("Momentos clave")}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {activeCall.moments.map((m, i) => (
+                      <div key={i} className="hg-card2" style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 13px" }}>
+                        <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)" }}>{mmss(m.sec)}</span>
+                        <span style={{ width: 8, height: 8, borderRadius: 99, flex: "0 0 8px", background: m.tone === "pos" ? "var(--verde)" : "var(--rojo)" }} />
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{m.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div>
+                {lbl("Resumen de la relación")}
+                <div className="hg-row"><span style={{ color: "var(--text-3)", fontWeight: 600 }}>Última interacción</span><b>{last ? `${last.label} · ${relTime(last.lastTs)}` : "—"}</b></div>
+                <div className="hg-row"><span style={{ color: "var(--text-3)", fontWeight: 600 }}>Canal principal</span><b>{primary.count ? primary.label : "—"}</b></div>
+                <div className="hg-row"><span style={{ color: "var(--text-3)", fontWeight: 600 }}>Total interacciones</span><b className="mono">{total}</b></div>
+              </div>
+              {nba && (
+                <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--violeta-soft)", color: "var(--violeta-2)", fontSize: 13, fontWeight: 600, display: "flex", gap: 9, lineHeight: 1.55 }}>
+                  <Sparkles size={16} style={{ flex: "0 0 16px", marginTop: 1 }} /> {nba}
+                </div>
+              )}
+              <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>Abrí una llamada en la pestaña <b>Llamadas</b> para ver su resumen IA y el sentimiento de esa conversación.</div>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ───────────────────────── Estado vacío ───────────────────────── */
+function EmptyState({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div style={{ height: "100%", display: "grid", placeItems: "center", padding: 24 }}>
+      <div className="hg-card" style={{ padding: "36px 40px", textAlign: "center", maxWidth: 460 }}>
+        <div style={{ width: 52, height: 52, borderRadius: 16, background: "var(--cian-soft)", color: "var(--cian)", display: "grid", placeItems: "center", margin: "0 auto 16px" }}><Search size={26} /></div>
+        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Elegí un contacto</div>
+        <div className="muted" style={{ fontSize: 13.5, lineHeight: 1.6, marginBottom: 18 }}>Su historial, llamadas con audio y transcripción, WhatsApp, emails y archivos aparecen acá — todo en una sola historia.</div>
+        <button className="hg-btn hg-btn--primary" onClick={onOpen} style={{ margin: "0 auto" }}><Search size={15} /> Buscar contacto <span className="hg-chip" style={{ background: "rgba(255,255,255,.2)", color: "#fff" }}>⌘K</span></button>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Workspace ───────────────────────── */
 export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead } = {}) {
   const [lead, setLead] = useState<RecentLead | null>(initialLead ?? null);
+  const [tab, setTab] = useState<Lens>("resumen");
+  const [cmdOpen, setCmdOpen] = useState<boolean>(!initialLead);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const onRefresh = async () => {
+    if (!lead?.phone || refreshing) return;
+    setRefreshing(true);
+    try { invalidateContactHistory(lead.phone); await fetchContactHistory(lead.phone, { fresh: true }); } catch { /* best-effort */ }
+    setRefreshKey((k) => k + 1); // re-monta las vistas → re-leen datos frescos
+    setRefreshing(false);
+  };
+  const { tree } = useTaxonomy();
+  const ov = useLeadOverview(lead?.phone ?? null);
+
+  useEffect(() => { setTab("resumen"); setActiveCall(null); }, [lead?.leadId]);
+  useEffect(() => { if (tab !== "calls") setActiveCall(null); }, [tab]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); setCmdOpen((o) => !o); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const counts: Record<string, number | undefined> = useMemo(() => ({
+    calls: ov.calls?.count, whatsapp: ov.whatsapp?.count, emails: ov.emails?.count, files: ov.files?.count, history: ov.history?.count,
+  }), [ov]);
+
+  const name = lead ? (lead.name || lead.phone) : "";
+  const stageLabel = lead ? tree.find((s) => s.id === lead.stageId)?.label : undefined;
+  const customerKey = lead ? (lead.phone || lead.email || null) : null;
+
   return (
-    <div className="rec-ws">
-      <ContactsList selectedId={lead?.leadId || null} onSelect={setLead} />
-      {lead ? <LeadDetail key={lead.leadId} lead={lead} /> : <EmptyCenter />}
+    <div className="hg hg--flow">
+      <div className="hg-inner">
+        <div className="hg-toolbar">
+          <button className="hg-btn hg-btn--ghost" disabled={!lead || refreshing} onClick={onRefresh} title="Actualizar datos del contacto"><RefreshCw size={15} className={refreshing ? "hg-spin" : ""} /> {refreshing ? "Actualizando…" : "Actualizar"}</button>
+          <button className="hg-btn hg-btn--ghost" disabled={!lead} title="Próximamente"><Share2 size={15} /> Compartir</button>
+          <button className="hg-btn hg-btn--ghost" disabled={!lead} title="Próximamente"><Download size={15} /> Exportar</button>
+        </div>
+
+        {lead ? (
+          <>
+            <Hero lead={lead} ov={ov} stageLabel={stageLabel} onSwitch={() => setCmdOpen(true)} onOpenAI={() => setAiOpen(true)} />
+            <ChannelNav active={tab} onChange={setTab} counts={counts} />
+            <div key={`${lead.leadId}-${tab}-${refreshKey}`} className="hg-fade">
+              {tab === "resumen" && <OverviewView lead={lead} ov={ov} onGoto={setTab} onOpenAI={() => setAiOpen(true)} />}
+              {tab === "calls" && <CallPlayerView phone={lead.phone} onActiveCall={setActiveCall} />}
+              {tab === "whatsapp" && <WhatsAppThreadView phone={lead.phone} />}
+              {tab === "emails" && <EmailThreadsView customerKey={customerKey} />}
+              {tab === "files" && <AttachmentsGrid phone={lead.phone} />}
+              {tab === "history" && <HistoryTimelineView phone={lead.phone} name={name} />}
+            </div>
+          </>
+        ) : (
+          <div style={{ minHeight: "60vh" }}>
+            <EmptyState onOpen={() => setCmdOpen(true)} />
+          </div>
+        )}
+      </div>
+
+      <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onPick={setLead} currentId={lead?.leadId || null} />
+      {aiOpen && <AISlideOver lead={lead} ov={ov} activeCall={activeCall} onClose={() => setAiOpen(false)} />}
     </div>
   );
 }

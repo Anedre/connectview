@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 /**
- * automations — catálogo del motor de reglas (#15, "Digital Pipeline" de AIRA).
+ * automations — catálogo del motor de reglas (#15, "Digital Pipeline" de ARIA).
  * Fuente ÚNICA que alimenta el builder (patrón NODE_KINDS de botFlow.ts):
  * los TRIGGER_DEFS/ACTION_DEFS definen label/icono/campos de cada tipo, y la
  * UI se genera desde acá. El backend valida contra los mismos type strings

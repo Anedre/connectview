@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing:border-box; margin:0; padding:0;
+      font-family:"Segoe UI",-apple-system,Roboto,"Inter",system-ui,sans-serif; }
+  :root{
+    --t1:#0E1525; --t2:#4F5C75; --t3:#7A879F;
+    --amber:#D98A2B; --magenta:#BC5587; --maroon:#7A1E52;
+    --green:#138354; --red:#C0353A;
+  }
+  body{ width:1600px; color:var(--t1);
+    background:radial-gradient(1200px 480px at 50% -16%, #FFFFFF, #EEF1F6 66%), #F6F7F9;
+    padding:48px 60px; }
+  .head{ text-align:center; margin-bottom:32px; }
+  .head h1{ font-size:34px; font-weight:800; letter-spacing:-.6px; }
+  .head h1 b{ background:linear-gradient(135deg,var(--amber),var(--maroon));
+    -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .head p{ color:var(--t2); font-size:18px; margin-top:8px; }
+
+  .row{ display:flex; align-items:center; gap:26px; }
+  .side{ flex:1; border-radius:22px; padding:28px 28px 24px; min-height:386px; }
+  .before{ background:linear-gradient(165deg,#FEF6F6,#FFFFFF 70%); border:1px solid #F1D5D8;
+    box-shadow:0 16px 40px -16px rgba(192,53,58,.18); }
+  .after{ background:linear-gradient(165deg,#F2FBF6,#FFFFFF 72%); border:1px solid #CFEBDD;
+    box-shadow:0 16px 44px -14px rgba(19,131,84,.20); }
+  .tag{ display:inline-flex; align-items:center; gap:8px; font-size:13.5px; font-weight:800;
+    padding:7px 14px; border-radius:999px; letter-spacing:.3px; }
+  .tag.bad{ background:rgba(192,53,58,.10); color:var(--red); border:1px solid #F1D5D8; }
+  .tag.good{ background:rgba(19,131,84,.12); color:#0E6B45; border:1px solid #CFEBDD; }
+  .side h2{ font-size:23px; font-weight:800; margin:16px 0 4px; }
+  .side .lead{ color:var(--t2); font-size:15px; margin-bottom:20px; }
+
+  .tools{ display:flex; flex-direction:column; gap:12px; }
+  .tool{ display:flex; align-items:center; gap:13px; padding:15px 16px; border-radius:13px;
+    background:#FFFFFF; border:1px solid #EBD3D6; font-size:16.5px; font-weight:600;
+    box-shadow:0 1px 2px rgba(15,22,36,.05); }
+  .tool .ic{ width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:17px;
+    background:rgba(192,53,58,.10); flex:0 0 34px; }
+  .tool .x{ margin-left:auto; color:var(--red); font-weight:800; font-size:14px; }
+
+  .unified{ border-radius:16px; padding:22px; text-align:center;
+    background:linear-gradient(135deg, rgba(217,138,43,.12), rgba(19,131,84,.08));
+    border:1px solid #DDE7DF; }
+  .unified img{ height:58px; mix-blend-mode:multiply; }
+  .pills{ display:flex; flex-wrap:wrap; gap:9px; justify-content:center; margin-top:16px; }
+  .pill{ font-size:13px; font-weight:700; padding:7px 13px; border-radius:999px; color:var(--t1);
+    background:#FFFFFF; border:1px solid #D8E6DE; }
+  .wins{ margin-top:18px; display:grid; gap:9px; text-align:left; }
+  .win{ display:flex; align-items:center; gap:10px; font-size:15.5px; font-weight:600; }
+  .win .g{ color:var(--green); font-size:17px; }
+
+  .vs{ flex:0 0 64px; text-align:center; }
+  .vs .a{ font-size:44px; font-weight:800;
+    background:linear-gradient(135deg,var(--amber),var(--magenta));
+    -webkit-background-clip:text; background-clip:text; color:transparent; }
+
+  .foot{ text-align:center; margin-top:28px; font-size:17px; color:var(--t2); }
+  .foot b{ background:linear-gradient(135deg,var(--amber),var(--maroon));
+    -webkit-background-clip:text; background-clip:text; color:transparent; font-weight:800; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>De <b>tres facturas</b> a <b>una plataforma</b></h1>
+    <p>Lo que hoy resolvés con herramientas sueltas, ARIA lo unifica</p>
+  </div>
+
+  <div class="row">
+    <div class="side before">
+      <span class="tag bad">✕ HOY</span>
+      <h2>Tres herramientas que no se hablan</h2>
+      <div class="lead">Licencias multiplicadas, datos fragmentados, integraciones frágiles.</div>
+      <div class="tools">
+        <div class="tool"><span class="ic">📇</span> CRM (tipo Kommo) <span class="x">licencia ✕</span></div>
+        <div class="tool"><span class="ic">💬</span> Omnicanal (tipo Chattigo) <span class="x">licencia ✕</span></div>
+        <div class="tool"><span class="ic">☁️</span> Salesforce <span class="x">licencia ✕</span></div>
+      </div>
+    </div>
+
+    <div class="vs"><div class="a">→</div></div>
+
+    <div class="side after">
+      <span class="tag good">✓ CON ARIA</span>
+      <h2>Una sola plataforma, tu nube</h2>
+      <div class="lead">Todo integrado, con IA, corriendo sobre tu propia cuenta AWS.</div>
+      <div class="unified">
+        <img src="img/logo-aria.png" alt="ARIA by Novasys" />
+        <div class="pills">
+          <span class="pill">Omnicanal</span><span class="pill">Campañas</span>
+          <span class="pill">Leads</span><span class="pill">Bots IA</span>
+          <span class="pill">Reportes</span>
+        </div>
+      </div>
+      <div class="wins">
+        <div class="win"><span class="g">✓</span> Una sola tarifa por agente</div>
+        <div class="win"><span class="g">✓</span> Tus datos nunca salen de tu cuenta</div>
+        <div class="win"><span class="g">✓</span> Sin lock-in — revocable en un clic</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">Sustituir CRM + omnicanal + Salesforce suele costar <b>$80–200/agente</b>. ARIA: una tarifa de plataforma + tu AWS a precio de costo.</div>
+</body>
+</html>

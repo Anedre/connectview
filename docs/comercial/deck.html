@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing:border-box; margin:0; padding:0;
+      font-family:"Segoe UI",-apple-system,Roboto,"Inter",system-ui,sans-serif; }
+  :root{
+    --bg:#F6F7F9; --card:#FFFFFF; --t1:#0E1525; --t2:#4F5C75; --t3:#7A879F; --b1:#E7EAF0;
+    --amber:#D98A2B; --magenta:#BC5587; --maroon:#7A1E52;
+    --green:#138354; --red:#C0353A; --cyan:#0F84A0; --violet:#6253CE;
+  }
+  body{ background:var(--bg); }
+  .slide{ width:1920px; height:1080px; padding:96px 120px 110px; position:relative;
+    display:flex; flex-direction:column; page-break-after:always; overflow:hidden; background:var(--bg); }
+  .slide:last-child{ page-break-after:auto; }
+  .brandbar{ position:absolute; top:0; left:0; right:0; height:9px;
+    background:linear-gradient(90deg,var(--amber),var(--magenta),var(--maroon)); }
+  .kicker{ font-size:23px; letter-spacing:4px; text-transform:uppercase; color:var(--t3); font-weight:700; }
+  .title{ font-size:64px; font-weight:800; letter-spacing:-1.5px; line-height:1.06; margin-top:12px; color:var(--t1); }
+  .title b{ background:linear-gradient(135deg,var(--amber),var(--maroon));
+    -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .lead{ font-size:26px; color:var(--t2); margin-top:18px; }
+  .body{ flex:1; display:flex; flex-direction:column; justify-content:center; margin-top:8px; }
+  .foot{ position:absolute; left:120px; right:120px; bottom:50px; display:flex; align-items:center; justify-content:space-between; }
+  .foot img{ height:30px; mix-blend-mode:multiply; }
+  .foot .lbl{ font-size:18px; color:var(--t3); font-weight:600; }
+
+  /* pasos horizontales */
+  .steps{ display:flex; align-items:stretch; }
+  .step{ flex:1; background:var(--card); border:1px solid var(--b1); border-radius:24px; padding:40px 34px;
+    box-shadow:0 18px 46px -22px rgba(15,22,36,.20); }
+  .step .n{ display:inline-grid; place-items:center; width:46px; height:46px; border-radius:13px; color:#fff;
+    font-weight:800; font-size:22px; background:linear-gradient(135deg,var(--amber),var(--magenta)); }
+  .step .ic{ font-size:60px; margin-top:18px; line-height:1; }
+  .step .st{ font-size:30px; font-weight:800; margin-top:16px; color:var(--t1); }
+  .step .sd{ font-size:21px; color:var(--t2); margin-top:12px; line-height:1.42; }
+  .sep{ flex:0 0 62px; display:grid; place-items:center; font-size:48px; font-weight:800;
+    background:linear-gradient(135deg,var(--amber),var(--magenta)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+
+  /* tarjetas grandes (3) */
+  .cards3{ display:grid; grid-template-columns:repeat(3,1fr); gap:34px; }
+  .card{ background:var(--card); border:1px solid var(--b1); border-radius:26px; padding:48px 40px;
+    box-shadow:0 18px 46px -22px rgba(15,22,36,.18); }
+  .card .ic{ font-size:66px; line-height:1; }
+  .card .ct{ font-size:32px; font-weight:800; margin-top:22px; color:var(--t1); }
+  .card .cd{ font-size:22px; color:var(--t2); margin-top:14px; line-height:1.42; }
+  .tagpill{ display:inline-block; margin-top:18px; font-size:17px; font-weight:700; padding:7px 15px; border-radius:999px; }
+</style>
+</head>
+<body>
+
+<!-- 1 · PORTADA -->
+<section class="slide" id="s1" style="align-items:center; justify-content:center; text-align:center;">
+  <div class="brandbar"></div>
+  <img src="img/logo-aria.png" style="height:170px; mix-blend-mode:multiply;" alt="ARIA by Novasys" />
+  <div style="font-size:38px; color:var(--t2); margin-top:26px; font-weight:500;">El contact center con IA que corre sobre <b style="color:var(--t1)">tu propia nube</b></div>
+  <div style="margin-top:30px; font-size:22px; letter-spacing:3px; text-transform:uppercase; color:var(--t3); font-weight:700;">Propuesta comercial</div>
+</section>
+
+<!-- 2 · PROBLEMA -->
+<section class="slide" id="s2">
+  <div class="brandbar"></div>
+  <div class="kicker">El problema</div>
+  <div class="title">Hoy pagás <b>tres herramientas</b> que no se hablan</div>
+  <div class="body">
+    <div class="cards3">
+      <div class="card"><div class="ic">📇</div><div class="ct">CRM</div><div class="cd">Para tus leads y clientes (tipo Kommo).</div><span class="tagpill" style="background:rgba(192,53,58,.10); color:var(--red);">+ una licencia</span></div>
+      <div class="card"><div class="ic">💬</div><div class="ct">Omnicanal</div><div class="cd">Para WhatsApp y chat (tipo Chattigo).</div><span class="tagpill" style="background:rgba(192,53,58,.10); color:var(--red);">+ una licencia</span></div>
+      <div class="card"><div class="ic">☁️</div><div class="ct">Salesforce</div><div class="cd">Para la fuerza de ventas.</div><span class="tagpill" style="background:rgba(192,53,58,.10); color:var(--red);">+ una licencia</span></div>
+    </div>
+    <div class="lead" style="text-align:center; margin-top:46px;">Datos separados · integraciones frágiles · una factura que crece con cada canal.</div>
+  </div>
+  <div class="foot"><img src="img/logo-aria.png"><span class="lbl">El problema</span></div>
+</section>
+
+<!-- 3 · SOLUCIÓN -->
+<section class="slide" id="s3">
+  <div class="brandbar"></div>
+  <div class="kicker">La solución</div>
+  <div class="title"><b>Una sola plataforma</b>, sobre tu nube</div>
+  <div class="body">
+    <div class="steps">
+      <div class="step"><div class="ic">📞🟢💬✉️</div><div class="st">Tus clientes</div><div class="sd">Llaman o escriben por cualquier canal.</div></div>
+      <div class="sep">→</div>
+      <div class="step" style="border-color:#E6CDB0;"><div class="ic">🎧</div><div class="st">ARIA</div><div class="sd">Lo unifica todo en un solo lugar, con IA.</div></div>
+      <div class="sep">→</div>
+      <div class="step" style="border-color:#CFEBDD;"><div class="ic">🔒</div><div class="st">Tu nube</div><div class="sd">Todo vive en TU cuenta. Seguro y tuyo.</div></div>
+    </div>
+    <div class="lead" style="text-align:center; margin-top:46px;">Todo lo que hoy hacés en tres apps, en una.</div>
+  </div>
+  <div class="foot"><img src="img/logo-aria.png"><span class="lbl">La solución</span></div>
+</section>
+
+<!-- 4 · ATENCIÓN -->
+<section class="slide" id="s4">
+  <div class="brandbar"></div>
+  <div class="kicker">Día a día</div>
+  <div class="title">Cómo se atiende a un cliente</div>
+  <div class="body">
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="ic">📞</div><div class="st">Llega el contacto</div><div class="sd">Llamada, WhatsApp, chat o email.</div></div>
+      <div class="sep">→</div>
+      <div class="step"><div class="n">2</div><div class="ic">👤</div><div class="st">Lo atiende un agente</div><div class="sd">Con toda la info del cliente a la vista.</div></div>
+      <div class="sep">→</div>
+      <div class="step"><div class="n">3</div><div class="ic">✨</div><div class="st">La IA ayuda</div><div class="sd">Sugiere respuestas y resume la charla.</div></div>
+      <div class="sep">→</div>
+      <div class="step"><div class="n">4</div><div class="ic">✅</div><div class="st">Se resuelve</div><div class="sd">Y queda registrado automáticamente.</div></div>
+    </div>
+  </div>
+  <div class="foot"><img src="img/logo-aria.png"><span class="lbl">Atención al cliente</span></div>
+</section>
+
+<!-- 5 · CAMPAÑA -->
+<section class="slide" id="s5">
+  <div class="brandbar"></div>
+  <div class="kicker">Ventas / cobranzas</div>
+  <div class="title">Cómo funciona una campaña</div>
+  <div class="body">
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="ic">📋</div><div class="st">Subís tu lista</div><div class="sd">Tus contactos, desde un Excel o el CRM.</div></div>
+      <div class="sep">→</div>
+      <div class="step"><div class="n">2</div><div class="ic">📣</div><div class="st">ARIA contacta</div><div class="sd">Llama o manda WhatsApp por vos, en orden.</div></div>
+      <div class="sep">→</div>
+      <div class="step"><div class="n">3</div><div class="ic">👥</div><div class="st">Atienden tus agentes</div><div class="sd">Solo las llamadas que contestan.</div></div>
+      <div class="sep">→</div>
+      <div class="step"><div class="n">4</div><div class="ic">📊</div><div class="st">Ves resultados</div><div class="sd">En vivo: contactados, ventas, pendientes.</div></div>
+    </div>
+  </div>
+  <div class="foot"><img src="img/logo-aria.png"><span class="lbl">Campañas de salida</span></div>
+</section>
+
+<!-- 6 · BOT -->
+<section class="slide" id="s6">
+  <div class="brandbar"></div>
+  <div class="kicker">Automatización</div>
+  <div class="title">Un <b>bot de WhatsApp</b> que atiende solo</div>
+  <div class="body">
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="ic">💬</div><div class="st">El cliente escribe</div><div class="sd">A tu número de WhatsApp.</div></div>
+      <div class="sep">→</div>
+      <div class="step"><div class="n">2</div><div class="ic">🤖</div><div class="st">El bot responde</div><div class="sd">Al instante, con inteligencia artificial.</div></div>
+      <div class="sep">→</div>
+      <div class="step"><div class="n">3</div><div class="ic">🧠</div><div class="st">Resuelve lo común</div><div class="sd">Preguntas frecuentes, horarios, estados.</div></div>
+      <div class="sep">→</div>
+      <div class="step"><div class="n">4</div><div class="ic">🙋</div><div class="st">Pasa a una persona</div><div class="sd">Solo cuando de verdad hace falta.</div></div>
+    </div>
+  </div>
+  <div class="foot"><img src="img/logo-aria.png"><span class="lbl">Bots con IA</span></div>
+</section>
+
+<!-- 7 · TU NUBE -->
+<section class="slide" id="s7">
+  <div class="brandbar"></div>
+  <div class="kicker">Lo que nos diferencia</div>
+  <div class="title"><b>Tu nube</b>, tu control</div>
+  <div class="body">
+    <div class="cards3">
+      <div class="card" style="border-color:#CFEBDD;"><div class="ic">🛡️</div><div class="ct">Tus datos, tuyos</div><div class="cd">Las grabaciones y conversaciones nunca salen de tu cuenta.</div></div>
+      <div class="card" style="border-color:#CFEBDD;"><div class="ic">🔓</div><div class="ct">Sin lock-in</div><div class="cd">Si te querés ir, tus datos y tu telefonía siguen siendo tuyos.</div></div>
+      <div class="card" style="border-color:#CFEBDD;"><div class="ic">🧾</div><div class="ct">Una sola factura</div><div class="cd">Pagás el servicio en la nube a precio de costo, sin sobreprecio.</div></div>
+    </div>
+  </div>
+  <div class="foot"><img src="img/logo-aria.png"><span class="lbl">Soberanía de datos</span></div>
+</section>
+
+<!-- 8 · CONECTAR -->
+<section class="slide" id="s8">
+  <div class="brandbar"></div>
+  <div class="kicker">Empezar</div>
+  <div class="title">Conectarlo es <b>fácil</b></div>
+  <div class="body">
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="ic">🔗</div><div class="st">Conectás tu cuenta</div><div class="sd">Un asistente te guía paso a paso (~3 min).</div></div>
+      <div class="sep">→</div>
+      <div class="step"><div class="n">2</div><div class="ic">👥</div><div class="st">Invitás a tu equipo</div><div class="sd">Agentes y supervisores, con su rol.</div></div>
+      <div class="sep">→</div>
+      <div class="step"><div class="n">3</div><div class="ic">🚀</div><div class="st">A atender</div><div class="sd">Sin instalar ni mantener servidores.</div></div>
+    </div>
+  </div>
+  <div class="foot"><img src="img/logo-aria.png"><span class="lbl">Puesta en marcha</span></div>
+</section>
+
+<!-- 9 · PRECIO + CTA -->
+<section class="slide" id="s9">
+  <div class="brandbar"></div>
+  <div class="kicker">Precio</div>
+  <div class="title">Una <b>tarifa por agente</b>, simple</div>
+  <div class="body">
+    <div class="cards3">
+      <div class="card" style="text-align:center;"><div class="ct" style="margin:0; color:var(--t2); font-size:26px;">Piloto</div><div style="font-size:58px; font-weight:800; margin-top:8px;">$39</div><div class="cd">por agente / mes · hasta 10 agentes</div></div>
+      <div class="card" style="text-align:center; border-color:#E6CDB0;"><div class="ct" style="margin:0; color:var(--t2); font-size:26px;">Pyme</div><div style="font-size:58px; font-weight:800; margin-top:8px;">$35</div><div class="cd">por agente / mes · 10 a 50 agentes</div></div>
+      <div class="card" style="text-align:center;"><div class="ct" style="margin:0; color:var(--t2); font-size:26px;">Enterprise</div><div style="font-size:58px; font-weight:800; margin-top:8px;">$29</div><div class="cd">por agente / mes · 50+ agentes</div></div>
+    </div>
+    <div class="lead" style="text-align:center; margin-top:40px;">En vez de <b style="color:var(--t1)">$80–200/agente</b> combinando tres licencias. + tu consumo de nube a precio de costo.</div>
+    <div style="text-align:center; margin-top:30px; font-size:24px; font-weight:700;">
+      <span style="background:linear-gradient(135deg,var(--amber),var(--maroon)); -webkit-background-clip:text; background-clip:text; color:transparent;">¿Hablamos?</span>
+      <span style="display:inline-block; margin-left:12px; color:var(--magenta); border:1px dashed #E3C3D1; border-radius:10px; padding:6px 14px; font-size:20px;">[ tu email / sitio web aquí ]</span>
+    </div>
+  </div>
+  <div class="foot"><img src="img/logo-aria.png"><span class="lbl">ARIA · by Novasys</span></div>
+</section>
+
+</body>
+</html>

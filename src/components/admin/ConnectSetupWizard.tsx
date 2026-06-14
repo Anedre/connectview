@@ -204,15 +204,15 @@ export function ConnectSetupWizard({
                 Conectá tu Amazon Connect en 4 pasos
               </h2>
               <p style={{ fontSize: 14, color: "var(--text-2)", marginTop: 8, lineHeight: 1.6 }}>
-                AIRA se conecta a TU cuenta AWS mediante un rol que vos creás y controlás.
+                ARIA se conecta a TU cuenta AWS mediante un rol que vos creás y controlás.
                 Te lleva ~3 minutos y no necesitás ser técnico.
               </p>
               <div style={{ marginTop: 20, padding: 18, borderRadius: 12, background: "var(--bg-1)", border: "1px solid var(--border-1)" }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Qué accede AIRA</div>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Qué accede ARIA</div>
                 <AccessRow ok>Lee tus métricas, colas y agentes en tiempo real</AccessRow>
                 <AccessRow ok>Lee las grabaciones para que las escuches acá</AccessRow>
                 <AccessRow ok>Origina llamadas salientes para tus campañas</AccessRow>
-                <div style={{ fontWeight: 700, fontSize: 13, margin: "14px 0 10px" }}>Qué AIRA NUNCA hace</div>
+                <div style={{ fontWeight: 700, fontSize: 13, margin: "14px 0 10px" }}>Qué ARIA NUNCA hace</div>
                 <AccessRow ok={false}>No guarda tus credenciales — solo "pide permiso" cuando lo necesita</AccessRow>
                 <AccessRow ok={false}>No borra ni modifica la configuración de tu Connect</AccessRow>
                 <AccessRow ok={false}>No accede a nada fuera de lo que el rol permite</AccessRow>
@@ -248,7 +248,7 @@ export function ConnectSetupWizard({
                   value={draft.instanceArn || ""} onChange={(e) => set({ instanceArn: e.target.value })} />
               </div>
               <Details>
-                El ARN lo encontrás en tu consola de Connect → Información de la cuenta. Con él, AIRA
+                El ARN lo encontrás en tu consola de Connect → Información de la cuenta. Con él, ARIA
                 restringe las acciones sensibles (originar llamadas, escuchar) SOLO a esta instancia.
               </Details>
             </div>
@@ -256,9 +256,9 @@ export function ConnectSetupWizard({
 
           {STEPS[step].key === "origins" && (
             <div>
-              <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Permití que AIRA muestre tu visor</h2>
+              <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Permití que ARIA muestre tu visor</h2>
               <p style={{ fontSize: 14, color: "var(--text-2)", marginTop: 8, lineHeight: 1.6 }}>
-                Para que el softphone de Connect funcione dentro de AIRA, agregá este dominio en tu consola
+                Para que el softphone de Connect funcione dentro de ARIA, agregá este dominio en tu consola
                 de Connect → <b>Configuración de la aplicación → Orígenes aprobados</b>.
               </p>
               <div className="row" style={{ gap: 8, marginTop: 16 }}>
@@ -266,7 +266,7 @@ export function ConnectSetupWizard({
                 <button className="btn" onClick={() => copy(appOrigin, "Dominio")}><Icon.Copy size={13} /> Copiar</button>
               </div>
               <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: "var(--accent-cyan-soft)", fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
-                Tip: si te saltás este paso, todo funciona menos el softphone embebido (el resto de AIRA anda igual).
+                Tip: si te saltás este paso, todo funciona menos el softphone embebido (el resto de ARIA anda igual).
               </div>
             </div>
           )}
@@ -303,7 +303,7 @@ export function ConnectSetupWizard({
                     <Icon.Copy size={12} /> Copiar plantilla CloudFormation
                   </button>
                 </div>
-                Tu External ID es <code>{draft.externalId}</code> — el código anti-suplantación que solo vos y AIRA conocen.
+                Tu External ID es <code>{draft.externalId}</code> — el código anti-suplantación que solo vos y ARIA conocen.
               </Details>
             </div>
           )}
@@ -312,9 +312,9 @@ export function ConnectSetupWizard({
             <div>
               <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Tus datos viven en TU cuenta</h2>
               <p style={{ fontSize: 14, color: "var(--text-2)", marginTop: 8, lineHeight: 1.6 }}>
-                AIRA <b>no guarda datos de empresas en su cuenta</b>. Tus leads, campañas, contactos y
+                ARIA <b>no guarda datos de empresas en su cuenta</b>. Tus leads, campañas, contactos y
                 tipificaciones viven en TU cuenta AWS. Creá las 14 tablas con un clic — es un paso
-                necesario para usar AIRA.
+                necesario para usar ARIA.
               </p>
               <ol style={{ fontSize: 13.5, color: "var(--text-2)", marginTop: 14, paddingLeft: 18, lineHeight: 1.7 }}>
                 <li>Tocá "Crear mis 14 tablas" (abre CloudFormation en tu cuenta).</li>
@@ -338,11 +338,11 @@ export function ConnectSetupWizard({
               </div>
               {draft.dataPlaneEnabled ? (
                 <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: "var(--accent-green-soft)", color: "var(--accent-green)", fontSize: 12.5, fontWeight: 600 }}>
-                  ✓ Tus tablas existen. AIRA va a leer y escribir en TU cuenta.
+                  ✓ Tus tablas existen. ARIA va a leer y escribir en TU cuenta.
                 </div>
               ) : (
                 <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: "var(--accent-amber-soft)", color: "var(--text-2)", fontSize: 12.5, lineHeight: 1.5 }}>
-                  Para continuar, creá las tablas y verificalas. Sin esto, AIRA no tiene dónde guardar tus datos.
+                  Para continuar, creá las tablas y verificalas. Sin esto, ARIA no tiene dónde guardar tus datos.
                 </div>
               )}
               <Details>

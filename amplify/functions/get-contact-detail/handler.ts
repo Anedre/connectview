@@ -20,6 +20,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { resolveConnect } from "../_shared/tenantConnect";
+import { readBlobCache, writeBlobCache } from "../_shared/recordingsCache";
 
 /**
  * get-contact-detail — returns everything needed to render a contact
@@ -68,6 +69,11 @@ let instanceId = INSTANCE_ID;
 const INSTANCE_ALIAS = process.env.CONNECT_INSTANCE_ALIAS || "novasys";
 const CONTACTS_TABLE = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
 const PRESIGN_EXPIRES = 3600; // 1 hour
+/** Frescura del caché de detalle: la transcripción de una llamada TERMINADA es
+ *  inmutable, así que la servimos hasta 12h (el TTL duro de DynamoDB la borra a
+ *  las 24h). La URL firmada del audio NUNCA se cachea — se re-firma en cada
+ *  lectura — y el wrap-up se lee siempre fresco. */
+const DETAIL_FRESH_MS = 12 * 60 * 60 * 1000;
 
 const CORS: Record<string, string> = { "Content-Type": "application/json" };
 
@@ -489,8 +495,168 @@ async function fetchAttachments(
   return out;
 }
 
+/** Parte INMUTABLE del detalle que cacheamos (transcripción + metadata +
+ *  ubicación del audio). NO incluye URLs firmadas (expiran) ni el wrap-up
+ *  (puede cambiar) — esos se regeneran/releen frescos en cada lectura. */
+interface DetailCore {
+  contactId: string;
+  channel: string;
+  initiationTimestamp: string;
+  disconnectTimestamp: string;
+  connectedToSystemTimestamp: string;
+  duration: number;
+  agentUsername: string;
+  queueName: string;
+  initiationMethod?: string;
+  disconnectReason?: string;
+  customerEndpoint?: string;
+  customerEndpointType?: string;
+  attributes: Record<string, string>;
+  subject?: string;
+  systemEndpoint?: string;
+  systemEndpointType?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  transcript: any;
+  /** Ubicación S3 cruda del audio ("bucket/key") — se re-firma en cada lectura. */
+  audioLocation: string | null;
+  /** Si la llamada tenía adjuntos: solo entonces re-consultamos Connect en un hit. */
+  hadAttachments: boolean;
+}
+
+/** Construye el objeto `recording` re-firmando la ubicación del audio. La URL
+ *  firmada caduca, por eso jamás se cachea — siempre fresca. */
+async function buildRecording(
+  audioLocation: string | null
+): Promise<{ url: string; expiresAt: string } | null> {
+  if (!audioLocation) return null;
+  const url = await presignS3Location(audioLocation);
+  return url
+    ? { url, expiresAt: new Date(Date.now() + PRESIGN_EXPIRES * 1000).toISOString() }
+    : null;
+}
+
+/** Lee el wrap-up (disposición, notas, tags, follow-ups + historial append-only)
+ *  desde DynamoDB. Siempre fresco — nunca se cachea — porque el agente puede
+ *  editarlo después de la llamada. */
+async function fetchWrapUp(contactId: string): Promise<Record<string, unknown> | null> {
+  let wrapUp: Record<string, unknown> | null = null;
+  try {
+    const ddbRes = await dynamo.send(
+      new GetItemCommand({
+        TableName: CONTACTS_TABLE,
+        Key: { contactId: { S: contactId } },
+      })
+    );
+    if (ddbRes.Item) {
+      const u = unmarshall(ddbRes.Item);
+      // Only return the wrap-up object if the agent actually filled it.
+      const hasContent =
+        u.agentNotes ||
+        u.stage ||
+        u.subStage ||
+        u.summary ||
+        (Array.isArray(u.tags) && u.tags.length > 0);
+      if (hasContent) {
+        wrapUp = {
+          notes: u.agentNotes || "",
+          summary: u.summary || "",
+          stage: u.stage || "",
+          stageLabel: u.stageLabel || "",
+          subStage: u.subStage || "",
+          subStageLabel: u.subStageLabel || "",
+          valoracion: u.valoracion || "",
+          tags: Array.isArray(u.tags) ? u.tags : [],
+          followUps: u.followUps || {},
+          followUpTaskIds: Array.isArray(u.followUpTaskIds) ? u.followUpTaskIds : [],
+          agentUsername: u.agentUsername || "",
+          updatedAt: u.updatedAt || "",
+          history: [],
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("wrap-up lookup failed:", err);
+  }
+
+  // Append-only wrap-up history (siempre, aunque el row actual esté vacío).
+  try {
+    const histRes = await dynamo.send(
+      new QueryCommand({
+        TableName: "connectview-wrapup-history",
+        KeyConditionExpression: "contactId = :cid",
+        ExpressionAttributeValues: { ":cid": { S: contactId } },
+        ScanIndexForward: false, // newest first
+        Limit: 50,
+      })
+    );
+    const rows = (histRes.Items || []).map((r) => unmarshall(r));
+    if (rows.length > 0) {
+      if (!wrapUp) {
+        const latest = rows[0];
+        wrapUp = {
+          notes: latest.agentNotes || "",
+          summary: latest.summary || "",
+          stage: latest.stage || "",
+          stageLabel: latest.stageLabel || "",
+          subStage: latest.subStage || "",
+          subStageLabel: latest.subStageLabel || "",
+          valoracion: latest.valoracion || "",
+          tags: Array.isArray(latest.tags) ? latest.tags : [],
+          followUps: latest.followUps || {},
+          followUpTaskIds: Array.isArray(latest.followUpTaskIds) ? latest.followUpTaskIds : [],
+          agentUsername: latest.agentUsername || "",
+          updatedAt: latest.savedAt || "",
+          history: [],
+        };
+      }
+      wrapUp.history = rows;
+    }
+  } catch (err) {
+    console.warn("wrap-up history lookup failed:", err);
+  }
+
+  return wrapUp;
+}
+
+/** Arma el body de respuesta — usado por el camino de caché Y el de cómputo
+ *  completo, para que la forma del JSON nunca diverja entre ambos. */
+function detailBody(
+  core: DetailCore,
+  recording: { url: string; expiresAt: string } | null,
+  attachments: AttachmentOut[],
+  wrapUp: Record<string, unknown> | null
+) {
+  return {
+    contactId: core.contactId,
+    channel: core.channel,
+    subChannel: undefined,
+    initiationTimestamp: core.initiationTimestamp,
+    disconnectTimestamp: core.disconnectTimestamp,
+    connectedToSystemTimestamp: core.connectedToSystemTimestamp,
+    duration: core.duration,
+    agentUsername: core.agentUsername,
+    queueName: core.queueName,
+    initiationMethod: core.initiationMethod,
+    disconnectReason: core.disconnectReason,
+    customerEndpoint: core.customerEndpoint,
+    customerEndpointType: core.customerEndpointType,
+    attributes: core.attributes || {},
+    subject: core.subject,
+    systemEndpoint: core.systemEndpoint,
+    systemEndpointType: core.systemEndpointType,
+    recording,
+    transcript: core.transcript,
+    attachments,
+    wrapUp,
+  };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min — corta el cold start.
+  if (event?.warmup || event?.queryStringParameters?.warmup) {
+    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: '{"warm":true}' };
+  }
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
   }
@@ -509,6 +675,33 @@ export const handler: Handler = async (event: any) => {
       headers: CORS,
       body: JSON.stringify({ error: "contactId required" }),
     };
+  }
+
+  const cacheKey = `detail#${instanceId}#${contactId}`;
+  const wantsFresh = event?.queryStringParameters?.fresh === "1";
+  const associatedResourceArn = `arn:aws:connect:${process.env.AWS_REGION || "us-east-1"}:${process.env.AWS_ACCOUNT_ID || ""}:instance/${instanceId}/contact/${contactId}`;
+
+  // Cache hit (#perf Nivel 3): la transcripción de una llamada TERMINADA es
+  // INMUTABLE → la servimos del caché y solo re-firmamos el audio (la URL
+  // firmada expira, nunca se cachea), re-consultamos los adjuntos SOLO si los
+  // hubo, y leemos el wrap-up fresco (el agente puede editarlo). Así salta lo
+  // caro: DescribeContact + leer Contact Lens de S3 + el barrido ListObjectsV2.
+  if (!wantsFresh) {
+    const core = (await readBlobCache(cacheKey, DETAIL_FRESH_MS)) as DetailCore | null;
+    if (core) {
+      const [recording, attachments, wrapUp] = await Promise.all([
+        buildRecording(core.audioLocation),
+        core.hadAttachments
+          ? fetchAttachments(contactId, associatedResourceArn)
+          : Promise.resolve([] as AttachmentOut[]),
+        fetchWrapUp(contactId),
+      ]);
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify(detailBody(core, recording, attachments, wrapUp)),
+      };
+    }
   }
 
   try {
@@ -539,7 +732,7 @@ export const handler: Handler = async (event: any) => {
     // Connect's Recordings array is heterogeneous — entries can be the
     // audio recording, the Contact Lens transcript JSON, or the chat
     // transcript JSON. We handle each.
-    let recordingUrl: string | null = null;
+    let audioLocation: string | null = null;
     let transcript: Awaited<ReturnType<typeof fetchContactLensTranscript>> | Awaited<ReturnType<typeof fetchChatTranscript>> | null = null;
     /** Remember the bucket we saw the audio in, so the fallback transcript
      *  lookups below know where to ListObjectsV2 instead of guessing. */
@@ -568,7 +761,7 @@ export const handler: Handler = async (event: any) => {
         lowerLoc.includes("chat_transcripts");
 
       if (isAudio) {
-        recordingUrl = await presignS3Location(r.Location);
+        audioLocation = r.Location;
         // Capture bucket for later fallback lookups.
         const parsed = parseS3Location(r.Location);
         if (parsed) connectBucket = parsed.bucket;
@@ -655,8 +848,7 @@ export const handler: Handler = async (event: any) => {
     }
 
     // Fetch attachments — exists for any channel that supports them
-    // (most commonly EMAIL).
-    const associatedResourceArn = `arn:aws:connect:${process.env.AWS_REGION || "us-east-1"}:${process.env.AWS_ACCOUNT_ID || ""}:instance/${instanceId}/contact/${contactId}`;
+    // (most commonly EMAIL). `associatedResourceArn` ya se computó arriba.
     const attachments = await fetchAttachments(contactId, associatedResourceArn);
 
     // For EMAIL channel, fetch the message body from the EMAIL_MESSAGE
@@ -684,98 +876,9 @@ export const handler: Handler = async (event: any) => {
       }
     }
 
-    // Fetch the wrap-up data from DynamoDB so the historical-contact viewer
-    // can render the disposition, agent notes, tags and follow-ups that
-    // were captured at the end of the original interaction.
-    let wrapUp: Record<string, unknown> | null = null;
-    try {
-      const ddbRes = await dynamo.send(
-        new GetItemCommand({
-          TableName: CONTACTS_TABLE,
-          Key: { contactId: { S: contactId } },
-        })
-      );
-      if (ddbRes.Item) {
-        const u = unmarshall(ddbRes.Item);
-        // Only return the wrap-up object if the agent actually filled it.
-        // An empty stub (just updatedAt + contactId) shouldn't trigger the
-        // "Cierre por el agente" card in the UI.
-        const hasContent =
-          u.agentNotes ||
-          u.stage ||
-          u.subStage ||
-          u.summary ||
-          (Array.isArray(u.tags) && u.tags.length > 0);
-        if (hasContent) {
-          wrapUp = {
-            notes: u.agentNotes || "",
-            summary: u.summary || "",
-            stage: u.stage || "",
-            stageLabel: u.stageLabel || "",
-            subStage: u.subStage || "",
-            subStageLabel: u.subStageLabel || "",
-            valoracion: u.valoracion || "",
-            tags: Array.isArray(u.tags) ? u.tags : [],
-            followUps: u.followUps || {},
-            followUpTaskIds: Array.isArray(u.followUpTaskIds)
-              ? u.followUpTaskIds
-              : [],
-            agentUsername: u.agentUsername || "",
-            updatedAt: u.updatedAt || "",
-            history: [], // populated below
-          };
-        }
-      }
-    } catch (err) {
-      // Wrap-up is optional context — never fail the whole detail call
-      // because the agent-notes table is unavailable or empty.
-      console.warn("wrap-up lookup failed:", err);
-    }
-
-    // Append-only wrap-up history. We always try to fetch it, even when
-    // the current `connectview-contacts` row is empty (the agent might
-    // have edited the contact, cleared the fields, and the history
-    // still tells the story of every save).
-    try {
-      const histRes = await dynamo.send(
-        new QueryCommand({
-          TableName: "connectview-wrapup-history",
-          KeyConditionExpression: "contactId = :cid",
-          ExpressionAttributeValues: { ":cid": { S: contactId } },
-          ScanIndexForward: false, // newest first
-          Limit: 50,
-        })
-      );
-      const rows = (histRes.Items || []).map((r) => unmarshall(r));
-      if (rows.length > 0) {
-        // If we never built a wrapUp (because the current row was empty)
-        // but we DO have history, surface a synthesised wrapUp from the
-        // most recent entry so the UI still shows the disposition card.
-        if (!wrapUp) {
-          const latest = rows[0];
-          wrapUp = {
-            notes: latest.agentNotes || "",
-            summary: latest.summary || "",
-            stage: latest.stage || "",
-            stageLabel: latest.stageLabel || "",
-            subStage: latest.subStage || "",
-            subStageLabel: latest.subStageLabel || "",
-            valoracion: latest.valoracion || "",
-            tags: Array.isArray(latest.tags) ? latest.tags : [],
-            followUps: latest.followUps || {},
-            followUpTaskIds: Array.isArray(latest.followUpTaskIds)
-              ? latest.followUpTaskIds
-              : [],
-            agentUsername: latest.agentUsername || "",
-            updatedAt: latest.savedAt || "",
-            history: [],
-          };
-        }
-        wrapUp.history = rows;
-      }
-    } catch (err) {
-      console.warn("wrap-up history lookup failed:", err);
-    }
+    // Wrap-up (disposición, notas, tags, follow-ups + historial). Se lee SIEMPRE
+    // fresco — nunca se cachea — porque el agente puede editarlo tras la llamada.
+    const wrapUp = await fetchWrapUp(contactId);
 
     const duration =
       c.DisconnectTimestamp && c.InitiationTimestamp
@@ -786,43 +889,42 @@ export const handler: Handler = async (event: any) => {
           )
         : 0;
 
+    const core: DetailCore = {
+      contactId,
+      channel,
+      initiationTimestamp: c.InitiationTimestamp?.toISOString() || "",
+      disconnectTimestamp: c.DisconnectTimestamp?.toISOString() || "",
+      connectedToSystemTimestamp: c.ConnectedToSystemTimestamp?.toISOString() || "",
+      duration,
+      agentUsername,
+      queueName,
+      initiationMethod: c.InitiationMethod,
+      disconnectReason: c.DisconnectReason,
+      customerEndpoint: c.CustomerEndpoint?.Address,
+      customerEndpointType: c.CustomerEndpoint?.Type,
+      attributes: c.Attributes || {},
+      // For EMAIL: Contact.Name holds the message Subject (set by Connect's
+      // inbound email pipeline from the SMTP `Subject:` header). Unused else.
+      subject: c.Name || undefined,
+      systemEndpoint: c.SystemEndpoint?.Address,
+      systemEndpointType: c.SystemEndpoint?.Type,
+      transcript,
+      audioLocation,
+      hadAttachments: attachments.length > 0,
+    };
+
+    // Poblá el caché (gzip) SOLO para llamadas TERMINADAS con transcripción real,
+    // para no cachear una conversación en curso/incompleta. Best-effort: si
+    // DynamoDB falla, no rompe la respuesta.
+    if (c.DisconnectTimestamp && (transcript?.segments?.length ?? 0) > 0) {
+      await writeBlobCache(cacheKey, core);
+    }
+
+    const recording = await buildRecording(audioLocation);
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({
-        contactId,
-        channel,
-        subChannel: undefined,
-        initiationTimestamp: c.InitiationTimestamp?.toISOString() || "",
-        disconnectTimestamp: c.DisconnectTimestamp?.toISOString() || "",
-        connectedToSystemTimestamp: c.ConnectedToSystemTimestamp?.toISOString() || "",
-        duration,
-        agentUsername,
-        queueName,
-        initiationMethod: c.InitiationMethod,
-        disconnectReason: c.DisconnectReason,
-        customerEndpoint: c.CustomerEndpoint?.Address,
-        customerEndpointType: c.CustomerEndpoint?.Type,
-        attributes: c.Attributes || {},
-        // For EMAIL: Contact.Name holds the message Subject (set by
-        // Connect's inbound email pipeline from the SMTP `Subject:`
-        // header). For other channels Name is unused.
-        subject: c.Name || undefined,
-        // The party who initiated the contact and the party that received
-        // it. For inbound email: From / To. For inbound voice: caller /
-        // callee. Already useful for the email viewer.
-        systemEndpoint: c.SystemEndpoint?.Address,
-        systemEndpointType: c.SystemEndpoint?.Type,
-        recording: recordingUrl
-          ? {
-              url: recordingUrl,
-              expiresAt: new Date(Date.now() + PRESIGN_EXPIRES * 1000).toISOString(),
-            }
-          : null,
-        transcript,
-        attachments,
-        wrapUp,
-      }),
+      body: JSON.stringify(detailBody(core, recording, attachments, wrapUp)),
     };
   } catch (err) {
     console.error("get-contact-detail error:", err);

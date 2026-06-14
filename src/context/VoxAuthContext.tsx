@@ -209,7 +209,7 @@ function VoxAuthHeader() {
       <div className="vox-auth__brand">
         <div className="vox-auth__brand-tile">A</div>
         <div className="vox-auth__brand-lockup">
-          <span className="vox-auth__brand-name">AIRA</span>
+          <span className="vox-auth__brand-name">ARIA</span>
           <span className="vox-auth__brand-tag">BY NOVASYS</span>
         </div>
       </div>

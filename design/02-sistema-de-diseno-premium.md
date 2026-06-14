@@ -7,7 +7,7 @@
 
 ## North-star
 
-AIRA es una **consola de operaciones para contact centers** — densa en datos pero respirable,
+ARIA es una **consola de operaciones para contact centers** — densa en datos pero respirable,
 oscura por defecto, rápida bajo presión. La meta estética: que se sienta de la familia de
 **Linear, Vercel y Stripe**, no de un panel de Bootstrap.
 
@@ -218,7 +218,7 @@ primitivos shadcn hereden la marca.
   `--calldock-h:88px` ya definido). Mata la divergencia `FloatingCallWidget` vs hero.
 - **`<DateRangePicker>`** — presets (7/30/90d) + custom + comparación; control único de rango.
 - **`<FilterChipBar>`** — el `LeadFilterBar` (chip+popover+count) ya está muy bien; extraerlo.
-- **`<BrandLockup size>`** *(×5 + fija marca AIRA)* — logo + "AIRA" + tag, usado en sidebar/login/loading.
+- **`<BrandLockup size>`** *(×5 + fija marca ARIA)* — logo + "ARIA" + tag, usado en sidebar/login/loading.
 - **`<FloatingLayer slot>`** — gestor de anclaje/z-index para Copilot, call widget, monitor bar, toasts
   (hoy compiten por la esquina inferior-derecha).
 
@@ -239,7 +239,7 @@ primitivos shadcn hereden la marca.
 | `outline:none` sin reemplazo | `:focus-visible` con `--ring` |
 | overlay manual sin focus-trap | `<Modal>` |
 | "Cargando…" en texto | `<Skeleton>` |
-| Texto "ARIA" / "Vox" visible | "AIRA" (`<BrandLockup>`) |
+| Texto "AIRA" / "Vox" visible | "ARIA" (`<BrandLockup>`) |
 | Inglés suelto en UI ("Sentiment Trend", "skipped") | español neutro consistente |
 | `recharts` + ECharts + SVG a mano | un solo `<Chart>` (ECharts) |
 | 5 KPIs / 4 tarjetas de agente distintas | el primitivo canónico |

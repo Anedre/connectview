@@ -9,23 +9,13 @@ import { RecordingsWorkspace } from "@/components/recordings/RecordingsWorkspace
  */
 export function RecordingsPage() {
   return (
-    <div className="view" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div className="view" style={{ height: "100%", overflowY: "auto", overflowX: "hidden", paddingBottom: 28 }}>
       <PageHeader
         crumb="Crecimiento"
         title="Historial y Grabaciones"
         sub="Elegí un contacto y revisá toda su actividad: llamadas con audio y transcripción, WhatsApp, emails y archivos — conectado por su nombre, en un solo lugar."
       />
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          marginTop: 4,
-          background: "var(--bg-1)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 10,
-          overflow: "hidden",
-        }}
-      >
+      <div style={{ marginTop: 4 }}>
         <RecordingsWorkspace />
       </div>
     </div>

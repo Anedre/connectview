@@ -39,6 +39,7 @@ import { LeadsDemoPage } from "@/pages/LeadsDemoPage";
 import { BotsDemoPage } from "@/pages/BotsDemoPage";
 import { BotTemplateGallery } from "@/components/bots/BotTemplateGallery";
 import { RecordingsWorkspace } from "@/components/recordings/RecordingsWorkspace";
+import { RecordingsShowcasePage } from "@/components/recordings/RecordingsShowcase";
 import { FlowBuilderPage } from "@/pages/FlowBuilderPage";
 import { AutomationsPage } from "@/pages/AutomationsPage";
 import { AgentePage } from "@/pages/AgentePage";
@@ -209,7 +210,7 @@ function LoadingScreen() {
               lineHeight: 1,
             }}
           >
-            AIRA
+            ARIA
           </h1>
           <p style={{ marginTop: 8, fontSize: 13, color: "var(--text-2)" }}>
             Plataforma de contact center
@@ -314,7 +315,7 @@ function LoginScreen() {
         <div className="vox-auth__brand">
           <div className="vox-auth__brand-tile">A</div>
           <div className="vox-auth__brand-lockup">
-            <span className="vox-auth__brand-name">AIRA</span>
+            <span className="vox-auth__brand-name">ARIA</span>
             <span className="vox-auth__brand-tag">BY NOVASYS</span>
           </div>
         </div>
@@ -361,7 +362,7 @@ function LoginScreen() {
           <span className="vox-login__eyebrow">Conectar a Amazon Connect</span>
           <h2 className="vox-login__head">Casi listo para empezar</h2>
           <p className="vox-login__sub">
-            AIRA usa tu sesión de Amazon Connect para voz y chats. Te
+            ARIA usa tu sesión de Amazon Connect para voz y chats. Te
             abriremos una pestaña; este panel se conectará solo.
           </p>
 
@@ -400,7 +401,7 @@ function LoginScreen() {
           <div className="vox-login__tip">
             <span aria-hidden className="vox-login__tip-icon">i</span>
             <span className="vox-login__tip-text">
-              Mantén la pestaña de Amazon Connect abierta mientras usas AIRA —
+              Mantén la pestaña de Amazon Connect abierta mientras usas ARIA —
               la sesión se comparte automáticamente.
             </span>
           </div>
@@ -576,7 +577,7 @@ function AppContent() {
                     session — the CCP is headless so this is the only UI
                     to switch listen↔intervene and leave. */}
                 <MonitorControlBar />
-                {/* Global AIRA Copilot — floating assistant on every route. */}
+                {/* Global ARIA Copilot — floating assistant on every route. */}
                 <CopilotPanel />
               </TooltipProvider>
             </BrowserRouter>
@@ -731,13 +732,25 @@ export default function App() {
     typeof window !== "undefined" &&
     window.location.pathname === "/recordings-demo"
   ) {
+    // Permite apuntar a un contacto real para probar con datos reales en dev:
+    // /recordings-demo?phone=%2B51953730189&name=Andre
+    const sp = new URLSearchParams(window.location.search);
+    // ?real=1 → workspace REAL con datos reales (para QA); por defecto el SHOWCASE
+    // con datos de ejemplo, idéntico al mockup de Claude Design.
+    const real = sp.get("real") === "1";
+    const demoPhone = sp.get("phone") || "+51999000111";
+    const demoName = sp.get("name") || "Juan Pérez";
     return (
       <ThemeProvider>
-        <div style={{ height: "100vh", padding: 16, boxSizing: "border-box", background: "var(--bg-0)" }}>
-          <div style={{ height: "100%", border: "1px solid var(--border-1)", borderRadius: 10, overflow: "hidden", background: "var(--bg-1)" }}>
-            <RecordingsWorkspace initialLead={{ leadId: "demo", name: "Juan Pérez", phone: "+51999000111", company: "Cobranzas SAC", source: "phone" }} />
+        {real ? (
+          <div style={{ height: "100vh", padding: 16, boxSizing: "border-box", background: "var(--bg-0)" }}>
+            <div style={{ height: "100%", border: "1px solid var(--border-1)", borderRadius: 10, overflow: "hidden", background: "var(--bg-1)" }}>
+              <RecordingsWorkspace initialLead={{ leadId: "demo", name: demoName, phone: demoPhone, company: "Cobranzas SAC", source: "phone" }} />
+            </div>
           </div>
-        </div>
+        ) : (
+          <RecordingsShowcasePage />
+        )}
       </ThemeProvider>
     );
   }

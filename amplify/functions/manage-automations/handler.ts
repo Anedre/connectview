@@ -12,7 +12,7 @@ import { getIdentity } from "../_shared/cognitoAuth";
 
 /**
  * manage-automations — CRUD de las reglas de automatización (#15, el "Digital
- * Pipeline" de AIRA): trigger → condiciones → acciones, que el Lambda
+ * Pipeline" de ARIA): trigger → condiciones → acciones, que el Lambda
  * `automation-engine` evalúa (eventos de hooks + tick de EventBridge).
  *
  * STORAGE: tabla POOLED Vox-side `connectview-automation-rules` (PK tenantId,

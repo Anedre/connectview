@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
+import { fetchContactHistory } from "@/hooks/useCallHistory";
 
 /**
  * useLeadOverview — resumen del lead para el grid del Lead 360: por cada canal,
@@ -56,28 +57,27 @@ export function useLeadOverview(phone: string | null): LeadOverview {
         .catch(() => {});
     }
 
-    if (ep?.getContactHistory) {
-      fetch(`${ep.getContactHistory}?phone=${enc}&limit=200`, { signal: ctrl.signal })
-        .then((r) => r.json())
-        .then((j) => {
-          const cs = Array.isArray(j.contacts) ? j.contacts : [];
-          const acc: Record<string, ChannelSummary> = {
-            calls: { count: 0 },
-            whatsapp: { count: 0 },
-            emails: { count: 0 },
-          };
-          for (const c of cs) {
-            const ch = String(c.channel || "").toUpperCase();
-            const ts = c.initiationTimestamp || c.disconnectTimestamp;
-            const key = ch === "VOICE" || ch === "TELEPHONY" ? "calls" : ch === "CHAT" ? "whatsapp" : ch === "EMAIL" ? "emails" : null;
-            if (!key) continue;
-            acc[key].count++;
-            if (ts && (!acc[key].lastTs || ts > acc[key].lastTs!)) acc[key].lastTs = ts;
-          }
-          setOv((p) => ({ ...p, calls: acc.calls, whatsapp: acc.whatsapp, emails: acc.emails }));
-        })
-        .catch(() => {});
-    }
+    // Historial de contactos — fetch COMPARTIDO (dedup + caché): el Resumen lo
+    // pide también para el heatmap y la línea de tiempo → una sola request real.
+    fetchContactHistory(phone)
+      .then((cs) => {
+        if (ctrl.signal.aborted) return;
+        const acc: Record<string, ChannelSummary> = {
+          calls: { count: 0 },
+          whatsapp: { count: 0 },
+          emails: { count: 0 },
+        };
+        for (const c of cs) {
+          const ch = String(c.channel || "").toUpperCase();
+          const ts = c.initiationTimestamp || c.disconnectTimestamp;
+          const key = ch === "VOICE" || ch === "TELEPHONY" ? "calls" : ch === "CHAT" ? "whatsapp" : ch === "EMAIL" ? "emails" : null;
+          if (!key) continue;
+          acc[key].count++;
+          if (ts && (!acc[key].lastTs || ts > acc[key].lastTs!)) acc[key].lastTs = ts;
+        }
+        setOv((p) => ({ ...p, calls: acc.calls, whatsapp: acc.whatsapp, emails: acc.emails }));
+      })
+      .catch(() => {});
 
     if (ep?.getCustomerAttachments) {
       fetch(`${ep.getCustomerAttachments}?phone=${enc}`, { signal: ctrl.signal })

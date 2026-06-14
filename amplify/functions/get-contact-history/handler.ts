@@ -12,6 +12,7 @@ import {
   ListProfileObjectsCommand,
 } from "@aws-sdk/client-customer-profiles";
 import { resolveConnect } from "../_shared/tenantConnect";
+import { readRecordingsCache, writeRecordingsCache, getCachedName, putCachedName } from "../_shared/recordingsCache";
 
 // BYO (#43+#46): module-active. maxAttempts:1 → frontend reintenta en
 // próximo render.
@@ -48,6 +49,9 @@ async function resolveAgentUsername(agentId: string): Promise<string> {
   if (!agentId) return "";
   const k = `${instanceId}:${agentId}`;
   if (userCache.has(k)) return userCache.get(k)!;
+  // Caché persistente (DynamoDB) — sobrevive cold starts (era el grueso del costo).
+  const persisted = await getCachedName(instanceId, `user_${agentId}`);
+  if (persisted) { userCache.set(k, persisted); return persisted; }
   try {
     const res = await connect.send(
       new DescribeUserCommand({
@@ -57,6 +61,7 @@ async function resolveAgentUsername(agentId: string): Promise<string> {
     );
     const username = res.User?.Username || agentId;
     userCache.set(k, username);
+    void putCachedName(instanceId, `user_${agentId}`, username);
     return username;
   } catch {
     userCache.set(k, agentId);
@@ -68,6 +73,8 @@ async function resolveQueueName(queueId: string): Promise<string> {
   if (!queueId) return "";
   const k = `${instanceId}:${queueId}`;
   if (queueCache.has(k)) return queueCache.get(k)!;
+  const persisted = await getCachedName(instanceId, `queue_${queueId}`);
+  if (persisted) { queueCache.set(k, persisted); return persisted; }
   try {
     const res = await connect.send(
       new DescribeQueueCommand({
@@ -77,6 +84,7 @@ async function resolveQueueName(queueId: string): Promise<string> {
     );
     const name = res.Queue?.Name || queueId;
     queueCache.set(k, name);
+    void putCachedName(instanceId, `queue_${queueId}`, name);
     return name;
   } catch {
     queueCache.set(k, queueId);
@@ -319,6 +327,11 @@ async function searchContactsFallback(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min para evitar el
+  // cold start. Cortamos antes de cualquier trabajo (resolveConnect/S3/etc).
+  if (event?.warmup || event?.queryStringParameters?.warmup) {
+    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: '{"warm":true}' };
+  }
   // BYO (#43+#46): tenant primero, fallback Novasys.
   {
     const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
@@ -345,6 +358,19 @@ export const handler: Handler = async (event: any) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ error: "phone parameter required" }),
     };
+  }
+
+  // CACHÉ Nivel 3 (#perf): si hay historial fresco en DynamoDB, lo devolvemos al
+  // toque (evita Customer Profiles + DescribeUser/Queue). ?fresh=1 lo saltea.
+  if (event.queryStringParameters?.fresh !== "1") {
+    const cached = await readRecordingsCache(instanceId, phone);
+    if (cached) {
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, source: "cache", totalContacts: cached.length, contacts: cached }),
+      };
+    }
   }
 
   try {
@@ -375,6 +401,10 @@ export const handler: Handler = async (event: any) => {
         new Date(b.initiationTimestamp).getTime() -
         new Date(a.initiationTimestamp).getTime()
     );
+
+    // Poblá el caché para las próximas lecturas (await: en Lambda el trabajo
+    // post-return no se completa). Best-effort — si falla, no rompe la respuesta.
+    if (contacts.length > 0) await writeRecordingsCache(instanceId, phone, contacts);
 
     return {
       statusCode: 200,

@@ -209,8 +209,6 @@ export function EmailThreadsView({ customerKey }: Props) {
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100%",
-        minHeight: 0,
       }}
     >
       <div
@@ -235,8 +233,7 @@ export function EmailThreadsView({ customerKey }: Props) {
 
       <div
         style={{
-          flex: 1,
-          minHeight: 0,
+          maxHeight: "64vh",
           overflowY: "auto",
           padding: 14,
           display: "flex",

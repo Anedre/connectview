@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing:border-box; margin:0; padding:0;
+      font-family:"Segoe UI",-apple-system,Roboto,"Inter",system-ui,sans-serif; }
+  :root{
+    --bg:#F6F7F9; --card:#FFFFFF; --t1:#0E1525; --t2:#4F5C75; --t3:#7A879F; --b1:#E7EAF0;
+    --amber:#D98A2B; --magenta:#BC5587; --maroon:#7A1E52; --green:#1F9D6B;
+  }
+  body{ width:1180px; background:var(--bg); color:var(--t1); padding:46px 52px 36px; }
+
+  .head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }
+  .head img{ height:62px; mix-blend-mode:multiply; }
+  .badge{ text-align:right; }
+  .badge .k{ font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--magenta); font-weight:800; }
+  .badge .v{ font-size:21px; font-weight:800; color:var(--t1); margin-top:2px; }
+  .badge .s{ font-size:13px; color:var(--t3); margin-top:1px; }
+
+  .lead{ background:linear-gradient(135deg, rgba(217,138,43,.10), rgba(188,85,135,.08));
+    border:1px solid #ECD9E1; border-radius:14px; padding:16px 20px; margin-bottom:22px; font-size:15px; color:var(--t2); }
+  .lead b{ color:var(--t1); }
+
+  .grid{ display:grid; grid-template-columns:1.05fr .95fr; gap:18px; margin-bottom:20px; }
+  .card{ background:var(--card); border:1px solid var(--b1); border-radius:16px; padding:20px 22px;
+    box-shadow:0 14px 36px -22px rgba(15,22,36,.22); }
+  .card h3{ font-size:13px; letter-spacing:1.5px; text-transform:uppercase; color:var(--t3); margin-bottom:14px; font-weight:800; }
+
+  ul.feat{ list-style:none; }
+  ul.feat li{ font-size:15px; color:var(--t1); padding:7px 0 7px 28px; position:relative; border-bottom:1px solid #F1F3F7; }
+  ul.feat li:last-child{ border-bottom:none; }
+  ul.feat li::before{ content:"✓"; position:absolute; left:0; top:7px; color:var(--green); font-weight:900; }
+  ul.feat li b{ color:var(--maroon); }
+  .inclu{ margin-top:6px; font-size:13px; color:var(--t3); }
+
+  table.price{ width:100%; border-collapse:collapse; }
+  table.price th{ text-align:right; font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--t3); padding:6px 6px 10px; font-weight:800; }
+  table.price th:first-child{ text-align:left; }
+  table.price td{ font-size:15px; padding:9px 6px; border-top:1px solid #F1F3F7; }
+  table.price td:first-child{ color:var(--t2); }
+  table.price td.std{ text-align:right; color:var(--t3); text-decoration:line-through; }
+  table.price td.sp{ text-align:right; font-weight:800; color:var(--t1); }
+  table.price tr.tot td{ border-top:2px solid var(--b1); font-size:16px; padding-top:12px; }
+  table.price tr.tot td.sp{ color:var(--maroon); font-size:18px; }
+  .freeze{ display:inline-block; font-size:11px; color:var(--magenta); border:1px solid #E3C3D1; border-radius:8px; padding:1px 7px; margin-left:6px; vertical-align:middle; }
+
+  .save{ display:grid; grid-template-columns:1.4fr 1fr; gap:18px; align-items:center;
+    background:linear-gradient(135deg, var(--maroon), var(--magenta)); color:#fff; border-radius:18px; padding:22px 26px; margin-bottom:20px; }
+  .save .big{ font-size:40px; font-weight:900; letter-spacing:-1px; line-height:1.05; }
+  .save .big small{ font-size:18px; font-weight:700; opacity:.92; }
+  .save .lbl{ font-size:14.5px; opacity:.95; margin-top:4px; }
+  .save .side{ font-size:14px; line-height:1.5; border-left:1px solid rgba(255,255,255,.3); padding-left:18px; }
+  .save .side b{ font-weight:800; }
+
+  .terms{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px; }
+  .terms .t{ background:var(--card); border:1px dashed #E3C3D1; border-radius:12px; padding:13px 16px; font-size:13.5px; color:var(--t2); }
+  .terms .t b{ color:var(--t1); }
+
+  .foot{ display:flex; align-items:center; justify-content:space-between; font-size:13px; color:var(--t3); border-top:1px solid var(--b1); padding-top:14px; }
+  .foot .who b{ background:linear-gradient(135deg,var(--amber),var(--maroon));
+    -webkit-background-clip:text; background-clip:text; color:transparent; font-weight:800; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <img src="img/logo-aria.png" alt="ARIA by Novasys" />
+    <div class="badge">
+      <div class="k">Propuesta especial · Cliente ancla</div>
+      <div class="v">Universidad de Piura — UDEP</div>
+      <div class="s">Estimado para 25 agentes · ajustable · Junio 2026</div>
+    </div>
+  </div>
+
+  <div class="lead">
+    Hoy UDEP opera con <b>Salesforce + Chattigo + Kommo + Amazon Connect</b> apilados: cuatro
+    licencias que se pisan, datos en silos y un costo de integración que crece solo. <b>ARIA los unifica
+    en una sola plataforma omnicanal con IA</b>, sobre la propia nube AWS de UDEP — sin lock-in.
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Qué incluye el trato especial</h3>
+      <ul class="feat">
+        <li><b>3 integraciones incluidas</b> — Salesforce, Amazon Connect y WhatsApp</li>
+        <li><b>Todos los canales</b> — voz, chat, WhatsApp y email en una bandeja</li>
+        <li><b>IA y copiloto</b> — sugerencias en vivo, resúmenes y auto-clasificación</li>
+        <li><b>Contact Lens + Customer Profiles</b> — analítica y perfil 360° del contacto</li>
+        <li><b>Campañas y reportes</b> — salientes por voz/WhatsApp y tableros en vivo</li>
+        <li><b>Capacitación + soporte del primer año</b> incluidos</li>
+      </ul>
+      <div class="inclu">Tu data y tu consumo de AWS quedan en <b>tu</b> cuenta — ARIA nunca toma tus credenciales.</div>
+    </div>
+
+    <div class="card">
+      <h3>La inversión — Estándar vs. UDEP</h3>
+      <table class="price">
+        <tr><th>Concepto</th><th>Estándar</th><th>UDEP</th></tr>
+        <tr>
+          <td>Setup e implementación <span style="font-size:12px;color:#7A879F">(una vez)</span></td>
+          <td class="std">$8,000</td>
+          <td class="sp">$4,500</td>
+        </tr>
+        <tr>
+          <td>Suscripción / agente / mes <span class="freeze">congelada 12 m</span></td>
+          <td class="std">$39</td>
+          <td class="sp">$29</td>
+        </tr>
+        <tr>
+          <td>Suscripción mensual (25 agentes)</td>
+          <td class="std">$975</td>
+          <td class="sp">$725</td>
+        </tr>
+        <tr class="tot">
+          <td>Inversión año 1 <span style="font-size:12px;color:#7A879F">(setup + 12 meses)</span></td>
+          <td class="std">$19,700</td>
+          <td class="sp">$13,200</td>
+        </tr>
+      </table>
+      <div class="inclu">+ consumo de AWS (telefonía, WhatsApp, IA) a <b>costo</b>, sin markup — lo pagás con cualquier plataforma.</div>
+    </div>
+  </div>
+
+  <div class="save">
+    <div>
+      <div class="big">~$22,200<small> /año</small></div>
+      <div class="lbl">de ahorro recurrente — reemplazando Chattigo + Kommo + la integración entre sistemas</div>
+    </div>
+    <div class="side">
+      El <b>setup se recupera en ~2 meses</b> de ahorro.<br>
+      Y si ARIA reemplaza también <b>Salesforce</b>, el ahorro supera los <b>$50,000/año</b>.
+    </div>
+  </div>
+
+  <div class="terms">
+    <div class="t"><b>Por qué este precio:</b> UDEP es nuestro cliente ancla. El trato especial es a cambio de
+      <b>caso de éxito + referencia</b> (uso del logo y testimonio) y <b>feedback de producto</b>.</div>
+    <div class="t"><b>Compromiso:</b> 12 meses, con la tarifa por agente <b>congelada</b>. Renovación a tarifa
+      preferente. Mínimo facturable: el equipo en operación.</div>
+  </div>
+
+  <div class="foot">
+    <div class="who"><b>ARIA</b> · by Novasys — Plataforma de Contact Center con IA sobre tu propia nube</div>
+    <div>Propuesta · [ tu email / contacto aquí ]</div>
+  </div>
+</body>
+</html>

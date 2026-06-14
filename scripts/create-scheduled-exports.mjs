@@ -28,7 +28,7 @@ const TABLE = "connectview-scheduled-exports";
 const RUNNER = "connectview-scheduled-export-runner";
 const MANAGER = "connectview-manage-scheduled-exports";
 const TICK_RULE = "connectview-scheduled-exports-tick";
-const FROM_EMAIL = "AIRA Reportes <reportes@novasys.com.pe>";
+const FROM_EMAIL = "ARIA Reportes <reportes@novasys.com.pe>";
 
 const sh = (cmd) => execSync(cmd, { stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
 const tryjson = (cmd) => { try { return JSON.parse(sh(cmd)); } catch { return null; } };

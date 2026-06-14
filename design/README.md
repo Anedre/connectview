@@ -1,6 +1,6 @@
-# AIRA · Auditoría de diseño y brief premium
+# ARIA · Auditoría de diseño y brief premium
 
-> **Qué es esto.** Una auditoría de diseño completa del frontend de AIRA (codename
+> **Qué es esto.** Una auditoría de diseño completa del frontend de ARIA (codename
 > Vox/Connectview) + el brief para elevarlo a producto SaaS **premium** (nivel
 > Linear / Vercel / Stripe). Pensado para alimentar a "Claude design" (o cualquier
 > herramienta/agente de diseño) junto con el código fuente.
@@ -33,7 +33,7 @@ Cerrado el "cisma" y la a11y base (verificado: `tsc` 0 + `vite build` 0 en cada 
 
 - **P1 (cisma de color) — CERRADO:** 0 colores Tailwind crudos numerados en TODO `src/`. Mapeado a `--accent-*`/`-soft` (marca) y neutros `--bg/--text/--border`, colapsando las variantes `dark:` redundantes. Verificado que Tailwind v4 genera las clases `prop-[var(--token)]`.
 - **P3:** 16 `confirm()`/`alert()` nativos → `useConfirm()`/`ConfirmDialog`.
-- **P11:** marca visible unificada a **AIRA** (`<title>`, login, ~50 textos `ARIA`/`Vox`). Codename `Vox` intacto en identificadores/CSS/comentarios.
+- **P11:** marca visible unificada a **ARIA** (`<title>`, login, ~50 textos `AIRA`/`Vox`). Codename `Vox` intacto en identificadores/CSS/comentarios.
 - **P2 (a11y):** nav `<div onClick>` → `<button>` (teclado) + foco visible global (Fase 0) + `aria-current`/`role="alert"`.
 - **P8:** ~87 emoji-icono → `lucide-react`/primitivos `Icon.*`. Emoji de copy/data (EmojiPicker, mensajes, plantillas, tonos) intacto.
 - **Limpieza:** 11 archivos de código muerto borrados.
@@ -61,7 +61,7 @@ lectura importa:
 
 **Prompt sugerido para Claude design** (por pantalla):
 
-> "Rediseña `<pantalla>` de AIRA a nivel premium. Respeta `02-sistema-de-diseno-premium.md`
+> "Rediseña `<pantalla>` de ARIA a nivel premium. Respeta `02-sistema-de-diseno-premium.md`
 > al pie de la letra (tokens, primitivos, reglas). Corrige los hallazgos de su sección en
 > `03-...` y diseña los estados faltantes (empty/loading/error). Dark-first deep-black,
 > acento ámbar, una sola familia visual. No uses colores Tailwind crudos, ni emoji como
@@ -81,7 +81,7 @@ lectura importa:
 
 ## TL;DR (si solo lees una cosa)
 
-AIRA tiene **mejores cimientos y más capacidad que sus competidores** (tokens bien pensados,
+ARIA tiene **mejores cimientos y más capacidad que sus competidores** (tokens bien pensados,
 dark deep-black, fuente Geist, telefonía nativa, timeline omnicanal, flow builder, varias
 pantallas ya premium como el Flow Builder, el Loading y el wizard de Connect). Lo que hoy lo
 frena para "premium" **no es falta de talento sino falta de unificación y de los últimos detalles**:
@@ -93,7 +93,7 @@ frena para "premium" **no es falta de talento sino falta de unificación y de lo
    UI), navegación con `<div onClick>`, sin `aria-live` en pantallas que cambian solas,
    targets < 40px, severidad solo por color.
 3. **Detalles que delatan** — `confirm()`/`alert()` nativos (16 usos), emoji como iconos,
-   `font-size` mágicos (12.5px) inline, marca inconsistente (**ARIA/Vox** en vez de AIRA),
+   `font-size` mágicos (12.5px) inline, marca inconsistente (**AIRA/Vox** en vez de ARIA),
    doble librería de charts, mezcla de idioma.
 4. **Faltan primitivos y estados** — no hay `<EmptyState>`/`<ErrorState>`/`<Modal>`/`<DataTable>`/
    `<FormField>` canónicos; ~5 variantes del mismo KPI; "Cargando…" en texto en vez de skeletons.

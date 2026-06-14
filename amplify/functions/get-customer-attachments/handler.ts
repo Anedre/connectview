@@ -13,6 +13,7 @@ import {
 } from "@aws-sdk/client-customer-profiles";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { resolveConnect } from "../_shared/tenantConnect";
+import { readBlobCache, writeBlobCache } from "../_shared/recordingsCache";
 import {
   getAttachmentsStore,
   presignAttachment,
@@ -310,6 +311,10 @@ async function readChatAttachments(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min — corta el cold start.
+  if (event?.warmup || event?.queryStringParameters?.warmup) {
+    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: '{"warm":true}' };
+  }
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
   }
@@ -333,6 +338,14 @@ export const handler: Handler = async (event: any) => {
       headers: CORS,
       body: JSON.stringify({ error: "phone parameter required" }),
     };
+  }
+
+  // CACHÉ (#perf): las URLs presignadas duran 1h y la frescura del caché es 10min,
+  // así que las que servimos cacheadas siguen válidas. ?fresh=1 lo saltea.
+  const cacheKey = `files#${instanceId}#${phone}`;
+  if (event?.queryStringParameters?.fresh !== "1") {
+    const cached = await readBlobCache(cacheKey);
+    if (cached) return { statusCode: 200, headers: CORS, body: JSON.stringify(cached) };
   }
 
   try {
@@ -440,15 +453,9 @@ export const handler: Handler = async (event: any) => {
       (a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0)
     );
 
-    return {
-      statusCode: 200,
-      headers: CORS,
-      body: JSON.stringify({
-        phone,
-        totalAttachments: all.length,
-        attachments: all,
-      }),
-    };
+    const payload = { phone, totalAttachments: all.length, attachments: all };
+    if (all.length > 0) await writeBlobCache(cacheKey, payload);
+    return { statusCode: 200, headers: CORS, body: JSON.stringify(payload) };
   } catch (err) {
     console.error("get-customer-attachments error:", err);
     return {

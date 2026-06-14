@@ -10,6 +10,12 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    // Force a single React instance — @xyflow/react (flow builder #16) was
+    // pulling a second copy, triggering "Invalid hook call".
+    dedupe: ["react", "react-dom"],
+  },
+  optimizeDeps: {
+    include: ["@xyflow/react"],
   },
   define: {
     global: "globalThis", // Required for amazon-connect-streams

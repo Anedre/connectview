@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing:border-box; margin:0; padding:0;
+      font-family:"Segoe UI",-apple-system,Roboto,"Inter",system-ui,sans-serif; }
+  :root{
+    --bg:#F6F7F9; --t1:#0E1525; --t2:#4F5C75; --t3:#7A879F; --b1:#E7EAF0;
+    --amber:#D98A2B; --magenta:#BC5587; --maroon:#7A1E52;
+  }
+  body{ width:1280px; background:var(--bg); color:var(--t1); padding:50px 56px 42px; }
+
+  .head{ text-align:center; margin-bottom:28px; }
+  .head img{ height:88px; mix-blend-mode:multiply; }
+  .head .tag{ margin-top:8px; font-size:18px; color:var(--t2); }
+  .head .tag b{ color:var(--t1); }
+
+  .gfx{ width:100%; display:block; border-radius:18px; border:1px solid var(--b1);
+    box-shadow:0 16px 42px -18px rgba(15,22,36,.18); margin-bottom:24px; }
+
+  .cta{ border-radius:20px; padding:30px 34px; text-align:center;
+    background:linear-gradient(135deg, rgba(217,138,43,.13), rgba(188,85,135,.10));
+    border:1px solid #ECD9E1; }
+  .cta h3{ font-size:25px; font-weight:800; letter-spacing:-.4px; }
+  .cta p{ color:var(--t2); font-size:16.5px; margin-top:8px; }
+  .who{ margin-top:16px; font-size:16px; }
+  .who b{ background:linear-gradient(135deg,var(--amber),var(--maroon));
+    -webkit-background-clip:text; background-clip:text; color:transparent; font-weight:800; }
+  .ph{ display:inline-block; margin-top:10px; font-size:14px; color:var(--magenta);
+    border:1px dashed #E3C3D1; border-radius:10px; padding:7px 14px; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <img src="img/logo-aria.png" alt="ARIA by Novasys" />
+    <div class="tag">El contact center con IA que corre sobre <b>tu propia nube</b></div>
+  </div>
+
+  <img class="gfx" src="img/arquitectura-aria.png" alt="Arquitectura ARIA" />
+  <img class="gfx" src="img/antes-despues.png" alt="De tres herramientas a una plataforma" />
+
+  <div class="cta">
+    <h3>Unificá tu contact center. Quedate con el control de tus datos.</h3>
+    <p>Una sola plataforma omnicanal con IA — sobre tu propia cuenta AWS, sin lock-in.</p>
+    <div class="who"><b>ARIA</b> · by Novasys</div>
+    <div class="ph">Agendá una demo · [ tu email / sitio web aquí ]</div>
+  </div>
+</body>
+</html>

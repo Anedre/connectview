@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<style>
+  * { box-sizing:border-box; margin:0; padding:0;
+      font-family:"Segoe UI",-apple-system,Roboto,"Inter",system-ui,sans-serif; }
+  :root{
+    /* paleta MODO CLARO de la app (index.css [data-theme="light"]) */
+    --bg0:#F6F7F9; --card:#FFFFFF; --card2:#FBFCFD; --raised:#F1F3F7;
+    --b1:#E7EAF0; --b2:#DCE0E8; --bstrong:#C2C9D6;
+    --t1:#0E1525; --t2:#4F5C75; --t3:#7A879F; --t4:#A8B2C4;
+    /* marca ARIA (gradiente del logo: ámbar → magenta → granate) */
+    --amber:#D98A2B; --magenta:#BC5587; --maroon:#7A1E52;
+    --cyan:#0F84A0; --green:#138354; --violet:#6253CE;
+    --sh:0 1px 2px rgba(15,22,36,.06);
+    --shL:0 16px 40px -14px rgba(15,22,36,.16);
+  }
+  body{ width:1600px; color:var(--t1);
+    background:radial-gradient(1300px 640px at 50% -12%, #FFFFFF 0%, #EEF1F6 70%), var(--bg0);
+    padding:50px 60px 46px; }
+
+  .hero{ text-align:center; margin-bottom:34px; }
+  .hero img{ height:104px; mix-blend-mode:multiply; }
+  .sub{ margin-top:10px; font-size:19px; color:var(--t2); font-weight:500; }
+  .sub b{ color:var(--t1); }
+
+  .flow{ display:flex; align-items:stretch; gap:22px; }
+  .col{ display:flex; flex-direction:column; }
+  .col.clients{ width:300px; }
+  .col.cloud{ width:360px; }
+  .col.center{ flex:1; }
+  .arrow{ align-self:center; flex:0 0 36px; text-align:center; font-size:38px; font-weight:800;
+    background:linear-gradient(135deg,var(--amber),var(--magenta));
+    -webkit-background-clip:text; background-clip:text; color:transparent; }
+
+  .kicker{ font-size:12px; letter-spacing:2px; text-transform:uppercase;
+    color:var(--t3); font-weight:700; margin:0 0 12px 4px; }
+
+  .chip{ display:flex; align-items:center; gap:13px; padding:15px 17px;
+    background:var(--card); border:1px solid var(--b1); border-radius:14px;
+    margin-bottom:13px; font-size:17px; font-weight:600; box-shadow:var(--sh); }
+  .chip .ic{ width:34px; height:34px; border-radius:9px; display:grid; place-items:center;
+    font-size:18px; background:rgba(15,132,160,.10); flex:0 0 34px; }
+
+  .panel{ height:100%; border-radius:22px; padding:26px; background:var(--card);
+    border:1px solid var(--b1); box-shadow:var(--shL); }
+  .panel.center{ position:relative; overflow:hidden; }
+  .panel.center::before{ content:""; position:absolute; inset:0 0 auto 0; height:120px;
+    background:linear-gradient(180deg, rgba(217,138,43,.10), transparent); }
+  .ptitle{ display:flex; align-items:center; gap:12px; position:relative; }
+  .ptitle .dot{ width:12px; height:12px; border-radius:50%;
+    background:linear-gradient(135deg,var(--amber),var(--magenta)); }
+  .ptitle h2{ font-size:26px; font-weight:800; letter-spacing:-.5px; }
+  .pcap{ color:var(--t2); font-size:15px; margin:3px 0 20px 24px; position:relative; }
+
+  .grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; position:relative; }
+  .tile{ background:var(--card2); border:1px solid var(--b1); border-radius:14px; padding:16px 15px; }
+  .tile .ti{ font-size:22px; }
+  .tile .tt{ font-weight:700; font-size:15.5px; margin-top:9px; color:var(--t1); }
+  .tile .td{ color:var(--t2); font-size:12.5px; margin-top:3px; line-height:1.35; }
+
+  .cloud .panel{ background:linear-gradient(165deg,#F2FBF6,#FFFFFF 70%); border-color:#CFEBDD; }
+  .shield{ display:flex; align-items:center; gap:12px; }
+  .shield .lock{ width:46px;height:46px;border-radius:12px;display:grid;place-items:center;
+    font-size:24px; background:rgba(19,131,84,.12); border:1px solid #CFEBDD; }
+  .shield h2{ font-size:23px; font-weight:800; }
+  .shield .ms{ color:var(--t3); font-size:14px; margin-top:2px; }
+  .svc{ margin-top:18px; }
+  .svc .row{ display:flex; align-items:center; gap:11px; padding:10px 0;
+    border-bottom:1px dashed #D6EADF; font-size:15.5px; font-weight:600; color:var(--t1); }
+  .svc .row:last-child{ border-bottom:0; }
+  .svc .row .g{ color:var(--green); font-size:17px; }
+  .trust{ margin-top:16px; padding:13px 15px; border-radius:12px;
+    background:rgba(19,131,84,.08); border:1px solid #CFEBDD;
+    color:#0E6B45; font-size:14px; font-weight:600; line-height:1.4; }
+
+  .aiband{ margin-top:24px; border-radius:18px; padding:20px 26px;
+    background:linear-gradient(100deg, rgba(98,83,206,.10), rgba(15,132,160,.07));
+    border:1px solid #DAD9F2; display:flex; align-items:center; gap:18px; }
+  .aiband .ai{ width:48px;height:48px;border-radius:13px;display:grid;place-items:center;
+    font-size:26px; background:linear-gradient(135deg,#8B7CF0,#6253CE);
+    box-shadow:0 10px 24px -6px rgba(98,83,206,.45); flex:0 0 48px; color:#fff; }
+  .aiband .t1{ font-size:18px; font-weight:800; color:var(--t1); }
+  .aiband .t2{ color:var(--t2); font-size:14.5px; margin-top:2px; }
+  .aiband .t2 b{ color:var(--t1); }
+
+  .foot{ margin-top:22px; text-align:center; font-size:16px; color:var(--t2); }
+  .foot b{ background:linear-gradient(135deg,var(--amber),var(--maroon));
+    -webkit-background-clip:text; background-clip:text; color:transparent; font-weight:800; }
+</style>
+</head>
+<body>
+  <div class="hero">
+    <img src="img/logo-aria.png" alt="ARIA by Novasys" />
+    <div class="sub">El contact center con IA que corre sobre <b>tu propia nube</b></div>
+  </div>
+
+  <div class="flow">
+    <div class="col clients">
+      <div class="kicker">Tus clientes</div>
+      <div class="chip"><span class="ic">📞</span> Llamadas de voz</div>
+      <div class="chip"><span class="ic">🟢</span> WhatsApp</div>
+      <div class="chip"><span class="ic">💬</span> Chat web</div>
+      <div class="chip"><span class="ic">✉️</span> Email</div>
+    </div>
+
+    <div class="arrow">→</div>
+
+    <div class="col center">
+      <div class="panel center">
+        <div class="ptitle"><span class="dot"></span><h2>Una sola plataforma</h2></div>
+        <div class="pcap">Todo lo que hoy pagás en tres herramientas, unificado</div>
+        <div class="grid">
+          <div class="tile"><div class="ti">☎️</div><div class="tt">Omnicanal</div><div class="td">Voz, WhatsApp, chat y email en un escritorio</div></div>
+          <div class="tile"><div class="ti">📣</div><div class="tt">Campañas</div><div class="td">Salientes con marcador predictivo</div></div>
+          <div class="tile"><div class="ti">🎯</div><div class="tt">Leads</div><div class="td">Embudo y conversión</div></div>
+          <div class="tile"><div class="ti">🤖</div><div class="tt">Bots IA</div><div class="td">Atienden solos y derivan a un humano</div></div>
+          <div class="tile"><div class="ti">📊</div><div class="tt">Reportes</div><div class="td">Desempeño y sentimiento en vivo</div></div>
+          <div class="tile"><div class="ti">🏷️</div><div class="tt">Tipificación</div><div class="td">Automática con IA</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow">→</div>
+
+    <div class="col cloud">
+      <div class="panel">
+        <div class="shield">
+          <div class="lock">🔒</div>
+          <div><h2>Tu nube AWS</h2><div class="ms">Modelo BYO</div></div>
+        </div>
+        <div class="svc">
+          <div class="row"><span class="g">✓</span> Amazon Connect (telefonía)</div>
+          <div class="row"><span class="g">✓</span> Tu número de WhatsApp</div>
+          <div class="row"><span class="g">✓</span> Amazon Bedrock (IA)</div>
+          <div class="row"><span class="g">✓</span> Tus datos y grabaciones</div>
+        </div>
+        <div class="trust">🛡️ Tus datos <b>nunca salen de tu cuenta</b>. Sin lock-in: revocás el acceso cuando quieras.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="aiband">
+    <div class="ai">⚡</div>
+    <div>
+      <div class="t1">Inteligencia artificial nativa</div>
+      <div class="t2"><b>Resúmenes</b> de cada llamada · <b>copiloto</b> que sugiere respuestas · <b>bots</b> que atienden de punta a punta</div>
+    </div>
+  </div>
+
+  <div class="foot">Reemplaza <b>CRM + omnicanal + Salesforce</b> con una sola tarifa por agente.</div>
+</body>
+</html>

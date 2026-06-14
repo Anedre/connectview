@@ -33,7 +33,7 @@ export interface ConnectConn {
    *  instanceUrl como `amazon-connect-<alias>`. */
   customerProfilesDomain?: string;
   /** Cola "principal" elegida por el admin (Configuración → Colas). Los flows
-   *  AIRA-Outbound/Inbound rutean a esta. La escribe provision-contact-flows. */
+   *  ARIA-Outbound/Inbound rutean a esta. La escribe provision-contact-flows. */
   defaultQueueId?: string;
   defaultQueueName?: string;
 }
@@ -94,7 +94,7 @@ export interface MessagingConn {
    *  desconectar. Antes era una constante con texto de la Universidad de Piura. */
   chatFarewell?: string;
 }
-/** Contact flows canónicos de AIRA provisionados en la instancia del tenant
+/** Contact flows canónicos de ARIA provisionados en la instancia del tenant
  *  (#1 onboarding). Los IDs los escribe el Lambda `provision-contact-flows`. */
 export interface ContactFlowsConfig {
   inboundId?: string;
@@ -103,7 +103,7 @@ export interface ContactFlowsConfig {
   provisionedAt?: string;
 }
 /** Reglas de ruteo por atributo (Configuración → Ruteo): cada valor del atributo
- *  del lead se mapea a una cola. Generan el flow AIRA-Outbound-Smart que las
+ *  del lead se mapea a una cola. Generan el flow ARIA-Outbound-Smart que las
  *  campañas usan para distribuir a los agentes por atributo. */
 export interface RoutingRulesConfig {
   attribute?: string;
@@ -114,10 +114,10 @@ export interface RoutingRulesConfig {
   updatedAt?: string;
 }
 /** White-label por tenant (#8): la marca que ve el cliente DENTRO de la app
- *  (post-login). El login/splash siguen con la marca de plataforma (AIRA)
+ *  (post-login). El login/splash siguen con la marca de plataforma (ARIA)
  *  porque ahí todavía no sabemos qué tenant es (haría falta dominio por tenant). */
 export interface BrandingConn {
-  /** Nombre de producto en la sidebar + título de la pestaña. Default "AIRA". */
+  /** Nombre de producto en la sidebar + título de la pestaña. Default "ARIA". */
   productName?: string;
   /** (futuro) URL del logo + color de acento. Requieren storage/theming. */
   logoUrl?: string;

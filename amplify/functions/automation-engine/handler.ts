@@ -24,7 +24,7 @@ import {
 import { setActiveTenant } from "../_shared/salesforceClient";
 
 /**
- * automation-engine — el motor de reglas (#15, "Digital Pipeline" de AIRA):
+ * automation-engine — el motor de reglas (#15, "Digital Pipeline" de ARIA):
  * evalúa las reglas de `connectview-automation-rules` y ejecuta sus acciones.
  *
  * DOS entradas en un handler:
@@ -418,7 +418,7 @@ async function actWebhook(
   const url = String(params.url || "");
   if (!/^https?:\/\//.test(url)) return "url inválida";
   const payload = {
-    source: "aira-automation",
+    source: "aria-automation",
     rule: ruleName,
     tenantId: ctx.tenantId,
     leadId: ctx.leadId,

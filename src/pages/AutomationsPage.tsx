@@ -27,7 +27,7 @@ import type { WaTemplate } from "@/components/whatsapp/WaTemplateConfigurator";
 import { WebhookDeliveriesPanel } from "@/components/automations/WebhookDeliveriesPanel";
 
 /**
- * AutomationsPage — /automations (#15, "Digital Pipeline" de AIRA): reglas
+ * AutomationsPage — /automations (#15, "Digital Pipeline" de ARIA): reglas
  * trigger → condiciones → acciones que el automation-engine ejecuta solo.
  * Patrón FlowBuilderPage (lista + picker de plantillas + editor) con los
  * primitivos del design system. Las reglas NO se encadenan entre sí

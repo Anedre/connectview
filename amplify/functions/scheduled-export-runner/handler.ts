@@ -25,7 +25,7 @@ const ses = new SESv2Client({});
 
 const EXPORTS_TABLE = process.env.EXPORTS_TABLE || "connectview-scheduled-exports";
 const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
-const FROM_EMAIL = process.env.FROM_EMAIL || "AIRA Reportes <reportes@novasys.com.pe>";
+const FROM_EMAIL = process.env.FROM_EMAIL || "ARIA Reportes <reportes@novasys.com.pe>";
 
 interface ScheduledExport {
   exportId: string;
@@ -113,7 +113,7 @@ async function buildSheet(dataset: string): Promise<SheetSpec> {
 /** Genera el XLSX como Buffer. */
 async function buildXlsx(spec: SheetSpec): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "AIRA";
+  wb.creator = "ARIA";
   const ws = wb.addWorksheet(spec.title);
   ws.columns = spec.columns;
   ws.getRow(1).font = { bold: true };
@@ -127,7 +127,7 @@ async function buildXlsx(spec: SheetSpec): Promise<Buffer> {
 
 /** Construye un email MIME multipart con el XLSX adjunto. */
 function buildRawEmail(to: string[], subject: string, bodyText: string, filename: string, xlsx: Buffer): Buffer {
-  const boundary = "AIRA_BOUNDARY_" + Math.floor(xlsx.length).toString(36);
+  const boundary = "ARIA_BOUNDARY_" + Math.floor(xlsx.length).toString(36);
   const b64 = xlsx.toString("base64").replace(/(.{76})/g, "$1\r\n");
   const lines = [
     `From: ${FROM_EMAIL}`,
@@ -163,7 +163,7 @@ async function runExport(job: ScheduledExport): Promise<{ ok: boolean; rows: num
     const date = nowIso().slice(0, 10);
     const filename = `${job.dataset}-${date}.xlsx`;
     const subject = `${job.name} — ${date}`;
-    const body = `Adjunto el export programado "${job.name}" (${spec.rows.length} filas) generado por AIRA el ${date}.`;
+    const body = `Adjunto el export programado "${job.name}" (${spec.rows.length} filas) generado por ARIA el ${date}.`;
     const raw = buildRawEmail(job.recipients, subject, body, filename, xlsx);
     const res = await ses.send(new SendEmailCommand({ Content: { Raw: { Data: raw } } }));
     return { ok: true, rows: spec.rows.length, messageId: res.MessageId };

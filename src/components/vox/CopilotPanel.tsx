@@ -3,7 +3,7 @@ import { Sparkles, X, Send, RotateCcw } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 
 /**
- * CopilotPanel — the global "AIRA Copilot" assistant (Kommo-style floating
+ * CopilotPanel — the global "ARIA Copilot" assistant (Kommo-style floating
  * Copilot). A launcher pill on the right edge opens a slide-in chat that talks
  * to generate-call-summary's `assistant` mode (Bedrock). App-wide: it lives in
  * AppContent next to MonitorControlBar, so it's available on every route.
@@ -67,7 +67,7 @@ export function CopilotPanel() {
     return (
       <button
         onClick={() => setOpen(true)}
-        title="AIRA Copilot"
+        title="ARIA Copilot"
         style={{
           position: "fixed",
           right: 0,
@@ -141,7 +141,7 @@ export function CopilotPanel() {
           <Sparkles size={14} />
         </span>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: 13 }}>AIRA Copilot</div>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>ARIA Copilot</div>
           <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>Asistente de la plataforma</div>
         </div>
         {msgs.length > 0 && (
@@ -159,7 +159,7 @@ export function CopilotPanel() {
         {msgs.length === 0 && (
           <div style={{ color: "var(--text-2)", fontSize: 12.5, lineHeight: 1.6 }}>
             <p style={{ marginTop: 4 }}>
-              Hola 👋 Soy <strong>AIRA Copilot</strong>. Preguntame cómo usar la plataforma o pedime que
+              Hola 👋 Soy <strong>ARIA Copilot</strong>. Preguntame cómo usar la plataforma o pedime que
               redacte un mensaje.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>

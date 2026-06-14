@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "social-messaging:SendWhatsAppMessage"
+      ],
+      "Resource": [
+        "arn:aws:social-messaging:us-east-1:731736972577:phone-number-id/720bc94513454effbec925250dadf501"
+      ]
+    }
+  ]
+}

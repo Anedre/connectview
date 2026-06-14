@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
-import { getApiEndpoints } from "@/lib/api";
-import { authedFetch } from "@/lib/authedFetch";
+import { fetchContactHistory } from "@/hooks/useCallHistory";
 import {
   AudioPlayer,
   type AudioPlayerHandle,
@@ -61,6 +60,12 @@ function channelMeta(channel?: string): ChannelMeta {
   return { key: "other", label: channel || "Contacto", color: "var(--text-3)", soft: "var(--bg-2)", icon: <Icon.Note size={14} /> };
 }
 
+/** El agentUsername a veces llega como un GUID sin resolver (cola/IVR sin agente
+ *  humano) — no lo mostramos crudo; caemos al nombre de la cola. */
+const looksUuid = (s?: string) => !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(s);
+const agentOrQueue = (c: { agentUsername?: string; queueName?: string }) =>
+  c.agentUsername && !looksUuid(c.agentUsername) ? c.agentUsername : c.queueName || "";
+
 /** ContactDetail segments (…OffsetMs) → TranscriptSegment (…OffsetMillis). */
 function toTranscript(detail: ContactDetail | null): TranscriptSegment[] {
   const segs = detail?.transcript?.segments || [];
@@ -100,29 +105,14 @@ export function ConversationCanvas({ phone, name, demo }: Props) {
     setError(null);
     setExpandedId(null);
     if (!phone) return;
-    const ep = getApiEndpoints();
-    if (!ep?.getContactHistory) {
-      setError("Endpoint getContactHistory no configurado");
-      return;
-    }
-    const ctrl = new AbortController();
+    let alive = true;
     setLoading(true);
-    authedFetch(`${ep.getContactHistory}?phone=${encodeURIComponent(phone)}&limit=200`, {
-      signal: ctrl.signal,
-    })
-      .then((r) => r.json().then((j) => ({ ok: r.ok, status: r.status, j })))
-      .then(({ ok, status, j }) => {
-        if (!ok) throw new Error(j.message || `HTTP ${status}`);
-        setContacts(Array.isArray(j.contacts) ? j.contacts : []);
-      })
-      .catch((e) => {
-        if ((e as Error).name === "AbortError") return;
-        setError(e instanceof Error ? e.message : "Error cargando el hilo");
-      })
-      .finally(() => {
-        if (!ctrl.signal.aborted) setLoading(false);
-      });
-    return () => ctrl.abort();
+    // Fetch COMPARTIDO (dedup + caché): misma data que el heatmap y los conteos.
+    fetchContactHistory(phone)
+      .then((rows) => { if (alive) setContacts(rows); })
+      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : "Error cargando el hilo"); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
   }, [phone, demo]);
 
   // Newest first.
@@ -274,7 +264,7 @@ function ConversationItem({
             </div>
             <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
               {exact}
-              {contact.agentUsername ? ` · ${contact.agentUsername}` : ""}
+              {agentOrQueue(contact) ? ` · ${agentOrQueue(contact)}` : ""}
               {rel ? ` · ${rel}` : ""}
             </div>
           </div>

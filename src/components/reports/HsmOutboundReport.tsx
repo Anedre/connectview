@@ -185,7 +185,7 @@ export function HsmOutboundReport() {
         >
           Meta Business Manager → WhatsApp Manager → Analytics
         </a>
-        . AIRA registra el <strong>envío y el volumen</strong>; el estado posterior al envío no se
+        . ARIA registra el <strong>envío y el volumen</strong>; el estado posterior al envío no se
         captura porque tu WhatsApp enruta los eventos a Amazon Connect (chat de agentes) y duplicar
         ese destino rompería el inbound.
       </div>

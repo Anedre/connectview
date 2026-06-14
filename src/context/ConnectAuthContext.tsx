@@ -44,7 +44,7 @@ interface ConnectAuthContextValue {
    *  con el texto de la Universidad de Piura. */
   chatFarewell: string;
   /** White-label (#8): nombre de producto que se muestra DENTRO de la app
-   *  (sidebar + título de pestaña). Default "AIRA". El login/splash siguen con la
+   *  (sidebar + título de pestaña). Default "ARIA". El login/splash siguen con la
    *  marca de plataforma (ahí todavía no sabemos qué tenant es). */
   productName: string;
 }
@@ -186,8 +186,8 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
   // CCPContext use su default genérico (sin marca). El fundador conserva su texto
   // UDEP porque vive en SU config (messaging.chatFarewell), no en el código.
   const chatFarewell = integrations?.messaging?.chatFarewell?.trim() || "";
-  // White-label (#8): nombre de producto del tenant dentro de la app. Default AIRA.
-  const productName = integrations?.branding?.productName?.trim() || "AIRA";
+  // White-label (#8): nombre de producto del tenant dentro de la app. Default ARIA.
+  const productName = integrations?.branding?.productName?.trim() || "ARIA";
 
   const value = useMemo<ConnectAuthContextValue>(
     () => ({

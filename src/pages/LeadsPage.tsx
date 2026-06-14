@@ -252,7 +252,7 @@ export function LeadCard({
 
       {/* Tags / origen */}
       <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 12 }}>
-        {/* Origen: Salesforce (sincronizado) vs AIRA (nativo). */}
+        {/* Origen: Salesforce (sincronizado) vs ARIA (nativo). */}
         {lead.sfLeadId ? (
           <span
             className="sf-badge"
@@ -263,7 +263,7 @@ export function LeadCard({
           </span>
         ) : (
           <span
-            title="Lead nativo de AIRA (no vino de Salesforce)"
+            title="Lead nativo de ARIA (no vino de Salesforce)"
             style={{
               display: "inline-flex", alignItems: "center", gap: 4, height: 19,
               padding: "0 9px", borderRadius: 999, fontSize: 10, fontWeight: 700,
@@ -271,7 +271,7 @@ export function LeadCard({
               border: "1px solid color-mix(in srgb, var(--accent-violet) 30%, transparent)",
             }}
           >
-            AIRA
+            ARIA
           </span>
         )}
         {lead.source && lead.source !== "salesforce" ? (
@@ -532,7 +532,7 @@ const ORIGIN_STYLES: { match: string[]; label: string; bg: string }[] = [
   { match: ["web", "website", "pagina", "página", "landing", "formulario", "form"], label: "Web", bg: "#0a6bb5" },
   { match: ["referral", "referido", "recomend"], label: "Referido", bg: "#d98324" },
   { match: ["phone", "llamada", "inbound", "telefon"], label: "Teléfono", bg: "#0aa5b5" },
-  { match: ["vox"], label: "AIRA", bg: "#7c5cff" },
+  { match: ["vox"], label: "ARIA", bg: "#7c5cff" },
 ];
 function originBadge(src?: string): { label: string; bg: string } {
   const k = (src || "").toLowerCase();

@@ -2,7 +2,7 @@
 
 ## Veredicto
 
-AIRA es un producto **funcionalmente potente, con cimientos de diseño sólidos**, frenado
+ARIA es un producto **funcionalmente potente, con cimientos de diseño sólidos**, frenado
 para "premium" por **inconsistencia de implementación y deuda de accesibilidad** — no por
 falta de calidad en las pantallas individuales. Varias ya están a nivel showcase (Flow
 Builder, LoadingScreen, wizard de Connect, calendario de Citas, AgentBuilder). El problema
@@ -117,11 +117,11 @@ rompe < 768px y el desktop fuerza scroll horizontal en laptops 1366px. **Fix:** 
 sidebar/right-rail colapsables a drawer.
 
 ### 🟢 P11 — Marca inconsistente de cara al usuario
-El producto se llama **AIRA**, pero la UI muestra **"ARIA"** (~20 ocurrencias visibles:
+El producto se llama **ARIA**, pero la UI a veces muestra la grafía vieja **"AIRA"** (~20 ocurrencias visibles:
 `index.html:10`, `App.tsx:204,308,355`, `NotFoundPage.tsx:46`, wizard, admin, leads…) y
 **"Vox"** ("Agentes IA de Vox" `AgentePage.tsx:307`, "…mientras usas Vox" `App.tsx:394`).
-"ARIA" además colisiona con el atributo de accesibilidad. **Fix:** un `<BrandLockup>` único,
-todo a "AIRA". *(El codename "Vox" en identificadores de código/CSS se mantiene — solo se
+La grafía equivocada "AIRA" rompía la consistencia visible. **Fix:** un `<BrandLockup>` único,
+todo a "ARIA". *(El codename "Vox" en identificadores de código/CSS se mantiene — solo se
 corrige el texto visible.)*
 
 ### 🟢 P12 — Motion incompleta y sin `prefers-reduced-motion`
@@ -144,7 +144,7 @@ Pensada para que cada fase **suba visiblemente la percepción de calidad** con e
 - Regla global `:focus-visible` + barrido de `outline:none`.
 - Construir los **primitivos base**: `<Button/IconButton>`, `<FormField>`, `<Modal>`,
   `<ConfirmDialog>`, `<EmptyState>`, `<ErrorState>`, `<Skeleton>` (uso real), `<DataTable>`.
-- Unificar marca → `<BrandLockup>` (AIRA).
+- Unificar marca → `<BrandLockup>` (ARIA).
 
 ### Fase 1 — Cerrar el cisma + a11y (mayor palanca de "premium")
 - Migrar las **307 ocurrencias de Tailwind crudo** a tokens (empezar por `pipeline/*` y `queue/*`).

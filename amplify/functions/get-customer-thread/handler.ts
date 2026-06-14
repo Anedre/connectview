@@ -14,6 +14,7 @@ import {
 } from "@aws-sdk/client-customer-profiles";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { resolveConnect } from "../_shared/tenantConnect";
+import { readBlobCache, writeBlobCache } from "../_shared/recordingsCache";
 import {
   getAttachmentsStore,
   presignAttachment,
@@ -523,6 +524,10 @@ async function resolveAttachmentUrls(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min — corta el cold start.
+  if (event?.warmup || event?.queryStringParameters?.warmup) {
+    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: '{"warm":true}' };
+  }
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
   }
@@ -546,6 +551,14 @@ export const handler: Handler = async (event: any) => {
       headers: CORS,
       body: JSON.stringify({ error: "phone parameter required" }),
     };
+  }
+
+  // CACHÉ (#perf): el hilo de WhatsApp lee N sesiones de S3 (~5s). Si hay copia
+  // fresca (gzip) en DynamoDB la devolvemos al toque. ?fresh=1 la saltea.
+  const cacheKey = `thread#${instanceId}#${phone}`;
+  if (event?.queryStringParameters?.fresh !== "1") {
+    const cached = await readBlobCache(cacheKey);
+    if (cached) return { statusCode: 200, headers: CORS, body: JSON.stringify(cached) };
   }
 
   try {
@@ -672,24 +685,23 @@ export const handler: Handler = async (event: any) => {
         (Date.parse(a.startTime) || 0) - (Date.parse(b.startTime) || 0)
     );
 
-    return {
-      statusCode: 200,
-      headers: CORS,
-      body: JSON.stringify({
-        phone,
-        totalSessions: sessions.length,
-        totalMessages: all.length,
-        sessions,
-        messages: all,
-        daysWithActivity,
-        diagnostics: {
-          ...diag,
-          describedOk: sessions.length,
-          withTranscript: sessions.filter((s) => s.messageCount > 0).length,
-          sessionsAvailable: chatIds.length,
-        },
-      }),
+    const payload = {
+      phone,
+      totalSessions: sessions.length,
+      totalMessages: all.length,
+      sessions,
+      messages: all,
+      daysWithActivity,
+      diagnostics: {
+        ...diag,
+        describedOk: sessions.length,
+        withTranscript: sessions.filter((s) => s.messageCount > 0).length,
+        sessionsAvailable: chatIds.length,
+      },
     };
+    // Poblá el caché (gzip) para las próximas lecturas. Best-effort.
+    if (all.length > 0) await writeBlobCache(cacheKey, payload);
+    return { statusCode: 200, headers: CORS, body: JSON.stringify(payload) };
   } catch (err) {
     console.error("get-customer-thread error:", err);
     return {

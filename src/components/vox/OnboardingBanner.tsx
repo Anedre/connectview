@@ -49,7 +49,7 @@ export function OnboardingBanner() {
         }
       : {
           title: "Activá BYO Data Plane para guardar tus datos",
-          body: "AIRA no guarda datos de empresas en su instancia. Aplicá el CFN del paso 4 en tu cuenta y activá el toggle — recién ahí empieza a poblar la app.",
+          body: "ARIA no guarda datos de empresas en su instancia. Aplicá el CFN del paso 4 en tu cuenta y activá el toggle — recién ahí empieza a poblar la app.",
           cta: "Configurar Data Plane",
         };
 

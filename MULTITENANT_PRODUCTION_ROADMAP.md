@@ -1,4 +1,4 @@
-# AIRA · Roadmap a Multi-Tenant Production-Ready + Independiente
+# ARIA · Roadmap a Multi-Tenant Production-Ready + Independiente
 
 > Objetivo: que **cualquier cliente** se onboardee solo, sobre **su propia cuenta AWS**,
 > sin código ni datos acoplados a Novasys/UDEP, y que el plano comercial (cobro,

@@ -4,14 +4,14 @@ import { cn } from "@/lib/utils"
  * BrandLockup — logo + nombre de marca, fuente ÚNICA de la identidad visible.
  * Reemplaza las ~5 implementaciones dispersas (VoxLogo en App.tsx, el tile "A"
  * del login, el `.sb__logo`/`.sb__name` del sidebar, etc.) y fija la marca a
- * **AIRA** (corrige el bug "ARIA"/"Vox" visible — ver design/01 · P11).
+ * **ARIA** (unifica la marca; antes se veía suelto "AIRA"/"Vox" — ver design/01 · P11).
  *
  * El codename interno "Vox/Connectview" se mantiene en identificadores de código;
  * esto es solo el texto de cara al usuario.
  */
 function BrandLockup({
   size = 28,
-  name = "AIRA",
+  name = "ARIA",
   tagline,
   className,
 }: {

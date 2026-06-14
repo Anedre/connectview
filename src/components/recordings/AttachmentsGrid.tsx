@@ -208,8 +208,6 @@ export function AttachmentsGrid({ phone }: Props) {
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100%",
-        minHeight: 0,
       }}
     >
       {/* Header + kind filter pills */}
@@ -263,8 +261,7 @@ export function AttachmentsGrid({ phone }: Props) {
       {/* Grid */}
       <div
         style={{
-          flex: 1,
-          minHeight: 0,
+          maxHeight: "64vh",
           overflowY: "auto",
           padding: 14,
         }}

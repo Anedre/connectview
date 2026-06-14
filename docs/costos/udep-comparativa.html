@@ -1,0 +1,386 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UDEP — costos hoy vs. con ARIA</title>
+<style>
+  :root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 24px 56px}
+  h1{font-size:24px;margin:0 0 4px} .sub{color:var(--muted);margin:0 0 24px;font-size:14px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:26px}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .kpi-label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+  .kpi-value{font-size:26px;font-weight:700;margin:6px 0 2px} .kpi-sub{font-size:12px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px}
+  .card.full{grid-column:1 / -1}
+  .note{background:#fff;border:1px solid var(--line);border-left:4px solid #F59E0B;border-radius:12px;padding:16px 18px;margin-top:18px;font-size:14px;line-height:1.55;color:#334155}
+  .foot{color:var(--muted);font-size:12px;margin-top:22px}
+  @media(max-width:760px){.kpis{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}}
+</style></head><body><div class="wrap">
+  <h1>UDEP — caso real: factura AWS hoy vs. con ARIA</h1>
+  <p class="sub">Factura real de Amazon Connect (1 mes, us-east-1) · escala ~4 agentes · telefonía $0 en AWS (BYOC).</p>
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-label">Factura AWS hoy</div><div class="kpi-value" style="color:#2563EB">$426.93</div><div class="kpi-sub">todo en su cuenta</div></div>
+    <div class="kpi"><div class="kpi-label">ARIA saca de AWS</div><div class="kpi-value" style="color:#F59E0B">−$134.56</div><div class="kpi-sub">−31.5% de la factura</div></div>
+    <div class="kpi"><div class="kpi-label">Factura AWS con ARIA</div><div class="kpi-value" style="color:#10B981">$292.37</div><div class="kpi-sub">sin stack de analítica</div></div>
+    <div class="kpi"><div class="kpi-label">Suscripción ARIA</div><div class="kpi-value" style="color:#0f172a">$180.00</div><div class="kpi-sub">4 ag × $45.00</div></div>
+  </div>
+  <div class="grid">
+    <div class="card"><svg viewBox="0 0 560 440" style="width:100%;height:auto;display:block" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" baseProfile="full" viewBox="0 0 560 440">
+<rect width="560" height="440" x="0" y="0" fill="none"></rect>
+<polyline points="410.5 140.8 417.9 137.8 425.9 137.8" fill="none" pointer-events="visible" stroke="#2563EB" class="zr0-cls-0"></polyline>
+<polyline points="249.1 331 247.4 338.8 239.4 338.8" fill="none" pointer-events="visible" stroke="#F59E0B" class="zr0-cls-0"></polyline>
+<polyline points="139.2 190.5 136.2 190.3 128.2 190.3" fill="none" pointer-events="visible" stroke="#8B5CF6" class="zr0-cls-0"></polyline>
+<polyline points="171.6 103.7 170.3 98.6 162.3 98.6" fill="none" pointer-events="visible" stroke="#0EA5E9" class="zr0-cls-0"></polyline>
+<polyline points="223.3 64.7 200.2 71 192.2 71" fill="none" pointer-events="visible" stroke="#14B8A6" class="zr0-cls-0"></polyline>
+<polyline points="255.4 55 222.9 58 214.9 58" fill="none" pointer-events="visible" stroke="#F472B6" class="zr0-cls-0"></polyline>
+<polyline points="272.1 53 271.7 45 263.7 45" fill="none" pointer-events="visible" stroke="#64748B" class="zr0-cls-0"></polyline>
+<path d="M280 52.8A140.8 140.8 0 0 1 377.9 294.8L341.2 256.8A88 88 0 0 0 280 105.6Z" fill="#2563EB" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="chart" transform-origin="280px 193.6px" class="zr0-cls-1 zr0-cls-2"></path>
+<path d="M377.9 294.8A140.8 140.8 0 0 1 148.2 243.2L197.6 224.6A88 88 0 0 0 341.2 256.8Z" fill="#F59E0B" ecmeta_series_index="0" ecmeta_data_index="1" ecmeta_ssr_type="chart" transform-origin="280px 193.6px" class="zr0-cls-3 zr0-cls-4"></path>
+<path d="M148.2 243.2A140.8 140.8 0 0 1 150.5 138.3L199.1 159A88 88 0 0 0 197.6 224.6Z" fill="#8B5CF6" ecmeta_series_index="0" ecmeta_data_index="2" ecmeta_ssr_type="chart" transform-origin="280px 193.6px" class="zr0-cls-5 zr0-cls-6"></path>
+<path d="M150.5 138.3A140.8 140.8 0 0 1 201.7 76.6L231 120.5A88 88 0 0 0 199.1 159Z" fill="#0EA5E9" ecmeta_series_index="0" ecmeta_data_index="3" ecmeta_ssr_type="chart" transform-origin="280px 193.6px" class="zr0-cls-7 zr0-cls-8"></path>
+<path d="M201.7 76.6A140.8 140.8 0 0 1 246.6 56.8L259.1 108.1A88 88 0 0 0 231 120.5Z" fill="#14B8A6" ecmeta_series_index="0" ecmeta_data_index="4" ecmeta_ssr_type="chart" transform-origin="280px 193.6px" class="zr0-cls-9 zr0-cls-10"></path>
+<path d="M246.6 56.8A140.8 140.8 0 0 1 264.3 53.7L270.2 106.1A88 88 0 0 0 259.1 108.1Z" fill="#F472B6" ecmeta_series_index="0" ecmeta_data_index="5" ecmeta_ssr_type="chart" transform-origin="280px 193.6px" class="zr0-cls-11 zr0-cls-12"></path>
+<path d="M264.3 53.7A140.8 140.8 0 0 1 280 52.8L280 105.6A88 88 0 0 0 270.2 106.1Z" fill="#64748B" ecmeta_series_index="0" ecmeta_data_index="6" ecmeta_ssr_type="chart" transform-origin="280px 193.6px" class="zr0-cls-13 zr0-cls-14"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:Microsoft YaHei;font-weight:600;" transform="translate(430.9302 137.7726)" fill="#333" stroke="rgb(255,255,255)" stroke-width="2" paint-order="stroke" stroke-miterlimit="2">37.76%</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:11px;font-family:Microsoft YaHei;font-weight:600;" transform="translate(234.3855 338.7817)" fill="#333" stroke="rgb(255,255,255)" stroke-width="2" paint-order="stroke" stroke-miterlimit="2">31.52%</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:11px;font-family:Microsoft YaHei;font-weight:600;" transform="translate(123.2362 190.3099)" fill="#333" stroke="rgb(255,255,255)" stroke-width="2" paint-order="stroke" stroke-miterlimit="2">12.15%</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:11px;font-family:Microsoft YaHei;font-weight:600;" transform="translate(157.267 98.6161)" fill="#333" stroke="rgb(255,255,255)" stroke-width="2" paint-order="stroke" stroke-miterlimit="2">9.18%</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:11px;font-family:Microsoft YaHei;font-weight:600;" transform="translate(187.1939 71.032)" fill="#333" stroke="rgb(255,255,255)" stroke-width="2" paint-order="stroke" stroke-miterlimit="2">5.58%</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:11px;font-family:Microsoft YaHei;font-weight:600;" transform="translate(209.9295 58.032)" fill="#333" stroke="rgb(255,255,255)" stroke-width="2" paint-order="stroke" stroke-miterlimit="2">2.03%</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:11px;font-family:Microsoft YaHei;font-weight:600;" transform="translate(258.6936 45.032)" fill="#333" stroke="rgb(255,255,255)" stroke-width="2" paint-order="stroke" stroke-miterlimit="2">1.78%</text>
+<path d="M-5 -5l550.2 0l0 46l-550.2 0Z" transform="translate(9.92 399)" fill="rgb(0,0,0)" fill-opacity="0" stroke="#b7b9be" stroke-width="0" class="zr0-cls-15"></path>
+<path d="M3.5 0L21.5 0A3.5 3.5 0 0 1 25 3.5L25 10.5A3.5 3.5 0 0 1 21.5 14L3.5 14A3.5 3.5 0 0 1 0 10.5L0 3.5A3.5 3.5 0 0 1 3.5 0Z" transform="translate(9.92 399)" fill="#2563EB" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="legend" ecmeta_silent="true" class="zr0-cls-15"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:Microsoft YaHei;" x="30" y="7" transform="translate(9.92 399)" fill="#54555a">Voz</text>
+<path d="M0 0l49 0l0 14l-49 0Z" transform="translate(9.92 399)" fill="none" pointer-events="visible" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="legend" class="zr0-cls-16"></path>
+<path d="M3.5 0L21.5 0A3.5 3.5 0 0 1 25 3.5L25 10.5A3.5 3.5 0 0 1 21.5 14L3.5 14A3.5 3.5 0 0 1 0 10.5L0 3.5A3.5 3.5 0 0 1 3.5 0Z" transform="translate(66.95 399)" fill="#F59E0B" ecmeta_series_index="0" ecmeta_data_index="1" ecmeta_ssr_type="legend" ecmeta_silent="true" class="zr0-cls-15"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:Microsoft YaHei;" xml:space="preserve" x="30" y="7" transform="translate(66.95 399)" fill="#54555a">Analítica (ARIA reemplaza)</text>
+<path d="M0 0l170.9 0l0 14l-170.9 0Z" transform="translate(66.95 399)" fill="none" pointer-events="visible" ecmeta_series_index="0" ecmeta_data_index="1" ecmeta_ssr_type="legend" class="zr0-cls-16"></path>
+<path d="M3.5 0L21.5 0A3.5 3.5 0 0 1 25 3.5L25 10.5A3.5 3.5 0 0 1 21.5 14L3.5 14A3.5 3.5 0 0 1 0 10.5L0 3.5A3.5 3.5 0 0 1 3.5 0Z" transform="translate(245.86 399)" fill="#8B5CF6" ecmeta_series_index="0" ecmeta_data_index="2" ecmeta_ssr_type="legend" ecmeta_silent="true" class="zr0-cls-15"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:Microsoft YaHei;" xml:space="preserve" x="30" y="7" transform="translate(245.86 399)" fill="#54555a">Contact Lens</text>
+<path d="M0 0l95.1 0l0 14l-95.1 0Z" transform="translate(245.86 399)" fill="none" pointer-events="visible" ecmeta_series_index="0" ecmeta_data_index="2" ecmeta_ssr_type="legend" class="zr0-cls-16"></path>
+<path d="M3.5 0L21.5 0A3.5 3.5 0 0 1 25 3.5L25 10.5A3.5 3.5 0 0 1 21.5 14L3.5 14A3.5 3.5 0 0 1 0 10.5L0 3.5A3.5 3.5 0 0 1 3.5 0Z" transform="translate(348.98 399)" fill="#0EA5E9" ecmeta_series_index="0" ecmeta_data_index="3" ecmeta_ssr_type="legend" ecmeta_silent="true" class="zr0-cls-15"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:Microsoft YaHei;" x="30" y="7" transform="translate(348.98 399)" fill="#54555a">DynamoDB</text>
+<path d="M0 0l86.3 0l0 14l-86.3 0Z" transform="translate(348.98 399)" fill="none" pointer-events="visible" ecmeta_series_index="0" ecmeta_data_index="3" ecmeta_ssr_type="legend" class="zr0-cls-16"></path>
+<path d="M3.5 0L21.5 0A3.5 3.5 0 0 1 25 3.5L25 10.5A3.5 3.5 0 0 1 21.5 14L3.5 14A3.5 3.5 0 0 1 0 10.5L0 3.5A3.5 3.5 0 0 1 3.5 0Z" transform="translate(443.3 399)" fill="#14B8A6" ecmeta_series_index="0" ecmeta_data_index="4" ecmeta_ssr_type="legend" ecmeta_silent="true" class="zr0-cls-15"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:Microsoft YaHei;" xml:space="preserve" x="30" y="7" transform="translate(443.3 399)" fill="#54555a">S3 grabaciones</text>
+<path d="M0 0l106.8 0l0 14l-106.8 0Z" transform="translate(443.3 399)" fill="none" pointer-events="visible" ecmeta_series_index="0" ecmeta_data_index="4" ecmeta_ssr_type="legend" class="zr0-cls-16"></path>
+<path d="M3.5 0L21.5 0A3.5 3.5 0 0 1 25 3.5L25 10.5A3.5 3.5 0 0 1 21.5 14L3.5 14A3.5 3.5 0 0 1 0 10.5L0 3.5A3.5 3.5 0 0 1 3.5 0Z" transform="translate(9.92 421)" fill="#F472B6" ecmeta_series_index="0" ecmeta_data_index="5" ecmeta_ssr_type="legend" ecmeta_silent="true" class="zr0-cls-15"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:Microsoft YaHei;" x="30" y="7" transform="translate(9.92 421)" fill="#54555a">Lambda</text>
+<path d="M0 0l69.9 0l0 14l-69.9 0Z" transform="translate(9.92 421)" fill="none" pointer-events="visible" ecmeta_series_index="0" ecmeta_data_index="5" ecmeta_ssr_type="legend" class="zr0-cls-16"></path>
+<path d="M3.5 0L21.5 0A3.5 3.5 0 0 1 25 3.5L25 10.5A3.5 3.5 0 0 1 21.5 14L3.5 14A3.5 3.5 0 0 1 0 10.5L0 3.5A3.5 3.5 0 0 1 3.5 0Z" transform="translate(87.85 421)" fill="#64748B" ecmeta_series_index="0" ecmeta_data_index="6" ecmeta_ssr_type="legend" ecmeta_silent="true" class="zr0-cls-15"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:Microsoft YaHei;" x="30" y="7" transform="translate(87.85 421)" fill="#54555a">Otros</text>
+<path d="M0 0l57 0l0 14l-56.9 0Z" transform="translate(87.85 421)" fill="none" pointer-events="visible" ecmeta_series_index="0" ecmeta_data_index="6" ecmeta_ssr_type="legend" class="zr0-cls-16"></path>
+<path d="M-171.9 -5l343.9 0l0 25l-343.9 0Z" transform="translate(280 20)" fill="rgb(0,0,0)" fill-opacity="0" stroke="#3c3c41" stroke-width="0" class="zr0-cls-15"></path>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:15px;font-family:Microsoft YaHei;font-weight:600;" xml:space="preserve" y="7.5" transform="translate(280 20)" fill="#3c3c41">¿En qué se va la factura AWS de la UDEP hoy?</text>
+<style ><![CDATA[
+.zr0-cls-0:hover {
+cursor:pointer;
+}
+.zr0-cls-1 {
+animation:zr0-ani-0 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr0-cls-2:hover {
+cursor:pointer;
+fill:rgba(40,108,255,1);
+}
+.zr0-cls-3 {
+animation:zr0-ani-1 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr0-cls-4:hover {
+cursor:pointer;
+fill:rgba(255,173,12,1);
+}
+.zr0-cls-5 {
+animation:zr0-ani-2 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr0-cls-6:hover {
+cursor:pointer;
+fill:rgba(152,101,255,1);
+}
+.zr0-cls-7 {
+animation:zr0-ani-3 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr0-cls-8:hover {
+cursor:pointer;
+fill:rgba(15,181,255,1);
+}
+.zr0-cls-9 {
+animation:zr0-ani-4 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr0-cls-10:hover {
+cursor:pointer;
+fill:rgba(22,202,182,1);
+}
+.zr0-cls-11 {
+animation:zr0-ani-5 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr0-cls-12:hover {
+cursor:pointer;
+fill:rgba(255,125,200,1);
+}
+.zr0-cls-13 {
+animation:zr0-ani-6 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr0-cls-14:hover {
+cursor:pointer;
+fill:rgba(110,127,152,1);
+}
+.zr0-cls-15:hover {
+pointer-events:none;
+}
+.zr0-cls-16:hover {
+cursor:pointer;
+fill:rgba(0,0,0,0);
+}
+@keyframes zr0-ani-0 {
+0% {
+transform:scale(0,0);
+}
+100% {
+
+}
+}
+@keyframes zr0-ani-1 {
+0% {
+transform:scale(0,0);
+}
+100% {
+
+}
+}
+@keyframes zr0-ani-2 {
+0% {
+transform:scale(0,0);
+}
+100% {
+
+}
+}
+@keyframes zr0-ani-3 {
+0% {
+transform:scale(0,0);
+}
+100% {
+
+}
+}
+@keyframes zr0-ani-4 {
+0% {
+transform:scale(0,0);
+}
+100% {
+
+}
+}
+@keyframes zr0-ani-5 {
+0% {
+transform:scale(0,0);
+}
+100% {
+
+}
+}
+@keyframes zr0-ani-6 {
+0% {
+transform:scale(0,0);
+}
+100% {
+
+}
+}
+]]>
+
+</style>
+</svg></div>
+    <div class="card"><svg viewBox="0 0 560 400" style="width:100%;height:auto;display:block" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" baseProfile="full" viewBox="0 0 560 400">
+<rect width="560" height="400" x="0" y="0" fill="none"></rect>
+<path d="M64 330.5L540 330.5" fill="none" pointer-events="visible" stroke="#dbdee4" class="zr1-cls-17"></path>
+<path d="M64 274.5L540 274.5" fill="none" pointer-events="visible" stroke="#dbdee4" class="zr1-cls-17"></path>
+<path d="M64 218.5L540 218.5" fill="none" pointer-events="visible" stroke="#dbdee4" class="zr1-cls-17"></path>
+<path d="M64 162.5L540 162.5" fill="none" pointer-events="visible" stroke="#dbdee4" class="zr1-cls-17"></path>
+<path d="M64 106.5L540 106.5" fill="none" pointer-events="visible" stroke="#dbdee4" class="zr1-cls-17"></path>
+<path d="M64 50.5L540 50.5" fill="none" pointer-events="visible" stroke="#dbdee4" class="zr1-cls-17"></path>
+<path d="M64 330.5L540 330.5" fill="none" pointer-events="visible" stroke="#54555a" stroke-linecap="round" class="zr1-cls-17"></path>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Microsoft YaHei;" transform="translate(56 330)" fill="#54555a">$0</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Microsoft YaHei;" transform="translate(56 274)" fill="#54555a">$100</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Microsoft YaHei;" transform="translate(56 218)" fill="#54555a">$200</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Microsoft YaHei;" transform="translate(56 162)" fill="#54555a">$300</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Microsoft YaHei;" transform="translate(56 106)" fill="#54555a">$400</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Microsoft YaHei;" transform="translate(56 50)" fill="#54555a">$500</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:Microsoft YaHei;font-weight:600;" xml:space="preserve" y="6" transform="translate(183 338)" fill="#54555a">Hoy (DIY)</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:Microsoft YaHei;font-weight:600;" xml:space="preserve" y="6" transform="translate(421 338)" fill="#54555a">Con ARIA</text>
+<path d="M100.9 330l164.2 0l0 -163.7l-164.2 0Z" fill="#2563EB" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr1-cls-18 zr1-cls-19"></path>
+<path d="M338.9 330l164.2 0l0 -163.7l-164.2 0Z" fill="#2563EB" ecmeta_series_index="0" ecmeta_data_index="1" ecmeta_ssr_type="chart" class="zr1-cls-20 zr1-cls-19"></path>
+<path d="M100.9 166.3l164.2 0l0 -75.4l-164.2 0Z" fill="#F59E0B" ecmeta_series_index="1" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr1-cls-21 zr1-cls-22"></path>
+<path d="M338.9 166.3l164.2 0l0 0l-164.2 0Z" fill="#F59E0B" ecmeta_series_index="1" ecmeta_data_index="1" ecmeta_ssr_type="chart" class="zr1-cls-22"></path>
+<path d="M100.9 90.9l164.2 0l0 0l-164.2 0Z" fill="#10B981" ecmeta_series_index="2" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr1-cls-23"></path>
+<path d="M338.9 166.3l164.2 0l0 -100.8l-164.2 0Z" fill="#10B981" ecmeta_series_index="2" ecmeta_data_index="1" ecmeta_ssr_type="chart" class="zr1-cls-24 zr1-cls-23"></path>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:10px;font-family:Microsoft YaHei;" transform="translate(183 128.596)" fill="#7c2d12">$134.56</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:10px;font-family:Microsoft YaHei;" transform="translate(421 115.8728)" fill="#064e3b">$180.00</text>
+<path d="M-5 -5l425.3 0l0 24l-425.3 0Z" transform="translate(72.34 381)" fill="rgb(0,0,0)" fill-opacity="0" stroke="#b7b9be" stroke-width="0" class="zr1-cls-17"></path>
+<path d="M3.5 0L21.5 0A3.5 3.5 0 0 1 25 3.5L25 10.5A3.5 3.5 0 0 1 21.5 14L3.5 14A3.5 3.5 0 0 1 0 10.5L0 3.5A3.5 3.5 0 0 1 3.5 0Z" transform="translate(72.34 381)" fill="#2563EB" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="legend" ecmeta_silent="true" class="zr1-cls-17"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:Microsoft YaHei;" xml:space="preserve" x="30" y="7" transform="translate(72.34 381)" fill="#54555a">AWS core</text>
+<path d="M0 0l79.6 0l0 14l-79.6 0Z" transform="translate(72.34 381)" fill="none" pointer-events="visible" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="legend" class="zr1-cls-25"></path>
+<path d="M3.5 0L21.5 0A3.5 3.5 0 0 1 25 3.5L25 10.5A3.5 3.5 0 0 1 21.5 14L3.5 14A3.5 3.5 0 0 1 0 10.5L0 3.5A3.5 3.5 0 0 1 3.5 0Z" transform="translate(159.95 381)" fill="#F59E0B" ecmeta_series_index="1" ecmeta_data_index="1" ecmeta_ssr_type="legend" ecmeta_silent="true" class="zr1-cls-17"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:Microsoft YaHei;" xml:space="preserve" x="30" y="7" transform="translate(159.95 381)" fill="#54555a">Analítica AWS (ARIA reemplaza)</text>
+<path d="M0 0l199.1 0l0 14l-199.1 0Z" transform="translate(159.95 381)" fill="none" pointer-events="visible" ecmeta_series_index="1" ecmeta_data_index="1" ecmeta_ssr_type="legend" class="zr1-cls-25"></path>
+<path d="M3.5 0L21.5 0A3.5 3.5 0 0 1 25 3.5L25 10.5A3.5 3.5 0 0 1 21.5 14L3.5 14A3.5 3.5 0 0 1 0 10.5L0 3.5A3.5 3.5 0 0 1 3.5 0Z" transform="translate(367.02 381)" fill="#10B981" ecmeta_series_index="2" ecmeta_data_index="2" ecmeta_ssr_type="legend" ecmeta_silent="true" class="zr1-cls-17"></path>
+<text dominant-baseline="central" text-anchor="start" style="font-size:11px;font-family:Microsoft YaHei;" xml:space="preserve" x="30" y="7" transform="translate(367.02 381)" fill="#54555a">Suscripción ARIA</text>
+<path d="M0 0l120.6 0l0 14l-120.6 0Z" transform="translate(367.02 381)" fill="none" pointer-events="visible" ecmeta_series_index="2" ecmeta_data_index="2" ecmeta_ssr_type="legend" class="zr1-cls-25"></path>
+<path d="M-117.1 -5l234.3 0l0 25l-234.3 0Z" transform="translate(280 20)" fill="rgb(0,0,0)" fill-opacity="0" stroke="#3c3c41" stroke-width="0" class="zr1-cls-17"></path>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:15px;font-family:Microsoft YaHei;font-weight:600;" xml:space="preserve" y="7.5" transform="translate(280 20)" fill="#3c3c41">Costo mensual: hoy vs. con ARIA</text>
+<style ><![CDATA[
+.zr1-cls-17:hover {
+pointer-events:none;
+}
+.zr1-cls-18 {
+animation:zr1-ani-0 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr1-cls-19:hover {
+cursor:pointer;
+fill:rgba(40,108,255,1);
+}
+.zr1-cls-20 {
+animation:zr1-ani-1 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr1-cls-21 {
+animation:zr1-ani-2 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr1-cls-22:hover {
+cursor:pointer;
+fill:rgba(255,173,12,1);
+}
+.zr1-cls-23:hover {
+cursor:pointer;
+fill:rgba(17,203,141,1);
+}
+.zr1-cls-24 {
+animation:zr1-ani-3 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr1-cls-25:hover {
+cursor:pointer;
+fill:rgba(0,0,0,0);
+}
+@keyframes zr1-ani-0 {
+0% {
+d:path("M100.9 330l164.2 0l0 0l-164.2 0Z");
+}
+100% {
+d:path("M100.9 330l164.2 0l0 -163.7l-164.2 0Z");
+}
+}
+@keyframes zr1-ani-1 {
+0% {
+d:path("M338.9 330l164.2 0l0 0l-164.2 0Z");
+}
+100% {
+d:path("M338.9 330l164.2 0l0 -163.7l-164.2 0Z");
+}
+}
+@keyframes zr1-ani-2 {
+0% {
+d:path("M100.9 166.3l164.2 0l0 0l-164.2 0Z");
+}
+100% {
+d:path("M100.9 166.3l164.2 0l0 -75.4l-164.2 0Z");
+}
+}
+@keyframes zr1-ani-3 {
+0% {
+d:path("M338.9 166.3l164.2 0l0 0l-164.2 0Z");
+}
+100% {
+d:path("M338.9 166.3l164.2 0l0 -100.8l-164.2 0Z");
+}
+}
+]]>
+
+</style>
+</svg></div>
+    <div class="card full"><svg viewBox="0 0 560 360" style="width:100%;height:auto;display:block" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" baseProfile="full" viewBox="0 0 560 360">
+<rect width="560" height="360" x="0" y="0" fill="none"></rect>
+<path d="M60 320.5L536 320.5" fill="none" pointer-events="visible" stroke="#dbdee4" class="zr2-cls-26"></path>
+<path d="M60 252.5L536 252.5" fill="none" pointer-events="visible" stroke="#dbdee4" class="zr2-cls-26"></path>
+<path d="M60 185.5L536 185.5" fill="none" pointer-events="visible" stroke="#dbdee4" class="zr2-cls-26"></path>
+<path d="M60 117.5L536 117.5" fill="none" pointer-events="visible" stroke="#dbdee4" class="zr2-cls-26"></path>
+<path d="M60 50.5L536 50.5" fill="none" pointer-events="visible" stroke="#dbdee4" class="zr2-cls-26"></path>
+<path d="M60 320.5L536 320.5" fill="none" pointer-events="visible" stroke="#54555a" stroke-linecap="round" class="zr2-cls-26"></path>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Microsoft YaHei;" transform="translate(52 320)" fill="#54555a">$0</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Microsoft YaHei;" transform="translate(52 252.5)" fill="#54555a">$20</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Microsoft YaHei;" transform="translate(52 185)" fill="#54555a">$40</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Microsoft YaHei;" transform="translate(52 117.5)" fill="#54555a">$60</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Microsoft YaHei;" transform="translate(52 50)" fill="#54555a">$80</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:Microsoft YaHei;" y="6" transform="translate(119.5 328)" fill="#54555a">QuickSight</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:Microsoft YaHei;" y="6" transform="translate(238.5 328)" fill="#54555a">Kinesis</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:Microsoft YaHei;" y="6" transform="translate(357.5 328)" fill="#54555a">OpenSearch</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:Microsoft YaHei;" y="6" transform="translate(476.5 328)" fill="#54555a">Athena</text>
+<path d="M78.4 320l82.1 0l0 -253.1l-82.1 0Z" fill="#F59E0B" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr2-cls-27 zr2-cls-28"></path>
+<path d="M197.4 320l82.1 0l0 -100.4l-82.1 0Z" fill="#F59E0B" ecmeta_series_index="0" ecmeta_data_index="1" ecmeta_ssr_type="chart" class="zr2-cls-29 zr2-cls-28"></path>
+<path d="M316.4 320l82.1 0l0 -94.9l-82.1 0Z" fill="#F59E0B" ecmeta_series_index="0" ecmeta_data_index="2" ecmeta_ssr_type="chart" class="zr2-cls-30 zr2-cls-28"></path>
+<path d="M435.4 320l82.1 0l0 -5.6l-82.1 0Z" fill="#F59E0B" ecmeta_series_index="0" ecmeta_data_index="3" ecmeta_ssr_type="chart" class="zr2-cls-31 zr2-cls-28"></path>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:Microsoft YaHei;" y="-5.5" transform="translate(119.5 61.875)" fill="#333" stroke="rgb(255,255,255)" stroke-width="2" paint-order="stroke" stroke-miterlimit="2">$75.00</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:Microsoft YaHei;" y="-5.5" transform="translate(238.5 214.56)" fill="#333" stroke="rgb(255,255,255)" stroke-width="2" paint-order="stroke" stroke-miterlimit="2">$29.76</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:Microsoft YaHei;" y="-5.5" transform="translate(357.5 220.0613)" fill="#333" stroke="rgb(255,255,255)" stroke-width="2" paint-order="stroke" stroke-miterlimit="2">$28.13</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:11px;font-family:Microsoft YaHei;" y="-5.5" transform="translate(476.5 309.3638)" fill="#333" stroke="rgb(255,255,255)" stroke-width="2" paint-order="stroke" stroke-miterlimit="2">$1.67</text>
+<path d="M-165.5 -5l331 0l0 25l-331 0Z" transform="translate(280 20)" fill="rgb(0,0,0)" fill-opacity="0" stroke="#3c3c41" stroke-width="0" class="zr2-cls-26"></path>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:15px;font-family:Microsoft YaHei;font-weight:600;" xml:space="preserve" y="7.5" transform="translate(280 20)" fill="#3c3c41">Infra de analítica que ARIA elimina (USD/mes)</text>
+<style ><![CDATA[
+.zr2-cls-26:hover {
+pointer-events:none;
+}
+.zr2-cls-27 {
+animation:zr2-ani-0 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr2-cls-28:hover {
+cursor:pointer;
+fill:rgba(255,173,12,1);
+}
+.zr2-cls-29 {
+animation:zr2-ani-1 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr2-cls-30 {
+animation:zr2-ani-2 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+.zr2-cls-31 {
+animation:zr2-ani-3 1s cubic-bezier(0.65,0,0.35,1) both;
+}
+@keyframes zr2-ani-0 {
+0% {
+d:path("M78.4 320l82.1 0l0 0l-82.1 0Z");
+}
+100% {
+d:path("M78.4 320l82.1 0l0 -253.1l-82.1 0Z");
+}
+}
+@keyframes zr2-ani-1 {
+0% {
+d:path("M197.4 320l82.1 0l0 0l-82.1 0Z");
+}
+100% {
+d:path("M197.4 320l82.1 0l0 -100.4l-82.1 0Z");
+}
+}
+@keyframes zr2-ani-2 {
+0% {
+d:path("M316.4 320l82.1 0l0 0l-82.1 0Z");
+}
+100% {
+d:path("M316.4 320l82.1 0l0 -94.9l-82.1 0Z");
+}
+}
+@keyframes zr2-ani-3 {
+0% {
+d:path("M435.4 320l82.1 0l0 0l-82.1 0Z");
+}
+100% {
+d:path("M435.4 320l82.1 0l0 -5.6l-82.1 0Z");
+}
+}
+]]>
+
+</style>
+</svg></div>
+  </div>
+  <div class="note"><b>Lectura:</b> la infraestructura de analítica nativa de AWS (QuickSight + Kinesis + OpenSearch + Athena = $134.56/mes, el 31.5% de la factura) la reemplaza el dashboard de ARIA. La suscripción ARIA cubre ese pipeline —que además hay que <b>mantener</b>— y suma omnicanal, IA y soporte. El software ARIA se compara contra la licencia que reemplaza, no contra el total de AWS. Validación: cada precio unitario de la factura (voz $0.018/min, chat $0.004/msg, Contact Lens, DynamoDB, S3, secretos) coincide exacto con el modelo de costos.</div>
+  <p class="foot">Generado por scripts/gen-costos-xlsx.mjs · gráficos nativos editables también en la hoja “UDEP (real)” de aria-costos.xlsx.</p>
+</div></body></html>

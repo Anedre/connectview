@@ -294,7 +294,7 @@ export function TeamManager() {
   return (
     <div className="col" style={{ gap: 16 }}>
       <div className="kpi-grid">
-        <Kpi label="Usuarios de AIRA" value={String(stats.total)} deltaDir="flat" />
+        <Kpi label="Usuarios de ARIA" value={String(stats.total)} deltaDir="flat" />
         <Kpi label="Administradores" value={String(stats.admins)} deltaDir="flat" />
         <Kpi label="Supervisores" value={String(stats.supervisors)} deltaDir="flat" />
         <Kpi label="Agentes" value={String(stats.agents)} deltaDir="flat" />
@@ -308,7 +308,7 @@ export function TeamManager() {
 
       <Card>
         <CardHead
-          title="Equipo de AIRA"
+          title="Equipo de ARIA"
           sub="Las personas que se loguean a la app. Invitá a tu equipo: les llega un email con su acceso."
           right={
             <button className="btn btn--primary btn--sm" onClick={() => setInviteOpen(true)}>

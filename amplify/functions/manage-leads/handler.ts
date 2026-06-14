@@ -119,6 +119,10 @@ async function scanAll(): Promise<Lead[]> {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min — corta el cold start.
+  if (event?.warmup || event?.queryStringParameters?.warmup) {
+    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: '{"warm":true}' };
+  }
   const method = event.requestContext?.http?.method || event.httpMethod || "GET";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
   // Tenant del JWT → propagateById/propagateLead pegan al SF del cliente

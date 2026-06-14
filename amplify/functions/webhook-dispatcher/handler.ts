@@ -102,7 +102,7 @@ async function deliver(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "User-Agent": "AIRA-Webhooks/1.0",
+        "User-Agent": "ARIA-Webhooks/1.0",
       },
       body: typeof payload === "string" ? payload : JSON.stringify(payload),
       signal: ac.signal,
