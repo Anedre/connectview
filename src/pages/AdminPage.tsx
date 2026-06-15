@@ -14,8 +14,8 @@ import {
 import { TaxonomyEditor } from "@/components/admin/TaxonomyEditor";
 import { CatalogEditor } from "@/components/admin/CatalogEditor";
 import { ChannelsManager } from "@/components/admin/ChannelsManager";
-import { AuditLogViewer } from "@/components/admin/AuditLogViewer";
-import { PermissionsEditor } from "@/components/admin/PermissionsEditor";
+import { AiContactLensManager } from "@/components/admin/AiContactLensManager";
+import { SecurityManager } from "@/components/admin/SecurityManager";
 import { IntegrationsManager } from "@/components/admin/IntegrationsManager";
 import { QueuesPanel } from "@/components/admin/QueuesPanel";
 import { RoutingRulesPanel } from "@/components/admin/RoutingRulesPanel";
@@ -351,14 +351,10 @@ export function AdminPage() {
           {section === "integrations" && <IntegrationsManager />}
           {section === "queues" && <QueuesPanel />}
           {section === "routing" && <RoutingRulesPanel />}
-          {section === "security" && (
-            <div className="col" style={{ gap: 16 }}>
-              <PermissionsEditor />
-              <AuditLogViewer />
-            </div>
-          )}
+          {section === "ai" && <AiContactLensManager />}
+          {section === "security" && <SecurityManager />}
 
-          {section !== "users" && section !== "tipificacion" && section !== "catalogos" && section !== "channels" && section !== "security" && section !== "integrations" && section !== "queues" && section !== "routing" && (
+          {section !== "users" && section !== "tipificacion" && section !== "catalogos" && section !== "channels" && section !== "security" && section !== "integrations" && section !== "queues" && section !== "routing" && section !== "ai" && (
             <Card>
               <CardBody
                 style={{

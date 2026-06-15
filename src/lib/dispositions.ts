@@ -8,6 +8,7 @@
 
 import outputs from "../../amplify_outputs.json";
 import { getApiEndpoints } from "./api";
+import { authedFetch } from "./authedFetch";
 
 export type Valoracion = "inicial" | "positiva" | "negativa" | "cierre";
 
@@ -231,7 +232,10 @@ export async function loadTaxonomies(
     ];
   }
   try {
-    const r = await fetch(endpoints.manageTaxonomy);
+    // authedFetch adjunta el Bearer idToken → el GET resuelve la taxonomía del
+    // tenant real. Con fetch plano el endpoint tenant-scoped devolvía vacío y
+    // caíamos siempre al fallback estático (no leía DynamoDB).
+    const r = await authedFetch(endpoints.manageTaxonomy);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     const docs: TaxonomyDoc[] = Array.isArray(data.taxonomies)

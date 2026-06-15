@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 
@@ -20,7 +20,7 @@ import { authedFetch } from "@/lib/authedFetch";
  */
 export type FeatureId =
   | "role" | "instance" | "contactLens" | "recordings" | "s3Recordings"
-  | "customerProfiles" | "amazonQ" | "dataPlane";
+  | "customerProfiles" | "amazonQ" | "bedrock" | "dataPlane";
 export type CheckStatus = "ok" | "warn" | "error";
 export interface FeatureCheck {
   id: string;
@@ -59,15 +59,25 @@ async function fetchChecks(): Promise<FeatureCheck[]> {
   return checks;
 }
 
-export function useFeatureStatus(): { checks: FeatureCheck[]; loading: boolean } {
+export function useFeatureStatus(): {
+  checks: FeatureCheck[];
+  loading: boolean;
+  /** Re-corre el diagnóstico salteando el cache de 10 min (botón "Actualizar"). */
+  refetch: () => void;
+} {
   const [checks, setChecks] = useState<FeatureCheck[]>(() => readCache()?.checks || []);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback((force: boolean): (() => void) => {
     const cached = readCache();
-    if (cached && Date.now() - cached.ts < TTL_MS) {
+    if (!force && cached && Date.now() - cached.ts < TTL_MS) {
       setChecks(cached.checks);
-      return;
+      return () => {};
+    }
+    if (force) {
+      // Forzar: invalida cache + dedupe para que vuelva a pegarle al endpoint.
+      try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
+      inflight = null;
     }
     let alive = true;
     setLoading(true);
@@ -79,7 +89,11 @@ export function useFeatureStatus(): { checks: FeatureCheck[]; loading: boolean }
     return () => { alive = false; };
   }, []);
 
-  return { checks, loading };
+  useEffect(() => load(false), [load]);
+
+  const refetch = useCallback(() => { load(true); }, [load]);
+
+  return { checks, loading, refetch };
 }
 
 /** Estado de una feature puntual. "unknown" cuando no se pudo diagnosticar

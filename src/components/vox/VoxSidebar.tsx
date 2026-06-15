@@ -1,22 +1,8 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useRoles } from "@/hooks/useRoles";
-import { useCCP } from "@/hooks/useCCP";
-import { roleLabelOf } from "@/types/auth";
 import * as Icon from "./primitives";
-import { initialsOf } from "./primitives";
-
-const PRESENCE_COLOR: Record<string, { color: string; soft: string; label: string }> = {
-  Available:       { color: "var(--accent-green)", soft: "var(--accent-green-soft)", label: "Disponible" },
-  Routable:        { color: "var(--accent-green)", soft: "var(--accent-green-soft)", label: "Disponible" },
-  Busy:            { color: "var(--accent-cyan)",  soft: "var(--accent-cyan-soft)",  label: "En llamada" },
-  CallingCustomer: { color: "var(--accent-cyan)",  soft: "var(--accent-cyan-soft)",  label: "Marcando" },
-  AfterCallWork:   { color: "var(--accent-amber)", soft: "var(--accent-amber-soft)", label: "ACW" },
-  PendingBusy:     { color: "var(--accent-amber)", soft: "var(--accent-amber-soft)", label: "Pendiente" },
-  Offline:         { color: "var(--text-3)",       soft: "var(--bg-3)",              label: "Offline" },
-  Init:            { color: "var(--text-3)",       soft: "var(--bg-3)",              label: "Inicializando" },
-  Error:           { color: "var(--accent-red)",   soft: "var(--accent-red-soft)",   label: "Error" },
-};
+import { VoxSidebarFooter } from "./VoxSidebarFooter";
 
 interface NavItem {
   id: string;
@@ -140,19 +126,8 @@ function isItem(e: NavEntry): e is NavItem {
 export function VoxSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, productName } = useConnectAuth();
+  const { productName } = useConnectAuth();
   const { isAtLeast } = useRoles();
-  const { agentState } = useCCP();
-
-  const presence =
-    PRESENCE_COLOR[agentState] ?? PRESENCE_COLOR.Init;
-
-  const initials = initialsOf(user?.username);
-  // Use the centralized label so the sidebar matches every other
-  // place that shows the role chip (was previously its own ad-hoc
-  // mapping that called "Admins" → "Manager", introducing the
-  // dual-terminology problem reported in Bug #19).
-  const roleLabel = roleLabelOf(user?.highestRole);
 
   return (
     <aside className="app__sidebar">
@@ -226,18 +201,7 @@ export function VoxSidebar() {
           </div>
         ))}
       </div>
-      <div className="sb__footer">
-        <div className="sb__user-avatar">{initials}</div>
-        <div className="sb__user-meta">
-          <div className="sb__user-name">{user?.username ?? "—"}</div>
-          <div className="sb__user-role">{roleLabel}</div>
-        </div>
-        <div
-          className="sb__presence"
-          title={presence.label}
-          style={{ background: presence.color, boxShadow: `0 0 0 3px ${presence.soft}` }}
-        />
-      </div>
+      <VoxSidebarFooter />
     </aside>
   );
 }

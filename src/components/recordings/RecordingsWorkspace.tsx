@@ -15,6 +15,7 @@ import { WhatsAppThreadView } from "@/components/recordings/WhatsAppThreadView";
 import { EmailThreadsView } from "@/components/recordings/EmailThreadsView";
 import { AttachmentsGrid } from "@/components/recordings/AttachmentsGrid";
 import { HistoryTimelineView } from "@/components/recordings/HistoryTimelineView";
+import { useTopBarActions } from "@/components/layout/TopBarSlot";
 
 /**
  * RecordingsWorkspace — "Una sola historia" (rediseño a partir del mockup de
@@ -609,15 +610,22 @@ export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead 
   const stageLabel = lead ? tree.find((s) => s.id === lead.stageId)?.label : undefined;
   const customerKey = lead ? (lead.phone || lead.email || null) : null;
 
+  // Acciones de la página → top bar (chrome conectado al sidebar). Antes vivían
+  // en una .hg-toolbar dentro del contenido.
+  useTopBarActions(
+    <>
+      <button className="btn" disabled={!lead || refreshing} onClick={onRefresh} title="Actualizar datos del contacto">
+        <RefreshCw size={14} className={refreshing ? "hg-spin" : ""} /> {refreshing ? "Actualizando…" : "Actualizar"}
+      </button>
+      <button className="btn" disabled={!lead} title="Compartir — próximamente"><Share2 size={14} /> Compartir</button>
+      <button className="btn" disabled={!lead} title="Exportar — próximamente"><Download size={14} /> Exportar</button>
+    </>,
+    [lead, refreshing]
+  );
+
   return (
     <div className="hg hg--flow">
       <div className="hg-inner">
-        <div className="hg-toolbar">
-          <button className="hg-btn hg-btn--ghost" disabled={!lead || refreshing} onClick={onRefresh} title="Actualizar datos del contacto"><RefreshCw size={15} className={refreshing ? "hg-spin" : ""} /> {refreshing ? "Actualizando…" : "Actualizar"}</button>
-          <button className="hg-btn hg-btn--ghost" disabled={!lead} title="Próximamente"><Share2 size={15} /> Compartir</button>
-          <button className="hg-btn hg-btn--ghost" disabled={!lead} title="Próximamente"><Download size={15} /> Exportar</button>
-        </div>
-
         {lead ? (
           <>
             <Hero lead={lead} ov={ov} stageLabel={stageLabel} onSwitch={() => setCmdOpen(true)} onOpenAI={() => setAiOpen(true)} />

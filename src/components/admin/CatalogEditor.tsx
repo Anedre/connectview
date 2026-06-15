@@ -4,6 +4,7 @@ import Papa from "papaparse";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { useAuth } from "@/hooks/useAuth";
 
 /**
@@ -50,7 +51,7 @@ export function CatalogEditor() {
     if (!ep?.manageCatalog) { setLoading(false); return; }
     setLoading(true);
     try {
-      const r = await fetch(ep.manageCatalog);
+      const r = await authedFetch(ep.manageCatalog);
       const d = await r.json();
       const list: CatalogDoc[] = Array.isArray(d.catalogs) ? d.catalogs : [];
       setCatalogs(list);
@@ -152,7 +153,9 @@ export function CatalogEditor() {
     }
     setSaving(true);
     try {
-      const r = await fetch(ep.manageCatalog, {
+      // authedFetch → Bearer idToken (manage-catalog es tenant-scoped; sin token
+      // el GET venía vacío y el POST se no-opeaba silenciosamente).
+      const r = await authedFetch(ep.manageCatalog, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

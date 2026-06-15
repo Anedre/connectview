@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 import { VoxSidebar } from "@/components/vox/VoxSidebar";
-import { VoxTopbar } from "@/components/vox/VoxTopbar";
+import { AppTopBar } from "@/components/layout/AppTopBar";
 import { IncomingCallOverlay } from "@/components/vox/IncomingCallOverlay";
 import { FloatingCallWidget } from "@/components/vox/FloatingCallWidget";
 import { OnboardingBanner } from "@/components/vox/OnboardingBanner";
 import { SoftphoneBanner } from "@/components/vox/SoftphoneBanner";
 import { NavProgress } from "@/components/layout/NavProgress";
+import { TopBarSlotProvider } from "@/components/layout/TopBarSlot";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -13,10 +14,11 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   return (
+    <TopBarSlotProvider>
     <div className="app" data-density="cozy">
       <NavProgress />
       <VoxSidebar />
-      <VoxTopbar />
+      <AppTopBar />
       <main className="app__main">
         {/* Banner visible solo en onboarding (tenant sin Connect/BYO).
             Le indica al Admin qué configurar y que sus datos siguen vacíos. */}
@@ -33,5 +35,6 @@ export function AppLayout({ children }: AppLayoutProps) {
           doesn't lose call controls when they navigate to other pages. */}
       <FloatingCallWidget />
     </div>
+    </TopBarSlotProvider>
   );
 }

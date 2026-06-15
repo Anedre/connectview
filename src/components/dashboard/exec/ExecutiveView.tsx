@@ -1,13 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Activity,
   ArrowUp,
-  BarChart3,
-  Building2,
   Calendar,
   ChevronRight,
   Headphones,
-  Layers,
   MessageCircle,
   Pause,
   Phone,
@@ -33,6 +30,7 @@ import {
   ExecRank,
 } from "./ExecCharts";
 import type { ExecData, ExecInsight, ExecPeriod, ExecSlice } from "./execMock";
+import { PageHeader } from "@/components/vox/PageHeader";
 import "@/styles/exec.css";
 
 /**
@@ -250,8 +248,6 @@ export function ExecutiveView({
   loading = false,
 }: ExecutiveViewProps) {
   const [now, setNow] = useState(() => new Date());
-  const segRef = useRef<HTMLDivElement>(null);
-  const [thumb, setThumb] = useState({ left: 4, width: 0 });
   const [mainChart, setMainChart] = useState<"compare" | "channel">("compare");
 
   // Reloj en vivo (UI, no dato de negocio).
@@ -260,13 +256,6 @@ export function ExecutiveView({
     return () => clearInterval(id);
   }, []);
 
-  // Posición del thumb del segmented según la opción activa.
-  useEffect(() => {
-    if (!segRef.current) return;
-    const active = segRef.current.querySelector<HTMLElement>(".exec-seg__opt--active");
-    if (active) setThumb({ left: active.offsetLeft, width: active.offsetWidth });
-  }, [period, loading]);
-
   if (loading) return <ExecSkeleton />;
 
   const k = data.kpis;
@@ -274,73 +263,49 @@ export function ExecutiveView({
     hour: "2-digit",
     minute: "2-digit",
   });
-  const dateLabel = now
-    .toLocaleDateString("es-PE", { day: "2-digit", month: "short" })
-    .replace(".", "");
   const sentTotal = data.sentiment.reduce((s, d) => s + d.value, 0);
   const queueTotal = data.byQueue.reduce((s, d) => s + d.value, 0);
   const leadTotal = data.leadSources.reduce((s, d) => s + d.value, 0);
 
   return (
     <div className="exec">
-      {/* Header (hero band) */}
-      <div className="exec-head">
-        <div className="exec-head__id">
-          <div className="exec-head__icon">
-            <BarChart3 />
+      {/* Header estilo Kommo (PageHeader unificado): título + período como tabs
+          inline + estado en vivo / fecha / actualizar en las acciones. Reemplaza
+          la vieja "hero band" con gradiente por la barra compacta del resto. */}
+      <PageHeader
+        title="Vista ejecutiva"
+        count={
+          <>
+            <b style={{ color: "var(--text-1)", fontWeight: 700 }}>{data.agentsOnline}</b>{" "}
+            {data.agentsOnline === 1 ? "agente" : "agentes"} ·{" "}
+            <b style={{ color: "var(--text-1)", fontWeight: 700 }}>{data.liveQueues.length}</b> colas activas
+          </>
+        }
+        tabs={
+          <div className="phead__tabs" role="tablist" aria-label="Período">
+            {PERIODS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="tab"
+                aria-selected={period === p.id}
+                className={`phead__tab ${period === p.id ? "phead__tab--active" : ""}`}
+                onClick={() => onPeriod(p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
-          <div style={{ minWidth: 0 }}>
-            <div className="exec-crumb">
-              <span>Inicio</span>
-              <ChevronRight />
-              <span>Centro de operaciones</span>
-            </div>
-            <h1 className="exec-title">Vista ejecutiva</h1>
-            <div className="exec-meta">
-              <span className="exec-meta__chip">
-                <Users />
-                <b>{data.agentsOnline}</b> agentes
-              </span>
-              <span className="exec-meta__chip">
-                <Layers />
-                <b>{data.liveQueues.length}</b> colas activas
-              </span>
-              {data.org && (
-                <span className="exec-meta__chip">
-                  <Building2 /> {data.org}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="exec-head-actions">
-          <span className="exec-live" role="status" aria-live="polite">
-            <span className="dot" /> Live · {clock}
-          </span>
-          <span className="exec-date-chip">
-            <Calendar /> {dateLabel}
-          </span>
-          <button className="exec-btn" onClick={onRefresh}>
-            <RefreshCw style={{ width: 14, height: 14 }} /> Actualizar
-          </button>
-        </div>
-      </div>
-
-      {/* Filtro de período */}
-      <div className="exec-seg" ref={segRef} role="tablist" aria-label="Período">
-        <div className="exec-seg__thumb" style={{ left: thumb.left, width: thumb.width }} />
-        {PERIODS.map((p) => (
-          <button
-            key={p.id}
-            role="tab"
-            aria-selected={period === p.id}
-            className={`exec-seg__opt ${period === p.id ? "exec-seg__opt--active" : ""}`}
-            onClick={() => onPeriod(p.id)}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
+        }
+        actions={
+          <>
+            <span className="chip chip--green"><span className="dot" /> Live · {clock}</span>
+            <button className="btn" onClick={onRefresh}>
+              <RefreshCw size={14} /> Actualizar
+            </button>
+          </>
+        }
+      />
 
       {/* Tira de atención / insights */}
       <ExecInsightStrip data={data} />

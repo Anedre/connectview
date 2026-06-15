@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { useAuth } from "@/hooks/useAuth";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import {
@@ -185,7 +186,9 @@ export function TaxonomyEditor() {
         })),
         actor: user?.username || "admin",
       };
-      const r = await fetch(endpoints.manageTaxonomy, {
+      // authedFetch → Bearer idToken: sin él, manage-taxonomy es tenant-scoped
+      // y el write se no-opea (toast de éxito pero no persistía por-tenant).
+      const r = await authedFetch(endpoints.manageTaxonomy, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
