@@ -93,6 +93,13 @@ export interface MessagingConn {
   /** Despedida que el agente envía al cerrar un chat / WhatsApp, justo antes de
    *  desconectar. Antes era una constante con texto de la Universidad de Piura. */
   chatFarewell?: string;
+  /** Saludo de bienvenida al abrir un chat / WhatsApp (Canales). */
+  welcome?: string;
+  /** Mensaje de fuera de horario o sin agentes disponibles (Canales). */
+  away?: string;
+  /** Snippet del widget de chat web (Amazon Connect) que el cliente pega en su
+   *  sitio. Solo se almacena/edita acá; el widget se genera en la consola de Connect. */
+  webChatSnippet?: string;
 }
 /** Contact flows canónicos de ARIA provisionados en la instancia del tenant
  *  (#1 onboarding). Los IDs los escribe el Lambda `provision-contact-flows`. */

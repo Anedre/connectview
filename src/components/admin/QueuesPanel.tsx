@@ -171,6 +171,8 @@ export function QueuesPanel() {
   const [hours, setHours] = useState<Hours[]>([]);
   const [detail, setDetail] = useState<QueueSummary | null>(null);
   const [creating, setCreating] = useState(false);
+  const [query, setQuery] = useState("");
+  const [toggling, setToggling] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ep) return;
@@ -178,6 +180,22 @@ export function QueuesPanel() {
       .then((j) => setHours(j.hoursOfOperations || []))
       .catch(() => {});
   }, [ep]);
+
+  // Toggle de estado DESDE la lista (sin entrar al detalle) — lo intuitivo.
+  const toggleStatus = async (q: QueueSummary) => {
+    if (toggling) return;
+    const next = q.status === "ENABLED" ? "DISABLED" : "ENABLED";
+    setToggling(q.id);
+    try {
+      await queuesPost(ep, { action: "update", queueId: q.id, status: next });
+      toast.success(next === "ENABLED" ? "Cola habilitada" : "Cola deshabilitada");
+      refetch();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo cambiar el estado");
+    } finally {
+      setToggling(null);
+    }
+  };
 
   if (detail) {
     return (
@@ -204,19 +222,19 @@ export function QueuesPanel() {
     );
   }
 
+  const filtered = queues.filter((q) => !query.trim() || q.name.toLowerCase().includes(query.toLowerCase()));
+  const enabledCount = queues.filter((q) => q.status === "ENABLED").length;
+  const disabledCount = queues.filter((q) => q.status === "DISABLED").length;
+
   return (
-    <div>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
-        <div>
-          <div className="row" style={{ gap: 10, alignItems: "center" }}>
-            <div style={{ fontWeight: 800, fontSize: 19 }}>Colas de Amazon Connect</div>
-            {queues.length > 0 && (
-              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-cyan)", background: "var(--accent-cyan-soft)", borderRadius: 999, padding: "2px 10px" }}>{queues.length}</span>
-            )}
-          </div>
-          <div className="muted" style={{ fontSize: 12.5, marginTop: 4, maxWidth: 560, lineHeight: 1.5 }}>
-            Gestioná las colas de tu contact center: estado, horario y qué agentes
-            las atienden. Una campaña puede rutear a varias colas para distribuir a los agentes.
+    <div className="col" style={{ gap: 18 }}>
+      {/* Header */}
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.01em" }}>Colas</div>
+          <div className="muted" style={{ fontSize: 12.5, marginTop: 3, maxWidth: 600, lineHeight: 1.5 }}>
+            Las colas de tu contact center: habilitalas, configurá horario y máximo, y asigná los agentes que las
+            atienden. Una campaña puede rutear a varias para distribuir el trabajo.
           </div>
         </div>
         <button className="btn btn--primary" onClick={() => setCreating(true)} disabled={!ep}>
@@ -224,49 +242,81 @@ export function QueuesPanel() {
         </button>
       </div>
 
-      {loading && <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Cargando colas…</div>}
+      {/* KPI strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 14 }}>
+        <Icon.Kpi label="Colas" value={queues.length} color="var(--accent-cyan)" />
+        <Icon.Kpi label="Habilitadas" value={<span style={{ color: "var(--accent-green)" }}>{enabledCount}</span>} color="var(--accent-green)" />
+        <Icon.Kpi label="Deshabilitadas" value={<span style={{ color: disabledCount ? "var(--accent-red)" : "var(--text-3)" }}>{disabledCount}</span>} color="var(--accent-red)" />
+      </div>
+
+      {/* Buscar (solo si vale la pena) */}
+      {queues.length > 4 && (
+        <div className="row" style={{ gap: 7, alignItems: "center", padding: "8px 12px", borderRadius: 9, border: "1px solid var(--border-1)", background: "var(--bg-1)", maxWidth: 320 }}>
+          <Icon.Search size={14} style={{ color: "var(--text-3)" }} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar cola…" style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 13, color: "var(--text-1)" }} />
+        </div>
+      )}
+
+      {loading && <div className="muted" style={{ fontSize: 12.5 }}>Cargando colas…</div>}
       {error && (
         <div style={{ fontSize: 12.5, padding: "12px 14px", borderRadius: 10, background: "var(--accent-red-soft)", color: "var(--accent-red)" }}>
           No se pudieron leer las colas: {error}
         </div>
       )}
       {!loading && !error && queues.length === 0 && (
-        <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>
-          No encontramos colas. Verificá que Amazon Connect esté conectado (Integraciones) y que tenga al menos una cola.
-        </div>
+        <Icon.Card>
+          <Icon.CardBody>
+            <div style={{ textAlign: "center", padding: "34px 24px" }}>
+              <div style={{ display: "inline-grid", placeItems: "center", width: 50, height: 50, borderRadius: 15, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)", marginBottom: 12 }}>
+                <Icon.Queue size={24} />
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>No encontramos colas</div>
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 4, marginBottom: 16 }}>Conectá Amazon Connect en Integraciones, o creá tu primera cola.</div>
+              <button className="btn btn--primary" onClick={() => setCreating(true)} disabled={!ep} style={{ margin: "0 auto" }}><Icon.Plus size={13} /> Crear cola</button>
+            </div>
+          </Icon.CardBody>
+        </Icon.Card>
       )}
 
-      {queues.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
-          {queues.map((q) => (
-            <button
-              key={q.id}
-              onClick={() => setDetail(q)}
-              className="row"
-              style={{
-                gap: 12,
-                padding: "14px 16px",
-                borderRadius: 12,
-                background: "var(--bg-1)",
-                border: "1px solid var(--border-1)",
-                alignItems: "center",
-                cursor: "pointer",
-                textAlign: "left",
-                width: "100%",
-                transition: "border-color .15s, transform .1s",
-              }}
-            >
-              <span style={{ flex: "0 0 auto", display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: 10, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }}>
-                <Icon.Queue size={18} />
-              </span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: "block", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{q.name}</span>
-                <span className="muted" style={{ fontSize: 11 }}>{q.type === "STANDARD" ? "Estándar" : q.type}</span>
-              </span>
-              <Icon.ChevRight size={16} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
-            </button>
-          ))}
+      {filtered.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+          {filtered.map((q) => {
+            const on = q.status === "ENABLED";
+            const known = q.status === "ENABLED" || q.status === "DISABLED";
+            return (
+              <div
+                key={q.id}
+                onClick={() => setDetail(q)}
+                style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, padding: "14px 16px 14px 18px", borderRadius: 12, background: "var(--bg-1)", border: "1px solid var(--border-1)", cursor: "pointer", overflow: "hidden", boxShadow: "0 1px 2px rgba(16,21,37,.04)" }}
+              >
+                <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: on ? "var(--accent-green)" : "var(--border-1)" }} />
+                <span style={{ flex: "0 0 auto", display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: 10, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }}>
+                  <Icon.Queue size={18} />
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{q.name}</span>
+                  <span className="row" style={{ gap: 7, alignItems: "center", marginTop: 3 }}>
+                    {known && (
+                      <span className={`chip ${on ? "chip--green" : ""}`} style={on ? undefined : { color: "var(--text-3)" }}>
+                        <span className="dot" style={on ? undefined : { background: "var(--text-3)" }} /> {on ? "Habilitada" : "Deshabilitada"}
+                      </span>
+                    )}
+                    <span className="muted" style={{ fontSize: 11 }}>{q.type === "STANDARD" ? "Estándar" : q.type}</span>
+                  </span>
+                </span>
+                {known && (
+                  <span onClick={(e) => e.stopPropagation()} style={{ flex: "0 0 auto" }} title={on ? "Deshabilitar cola" : "Habilitar cola"}>
+                    <Switch on={on} onClick={() => toggleStatus(q)} disabled={toggling === q.id} />
+                  </span>
+                )}
+                <Icon.ChevRight size={16} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
+              </div>
+            );
+          })}
         </div>
+      )}
+      {!loading && queues.length > 0 && filtered.length === 0 && (
+        <div className="muted" style={{ fontSize: 12.5 }}>Ninguna cola coincide con "{query}".</div>
       )}
     </div>
   );

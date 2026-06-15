@@ -703,3 +703,86 @@ Outputs:
     Description: Permisos del Data Plane otorgados. Volvé a Vox y refrescá.
     Value: "ok"`;
 }
+
+/* ───────── Template 3: rol de PROVISIÓN (Opt 2 — crear Connect nuevo) ────── */
+
+/** Launch Stack URL para el rol de PROVISIÓN (crear instancias de Connect).
+ *  Distinto del rol de lectura: este permite `connect:CreateInstance`. */
+export function connectProvisionLaunchUrl(opts: {
+  externalId: string;
+  region?: string;
+}): string {
+  const region = opts.region || "us-east-1";
+  const templateUrl = `${CFN_TEMPLATES_BASE}/connect-provision.yaml`;
+  const qs =
+    `templateURL=${encodeURIComponent(templateUrl)}` +
+    `&stackName=VoxCrmConnectProvision` +
+    `&param_ExternalId=${encodeURIComponent(opts.externalId)}`;
+  return `https://${region}.console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/quickcreate?${qs}`;
+}
+
+/**
+ * Rol cross-account de PROVISIÓN: deja que ARIA cree una instancia de Amazon
+ * Connect NUEVA (CONNECT_MANAGED) en la cuenta del cliente (Opt 2 del onboarding).
+ *
+ * Es MÁS permisivo que el rol de lectura: `connect:CreateInstance` arrastra
+ * permisos de Directory Service (`ds:*`) porque cada instancia crea un directorio
+ * interno. Por eso es un rol SEPARADO y TEMPORAL: una vez creada la instancia, el
+ * cliente puede borrar este rol y quedarse solo con VoxCrmConnectAccess (lectura).
+ */
+export function connectProvisionCfnTemplate(externalId: string): string {
+  return `AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ARIA CRM — Rol cross-account TEMPORAL para crear una instancia de Amazon
+  Connect nueva en tu cuenta. Más permisivo que el rol de lectura (incluye
+  Directory Service, requerido por connect:CreateInstance). Podés borrarlo una
+  vez creada tu instancia.
+Resources:
+  VoxCrmConnectProvisionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: VoxCrmConnectProvision
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: "arn:aws:iam::${VOX_AWS_ACCOUNT_PLACEHOLDER}:root" }
+            Action: "sts:AssumeRole"
+            Condition: { StringEquals: { "sts:ExternalId": "${externalId}" } }
+      Policies:
+        - PolicyName: VoxCrmConnectProvision
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Crear/inspeccionar la instancia + habilitar el origen del visor
+              # (para que el softphone embebido funcione apenas se crea).
+              - Effect: Allow
+                Action:
+                  - connect:CreateInstance
+                  - connect:DescribeInstance
+                  - connect:ListInstances
+                  - connect:AssociateApprovedOrigin
+                  - connect:ListApprovedOrigins
+                  - connect:TagResource
+                Resource: "*"
+              # CreateInstance crea un directorio interno → exige Directory
+              # Service. Es el set mínimo que AWS documenta para CreateInstance.
+              - Effect: Allow
+                Action:
+                  - ds:CreateAlias
+                  - ds:AuthorizeApplication
+                  - ds:UnauthorizeApplication
+                  - ds:CheckAlias
+                  - ds:CreateIdentityPoolDirectory
+                  - ds:DeleteDirectory
+                  - ds:DescribeDirectories
+                Resource: "*"
+              # Connect crea su service-linked role la primera vez en la cuenta.
+              - Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: "arn:aws:iam::*:role/aws-service-role/connect.amazonaws.com/*"
+Outputs:
+  RoleArn:
+    Description: Pegá este ARN en ARIA (rol de provisión)
+    Value: !GetAtt VoxCrmConnectProvisionRole.Arn`;
+}

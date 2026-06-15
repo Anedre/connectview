@@ -7,6 +7,9 @@ export interface QueueSummary {
   name: string;
   type: string;
   arn: string;
+  /** ENABLED | DISABLED — lo agrega list-queues vía DescribeQueue para mostrar
+   *  el estado en la lista (toggle inline). undefined si no se pudo leer. */
+  status?: string;
 }
 
 export function useQueues() {

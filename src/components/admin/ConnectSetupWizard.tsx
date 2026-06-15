@@ -7,6 +7,8 @@ import type { ConnectConn } from "@/hooks/useConnections";
 import {
   connectAccessCfnTemplate,
   connectRoleLaunchUrl,
+  connectProvisionCfnTemplate,
+  connectProvisionLaunchUrl,
   dataPlaneCfnTemplate,
   dataPlaneLaunchUrl,
   dataPlanePermissionsLaunchUrl,
@@ -24,7 +26,8 @@ const CONNECT_REGIONS = [
   "ap-southeast-1", "ap-southeast-2", "ca-central-1", "eu-central-1", "eu-west-2",
 ];
 
-const STEPS = [
+// "Ya tengo Connect" (Opt 4): pegás la URL de tu instancia.
+const STEPS_EXISTING = [
   { key: "intro", title: "Cómo funciona" },
   { key: "instance", title: "Tu instancia" },
   { key: "origins", title: "Permitir el visor" },
@@ -32,6 +35,16 @@ const STEPS = [
   { key: "dataplane", title: "Tus datos" },
   { key: "done", title: "Listo" },
 ];
+// "No tengo Connect" (Opt 2): ARIA te crea la instancia (CONNECT_MANAGED).
+const STEPS_CREATE = [
+  { key: "intro", title: "Cómo funciona" },
+  { key: "provision", title: "Permiso para crear" },
+  { key: "create", title: "Crear instancia" },
+  { key: "role", title: "Crear el acceso" },
+  { key: "dataplane", title: "Tus datos" },
+  { key: "done", title: "Listo" },
+];
+type WizardPath = "existing" | "create";
 
 const inputStyle: CSSProperties = {
   width: "100%", padding: "10px 12px", fontSize: 14, border: "1px solid var(--border-1)",
@@ -79,6 +92,30 @@ function Details({ children }: { children: ReactNode }) {
   );
 }
 
+/** Tarjeta de elección del camino del intro (ya tengo Connect vs crearlo). */
+function PathCard({ active, onClick, title, desc }: { active: boolean; onClick: () => void; title: string; desc: string }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1, minWidth: 220, textAlign: "left", cursor: "pointer",
+        padding: "16px 18px", borderRadius: 12,
+        border: `1.5px solid ${active ? "var(--accent-amber)" : "var(--border-1)"}`,
+        background: active ? "var(--accent-amber-soft)" : "var(--bg-1)",
+        transition: "all 0.15s",
+      }}
+    >
+      <div className="row" style={{ gap: 8, alignItems: "center" }}>
+        <span aria-hidden style={{ display: "grid", placeItems: "center", width: 18, height: 18, borderRadius: "50%", flex: "0 0 auto", border: `2px solid ${active ? "var(--accent-amber)" : "var(--border-1)"}`, background: active ? "var(--accent-amber)" : "transparent" }}>
+          {active && <Icon.Check size={11} style={{ color: "#fff" }} />}
+        </span>
+        <span style={{ fontWeight: 700, fontSize: 14 }}>{title}</span>
+      </div>
+      <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 6, lineHeight: 1.45 }}>{desc}</div>
+    </button>
+  );
+}
+
 export function ConnectSetupWizard({
   initial,
   onSave,
@@ -97,12 +134,88 @@ export function ConnectSetupWizard({
   }));
   const [verifying, setVerifying] = useState(false);
   const [verifyingDp, setVerifyingDp] = useState(false);
+  // Opt 2 — flujo "crear Connect nuevo".
+  const [path, setPath] = useState<WizardPath | null>(null);
+  const [provisionRoleArn, setProvisionRoleArn] = useState("");
+  const [alias, setAlias] = useState("");
+  const [inbound, setInbound] = useState(true);
+  const [outbound, setOutbound] = useState(true);
+  const [createState, setCreateState] = useState<
+    "idle" | "creating" | "polling" | "finalizing" | "done" | "error"
+  >("idle");
+  const [createMsg, setCreateMsg] = useState("");
   const ep = getApiEndpoints();
   const appOrigin = typeof window !== "undefined" ? window.location.origin : "";
   const set = (patch: Partial<ConnectConn>) => setDraft((d) => ({ ...d, ...patch }));
 
+  // Pasos según el camino elegido en el intro (ya tengo Connect vs crearlo).
+  const STEPS = path === "create" ? STEPS_CREATE : STEPS_EXISTING;
+
+  // Opt 2: orquesta create → poll(status) → finalize(approved origin) y guarda la
+  // instancia nueva en el draft. CreateInstance tarda ~1-2 min en quedar ACTIVE,
+  // por eso el polling vive en el frontend (un request HTTP no puede esperar tanto).
+  const runCreateInstance = async () => {
+    if (!ep?.createConnectInstance) {
+      toast.message("Backend de creación pendiente (falta desplegar el Lambda create-connect-instance).");
+      return;
+    }
+    const a = alias.trim().toLowerCase();
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,43}[a-z0-9])?$/.test(a)) {
+      toast.error("Alias inválido: 2-45 caracteres, minúsculas/números/guiones, sin empezar/terminar en guión.");
+      return;
+    }
+    if (!provisionRoleArn.trim()) {
+      toast.error("Primero creá el rol de provisión (paso anterior).");
+      return;
+    }
+    const base = { roleArn: provisionRoleArn.trim(), externalId: draft.externalId, region: draft.region };
+    const call = async (body: Record<string, unknown>) => {
+      const r = await authedFetch(ep.createConnectInstance!, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || j.error || `HTTP ${r.status}`);
+      return j as { instanceId?: string; instanceArn?: string; status?: string; statusReason?: string; instanceUrl?: string };
+    };
+    try {
+      setCreateState("creating"); setCreateMsg("Creando tu instancia…");
+      const created = await call({ ...base, mode: "create", alias: a, inboundCalls: inbound, outboundCalls: outbound });
+      const instanceId = created.instanceId;
+      if (!instanceId) throw new Error("AWS no devolvió el instanceId");
+      setCreateState("polling");
+      let status = "CREATION_IN_PROGRESS";
+      let instanceUrl = created.instanceUrl || "";
+      let instanceArn = created.instanceArn || "";
+      for (let i = 0; i < 36 && status !== "ACTIVE"; i++) {
+        setCreateMsg(`Esperando a que tu instancia quede lista… (${i * 5}s)`);
+        await new Promise((res) => setTimeout(res, 5000));
+        const s = await call({ ...base, mode: "status", instanceId });
+        status = s.status || status;
+        instanceUrl = s.instanceUrl || instanceUrl;
+        instanceArn = s.instanceArn || instanceArn;
+        if (status === "CREATION_FAILED") throw new Error(s.statusReason || "La creación falló en AWS");
+      }
+      if (status !== "ACTIVE") throw new Error("La instancia tardó demasiado. Reintentá el estado en unos minutos.");
+      setCreateState("finalizing"); setCreateMsg("Habilitando el visor embebido…");
+      // No-fatal: si el origin falla, el cliente lo puede agregar a mano después.
+      try { await call({ ...base, mode: "finalize", instanceId, origin: appOrigin }); } catch { /* skip */ }
+      // Guardar en el draft → el resto del wizard (rol de acceso + data plane) ya
+      // opera sobre esta instancia nueva (el launch del rol pre-carga el instanceArn).
+      set({ instanceUrl, instanceArn, region: draft.region });
+      setCreateState("done"); setCreateMsg(`¡Instancia "${a}" lista!`);
+      toast.success("Instancia de Connect creada");
+    } catch (e) {
+      setCreateState("error");
+      const msg = e instanceof Error ? e.message : "Error creando la instancia";
+      setCreateMsg(msg); toast.error(msg);
+    }
+  };
+
   const canNext = (): boolean => {
+    if (STEPS[step].key === "intro") return path !== null;
     if (STEPS[step].key === "instance") return !!draft.instanceUrl?.trim();
+    if (STEPS[step].key === "provision") return !!provisionRoleArn.trim();
+    if (STEPS[step].key === "create") return createState === "done" && !!draft.instanceUrl?.trim();
     if (STEPS[step].key === "role") return !!draft.roleArn?.trim();
     // El Data Plane es OBLIGATORIO: no se avanza sin las tablas verificadas.
     if (STEPS[step].key === "dataplane") return !!draft.dataPlaneEnabled;
@@ -201,25 +314,46 @@ export function ConnectSetupWizard({
           {STEPS[step].key === "intro" && (
             <div>
               <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, letterSpacing: "-0.02em" }}>
-                Conectá tu Amazon Connect en 4 pasos
+                Conectá tu Amazon Connect
               </h2>
               <p style={{ fontSize: 14, color: "var(--text-2)", marginTop: 8, lineHeight: 1.6 }}>
-                ARIA se conecta a TU cuenta AWS mediante un rol que vos creás y controlás.
-                Te lleva ~3 minutos y no necesitás ser técnico.
+                ¿Tu empresa ya usa Amazon Connect, o querés que ARIA te cree uno desde cero?
               </p>
-              <div style={{ marginTop: 20, padding: 18, borderRadius: 12, background: "var(--bg-1)", border: "1px solid var(--border-1)" }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Qué accede ARIA</div>
-                <AccessRow ok>Lee tus métricas, colas y agentes en tiempo real</AccessRow>
-                <AccessRow ok>Lee las grabaciones para que las escuches acá</AccessRow>
-                <AccessRow ok>Origina llamadas salientes para tus campañas</AccessRow>
-                <div style={{ fontWeight: 700, fontSize: 13, margin: "14px 0 10px" }}>Qué ARIA NUNCA hace</div>
-                <AccessRow ok={false}>No guarda tus credenciales — solo "pide permiso" cuando lo necesita</AccessRow>
-                <AccessRow ok={false}>No borra ni modifica la configuración de tu Connect</AccessRow>
-                <AccessRow ok={false}>No accede a nada fuera de lo que el rol permite</AccessRow>
+              <div className="row" style={{ gap: 12, marginTop: 18, flexWrap: "wrap" }}>
+                <PathCard active={path === "existing"} onClick={() => setPath("existing")}
+                  title="Ya tengo Amazon Connect"
+                  desc="Conectás tu instancia actual (login embebido con sesión persistente)." />
+                <PathCard active={path === "create"} onClick={() => setPath("create")}
+                  title="No tengo — creámelo"
+                  desc="ARIA crea una instancia nueva (CONNECT_MANAGED) en TU cuenta AWS." />
               </div>
-              <p style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 14, lineHeight: 1.5 }}>
-                Podés revocar el acceso en cualquier momento borrando el rol — sin pedirnos permiso.
-              </p>
+              {path && (
+                <>
+                  <div style={{ marginTop: 20, padding: 18, borderRadius: 12, background: "var(--bg-1)", border: "1px solid var(--border-1)" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>
+                      {path === "create" ? "Qué hace ARIA al crearlo" : "Qué accede ARIA"}
+                    </div>
+                    {path === "create" ? (
+                      <>
+                        <AccessRow ok>Crea la instancia en TU cuenta AWS — vos sos el dueño</AccessRow>
+                        <AccessRow ok>Habilita el visor embebido (origen aprobado) automáticamente</AccessRow>
+                        <AccessRow ok={false}>El rol de creación es temporal — lo borrás cuando termina</AccessRow>
+                      </>
+                    ) : (
+                      <>
+                        <AccessRow ok>Lee tus métricas, colas y agentes en tiempo real</AccessRow>
+                        <AccessRow ok>Lee las grabaciones para que las escuches acá</AccessRow>
+                        <AccessRow ok>Origina llamadas salientes para tus campañas</AccessRow>
+                        <AccessRow ok={false}>No guarda tus credenciales — solo "pide permiso" cuando lo necesita</AccessRow>
+                        <AccessRow ok={false}>No borra ni modifica la configuración de tu Connect</AccessRow>
+                      </>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 14, lineHeight: 1.5 }}>
+                    Todo vive en TU cuenta AWS. Podés revocar el acceso borrando el rol — sin pedirnos permiso.
+                  </p>
+                </>
+              )}
             </div>
           )}
 
@@ -250,6 +384,95 @@ export function ConnectSetupWizard({
               <Details>
                 El ARN lo encontrás en tu consola de Connect → Información de la cuenta. Con él, ARIA
                 restringe las acciones sensibles (originar llamadas, escuchar) SOLO a esta instancia.
+              </Details>
+            </div>
+          )}
+
+          {STEPS[step].key === "provision" && (
+            <div>
+              <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Dale permiso a ARIA para crear tu Connect</h2>
+              <p style={{ fontSize: 14, color: "var(--text-2)", marginTop: 8, lineHeight: 1.6 }}>
+                Un clic abre CloudFormation en TU cuenta y crea un rol <b>temporal</b> de creación. Cuando
+                termine, copiá el <b>RoleArn</b> de la pestaña "Salidas" y pegalo abajo.
+              </p>
+              <div className="row" style={{ gap: 14, marginTop: 16 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>Región de tu instancia nueva</label>
+                  <select style={inputStyle} value={draft.region || "us-east-1"} onChange={(e) => set({ region: e.target.value })}>
+                    {CONNECT_REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              </div>
+              <a
+                href={connectProvisionLaunchUrl({ externalId: draft.externalId || "", region: draft.region })}
+                target="_blank" rel="noopener noreferrer"
+                className="btn btn--primary"
+                style={{ marginTop: 16, fontSize: 14, padding: "12px 18px", display: "inline-flex", textDecoration: "none" }}
+              >
+                <Icon.Cloud size={15} /> Crear rol de provisión (1 clic)
+              </a>
+              <div style={{ marginTop: 20 }}>
+                <label style={labelStyle}>ARN del rol de provisión</label>
+                <input style={inputStyle} placeholder="arn:aws:iam::123456789012:role/VoxCrmConnectProvision"
+                  value={provisionRoleArn} onChange={(e) => setProvisionRoleArn(e.target.value)} />
+              </div>
+              <Details>
+                Este rol es más permisivo que el de lectura (incluye Directory Service, que <code>connect:CreateInstance</code> exige).
+                Es temporal: borralo cuando termines de crear la instancia.
+                <div style={{ marginTop: 8 }}>
+                  <button className="btn btn--sm" onClick={() => copy(connectProvisionCfnTemplate(draft.externalId || ""), "Plantilla de provisión")}>
+                    <Icon.Copy size={12} /> Copiar plantilla CloudFormation
+                  </button>
+                </div>
+              </Details>
+            </div>
+          )}
+
+          {STEPS[step].key === "create" && (
+            <div>
+              <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Creá tu instancia de Amazon Connect</h2>
+              <p style={{ fontSize: 14, color: "var(--text-2)", marginTop: 8, lineHeight: 1.6 }}>
+                Elegí un nombre (subdominio). Va a quedar como{" "}
+                <code>https://{alias.trim().toLowerCase() || "tu-empresa"}.my.connect.aws</code>.
+              </p>
+              <div style={{ marginTop: 18 }}>
+                <label style={labelStyle}>Nombre / subdominio</label>
+                <input style={inputStyle} placeholder="mi-empresa" value={alias}
+                  onChange={(e) => setAlias(e.target.value)}
+                  disabled={createState === "creating" || createState === "polling" || createState === "finalizing"} />
+              </div>
+              <div className="row" style={{ gap: 18, marginTop: 16 }}>
+                <label className="row" style={{ gap: 8, fontSize: 13.5, cursor: "pointer", alignItems: "center" }}>
+                  <input type="checkbox" checked={inbound} onChange={(e) => setInbound(e.target.checked)} /> Llamadas entrantes
+                </label>
+                <label className="row" style={{ gap: 8, fontSize: 13.5, cursor: "pointer", alignItems: "center" }}>
+                  <input type="checkbox" checked={outbound} onChange={(e) => setOutbound(e.target.checked)} /> Llamadas salientes
+                </label>
+              </div>
+              <button className="btn btn--primary" style={{ marginTop: 18 }}
+                onClick={runCreateInstance}
+                disabled={createState === "creating" || createState === "polling" || createState === "finalizing" || createState === "done"}>
+                {createState === "done"
+                  ? <><Icon.Check size={13} style={{ color: "var(--accent-green)" }} /> Instancia creada</>
+                  : (createState === "creating" || createState === "polling" || createState === "finalizing")
+                  ? "Creando…"
+                  : <><Icon.Cloud size={13} /> Crear instancia</>}
+              </button>
+              {createState !== "idle" && (
+                <div style={{
+                  marginTop: 16, padding: 12, borderRadius: 8, fontSize: 12.5, lineHeight: 1.5,
+                  background: createState === "error" ? "var(--accent-red-soft)" : createState === "done" ? "var(--accent-green-soft)" : "var(--accent-cyan-soft)",
+                  color: createState === "error" ? "var(--accent-red)" : createState === "done" ? "var(--accent-green)" : "var(--text-2)",
+                }}>
+                  {createMsg}
+                  {createState === "done" && draft.instanceUrl && (
+                    <div style={{ marginTop: 6, fontWeight: 700 }}>{draft.instanceUrl}</div>
+                  )}
+                </div>
+              )}
+              <Details>
+                Tarda ~1-2 min en quedar lista (ACTIVE). Si tu cuenta llegó al límite de instancias
+                (default 2 por región), AWS rechaza la creación — pedí un aumento de cuota o elegí otra región.
               </Details>
             </div>
           )}

@@ -13,6 +13,7 @@ import {
 } from "@/components/vox/primitives";
 import { TaxonomyEditor } from "@/components/admin/TaxonomyEditor";
 import { CatalogEditor } from "@/components/admin/CatalogEditor";
+import { ChannelsManager } from "@/components/admin/ChannelsManager";
 import { AuditLogViewer } from "@/components/admin/AuditLogViewer";
 import { PermissionsEditor } from "@/components/admin/PermissionsEditor";
 import { IntegrationsManager } from "@/components/admin/IntegrationsManager";
@@ -346,6 +347,7 @@ export function AdminPage() {
 
           {section === "tipificacion" && <TaxonomyEditor />}
           {section === "catalogos" && <CatalogEditor />}
+          {section === "channels" && <ChannelsManager />}
           {section === "integrations" && <IntegrationsManager />}
           {section === "queues" && <QueuesPanel />}
           {section === "routing" && <RoutingRulesPanel />}
@@ -356,7 +358,7 @@ export function AdminPage() {
             </div>
           )}
 
-          {section !== "users" && section !== "tipificacion" && section !== "catalogos" && section !== "security" && section !== "integrations" && section !== "queues" && section !== "routing" && (
+          {section !== "users" && section !== "tipificacion" && section !== "catalogos" && section !== "channels" && section !== "security" && section !== "integrations" && section !== "queues" && section !== "routing" && (
             <Card>
               <CardBody
                 style={{

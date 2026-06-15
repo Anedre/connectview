@@ -8,6 +8,12 @@ declare namespace connect {
       options: InitCCPOptions
     ): void;
     function terminate(): void;
+    /** Se dispara cuando el CCP pierde la autenticación (el token expiró y el
+     *  refresh silencioso no pudo renovarlo). Clave para recuperar la sesión sin
+     *  forzar un re-login manual. */
+    function onAuthFail(callback: () => void): void;
+    /** Se dispara cuando Connect rechaza el acceso del CCP. */
+    function onAccessDenied(callback: () => void): void;
   }
 
   function agent(callback: (agent: Agent) => void): void;
@@ -18,6 +24,15 @@ declare namespace connect {
     loginPopup?: boolean;
     loginPopupAutoClose?: boolean;
     loginUrl?: string;
+    /** Geometría + auto-cierre del popup de login. `autoClose` cierra el popup
+     *  apenas la auth termina (re-login silencioso cuando la sesión SSO sigue viva). */
+    loginOptions?: {
+      autoClose?: boolean;
+      height?: number;
+      width?: number;
+      top?: number;
+      left?: number;
+    };
     softphone?: {
       allowFramedSoftphone?: boolean;
       disableRingtone?: boolean;

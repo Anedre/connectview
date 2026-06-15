@@ -55,7 +55,7 @@ interface SubStage {
 interface Stage {
   id: string;
   label: string;
-  valoracion: "positiva" | "negativa" | "cierre";
+  valoracion: "inicial" | "positiva" | "negativa" | "cierre";
   description?: string;
   salesforceValue?: string;
   subStages: SubStage[];
@@ -69,7 +69,7 @@ interface TaxonomyDoc {
   updatedBy?: string;
 }
 
-const VALID_VALORACION = new Set(["positiva", "negativa", "cierre"]);
+const VALID_VALORACION = new Set(["inicial", "positiva", "negativa", "cierre"]);
 
 /** Validate + clean an incoming taxonomy doc. Throws on structural errors so
  *  a malformed save can't poison the source of truth every channel reads. */

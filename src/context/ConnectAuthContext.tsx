@@ -163,7 +163,13 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
       // del softphone (agente, contactos) lo maneja CCPContext con su propia
       // suscripción a connect.agent/contact; acá ya NO nos suscribimos para la
       // identidad (esa viene de Vox).
-      initCCP(container, resolvedInstanceUrl, { federationSignInUrl });
+      initCCP(container, resolvedInstanceUrl, {
+        federationSignInUrl,
+        // Persistencia de sesión (#login): si pese al re-auth por popup la sesión
+        // se cae del todo, lo marcamos (observabilidad). Streams ya intentó
+        // recuperar solo primero; un reload re-inicializa y vuelve a re-autenticar.
+        onAuthFail: () => setSoftphoneUnavailable(true),
+      });
     };
 
     void initWithMaybeFederation().catch((e) => {

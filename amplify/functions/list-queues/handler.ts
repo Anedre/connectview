@@ -266,7 +266,7 @@ export const handler: Handler = async (event: any) => {
     }
 
     // ───────────────────────── GET: lista (comportamiento original) ──────────
-    const queues: Array<{ id: string; name: string; type: string; arn: string }> = [];
+    const queues: Array<{ id: string; name: string; type: string; arn: string; status?: string }> = [];
     let nextToken: string | undefined;
     do {
       const res = await connect.send(
@@ -277,6 +277,19 @@ export const handler: Handler = async (event: any) => {
       }
       nextToken = res.NextToken;
     } while (nextToken);
+    // Enriquecer con el estado (ENABLED/DISABLED) para que la UI lo muestre a la
+    // vista — DescribeQueue por cola EN PARALELO. Best-effort: si una falla,
+    // queda sin status y la UI lo tolera (no rompe la lista).
+    await Promise.all(
+      queues.map(async (q) => {
+        try {
+          const d = await connect.send(new DescribeQueueCommand({ InstanceId: instanceId, QueueId: q.id }));
+          q.status = d.Queue?.Status || "";
+        } catch {
+          /* best-effort */
+        }
+      })
+    );
     queues.sort((a, b) => a.name.localeCompare(b.name));
     return resp(200, { queues, total: queues.length });
   } catch (err) {

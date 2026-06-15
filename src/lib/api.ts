@@ -114,6 +114,10 @@ interface ApiEndpoints {
   // Provisiona el set canónico de contact flows de ARIA (ARIA-Inbound /
   // -Outbound / -Disconnect) en la instancia del tenant. dryRun previsualiza.
   provisionContactFlows?: string;
+  // Opt 2 onboarding: crea una instancia de Amazon Connect NUEVA (CONNECT_MANAGED)
+  // en la cuenta del cliente vía el rol de provisión. 3 modos en el body:
+  // create (CreateInstance) · status (poll DescribeInstance) · finalize (AssociateApprovedOrigin).
+  createConnectInstance?: string;
   // Inicia el flujo OAuth web de Salesforce (devuelve la URL de autorización).
   salesforceOAuthStart?: string;
   // Callback del OAuth web de Salesforce. SF redirige acá con ?code=…&state=…

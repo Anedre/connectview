@@ -9,7 +9,7 @@
 import outputs from "../../amplify_outputs.json";
 import { getApiEndpoints } from "./api";
 
-export type Valoracion = "positiva" | "negativa" | "cierre";
+export type Valoracion = "inicial" | "positiva" | "negativa" | "cierre";
 
 export interface DispositionStage {
   /** Internal id — should be stable; saved to Contact Attributes verbatim. */
@@ -44,6 +44,19 @@ export interface TaxonomyDoc {
 }
 
 export const DEFAULT_DISPOSITIONS: DispositionStage[] = [
+  {
+    id: "nuevo_lead",
+    label: "Nuevo lead",
+    valoracion: "inicial",
+    description: "Lead recién ingresado, todavía sin gestionar",
+    subStages: [
+      { id: "sin_asignar", label: "Sin asignar" },
+      { id: "asignado", label: "Asignado" },
+      { id: "importado_campana", label: "Importado de campaña" },
+      { id: "origen_web", label: "Origen web / formulario" },
+      { id: "origen_whatsapp", label: "Origen WhatsApp" },
+    ],
+  },
   {
     id: "gestionado",
     label: "Gestionado",
@@ -251,6 +264,7 @@ export const VALORACION_META: Record<
   Valoracion,
   { label: string; chip: string }
 > = {
+  inicial: { label: "Inicial", chip: "chip--cyan" },
   positiva: { label: "Valoración positiva", chip: "chip--green" },
   negativa: { label: "Valoración negativa", chip: "chip--red" },
   cierre: { label: "Cierre", chip: "chip--violet" },

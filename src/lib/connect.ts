@@ -73,6 +73,10 @@ patchChatJsRegion((connect as any).ChatSession);
  *  ausente, caemos al popup login clásico (Connect-hosted credentials). */
 export interface InitCCPOptions {
   federationSignInUrl?: string;
+  /** Se invoca cuando el CCP pierde la auth (token expiró y el refresh silencioso
+   *  no pudo renovarlo). El consumidor (ConnectAuthContext) lo usa para marcar el
+   *  softphone como caído y ofrecer reconexión limpia en vez de morir en silencio. */
+  onAuthFail?: () => void;
 }
 
 // Embed the full Agent Workspace (CCP + Customer Profiles + Cases + Wisdom)
@@ -96,14 +100,21 @@ export function initCCP(
     // sessions; without it streams defaults to 'us-west-2' and every chat
     // API call 403s on our us-east-1 instance.
     region: CONNECT_REGION,
-    // Federación: el iframe abre el signInUrl (auth silencioso vía SAML del
-    // tenant) → setea cookie → redirige al CCP. Sin popup.
-    // SIN federación: NO auto-abrimos el popup de login. Era molesto (saltaba
-    // solo al cargar) y lo bloquean los popup-blockers. El agente/admin decide
-    // CUÁNDO loguearse con el botón del SoftphoneBanner ("Iniciar sesión en
-    // Connect"), que abre el CCP en una pestaña. Por eso loginPopup=false.
-    loginPopup: false,
-    loginPopupAutoClose: false,
+    // Persistencia de sesión (#login): `loginPopup=true` es la pieza CLAVE para
+    // que el agente se loguee ~1 vez al día y NO cada 15-30 min. Cuando el access
+    // token del CCP expira (~15-30 min) y el refresh silencioso del iframe falla
+    // —típico en el embed por cookies de 3ra parte / SameSite—, Streams reabre el
+    // login en un POPUP. El popup corre en contexto de PRIMERA parte sobre el
+    // dominio de Connect, así que SÍ ve la cookie de sesión SSO (viva ~la jornada)
+    // → se re-autentica solo y, con `loginPopupAutoClose`, cierra el popup sin que
+    // el agente toque nada. Solo cuando la sesión SSO de verdad caduca aparece un
+    // login real (~1 vez al día). El SoftphoneBanner queda como fallback manual si
+    // un popup-blocker lo frena en la 1ra carga.
+    // (Con federación SAML el `loginUrl` es el signInUrl y el flujo es aún más
+    //  silencioso; para instancias CONNECT_MANAGED cae al /connect/login.)
+    loginPopup: true,
+    loginPopupAutoClose: true,
+    loginOptions: { autoClose: true, height: 600, width: 433 },
     loginUrl: useFederation
       ? opts.federationSignInUrl!
       : `${instanceUrl}/connect/login`,
@@ -129,6 +140,24 @@ export function initCCP(
     region?: string;
     chat?: { region?: string };
   });
+
+  // Recuperación de auth (#login): si el CCP pierde la sesión (token expiró + el
+  // refresh no pudo renovarla, o Connect deniega el acceso), avisamos al
+  // consumidor para ofrecer reconexión. Con `loginPopup=true` Streams ya intenta
+  // re-autenticar solo primero (popup silencioso si la cookie SSO sigue viva);
+  // esto es la red de seguridad + observabilidad cuando ni eso alcanza.
+  try {
+    connect.core.onAuthFail(() => {
+      console.warn("[CCP] auth perdida — sesión de Connect caída (onAuthFail)");
+      opts.onAuthFail?.();
+    });
+    connect.core.onAccessDenied?.(() => {
+      console.warn("[CCP] acceso denegado por Connect (onAccessDenied)");
+      opts.onAuthFail?.();
+    });
+  } catch (e) {
+    console.warn("[CCP] no se pudieron registrar los handlers de auth:", e);
+  }
 }
 
 // Initialize the full Agent App (Agent Workspace) as a separate iframe.
