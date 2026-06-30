@@ -38,19 +38,25 @@ difirió de Pilar 1. El set final se define con Adriana (R20).
 - Verificado: 11 conversaciones, 64% resueltas solo, 4 derivadas (3 agente + 1
   tool_budget), confianza 97%, fuente más citada la FAQ sembrada.
 
-### Fase C — Detalle WhatsApp (R16/R17) — PENDIENTE (gated por R20)
+### Fase C — Detalle WhatsApp (R16/R17) — HECHO + verificado (commit `a18c3a2`)
 
-- R16: reporte WhatsApp **por mensaje y por cliente** (chat detail por número,
-  estado por mensaje, tasa de respuesta "11% · 132/145").
-- R17: **# mensajes enviados, tiempo de 1ª respuesta** (bot y ejecutivo), tiempo
-  de atención del ejecutivo.
-- Base: el reporte HSM (`get-hsm-report` + columnas delivered/read/failed de
-  Pilar 4) ya cubre la entrega por plantilla. Falta: agrupar por número
-  (outbound), y para tasa de respuesta / 1ª respuesta hay que cruzar el inbound
-  (`connectview-conversations` Pilar 6) — más plumbing.
-- **Decisión:** definir el alcance exacto con Adriana (R20 pide no sobrecargar);
-  candidatos: "HSM por número" (solo outbound, barato) y "tiempo de 1ª respuesta"
-  (requiere join con inbound).
+- **R16 (por cliente):** `get-hsm-report` agrupa **POR NÚMERO** (sends/delivered/
+  read/failed/lastTemplate/lastStatus por cliente) además del agregado por plantilla.
+- **R17 (tasa + 1ª respuesta):** cruza el outbound con el **inbound de WhatsApp**
+  del inbox omnicanal (`connectview-conversations`, Pilar 6) → `responseRate` +
+  `avgFirstResponseSec` (1ª respuesta = primer inbound tras el envío).
+- `HsmOutboundReport`: KPIs Respuestas% + 1ª respuesta + tabla "Por número"
+  (Responde / 1ª respuesta por cliente). Ahora usa **authedFetch** (antes anónimo).
+- **🔑 Caveat (honesto, flag `inboundTracked`):** para números **anclados a
+  Connect** (como el de UDEP) el inbound vive en Connect, NO en conversations → ahí
+  la respuesta no se mide; sí funciona para números **meta-mode** (Pilar 4 standalone).
+- Verificado: 16 envíos / 4 plantillas; tabla por número con 9 clientes reales
+  (delivered/read/failed por cliente); responseRate computado (0/9 en el set de
+  prueba: los envíos no tienen inbound meta-mode que matchee).
+
+> **Pilar 9 COMPLETO** (A + B + C). Pendiente opcional (Adriana): extender el join
+> de respuesta al inbound de Connect (Contact Lens chat) para números anclados, y
+> rendimiento por agente en WhatsApp (R18).
 
 ## Datos disponibles (inventario)
 
