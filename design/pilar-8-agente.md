@@ -66,4 +66,13 @@
   - **Fix:** `BotTester` usa `authedFetch` (antes anónimo → blockedDynamoClient → RAG vacío).
   - **Verificación:** el agente cita el sentinel sembrado en la FAQ (`ADM-2026-ZX9`, Lic. Marisol Quiroga anexo 4471) y la fila del catálogo (Ing. de Sistemas · Virtual · S/1200). Grounding KB + catálogo confirmado contra el `botRuntime` con JWT real.
   - **🔑 Gotcha:** `bot-runtime` es hand-managed → un bundle viejo de `_shared` deja a `resolveDynamo` sin resolver el data-plane del tenant (RAG vacío, silencioso). Regla: **re-deployá `bot-runtime` tras tocar `_shared/*`**.
-- **Fase B — pendiente:** budget de tools, citaciones de fuente (qué FAQ/fila usó), métricas de confianza/derivación, fallback determinístico por paso.
+- **Fase B — HECHO y VERIFICADO EN VIVO** (commit `8e062bc`): gobernar + auditar el agente.
+  - **Citaciones:** `buildKnowledge` etiqueta cada fuente RAG (`[F1]`/`[C1]`/`[P1]`) y devuelve `{text, sources}`. El agente cita qué usó — path JSON (`runAi`) vía campo `cited` del JSON; path de tools (`runAiWithTools`) vía marcador oculto `⟦src:..|conf:..⟧` que se stripea del texto al cliente. Nota "📎 Fuente:" por turno + `state.citations` acumuladas (auditoría, NO visible al cliente).
+  - **Budget de tools:** `state.toolCalls` vs `toolBudget` del nodo (def 8); al agotarse, la tool se rechaza y deriva a humano (`handoffReason=tool_budget`).
+  - **Métricas:** `state.confidences[]` por turno + `handoffReason` etiquetado (low_confidence/tool_budget/max_turns/ai_error/agent); `confidenceAvg`+`citations`+`handoffReason` persistidos en `logConversation` (insumo Pilar 9).
+  - **Fallback determinístico:** `fallbackMessage` del nodo cuando Bedrock falla 2×.
+  - **Builder/UI:** ai_agent += `cite`/`toolBudget`/`fallbackMessage`; BotTester «Inspeccionar» += Fuentes citadas + Confianza + Motivo de derivación.
+  - **Verificación:** cita `F1`=FAQ para el código y `C1`=catálogo para el programa (reply limpio, sin marcador); confianza `[95,100,100]`; `budget=1` bloquea el 2º lookup (⛔) y deriva con motivo `tool_budget`.
+  - **🔑 Gotcha citación:** el path JSON (`runAi`) IGNORA un "marcador al final" (genera sólo el JSON) → la citación DEBE ir como campo `cited` DENTRO del JSON; el marcador `⟦⟧` sólo funciona en el path de texto libre (tools).
+
+> **Pilar 8 COMPLETO** (A1 + A2 + A1-UI + B). Próximo: Pilar 9 (reportes) puede leer los conv# con confidenceAvg/handoffReason/citations.
