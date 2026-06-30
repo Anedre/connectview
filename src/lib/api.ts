@@ -93,6 +93,9 @@ interface ApiEndpoints {
   // HSM Outbound report — aggregates WhatsApp template sends by template
   // (sent/delivered/read/failed). Chattigo's flagship report.
   getHsmReport?: string;
+  // Reporte del Agente IA (Pilar 9 · Fase B) — agrega los conv# del bot-runtime
+  // (resueltas/derivadas, motivos, confianza, citaciones, tools). Lee connectview-bots.
+  getBotReport?: string;
   // Custom Lists / Catálogos — arbitrary lookup tables (products, SKUs,
   // price lists) referenceable from leads / bot / scripts.
   manageCatalog?: string;

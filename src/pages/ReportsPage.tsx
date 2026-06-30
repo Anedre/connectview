@@ -12,6 +12,7 @@ import { HsmOutboundReport } from "@/components/reports/HsmOutboundReport";
 import { WhatsAppAnalyticsPanel } from "@/components/reports/WhatsAppAnalyticsPanel";
 import { AttributionReport } from "@/components/reports/AttributionReport";
 import { ProgramReport } from "@/components/reports/ProgramReport";
+import { BotAnalyticsReport } from "@/components/reports/BotAnalyticsReport";
 import { ContactsTable } from "@/components/reports/ContactsTable";
 import { FeatureNotice } from "@/components/vox/FeatureNotice";
 import { formatDurationSec } from "@/lib/utils";
@@ -494,6 +495,11 @@ export function ReportsPage() {
         <Panel title="WhatsApp · Entrega directo de Meta (Cloud API)">
           <WhatsAppAnalyticsPanel />
         </Panel>
+      </div>
+
+      {/* Pilar 9 — Reporte del Agente IA (conv# del bot-runtime). */}
+      <div style={{ marginBottom: 16 }}>
+        <BotAnalyticsReport />
       </div>
 
       <div style={{ marginBottom: 16 }}>
