@@ -11,7 +11,19 @@ import {
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { randomUUID } from "node:crypto";
-import { propagateLead, pushLeadToSalesforce, appendLeadHistory, stageIdToLabel, setActiveDynamo, setActiveProfiles, upsertLeadProgramMembership, isGolpe, summarizeGolpes, type LeadHistoryEvent, type SfPushExtra } from "../_shared/leadSync";
+import {
+  propagateLead,
+  pushLeadToSalesforce,
+  appendLeadHistory,
+  stageIdToLabel,
+  setActiveDynamo,
+  setActiveProfiles,
+  upsertLeadProgramMembership,
+  isGolpe,
+  summarizeGolpes,
+  type LeadHistoryEvent,
+  type SfPushExtra,
+} from "../_shared/leadSync";
 import { normalizePhone, samePhone } from "../_shared/phone";
 import { setActiveTenant } from "../_shared/salesforceClient";
 import { resolveTenantId } from "../_shared/cognitoAuth";
@@ -36,14 +48,17 @@ let dynamo: DynamoDBClient = legacyDynamo;
 // CP legacy (Novasys) — solo para el tenant fundador; resolveCustomerProfiles
 // bloquea a un tenant real sin CP (jamás escribe el perfil en Novasys).
 const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 2 });
-const LEGACY_PROFILES_DOMAIN =
-  process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+const LEGACY_PROFILES_DOMAIN = process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
 const TABLE = process.env.LEADS_TABLE || "connectview-leads";
 const MEMBERSHIP = process.env.LEAD_PROGRAMS_TABLE || "connectview-lead-programs";
 const HSM_SENDS_TABLE = process.env.HSM_SENDS_TABLE || "connectview-hsm-sends";
 const CORS = { "Content-Type": "application/json" };
 const ok = (b: unknown) => ({ statusCode: 200, headers: CORS, body: JSON.stringify(b) });
-const bad = (c: number, e: string) => ({ statusCode: c, headers: CORS, body: JSON.stringify({ error: e }) });
+const bad = (c: number, e: string) => ({
+  statusCode: c,
+  headers: CORS,
+  body: JSON.stringify({ error: e }),
+});
 
 interface Lead {
   leadId: string;
@@ -72,11 +87,11 @@ interface Lead {
  */
 async function propagateById(
   leadId: string,
-  sfExtra?: SfPushExtra
+  sfExtra?: SfPushExtra,
 ): Promise<{ sfTaskId?: string | null; sfLeadId?: string }> {
   try {
     const got = await dynamo.send(
-      new GetItemCommand({ TableName: TABLE, Key: { leadId: { S: leadId } } })
+      new GetItemCommand({ TableName: TABLE, Key: { leadId: { S: leadId } } }),
     );
     if (!got.Item) return {};
     const l = unmarshall(got.Item) as Lead & { sfLeadId?: string };
@@ -92,14 +107,14 @@ async function propagateById(
         source: l.source || "Vox Leads",
         attributes: l.attributes,
       },
-      { origin: "vox", sfExtra }
+      { origin: "vox", sfExtra },
     );
     // Log explícito del resultado de SF: sirve para confirmar que el Lead
     // sincroniza + que se registró la actividad (Task), y para diagnosticar
     // los leads que "no se graban" (el error de SF queda en el log de abajo).
     console.log(
       `manage-leads SF sync lead=${leadId} sfLead=${res.sf?.leadId || "—"} ` +
-        `action=${res.sf?.action || "none"} task=${res.sf?.taskId || "—"}`
+        `action=${res.sf?.action || "none"} task=${res.sf?.taskId || "—"}`,
     );
     return { sfTaskId: res.sf?.taskId, sfLeadId: res.sf?.leadId };
   } catch (err) {
@@ -113,7 +128,7 @@ async function scanAll(): Promise<Lead[]> {
   let lastKey: Record<string, unknown> | undefined;
   do {
     const res = await dynamo.send(
-      new ScanCommand({ TableName: TABLE, ExclusiveStartKey: lastKey as never })
+      new ScanCommand({ TableName: TABLE, ExclusiveStartKey: lastKey as never }),
     );
     for (const it of res.Items || []) out.push(unmarshall(it) as Lead);
     lastKey = res.LastEvaluatedKey;
@@ -137,11 +152,15 @@ async function hsmSendsAsHistory(phone: string): Promise<LeadHistoryEvent[]> {
     let lastKey: Record<string, unknown> | undefined;
     do {
       const res = await dynamo.send(
-        new ScanCommand({ TableName: HSM_SENDS_TABLE, ExclusiveStartKey: lastKey as never })
+        new ScanCommand({ TableName: HSM_SENDS_TABLE, ExclusiveStartKey: lastKey as never }),
       );
       for (const it of res.Items || []) {
         const s = unmarshall(it) as {
-          phone?: string; sentAt?: string; templateName?: string; campaignId?: string; status?: string;
+          phone?: string;
+          sentAt?: string;
+          templateName?: string;
+          campaignId?: string;
+          status?: string;
         };
         if (s.phone && samePhone(s.phone, phone)) {
           out.push({
@@ -172,7 +191,11 @@ async function hsmCountsByPhone(): Promise<Map<string, number>> {
     let lastKey: Record<string, unknown> | undefined;
     do {
       const res = await dynamo.send(
-        new ScanCommand({ TableName: HSM_SENDS_TABLE, ProjectionExpression: "phone", ExclusiveStartKey: lastKey as never })
+        new ScanCommand({
+          TableName: HSM_SENDS_TABLE,
+          ProjectionExpression: "phone",
+          ExclusiveStartKey: lastKey as never,
+        }),
       );
       for (const it of res.Items || []) {
         const p = unmarshall(it).phone;
@@ -197,16 +220,26 @@ async function hsmEventsByPhone(): Promise<Map<string, LeadHistoryEvent[]>> {
     let lastKey: Record<string, unknown> | undefined;
     do {
       const res = await dynamo.send(
-        new ScanCommand({ TableName: HSM_SENDS_TABLE, ExclusiveStartKey: lastKey as never })
+        new ScanCommand({ TableName: HSM_SENDS_TABLE, ExclusiveStartKey: lastKey as never }),
       );
       for (const it of res.Items || []) {
-        const s = unmarshall(it) as { phone?: string; sentAt?: string; templateName?: string; campaignId?: string; status?: string };
+        const s = unmarshall(it) as {
+          phone?: string;
+          sentAt?: string;
+          templateName?: string;
+          campaignId?: string;
+          status?: string;
+        };
         if (!s.phone) continue;
         const k = normalizePhone(s.phone)?.e164 || s.phone;
         const ev: LeadHistoryEvent = {
           ts: s.sentAt || new Date().toISOString(),
-          type: "whatsapp_out", channel: "WhatsApp", direction: "out",
-          templateName: s.templateName, programId: s.campaignId || undefined, outcome: s.status || "sent",
+          type: "whatsapp_out",
+          channel: "WhatsApp",
+          direction: "out",
+          templateName: s.templateName,
+          programId: s.campaignId || undefined,
+          outcome: s.status || "sent",
         };
         if (!m.has(k)) m.set(k, []);
         m.get(k)!.push(ev);
@@ -231,7 +264,7 @@ async function queryMembership(programId: string): Promise<Map<string, string | 
         ExpressionAttributeValues: { ":p": { S: programId } },
         ProjectionExpression: "leadId, stageId",
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
     for (const it of res.Items || []) {
       const r = unmarshall(it);
@@ -248,7 +281,11 @@ async function scanAssignedLeadIds(): Promise<Set<string>> {
   let lastKey: Record<string, unknown> | undefined;
   do {
     const res = await dynamo.send(
-      new ScanCommand({ TableName: MEMBERSHIP, ProjectionExpression: "leadId", ExclusiveStartKey: lastKey as never })
+      new ScanCommand({
+        TableName: MEMBERSHIP,
+        ProjectionExpression: "leadId",
+        ExclusiveStartKey: lastKey as never,
+      }),
     );
     for (const it of res.Items || []) s.add(String(unmarshall(it).leadId));
     lastKey = res.LastEvaluatedKey;
@@ -260,7 +297,11 @@ async function scanAssignedLeadIds(): Promise<Set<string>> {
 export const handler: Handler = async (event: any) => {
   // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min — corta el cold start.
   if (event?.warmup || event?.queryStringParameters?.warmup) {
-    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: '{"warm":true}' };
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: '{"warm":true}',
+    };
   }
   const method = event.requestContext?.http?.method || event.httpMethod || "GET";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
@@ -276,7 +317,11 @@ export const handler: Handler = async (event: any) => {
     setActiveDynamo(r.tenantScoped ? r.dynamo : null);
     // Customer Profiles del tenant para el upsert del Cliente 360° en
     // propagateLead. Fail-closed: tenant real sin CP → bloqueado, NUNCA Novasys.
-    const cp = await resolveCustomerProfiles(event?.headers, legacyProfiles, LEGACY_PROFILES_DOMAIN);
+    const cp = await resolveCustomerProfiles(
+      event?.headers,
+      legacyProfiles,
+      LEGACY_PROFILES_DOMAIN,
+    );
     setActiveProfiles(cp.client, cp.domainName);
   }
   const params = event.queryStringParameters || {};
@@ -299,26 +344,46 @@ export const handler: Handler = async (event: any) => {
             const wa = waByPhone.get(normalizePhone(l.phone)?.e164 || l.phone) || [];
             const history = [...(Array.isArray(l.history) ? l.history : []), ...wa];
             return summarizeGolpes(history, l.stageId);
-          })
+          }),
         );
         const totalLeads = perLead.length;
         const convertedArr = perLead.filter((g) => g.converted);
         const converted = convertedArr.length;
         const sum = (ns: number[]) => ns.reduce((a, b) => a + b, 0);
-        const tc = convertedArr.map((g) => g.touchesToClose).filter((n): n is number => typeof n === "number");
-        const dc = convertedArr.map((g) => g.daysToClose).filter((n): n is number => typeof n === "number");
+        const tc = convertedArr
+          .map((g) => g.touchesToClose)
+          .filter((n): n is number => typeof n === "number");
+        const dc = convertedArr
+          .map((g) => g.daysToClose)
+          .filter((n): n is number => typeof n === "number");
         const BUCKETS: Array<{ label: string; min: number; max: number }> = [
-          { label: "0", min: 0, max: 0 }, { label: "1-2", min: 1, max: 2 },
-          { label: "3-5", min: 3, max: 5 }, { label: "6-10", min: 6, max: 10 },
+          { label: "0", min: 0, max: 0 },
+          { label: "1-2", min: 1, max: 2 },
+          { label: "3-5", min: 3, max: 5 },
+          { label: "6-10", min: 6, max: 10 },
           { label: "10+", min: 11, max: Infinity },
         ];
         const byBucket = BUCKETS.map((b) => {
           const inB = perLead.filter((g) => g.total >= b.min && g.total <= b.max);
           const conv = inB.filter((g) => g.converted).length;
-          return { label: b.label, leads: inB.length, converted: conv, rate: inB.length ? conv / inB.length : 0 };
+          return {
+            label: b.label,
+            leads: inB.length,
+            converted: conv,
+            rate: inB.length ? conv / inB.length : 0,
+          };
         });
         const byChannel: Record<string, number> = {};
-        for (const g of perLead) for (const [ch, n] of Object.entries(g.byChannel)) byChannel[ch] = (byChannel[ch] || 0) + n;
+        for (const g of perLead)
+          for (const [ch, n] of Object.entries(g.byChannel))
+            byChannel[ch] = (byChannel[ch] || 0) + n;
+        // Pilar 9 — embudo por etapa (funnel) del programa: cuenta de leads por
+        // stageId. El front mapea stageId→label/orden con su taxonomía.
+        const byStage: Record<string, number> = {};
+        for (const l of leads) {
+          const s = (typeof l.stageId === "string" && l.stageId) || "(sin etapa)";
+          byStage[s] = (byStage[s] || 0) + 1;
+        }
         return ok({
           attribution: {
             totalLeads,
@@ -330,6 +395,7 @@ export const handler: Handler = async (event: any) => {
             totalGolpes: sum(perLead.map((g) => g.total)),
             byBucket,
             byChannel,
+            byStage,
           },
         });
       }
@@ -345,11 +411,24 @@ export const handler: Handler = async (event: any) => {
             const h = Array.isArray(l.history) ? l.history : [];
             const last = h.length ? h[h.length - 1] : undefined;
             return {
-              leadId: l.leadId, name: l.name, phone: l.phone, email: l.email,
-              company: l.company, stageId: l.stageId, source: l.source,
-              sfLeadId: l.sfLeadId, updatedAt: l.updatedAt,
+              leadId: l.leadId,
+              name: l.name,
+              phone: l.phone,
+              email: l.email,
+              company: l.company,
+              stageId: l.stageId,
+              source: l.source,
+              sfLeadId: l.sfLeadId,
+              updatedAt: l.updatedAt,
               lastActivity: last
-                ? { type: last.type, channel: last.channel, untyped: last.untyped, stageLabel: last.stageLabel, subStageLabel: last.subStageLabel, ts: last.ts }
+                ? {
+                    type: last.type,
+                    channel: last.channel,
+                    untyped: last.untyped,
+                    stageLabel: last.stageLabel,
+                    subStageLabel: last.subStageLabel,
+                    ts: last.ts,
+                  }
                 : null,
             };
           });
@@ -365,11 +444,11 @@ export const handler: Handler = async (event: any) => {
         const out = await Promise.all(
           matches.map(async (l) => {
             const history = [...(Array.isArray(l.history) ? l.history : []), ...waEvents].sort(
-              (a, b) => (a.ts || "").localeCompare(b.ts || "")
+              (a, b) => (a.ts || "").localeCompare(b.ts || ""),
             );
             const golpes = await summarizeGolpes(history, l.stageId);
             return { ...l, history, golpes };
-          })
+          }),
         );
         return ok({ leads: out });
       }
@@ -380,7 +459,12 @@ export const handler: Handler = async (event: any) => {
       if (params.programId && params.programId !== "all") {
         if (params.programId === "none") {
           const assigned = await scanAssignedLeadIds();
-          return ok({ leads: all.filter((l) => !assigned.has(l.leadId)).sort(byUpdatedDesc).map(stripHistory) });
+          return ok({
+            leads: all
+              .filter((l) => !assigned.has(l.leadId))
+              .sort(byUpdatedDesc)
+              .map(stripHistory),
+          });
         }
         const mem = await queryMembership(String(params.programId));
         const scoped = all
@@ -417,12 +501,16 @@ export const handler: Handler = async (event: any) => {
               ":s": { S: String(body.stageId) },
               ":u": { S: new Date().toISOString() },
             },
-          })
+          }),
         );
         // Pilar 1: si el move ocurre dentro de un programa activo, actualizar
         // también la etapa POR PROGRAMA (membership) — no afecta otros programas.
         if (body.programId) {
-          await upsertLeadProgramMembership(String(body.leadId), String(body.programId), String(body.stageId));
+          await upsertLeadProgramMembership(
+            String(body.leadId),
+            String(body.programId),
+            String(body.stageId),
+          );
         }
         const stageLabel = await stageIdToLabel(String(body.stageId));
         const prop = await propagateById(String(body.leadId), {
@@ -452,7 +540,9 @@ export const handler: Handler = async (event: any) => {
         const programId = String(body.programId || "");
         const leadIds: string[] = Array.isArray(body.leadIds)
           ? body.leadIds.map(String)
-          : body.leadId ? [String(body.leadId)] : [];
+          : body.leadId
+            ? [String(body.leadId)]
+            : [];
         if (!programId || leadIds.length === 0) return bad(400, "programId y leadId(s) requeridos");
         if (body.action === "assignProgram") {
           const byId = new Map((await scanAll()).map((l) => [l.leadId, l] as const));
@@ -464,7 +554,10 @@ export const handler: Handler = async (event: any) => {
         }
         for (const id of leadIds) {
           await dynamo.send(
-            new DeleteItemCommand({ TableName: MEMBERSHIP, Key: { programId: { S: programId }, leadId: { S: id } } })
+            new DeleteItemCommand({
+              TableName: MEMBERSHIP,
+              Key: { programId: { S: programId }, leadId: { S: id } },
+            }),
           );
         }
         return ok({ unassigned: leadIds.length, programId });
@@ -477,7 +570,7 @@ export const handler: Handler = async (event: any) => {
       if (body.action === "pushSf") {
         if (!body.leadId) return bad(400, "leadId required");
         const got = await dynamo.send(
-          new GetItemCommand({ TableName: TABLE, Key: { leadId: { S: String(body.leadId) } } })
+          new GetItemCommand({ TableName: TABLE, Key: { leadId: { S: String(body.leadId) } } }),
         );
         if (!got.Item) return bad(404, "lead no encontrado");
         const l = unmarshall(got.Item) as Lead & { sfLeadId?: string };
@@ -501,7 +594,7 @@ export const handler: Handler = async (event: any) => {
               taskDescription: `Lead enviado manualmente a Salesforce desde ARIA${l.name ? ` · ${l.name}` : ""}.`,
               taskSubtype: "Task",
             },
-            l.leadId // External Id (VoxLeadId__c) → dedup determinístico en SF
+            l.leadId, // External Id (VoxLeadId__c) → dedup determinístico en SF
           );
           if (!sf) return ok({ pushed: false, error: "El lead necesita teléfono o email." });
           // Persistir el sfLeadId nuevo → próximos sync idempotentes. SOLO si es un
@@ -515,14 +608,19 @@ export const handler: Handler = async (event: any) => {
                   Key: { leadId: { S: l.leadId } },
                   UpdateExpression: "SET sfLeadId = :s",
                   ExpressionAttributeValues: { ":s": { S: sf.leadId } },
-                })
+                }),
               )
               .catch(() => {});
           }
           console.log(
-            `manage-leads pushSf lead=${l.leadId} sfLead=${sf.leadId} action=${sf.action} task=${sf.taskId || "—"}`
+            `manage-leads pushSf lead=${l.leadId} sfLead=${sf.leadId} action=${sf.action} task=${sf.taskId || "—"}`,
           );
-          return ok({ pushed: true, sfLeadId: sf.leadId, action: sf.action, taskId: sf.taskId || null });
+          return ok({
+            pushed: true,
+            sfLeadId: sf.leadId,
+            action: sf.action,
+            taskId: sf.taskId || null,
+          });
         } catch (err) {
           const msg = err instanceof Error ? err.message : "error";
           console.warn("manage-leads pushSf failed:", msg);
@@ -555,21 +653,34 @@ export const handler: Handler = async (event: any) => {
         source: body.source,
         assignedAgent: body.assignedAgent,
         montoEstimado: typeof body.montoEstimado === "number" ? body.montoEstimado : undefined,
-        attributes: body.attributes && typeof body.attributes === "object" ? body.attributes : undefined,
+        attributes:
+          body.attributes && typeof body.attributes === "object" ? body.attributes : undefined,
         updatedAt: now,
       };
       if (isNew) item.createdAt = now;
 
       if (isNew) {
         await dynamo.send(
-          new PutItemCommand({ TableName: TABLE, Item: marshall(item, { removeUndefinedValues: true }) })
+          new PutItemCommand({
+            TableName: TABLE,
+            Item: marshall(item, { removeUndefinedValues: true }),
+          }),
         );
       } else {
         // Build a partial update so we don't wipe fields not provided.
         const sets: string[] = ["updatedAt = :u"];
         const vals: Record<string, unknown> = { ":u": now };
         const names: Record<string, string> = {};
-        for (const k of ["name", "email", "company", "stageId", "source", "assignedAgent", "montoEstimado", "attributes"] as const) {
+        for (const k of [
+          "name",
+          "email",
+          "company",
+          "stageId",
+          "source",
+          "assignedAgent",
+          "montoEstimado",
+          "attributes",
+        ] as const) {
           if (body[k] !== undefined) {
             sets.push(`#${k} = :${k}`);
             names[`#${k}`] = k;
@@ -583,7 +694,7 @@ export const handler: Handler = async (event: any) => {
             UpdateExpression: "SET " + sets.join(", "),
             ExpressionAttributeNames: names,
             ExpressionAttributeValues: marshall(vals, { removeUndefinedValues: true }),
-          })
+          }),
         );
       }
       const prop = await propagateById(leadId, {
@@ -595,7 +706,12 @@ export const handler: Handler = async (event: any) => {
       });
       // Pilar 1: si la UI mandó el programa activo, escribir la membership.
       if (body.programId) {
-        await upsertLeadProgramMembership(leadId, String(body.programId), item.stageId, item.source);
+        await upsertLeadProgramMembership(
+          leadId,
+          String(body.programId),
+          item.stageId,
+          item.source,
+        );
       }
       if (!isNew) {
         await appendLeadHistory(leadId, {
@@ -618,7 +734,7 @@ export const handler: Handler = async (event: any) => {
     if (method === "DELETE") {
       if (!params.leadId) return bad(400, "leadId required");
       await dynamo.send(
-        new DeleteItemCommand({ TableName: TABLE, Key: { leadId: { S: params.leadId } } })
+        new DeleteItemCommand({ TableName: TABLE, Key: { leadId: { S: params.leadId } } }),
       );
       return ok({ deleted: true, leadId: params.leadId });
     }

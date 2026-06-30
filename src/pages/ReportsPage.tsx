@@ -11,6 +11,7 @@ import { AgentPerformanceReport } from "@/components/reports/AgentPerformanceRep
 import { HsmOutboundReport } from "@/components/reports/HsmOutboundReport";
 import { WhatsAppAnalyticsPanel } from "@/components/reports/WhatsAppAnalyticsPanel";
 import { AttributionReport } from "@/components/reports/AttributionReport";
+import { ProgramReport } from "@/components/reports/ProgramReport";
 import { ContactsTable } from "@/components/reports/ContactsTable";
 import { FeatureNotice } from "@/components/vox/FeatureNotice";
 import { formatDurationSec } from "@/lib/utils";
@@ -183,8 +184,16 @@ function exportContactsToCsv(contacts: ContactRecord[]) {
     return;
   }
   const cols = [
-    "contactId", "initiationTimestamp", "disconnectTimestamp", "agentUsername",
-    "queueName", "channel", "duration", "sentiment", "categories", "status",
+    "contactId",
+    "initiationTimestamp",
+    "disconnectTimestamp",
+    "agentUsername",
+    "queueName",
+    "channel",
+    "duration",
+    "sentiment",
+    "categories",
+    "status",
     "disconnectReason",
   ] as const;
   const escape = (raw: unknown): string => {
@@ -270,7 +279,14 @@ export function ReportsPage() {
       const k = dayKey(c.initiationTimestamp);
       if (!byDay.has(k)) {
         const d = new Date(c.initiationTimestamp);
-        byDay.set(k, { label: `${d.getDate()}/${d.getMonth() + 1}`, voz: 0, wa: 0, chat: 0, email: 0, sms: 0 });
+        byDay.set(k, {
+          label: `${d.getDate()}/${d.getMonth() + 1}`,
+          voz: 0,
+          wa: 0,
+          chat: 0,
+          email: 0,
+          sms: 0,
+        });
       }
       byDay.get(k)![normalizeChannel(c.channel)] += 1;
     }
@@ -330,7 +346,13 @@ export function ReportsPage() {
       <FeatureNotice feature="contactLens" />
 
       {/* Período (REAL: re-consulta queryContacts) */}
-      <div className="exec-seg" ref={segRef} role="tablist" aria-label="Período" style={{ marginBottom: 16 }}>
+      <div
+        className="exec-seg"
+        ref={segRef}
+        role="tablist"
+        aria-label="Período"
+        style={{ marginBottom: 16 }}
+      >
         <div className="exec-seg__thumb" style={{ left: thumb.left, width: thumb.width }} />
         {PERIODS.map((p) => (
           <button
@@ -347,17 +369,68 @@ export function ReportsPage() {
 
       {/* KPIs (familia del dashboard: count-up + sparkline + tabular) */}
       {initialLoading ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 14 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 12,
+            marginBottom: 14,
+          }}
+        >
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="exec-skel" style={{ height: 116, borderRadius: 14 }} />
           ))}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 14 }}>
-          <ExecStat index={0} period={period} label="Volumen total" icon={Headphones} accent="#2BC6E6" value={kpis.total} note="contactos en el período" spark={volumeSpark.length > 1 ? volumeSpark : undefined} sparkColor="#2BC6E6" />
-          <ExecStat index={1} period={period} label="AHT promedio" icon={Timer} accent="#F5A524" value={kpis.avgAht} formatter={(n) => (n ? formatDurationSec(Math.round(n)) : "—")} note={kpis.medianAht ? `mediana ${formatDurationSec(kpis.medianAht)}` : "sin datos"} />
-          <ExecStat index={2} period={period} label="Sentiment positivo" icon={Activity} accent="#25B873" value={kpis.posPct} unit="%" note="de los contactos analizados" />
-          <ExecStat index={3} period={period} label="Score neto" icon={TrendingUp} accent="#9B8CF0" value={kpis.score} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n)}`} note="(positivos − negativos) / total" />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 12,
+            marginBottom: 14,
+          }}
+        >
+          <ExecStat
+            index={0}
+            period={period}
+            label="Volumen total"
+            icon={Headphones}
+            accent="#2BC6E6"
+            value={kpis.total}
+            note="contactos en el período"
+            spark={volumeSpark.length > 1 ? volumeSpark : undefined}
+            sparkColor="#2BC6E6"
+          />
+          <ExecStat
+            index={1}
+            period={period}
+            label="AHT promedio"
+            icon={Timer}
+            accent="#F5A524"
+            value={kpis.avgAht}
+            formatter={(n) => (n ? formatDurationSec(Math.round(n)) : "—")}
+            note={kpis.medianAht ? `mediana ${formatDurationSec(kpis.medianAht)}` : "sin datos"}
+          />
+          <ExecStat
+            index={2}
+            period={period}
+            label="Sentiment positivo"
+            icon={Activity}
+            accent="#25B873"
+            value={kpis.posPct}
+            unit="%"
+            note="de los contactos analizados"
+          />
+          <ExecStat
+            index={3}
+            period={period}
+            label="Score neto"
+            icon={TrendingUp}
+            accent="#9B8CF0"
+            value={kpis.score}
+            formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n)}`}
+            note="(positivos − negativos) / total"
+          />
         </div>
       )}
 
@@ -389,6 +462,11 @@ export function ReportsPage() {
           </Panel>
         </div>
       )}
+
+      {/* Pilar 9 — Dashboard por Programa (centerpiece, scopeado al switcher). */}
+      <div style={{ marginBottom: 16 }}>
+        <ProgramReport />
+      </div>
 
       <div style={{ marginBottom: 16 }}>
         <Panel title="Sentiment por día · Contact Lens">
