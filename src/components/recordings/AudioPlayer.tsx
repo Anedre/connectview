@@ -52,6 +52,9 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
       if (!audio) return;
       const handleTime = () => {
         setCurrentTime(audio.currentTime);
+        // El callback al padre (resalta el segmento activo del transcript) se
+        // mantiene a la cadencia de `timeupdate` (~4 Hz): el resaltado no
+        // necesita 60 fps y re-renderizar el transcript en cada frame sería caro.
         onTimeUpdate?.(audio.currentTime * 1000);
       };
       const handleDuration = () => setDuration(audio.duration || 0);
@@ -72,6 +75,23 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
         audio.removeEventListener("ended", handlePause);
       };
     }, [onTimeUpdate]);
+
+    // Playhead a 60 fps: `timeupdate` solo dispara ~4 veces/seg → el cabezal
+    // avanzaba "a tropicones". Mientras reproduce, un loop de requestAnimationFrame
+    // lee audio.currentTime cada frame para un movimiento fluido. Las 120 barras
+    // están memoizadas en WaveformTimeline, así que en cada frame solo se mueven
+    // el cabezal y el velo (no se re-renderiza la onda entera).
+    useEffect(() => {
+      if (!isPlaying) return;
+      let raf = 0;
+      const tick = () => {
+        const audio = audioRef.current;
+        if (audio) setCurrentTime(audio.currentTime);
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }, [isPlaying]);
 
     // Keep the chosen playback rate applied across src reloads (changing src
     // resets the element's rate to 1).

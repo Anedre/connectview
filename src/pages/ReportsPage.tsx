@@ -9,6 +9,8 @@ import { ContactFilters } from "@/components/reports/ContactFilters";
 import { SentimentChart } from "@/components/reports/SentimentChart";
 import { AgentPerformanceReport } from "@/components/reports/AgentPerformanceReport";
 import { HsmOutboundReport } from "@/components/reports/HsmOutboundReport";
+import { WhatsAppAnalyticsPanel } from "@/components/reports/WhatsAppAnalyticsPanel";
+import { AttributionReport } from "@/components/reports/AttributionReport";
 import { ContactsTable } from "@/components/reports/ContactsTable";
 import { FeatureNotice } from "@/components/vox/FeatureNotice";
 import { formatDurationSec } from "@/lib/utils";
@@ -408,6 +410,16 @@ export function ReportsPage() {
         <Panel title="WhatsApp · Plantillas (HSM Outbound)">
           <HsmOutboundReport />
         </Panel>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <Panel title="WhatsApp · Entrega directo de Meta (Cloud API)">
+          <WhatsAppAnalyticsPanel />
+        </Panel>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <AttributionReport />
       </div>
 
       <Panel title="Historial de contactos" hint={`${contacts.length} contactos`} flush>

@@ -183,7 +183,7 @@ export function FlowBuilderPage() {
   ];
 
   return (
-    <div className="view" style={{ maxWidth: 1180 }}>
+    <div className="view">
       <PageHeader
         crumb="Automatización"
         title="Bots"

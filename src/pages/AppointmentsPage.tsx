@@ -1091,6 +1091,8 @@ function WeekView({
                   const h = Math.max(24, ((a.durationMin || 30) / 60) * HOUR_PX);
                   if (top < -HOUR_PX || top > gridHeight) return null;
                   const m = statusMeta(a.status);
+                  const cm = channelMeta(a.channel);
+                  const ChIcon = cm.icon;
                   const sel = selectedId === a.apptId;
                   const compact = h < 40;
                   return (
@@ -1123,12 +1125,19 @@ function WeekView({
                     >
                       {compact ? (
                         <span className="gcal__ev-oneline">
+                          <ChIcon size={10} style={{ color: cm.color, flexShrink: 0 }} />
                           <b>{hhmm(s)}</b>
                           {apptLabel(a)}
                         </span>
                       ) : (
                         <>
-                          <span className="gcal__ev-time">{hhmm(s)}</span>
+                          <span
+                            className="gcal__ev-time"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                          >
+                            <ChIcon size={11} style={{ color: cm.color, flexShrink: 0 }} />
+                            {hhmm(s)}
+                          </span>
                           <span className="gcal__ev-name">{apptLabel(a)}</span>
                           {a.title?.trim() && (a.customerName || a.customerPhone) && (
                             <span className="gcal__ev-sub">

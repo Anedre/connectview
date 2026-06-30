@@ -54,3 +54,13 @@ _design_handoff/
 _design_handoff*
 _tmp_preview/
 entregables/
+
+*storybook.log
+storybook-static
+
+# Playwright / Vitest test artifacts
+playwright-report/
+test-results/
+/blob-report/
+.playwright/
+coverage/

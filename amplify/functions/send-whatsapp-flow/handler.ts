@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import { resolveDynamo, resolveWhatsApp } from "../_shared/tenantConnect";
 import { sendWhatsApp } from "../_shared/whatsappSend";
 import { getIdentity, isLegacyTenant } from "../_shared/cognitoAuth";
+import { evaluateSend } from "../_shared/suppression";
+import { normalizePhone } from "../_shared/phone";
 
 /**
  * send-whatsapp-flow — envía un WhatsApp FLOW (formulario multi-pantalla
@@ -53,6 +55,7 @@ async function recordFlowSend(s: {
       Item: {
         sendId: { S: s.messageId || randomUUID() },
         phone: { S: s.phone },
+        phoneDigits: { S: normalizePhone(s.phone)?.digits || s.phone.replace(/\D/g, "") },
         templateName: { S: `flow:${s.flowLabel}` },
         language: { S: "—" },
         campaignId: { NULL: true },
@@ -193,6 +196,22 @@ export const handler: Handler = async (event: any) => {
       statusCode: 200,
       headers: CORS,
       body: JSON.stringify({ sent: false, dryRun: true, mode, payload: whatsappPayload }),
+    };
+  }
+
+  // Pilar 3 — gate de supresión (channel-scoped a WhatsApp). El dryRun de arriba
+  // NO se bloquea (no envía); este check corre solo en el envío real.
+  const verdict = await evaluateSend(dynamo, {
+    phone,
+    channel: "whatsapp",
+    tenantId: effectiveTenantId,
+  });
+  if (!verdict.allowed) {
+    console.log(`suppressed whatsapp flow → ${phone} (${verdict.blockedBy})`);
+    return {
+      statusCode: 200,
+      headers: CORS,
+      body: JSON.stringify({ sent: false, suppressed: true, blockedBy: verdict.blockedBy, phone }),
     };
   }
 

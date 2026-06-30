@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { getApiEndpoints } from "@/lib/api";
@@ -65,42 +66,49 @@ interface Props {
 }
 
 export function ContactDetailView({ contactId }: Props) {
-  const [data, setData] = useState<ContactDetailResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
 
+  const endpoints = getApiEndpoints();
+  const url =
+    (endpoints as unknown as Record<string, string | undefined>)?.getContactDetail ||
+    endpoints?.getRecording;
+
+  // Mismo queryKey que useContactDetail (la modal del workspace) → COMPARTEN
+  // caché: reabrir un contacto ya visto en Grabaciones es instantáneo (antes
+  // cada click refetcheaba transcript + grabación + adjuntos con spinner) y se
+  // deduplican llamadas concurrentes al mismo contactId.
+  const query = useQuery({
+    queryKey: ["contactDetail", contactId],
+    enabled: !!contactId && !!url,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+    queryFn: async ({ signal }) => {
+      const r = await authedFetch(
+        `${url}?contactId=${encodeURIComponent(contactId!)}`,
+        { signal }
+      );
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || `HTTP ${r.status}`);
+      return j as ContactDetailResponse;
+    },
+  });
+
+  const data = query.data ?? null;
+  const loading = !!contactId && query.isLoading;
+  const error = !contactId
+    ? null
+    : !url
+    ? "Endpoint no configurado"
+    : query.error instanceof Error
+    ? query.error.message
+    : query.error
+    ? "Error cargando contacto"
+    : null;
+
+  // Reinicia el cabezal de reproducción al cambiar de contacto.
   useEffect(() => {
-    setData(null);
-    setError(null);
     setCurrentTimeMs(0);
-    if (!contactId) return;
-    const endpoints = getApiEndpoints();
-    const url =
-      (endpoints as unknown as Record<string, string | undefined>)?.getContactDetail ||
-      endpoints?.getRecording;
-    if (!url) {
-      setError("Endpoint no configurado");
-      return;
-    }
-    const ctrl = new AbortController();
-    setLoading(true);
-    authedFetch(`${url}?contactId=${encodeURIComponent(contactId)}`, {
-      signal: ctrl.signal,
-    })
-      .then((r) => r.json().then((j) => ({ ok: r.ok, status: r.status, j })))
-      .then(({ ok, status, j }) => {
-        if (!ok) throw new Error(j.message || `HTTP ${status}`);
-        setData(j as ContactDetailResponse);
-      })
-      .catch((e) => {
-        if ((e as Error).name === "AbortError") return;
-        setError(e instanceof Error ? e.message : "Error cargando contacto");
-      })
-      .finally(() => {
-        if (!ctrl.signal.aborted) setLoading(false);
-      });
-    return () => ctrl.abort();
   }, [contactId]);
 
   if (!contactId) {

@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2, Rocket,
-  Users, Search, ArrowLeft, Phone, MessageSquare, User, Bot, Zap, Check,
+  Users, Search, ArrowLeft, Phone, MessageSquare, User, Bot, Zap, Check, X,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -17,7 +18,10 @@ import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { getApiEndpoints } from "@/lib/api";
 import { parseCsvText, parsePhoneList, type ParsedContact } from "@/lib/csvParser";
 import { WaTemplateConfigurator } from "@/components/whatsapp/WaTemplateConfigurator";
+import { previewSuppression, type BatchSummary } from "@/hooks/useSuppression";
 import { useAuth } from "@/hooks/useAuth";
+import { authedFetch } from "@/lib/authedFetch";
+import { useProgram } from "@/context/ProgramContext";
 
 /**
  * CampaignCreatePage — full-screen, single-page campaign builder (replaces the
@@ -134,6 +138,22 @@ export function CampaignCreatePage() {
   const [retryNoAnswerMinutes, setRetryNoAnswerMinutes] = useState(30);
   const [retryMaxAttempts, setRetryMaxAttempts] = useState(3);
   const [maxContactsPerAgent, setMaxContactsPerAgent] = useState(5);
+
+  // Programa (Pilar 1): la campaña hereda el programa activo por defecto; sus
+  // leads se auto-taggean a la membership N:N al crearse.
+  const { activeProgramId, programs } = useProgram();
+  const [programId, setProgramId] = useState<string>(
+    activeProgramId !== "all" && activeProgramId !== "none" ? activeProgramId : ""
+  );
+
+  // Ruteo (movido desde Configuración → acá): "flow" usa un flow existente;
+  // "attribute" arma el ruteo por columna del CSV/lead (valor → cola) y al lanzar
+  // ARIA genera un flow smart propio de esta campaña vía provisionContactFlows.
+  const [routingMode, setRoutingMode] = useState<"flow" | "attribute">("flow");
+  const [routeAttr, setRouteAttr] = useState("");
+  const [routeRules, setRouteRules] = useState<{ value: string; queueId: string }[]>([{ value: "", queueId: "" }]);
+  const [routeDefaultQueue, setRouteDefaultQueue] = useState("");
+  const [routeBaseFlowId, setRouteBaseFlowId] = useState(""); // flow base opcional (saludo/grabación) al que ARIA transfiere tras fijar la cola
 
   // WhatsApp config
   const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
@@ -279,28 +299,63 @@ export function CampaignCreatePage() {
     toast.success(`Nombre tomado de la columna "${col}"`);
   };
 
+  const routeCols = useMemo(() => {
+    const keys = new Set<string>();
+    for (const c of contacts.slice(0, 300)) Object.keys(c.attributes || {}).forEach((k) => keys.add(k));
+    return [...keys];
+  }, [contacts]);
+  const routeRulesClean = routeRules.filter((r) => r.value.trim() && r.queueId);
+  const routingValid = routingMode === "flow" ? !!contactFlowId : (!!routeAttr.trim() && routeRulesClean.length > 0 && !!routeDefaultQueue);
+
   const canLaunch = name.trim().length > 0 && contacts.length > 0 && (
-    campaignType === "whatsapp" ? !!waTemplateName && waVarColumns.every((c) => !!c && c !== "lit:") : !!sourcePhoneNumber && !!contactFlowId
+    campaignType === "whatsapp" ? !!waTemplateName && waVarColumns.every((c) => !!c && c !== "lit:") : !!sourcePhoneNumber && routingValid
   );
   const missing = !name.trim() ? "nombre" : contacts.length === 0 ? "audiencia (contactos)"
     : campaignType === "whatsapp" ? (!waTemplateName ? "plantilla" : "mapear variables")
-    : !sourcePhoneNumber ? "número saliente" : !contactFlowId ? "contact flow" : null;
+    : !sourcePhoneNumber ? "número saliente" : !routingValid ? (routingMode === "flow" ? "contact flow" : "ruteo (atributo → cola)") : null;
 
   const handleCreate = async () => {
     setSubmitting(true);
     try {
       const ep = getApiEndpoints();
       if (!ep?.createCampaign) throw new Error("createCampaign endpoint no configurado");
-      const flow = flows.find((f) => f.id === contactFlowId);
-      const queue = queues.find((q) => q.id === campaignQueueId);
+
+      // Ruteo por atributo → ARIA genera un flow smart propio de esta campaña y lo
+      // usa como contactFlowId (el backend acepta flowName y devuelve flowId).
+      let effectiveFlowId = contactFlowId;
+      let effectiveFlowName = flows.find((f) => f.id === contactFlowId)?.name;
+      if (campaignType === "voice" && routingMode === "attribute") {
+        if (!ep?.provisionContactFlows) throw new Error("Provisión de flows no configurada (Configuración › Integraciones)");
+        // Nombre ESTABLE según la config de ruteo (atributo + reglas + default):
+        // re-lanzar la MISMA config reutiliza el flow (el backend hace update por
+        // nombre) en vez de crear uno nuevo cada vez → quota-safe + prueba reusable.
+        const sig = JSON.stringify({
+          a: routeAttr.trim(),
+          r: routeRulesClean.map((r) => `${r.value}>${r.queueId}`).sort(),
+          d: routeDefaultQueue,
+        });
+        let h = 0;
+        for (let i = 0; i < sig.length; i++) h = (Math.imul(h, 31) + sig.charCodeAt(i)) | 0;
+        const flowName = `ARIA-Smart ${routeAttr.trim()} ${(h >>> 0).toString(36)}`.slice(0, 90);
+        const rg = await authedFetch(ep.provisionContactFlows, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "smartFlow", attribute: routeAttr.trim(), rules: routeRulesClean, defaultQueueId: routeDefaultQueue, flowName, baseFlowId: routeBaseFlowId || undefined }),
+        });
+        const gj = await rg.json().catch(() => ({}));
+        if (!rg.ok || !gj.ok) throw new Error(gj.error || "No se pudo generar el flow de ruteo");
+        effectiveFlowId = gj.flowId;
+        effectiveFlowName = gj.flowName;
+      }
+      const effQueueId = routingMode === "attribute" ? routeDefaultQueue : campaignQueueId;
+      const queue = queues.find((q) => q.id === effQueueId);
       const payload = {
         name: name.trim(), description: description.trim(),
         campaignType,
         templateName: campaignType === "whatsapp" ? waTemplateName : undefined,
         templateLanguage: campaignType === "whatsapp" ? waTemplateLang : undefined,
         templateVarColumns: campaignType === "whatsapp" ? waVarColumns : undefined,
-        sourcePhoneNumber, contactFlowId, contactFlowName: flow?.name,
-        campaignQueueId: campaignQueueId || undefined, campaignQueueName: queue?.name,
+        sourcePhoneNumber, contactFlowId: effectiveFlowId, contactFlowName: effectiveFlowName,
+        campaignQueueId: effQueueId || undefined, campaignQueueName: queue?.name,
         dialMode, concurrency, timezone, windowStartHour, windowEndHour,
         windowDaysOfWeek: [1, 2, 3, 4, 5], retryNoAnswerMinutes, retryMaxAttempts, maxContactsPerAgent,
         contacts: contacts.map((c) => ({
@@ -312,7 +367,7 @@ export function CampaignCreatePage() {
             return out;
           })(),
         })),
-        createdBy: user?.username || "system", startNow: true,
+        createdBy: user?.username || "system", startNow: true, programId: programId || undefined,
       };
       const r = await fetch(ep.createCampaign, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const body = await r.json().catch(() => ({}));
@@ -390,7 +445,7 @@ export function CampaignCreatePage() {
                   <span><strong>{presetLeads.length}</strong> lead{presetLeads.length === 1 ? "" : "s"} traído{presetLeads.length === 1 ? "" : "s"} desde el embudo y listo{presetLeads.length === 1 ? "" : "s"} como audiencia. Ajusta la selección si querés.</span>
                 </div>
               )}
-              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <div className="camp-filterbar">
                 <div style={{ position: "relative", flex: 1, minWidth: 170 }}>
                   <Search size={14} style={{ position: "absolute", left: 9, top: 9, color: "var(--text-3)" }} />
                   <Input style={{ paddingLeft: 30 }} placeholder="Buscar nombre, teléfono, empresa…" value={leadQuery} onChange={(e) => setLeadQuery(e.target.value)} />
@@ -521,6 +576,25 @@ export function CampaignCreatePage() {
             <Textarea rows={2} placeholder="Objetivo, audiencia, contexto…" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
 
+          {programs.filter((p) => p.status !== "archivado").length > 0 && (
+            <div className="camp-field">
+              <label className="camp-lbl">Programa</label>
+              <Select value={programId || "none"} onValueChange={(v) => setProgramId(v && v !== "none" ? v : "")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin programa">
+                    {(v: string) => (!v || v === "none" ? "Sin programa" : programs.find((p) => p.programId === v)?.name ?? "Sin programa")}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin programa</SelectItem>
+                  {programs.filter((p) => p.status !== "archivado").map((p) => (
+                    <SelectItem key={p.programId} value={p.programId}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {campaignType === "whatsapp" ? (
             <>
               <div className="camp-field">
@@ -541,34 +615,134 @@ export function CampaignCreatePage() {
                   />
                 )}
               </div>
+              {/* Pilar 3 — preview honesto: cuántos de la audiencia se excluyen por
+                  supresión (opt-out / DNC / ya-enviado / frecuencia / horario). */}
+              {contacts.length > 0 && <SuppressionPreview contacts={contacts} programId={programId || undefined} />}
             </>
           ) : (
             <>
-              <div className="camp-2col">
-                <div className="camp-field">
-                  <label className="camp-lbl">Número saliente</label>
-                  <Select value={sourcePhoneNumber} onValueChange={(v) => setSourcePhoneNumber(v || "")} disabled={phonesLoading}>
-                    <SelectTrigger><SelectValue placeholder="Elegir número">{sourcePhoneNumber || (phonesLoading ? "Cargando…" : "Elegir número")}</SelectValue></SelectTrigger>
-                    <SelectContent>{phones.map((p) => <SelectItem key={p.phoneNumberId} value={p.phoneNumber}>{p.phoneNumber} · {p.countryCode}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="camp-field">
-                  <label className="camp-lbl">Contact flow</label>
-                  <Select value={contactFlowId} onValueChange={(v) => { setContactFlowId(v || ""); }} disabled={flowsLoading}>
-                    <SelectTrigger><SelectValue placeholder="Elegir flow">{flows.find((f) => f.id === contactFlowId)?.name || (flowsLoading ? "Cargando…" : "Elegir flow")}</SelectValue></SelectTrigger>
-                    <SelectContent>{flows.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
+              <div className="camp-field">
+                <label className="camp-lbl">Número saliente</label>
+                <Select value={sourcePhoneNumber} onValueChange={(v) => setSourcePhoneNumber(v || "")} disabled={phonesLoading}>
+                  <SelectTrigger><SelectValue placeholder="Elegir número">{sourcePhoneNumber || (phonesLoading ? "Cargando…" : "Elegir número")}</SelectValue></SelectTrigger>
+                  <SelectContent>{phones.map((p) => <SelectItem key={p.phoneNumberId} value={p.phoneNumber}>{p.phoneNumber} · {p.countryCode}</SelectItem>)}</SelectContent>
+                </Select>
               </div>
 
+              {/* Ruteo — acá mismo (movido desde Configuración): un flow existente o
+                  un builder por atributo que usa las columnas del CSV/leads. */}
               <div className="camp-field">
-                <label className="camp-lbl">Colas que usará la campaña</label>
-                {flowQueuesLoading ? <p className="muted" style={{ fontSize: 11.5 }}>Detectando colas…</p>
-                  : flowQueues && flowQueues.literalQueues.length > 0 ? (
-                    <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-                      {flowQueues.literalQueues.map((q) => <span key={q.queueId} className="chip chip--green" style={{ height: 22, display: "inline-flex", alignItems: "center", gap: 4 }}><Check size={13} /> {q.queueName}</span>)}
+                <label className="camp-lbl">Ruteo</label>
+                <div className="camp-tabs" style={{ marginBottom: 10 }}>
+                  <button type="button" className={`camp-tab ${routingMode === "flow" ? "camp-tab--active" : ""}`} onClick={() => setRoutingMode("flow")}>Flow existente</button>
+                  <button type="button" className={`camp-tab ${routingMode === "attribute" ? "camp-tab--active" : ""}`} onClick={() => setRoutingMode("attribute")}><Zap size={13} /> Por atributo</button>
+                </div>
+
+                {routingMode === "flow" ? (
+                  <>
+                    <Select value={contactFlowId} onValueChange={(v) => setContactFlowId(v || "")} disabled={flowsLoading}>
+                      <SelectTrigger><SelectValue placeholder="Elegir flow">{flows.find((f) => f.id === contactFlowId)?.name || (flowsLoading ? "Cargando…" : "Elegir flow")}</SelectValue></SelectTrigger>
+                      <SelectContent>{flows.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    {!flowsLoading && flows.length === 0 && (
+                      <span className="muted" style={{ fontSize: 10.5, display: "block", marginTop: 5, lineHeight: 1.45 }}>
+                        No hay contact flows en tu instancia. Creá los base en <strong>Configuración › Integraciones › Provisionar flows</strong>.
+                      </span>
+                    )}
+                    {!flowQueuesLoading && flowQueues && (flowQueues.literalQueues.length > 0 || flowQueues.dynamicQueues.length > 0) && (
+                      <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                        {flowQueues.literalQueues.map((q) => <span key={q.queueId} className="chip chip--green" style={{ height: 20, display: "inline-flex", alignItems: "center", gap: 4 }}><Check size={12} /> {q.queueName}</span>)}
+                        {flowQueues.dynamicQueues.length > 0 && <span className="chip chip--cyan" style={{ height: 20, display: "inline-flex", alignItems: "center", gap: 4 }}><Zap size={11} /> por atributo</span>}
+                      </div>
+                    )}
+                    <span className="muted" style={{ fontSize: 10.5, display: "block", marginTop: 8, lineHeight: 1.45 }}>
+                      El flow ya trae su ruteo. Las columnas de tu CSV/leads se envían a Connect como atributos — asegurate que tu audiencia tenga la columna que el flow espera (ej. el Smart usa <span className="mono">udep_nivel</span>). ¿No coincide? Usá <strong>Por atributo</strong> y ARIA arma el flow a la medida de tus columnas.
+                    </span>
+                  </>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div>
+                      <span className="muted" style={{ fontSize: 10.5, display: "block", marginBottom: 4 }}>Atributo / columna del lead</span>
+                      {routeCols.length > 0 ? (
+                        <Select value={routeAttr} onValueChange={(v) => setRouteAttr(v || "")}>
+                          <SelectTrigger className="w-full"><SelectValue placeholder="Elegir columna">{routeAttr || "Elegir columna"}</SelectValue></SelectTrigger>
+                          <SelectContent>{routeCols.map((col) => <SelectItem key={col} value={col}>{col}</SelectItem>)}</SelectContent>
+                        </Select>
+                      ) : (
+                        <>
+                          <Select disabled>
+                            <SelectTrigger className="w-full"><SelectValue placeholder="Cargá la audiencia primero">Cargá la audiencia primero</SelectValue></SelectTrigger>
+                            <SelectContent />
+                          </Select>
+                          <span className="muted" style={{ fontSize: 10.5, display: "block", marginTop: 4 }}>
+                            Subí el CSV o elegí leads (paso 1) y acá aparecen sus columnas.
+                          </span>
+                        </>
+                      )}
                     </div>
-                  ) : <p className="muted" style={{ fontSize: 11.5 }}>El flow define las colas (enrutamiento por atributos).</p>}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {routeRules.map((r, i) => (
+                        <div key={i} className="row" style={{ gap: 6, alignItems: "center" }}>
+                          <Input placeholder="valor (ej. Sistemas)" value={r.value} onChange={(e) => setRouteRules((rs) => rs.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} style={{ flex: "0 0 128px" }} />
+                          <span className="muted">→</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <Select value={r.queueId} onValueChange={(v) => setRouteRules((rs) => rs.map((x, j) => (j === i ? { ...x, queueId: v || "" } : x)))}>
+                              <SelectTrigger className="w-full"><SelectValue placeholder="cola">{queues.find((q) => q.id === r.queueId)?.name || "cola"}</SelectValue></SelectTrigger>
+                              <SelectContent>{queues.map((q) => <SelectItem key={q.id} value={q.id}>{q.name}</SelectItem>)}</SelectContent>
+                            </Select>
+                          </div>
+                          <button type="button" className="btn btn--ghost btn--sm btn--icon" disabled={routeRules.length <= 1} onClick={() => setRouteRules((rs) => rs.filter((_, j) => j !== i))} title="Quitar"><X size={13} /></button>
+                        </div>
+                      ))}
+                      <button type="button" className="btn btn--sm" style={{ alignSelf: "flex-start" }} onClick={() => setRouteRules((rs) => [...rs, { value: "", queueId: "" }])}>+ Regla</button>
+                    </div>
+                    <div>
+                      <span className="muted" style={{ fontSize: 10.5, display: "block", marginBottom: 4 }}>Cola por defecto (lo que no matchee)</span>
+                      <Select value={routeDefaultQueue} onValueChange={(v) => setRouteDefaultQueue(v || "")}>
+                        <SelectTrigger><SelectValue placeholder="Elegir cola">{queues.find((q) => q.id === routeDefaultQueue)?.name || "Elegir cola"}</SelectValue></SelectTrigger>
+                        <SelectContent>{queues.map((q) => <SelectItem key={q.id} value={q.id}>{q.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <span className="muted" style={{ fontSize: 10.5, display: "block", marginBottom: 4 }}>Flow base (opcional · saludo / grabación / IVR)</span>
+                      <Select value={routeBaseFlowId || "__none"} onValueChange={(v) => setRouteBaseFlowId(v === "__none" ? "" : (v || ""))} disabled={flowsLoading}>
+                        <SelectTrigger className="w-full"><SelectValue placeholder="Ninguno — ARIA arma el flow completo">{flows.find((f) => f.id === routeBaseFlowId)?.name || "Ninguno — ARIA arma el flow completo"}</SelectValue></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">Ninguno — ARIA arma el flow completo</SelectItem>
+                          {flows.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {(routeRulesClean.length > 0 || routeDefaultQueue) && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "9px 11px", borderRadius: 10, background: "var(--bg-2)", border: "1px solid var(--border-1)" }}>
+                        <span className="muted" style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          Vista previa · según <span className="mono">{routeAttr || "<columna>"}</span>
+                        </span>
+                        {routeRulesClean.map((r, i) => (
+                          <div key={i} className="row" style={{ gap: 7, alignItems: "center", fontSize: 11.5 }}>
+                            <span className="chip chip--cyan" style={{ height: 19 }}>{r.value}</span>
+                            <span className="muted">→</span>
+                            <span style={{ fontWeight: 600 }}>{queues.find((q) => q.id === r.queueId)?.name || "cola"}</span>
+                          </div>
+                        ))}
+                        {routeDefaultQueue && (
+                          <div className="row" style={{ gap: 7, alignItems: "center", fontSize: 11.5 }}>
+                            <span className="chip chip--amber" style={{ height: 19 }}>sin match</span>
+                            <span className="muted">→</span>
+                            <span style={{ fontWeight: 600 }}>{queues.find((q) => q.id === routeDefaultQueue)?.name || "cola"}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <span className="muted" style={{ fontSize: 10.5, lineHeight: 1.45 }}>
+                      {routeBaseFlowId ? (
+                        <>Vos elegís la cola por cada valor de <span className="mono">{routeAttr || "tu columna"}</span> (en las reglas de arriba). ARIA aplica esa cola y luego transfiere a <strong>{flows.find((f) => f.id === routeBaseFlowId)?.name || "tu flow base"}</strong> para el saludo/grabación. Solo cuidá que ese flow base no fije OTRA cola distinta.</>
+                      ) : (
+                        <>No hace falta elegir un flow: ARIA arma uno completo (graba, saluda y rutea por <span className="mono">{routeAttr || "tu columna"}</span>). Las columnas de tu CSV/leads viajan a Connect tal cual.</>
+                      )}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="camp-field">
@@ -593,10 +767,16 @@ export function CampaignCreatePage() {
               <div className="camp-adv">
                 <div className="camp-adv__title">Personalización avanzada</div>
                 <div className="camp-2col">
-                  <div className="camp-field"><label className="camp-lbl">Llamadas simultáneas</label>
-                    <Input type="number" min={1} max={50} value={concurrency} onChange={(e) => setConcurrency(parseInt(e.target.value) || 1)} /></div>
-                  <div className="camp-field"><label className="camp-lbl">Cola por agente</label>
-                    <Input type="number" min={1} max={50} value={maxContactsPerAgent} onChange={(e) => setMaxContactsPerAgent(parseInt(e.target.value) || 5)} /></div>
+                  <div className="camp-field">
+                    <label className="camp-lbl">Llamadas simultáneas</label>
+                    <Input type="number" min={1} max={50} value={concurrency} onChange={(e) => setConcurrency(parseInt(e.target.value) || 1)} />
+                    <span className="muted" style={{ fontSize: 10.5, display: "block", marginTop: 4, lineHeight: 1.4 }}>Tope <strong>total</strong> de llamadas marcando a la vez en toda la campaña.</span>
+                  </div>
+                  <div className="camp-field">
+                    <label className="camp-lbl">Cola por agente</label>
+                    <Input type="number" min={1} max={50} value={maxContactsPerAgent} onChange={(e) => setMaxContactsPerAgent(parseInt(e.target.value) || 5)} />
+                    <span className="muted" style={{ fontSize: 10.5, display: "block", marginTop: 4, lineHeight: 1.4 }}>Contactos pre-asignados a <strong>cada agente</strong> (su lista de pendientes).</span>
+                  </div>
                 </div>
                 <div className="camp-field">
                   <label className="camp-lbl">Horario de llamadas</label>
@@ -620,6 +800,81 @@ export function CampaignCreatePage() {
             </>
           )}
         </section>
+      </div>
+    </div>
+  );
+}
+
+/* Pilar 3 — preview de supresión: corre la audiencia contra el motor y muestra
+   "de N se excluyen M" con el desglose por causa (debounced). */
+function SuppressionPreview({ contacts, programId }: { contacts: ParsedContact[]; programId?: string }) {
+  const phonesKey = useMemo(() => contacts.map((c) => c.phone).filter(Boolean).join(","), [contacts]);
+  const [summary, setSummary] = useState<BatchSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const phones = phonesKey ? phonesKey.split(",") : [];
+    if (phones.length === 0) { setSummary(null); return; }
+    let alive = true;
+    setLoading(true);
+    const t = setTimeout(() => {
+      previewSuppression(phones, { channel: "whatsapp", programId })
+        .then((s) => { if (alive) setSummary(s); })
+        .catch(() => { if (alive) setSummary(null); })
+        .finally(() => { if (alive) setLoading(false); });
+    }, 450);
+    return () => { alive = false; clearTimeout(t); };
+  }, [phonesKey, programId]);
+
+  if (!summary && !loading) return null;
+  const ex = summary?.excluded;
+  const totalExcluded = ex
+    ? ex.optOut + ex.quarantine + ex.dnc + ex.dedupWindow + ex.frequency + ex.quietHours + ex.converted
+    : 0;
+  const chips = ex
+    ? [
+        { label: "ya enviados", n: ex.dedupWindow, color: "var(--accent-amber)" },
+        { label: "opt-out / baja", n: ex.optOut, color: "var(--accent-red)" },
+        { label: "no contactar", n: ex.dnc, color: "var(--accent-red)" },
+        { label: "frecuencia", n: ex.frequency, color: "var(--accent-violet)" },
+        { label: "fuera de horario", n: ex.quietHours, color: "var(--accent-cyan)" },
+        { label: "cuarentena", n: ex.quarantine, color: "var(--accent-violet)" },
+        { label: "ya convertidos", n: ex.converted, color: "var(--accent-green)" },
+      ].filter((c) => c.n > 0)
+    : [];
+
+  return (
+    <div className="camp-field" style={{ marginTop: 8 }}>
+      <div style={{ borderRadius: 10, border: `1px solid ${totalExcluded > 0 ? "var(--accent-amber)" : "var(--border-1)"}`, background: totalExcluded > 0 ? "var(--accent-amber-soft)" : "var(--bg-1)", padding: "11px 13px" }}>
+        {loading ? (
+          <div className="muted row" style={{ fontSize: 12.5, gap: 7 }}><Loader2 size={13} className="spin" /> Revisando supresión…</div>
+        ) : summary ? (
+          <>
+            <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <ShieldCheck size={15} style={{ color: totalExcluded > 0 ? "var(--accent-amber)" : "var(--accent-green)" }} />
+              {totalExcluded > 0 ? (
+                <span style={{ fontSize: 13, fontWeight: 700 }}>
+                  De {summary.total} se excluyen {totalExcluded} →{" "}
+                  <span style={{ color: "var(--accent-green)" }}>{summary.willSend} recibirán el mensaje</span>
+                </span>
+              ) : (
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--accent-green)" }}>
+                  Los {summary.total} pasan el filtro de supresión
+                </span>
+              )}
+            </div>
+            {chips.length > 0 && (
+              <div className="row" style={{ gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                {chips.map((c) => (
+                  <span key={c.label} className="chip" style={{ fontSize: 11, borderColor: c.color, color: c.color }}>{c.n} {c.label}</span>
+                ))}
+              </div>
+            )}
+            <div className="muted" style={{ fontSize: 10.5, marginTop: 7 }}>
+              Los excluidos no se envían (política de Configuración → Supresión). Nunca más deduplicar a mano.
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );

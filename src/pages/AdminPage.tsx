@@ -14,11 +14,12 @@ import {
 import { TaxonomyEditor } from "@/components/admin/TaxonomyEditor";
 import { CatalogEditor } from "@/components/admin/CatalogEditor";
 import { ChannelsManager } from "@/components/admin/ChannelsManager";
+import { WhatsAppTemplatesManager } from "@/components/admin/WhatsAppTemplatesManager";
+import { SuppressionManager } from "@/components/admin/SuppressionManager";
 import { AiContactLensManager } from "@/components/admin/AiContactLensManager";
 import { SecurityManager } from "@/components/admin/SecurityManager";
 import { IntegrationsManager } from "@/components/admin/IntegrationsManager";
 import { QueuesPanel } from "@/components/admin/QueuesPanel";
-import { RoutingRulesPanel } from "@/components/admin/RoutingRulesPanel";
 import { TeamManager } from "@/components/admin/TeamManager";
 import { PageHeader } from "@/components/vox/PageHeader";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
@@ -125,15 +126,16 @@ export function AdminPage() {
     { id: "tipificacion", label: "Tipificación", icon: Icon.Tag },
     { id: "catalogos", label: "Catálogos", icon: Icon.Pad },
     { id: "channels", label: "Canales", icon: Icon.Globe },
+    { id: "watemplates", label: "Plantillas WhatsApp", icon: Icon.Chat },
+    { id: "suppression", label: "Supresión", icon: Icon.Stop },
     { id: "queues", label: "Colas", icon: Icon.Queue },
-    { id: "routing", label: "Ruteo", icon: Icon.Lightning },
     { id: "integrations", label: "Integraciones", icon: Icon.Lightning },
     { id: "ai", label: "IA y Contact Lens", icon: Icon.Sparkles },
     { id: "security", label: "Seguridad", icon: Icon.Shield },
   ];
 
   return (
-    <div className="view" style={{ maxWidth: 1500 }}>
+    <div className="view">
       <PageHeader
         crumb="Sistema"
         title="Configuración"
@@ -348,13 +350,14 @@ export function AdminPage() {
           {section === "tipificacion" && <TaxonomyEditor />}
           {section === "catalogos" && <CatalogEditor />}
           {section === "channels" && <ChannelsManager />}
+          {section === "watemplates" && <WhatsAppTemplatesManager />}
+          {section === "suppression" && <SuppressionManager />}
           {section === "integrations" && <IntegrationsManager />}
           {section === "queues" && <QueuesPanel />}
-          {section === "routing" && <RoutingRulesPanel />}
           {section === "ai" && <AiContactLensManager />}
           {section === "security" && <SecurityManager />}
 
-          {section !== "users" && section !== "tipificacion" && section !== "catalogos" && section !== "channels" && section !== "security" && section !== "integrations" && section !== "queues" && section !== "routing" && section !== "ai" && (
+          {section !== "users" && section !== "tipificacion" && section !== "catalogos" && section !== "channels" && section !== "watemplates" && section !== "suppression" && section !== "security" && section !== "integrations" && section !== "queues" && section !== "ai" && (
             <Card>
               <CardBody
                 style={{

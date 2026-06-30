@@ -48,7 +48,7 @@ let dynamo: DynamoDBClient = legacyDynamo;
 const TABLE = process.env.CALLBACKS_TABLE || "connectview-callbacks";
 const CORS: Record<string, string> = { "Content-Type": "application/json" };
 
-type Channel = "voice" | "email" | "whatsapp";
+type Channel = "voice" | "email" | "whatsapp" | "task";
 
 interface Body {
   phone: string;
@@ -117,13 +117,16 @@ export const handler: Handler = async (event: any) => {
   }
 
   const channel: Channel = body.channel || "voice";
-  if (!["voice", "email", "whatsapp"].includes(channel)) {
+  if (!["voice", "email", "whatsapp", "task"].includes(channel)) {
     return {
       statusCode: 400,
       headers: CORS,
-      body: JSON.stringify({ error: `channel must be voice|email|whatsapp, got: ${channel}` }),
+      body: JSON.stringify({ error: `channel must be voice|email|whatsapp|task, got: ${channel}` }),
     };
   }
+  // channel="task" → recordatorio/to-do genérico del agente: NO se auto-despacha
+  // (actionType "manual-action", igual que email/whatsapp) y no exige contacto;
+  // el agente lo ve en su bubble de Tareas y en el calendario de Citas.
 
   // Channel-specific validation — fail fast if the dispatcher won't
   // have what it needs once the row becomes due. Email & WhatsApp are

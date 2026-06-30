@@ -4,9 +4,10 @@ import { SoftphoneDialer } from "@/components/vox/SoftphoneDialer";
 import { QuickConnectsList } from "./QuickConnectsList";
 import { CreateTaskForm } from "./CreateTaskForm";
 import { NewEmailForm } from "./NewEmailForm";
+import { QuickCaptureLeadForm } from "./QuickCaptureLeadForm";
 import * as Icon from "@/components/vox/primitives";
 
-type View = "menu" | "number-pad" | "quick-connects" | "create-task" | "new-email";
+type View = "menu" | "number-pad" | "quick-connects" | "create-task" | "new-email" | "capture-lead";
 
 /**
  * Outbound actions menu — vertical stack of 4 pill-shaped buttons
@@ -39,12 +40,14 @@ export function OutboundActionsMenu() {
       "quick-connects": "Quick connects",
       "create-task": "Crear tarea",
       "new-email": "Nuevo email",
+      "capture-lead": "Capturar lead",
     };
     const ICONS: Record<Exclude<View, "menu">, React.ReactNode> = {
       "number-pad": <Icon.Pad size={14} />,
       "quick-connects": <Icon.User size={14} />,
       "create-task": <Icon.Note size={14} />,
       "new-email": <Icon.Mail size={14} />,
+      "capture-lead": <Icon.User size={14} />,
     };
 
     return (
@@ -112,6 +115,10 @@ export function OutboundActionsMenu() {
         {view === "new-email" && (
           <NewEmailForm onSent={() => setView("menu")} />
         )}
+
+        {view === "capture-lead" && (
+          <QuickCaptureLeadForm onCreated={() => setView("menu")} />
+        )}
       </div>
     );
   }
@@ -151,6 +158,13 @@ export function OutboundActionsMenu() {
       sub: "Enviar correo",
       color: "var(--accent-amber)",
       icon: <Icon.Mail size={16} />,
+    },
+    {
+      key: "capture-lead",
+      label: "Capturar lead",
+      sub: "Referido / nuevo nº",
+      color: "var(--accent-green)",
+      icon: <Icon.User size={16} />,
     },
   ];
 

@@ -45,6 +45,7 @@ interface TemplateBrief {
   bodyText?: string;
   variableCount?: number;
   headerText?: string;
+  headerFormat?: string;
   footerText?: string;
   buttons?: TemplateButton[];
 }
@@ -53,6 +54,7 @@ function extractBody(definition: unknown): {
   bodyText?: string;
   variableCount: number;
   headerText?: string;
+  headerFormat?: string;
   footerText?: string;
   buttons?: TemplateButton[];
 } {
@@ -62,13 +64,17 @@ function extractBody(definition: unknown): {
   const def = definition as { components?: Array<Record<string, unknown>> };
   let bodyText: string | undefined;
   let headerText: string | undefined;
+  let headerFormat: string | undefined;
   let footerText: string | undefined;
   let buttons: TemplateButton[] | undefined;
   for (const c of def.components || []) {
     const t = String(c.type || "").toUpperCase();
     const txt = typeof c.text === "string" ? c.text : undefined;
     if (t === "BODY") bodyText = txt;
-    if (t === "HEADER") headerText = txt;
+    if (t === "HEADER") {
+      headerText = txt;
+      headerFormat = typeof c.format === "string" ? c.format : undefined;
+    }
     if (t === "FOOTER") footerText = txt;
     if (t === "BUTTONS" && Array.isArray(c.buttons)) {
       buttons = (c.buttons as Array<Record<string, unknown>>).map((b) => ({
@@ -92,7 +98,7 @@ function extractBody(definition: unknown): {
         0
       )
     : 0;
-  return { bodyText, variableCount, headerText, footerText, buttons };
+  return { bodyText, variableCount, headerText, headerFormat, footerText, buttons };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

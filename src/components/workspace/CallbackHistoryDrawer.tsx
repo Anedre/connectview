@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Phone, Mail, MessageCircle, PenLine } from "lucide-react";
+import { Phone, Mail, MessageCircle, PenLine, ListTodo } from "lucide-react";
 import {
   useCallbacks,
   type CallbackRecord,
@@ -54,7 +54,7 @@ interface FollowupsDrawerProps {
   refreshKey?: number;
 }
 
-type Channel = "voice" | "email" | "whatsapp";
+type Channel = "voice" | "email" | "whatsapp" | "task";
 
 const CHANNEL_META: Record<
   Channel,
@@ -78,10 +78,19 @@ const CHANNEL_META: Record<
     color: "var(--accent-green)",
     bg: "var(--accent-green-soft)",
   },
+  task: {
+    icon: ListTodo,
+    label: "Tarea",
+    color: "var(--accent-violet)",
+    bg: "var(--accent-violet-soft)",
+  },
 };
 
+// Defaulta a "voice" para filas legacy; cualquier canal desconocido cae a
+// "task" para no romper el render (CHANNEL_META siempre tiene la entrada).
 function channelOf(c: CallbackRecord): Channel {
-  return (c.channel as Channel) || "voice";
+  const ch = (c.channel as Channel) || "voice";
+  return ch in CHANNEL_META ? ch : "task";
 }
 
 /**
@@ -253,9 +262,11 @@ export function CallbackHistoryDrawer({
     setOpenManual((o) => !(o ?? open));
   };
 
+  // Solo se oculta si el endpoint no está desplegado. Antes también se ocultaba
+  // cuando no había tareas pendientes → el agente "no veía" el bubble y creía
+  // que la función había desaparecido. Ahora el bubble está SIEMPRE visible
+  // (aunque sea "Tareas 0") para que sea descubrible y accionable.
   if (!available) return null;
-  if (callbacks.length === 0 && openManual !== true && !loading && !error)
-    return null;
 
   return (
     <div
@@ -264,7 +275,7 @@ export function CallbackHistoryDrawer({
         position: "fixed",
         bottom: position.bottom,
         right: position.right,
-        width: 340,
+        width: open ? 340 : "auto",
         background: "var(--bg-1)",
         border: "1px solid var(--border-1)",
         borderRadius: 12,
@@ -333,7 +344,7 @@ export function CallbackHistoryDrawer({
           <Icon.Calendar size={12} />
         </span>
         <span style={{ fontWeight: 600, color: "var(--text-1)" }}>
-          Follow-ups
+          Tareas
         </span>
         <span
           className="mono"
@@ -393,7 +404,7 @@ export function CallbackHistoryDrawer({
                 textAlign: "center",
               }}
             >
-              No tienes follow-ups pendientes.
+              No tienes tareas pendientes.
             </div>
           ) : (
             callbacks.map((c) => (
@@ -459,7 +470,7 @@ function fmtCountdown(scheduledAt: string): {
   return { label: `en ${Math.floor(diffSec / 86400)} días`, urgent: false, past: false };
 }
 
-function FollowupRow({
+export function FollowupRow({
   record,
   onCancel,
   onComplete,
@@ -508,13 +519,30 @@ function FollowupRow({
     }
   };
 
+  const isTask = ch === "task";
+  // Una tarea es un to-do, no un cliente: si no tiene nombre, el "título" es la
+  // nota, y ocultamos el teléfono sintético (task:...).
+  const primaryLabel =
+    sanitizeText(record.customerName) ||
+    (isTask ? sanitizeText(record.notes) || "Tarea" : "Cliente");
+  const syntheticPhone = !!record.phone && record.phone.startsWith("task:");
+  const destination =
+    ch === "email" && record.emailToAddress
+      ? record.emailToAddress
+      : syntheticPhone
+      ? ""
+      : record.phone;
+
   // Channel-specific detail line — subject for email, template for
-  // whatsapp, falls back to notes for voice (or any channel).
+  // whatsapp, falls back to notes for voice. Para una tarea sin nombre la
+  // nota ya es el título → no la repetimos abajo.
   const detailText: string | null =
     ch === "email" && record.emailSubject
       ? sanitizeText(record.emailSubject)
       : ch === "whatsapp" && record.templateName
       ? `Template · ${record.templateName}`
+      : isTask && !record.customerName
+      ? null
       : record.notes
       ? sanitizeText(record.notes)
       : null;
@@ -582,33 +610,29 @@ function FollowupRow({
               color: "var(--text-1)",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              maxWidth: 130,
+              maxWidth: destination ? 130 : 210,
               fontSize: 12,
             }}
-            title={sanitizeText(record.customerName) || "Cliente"}
+            title={primaryLabel}
           >
-            {sanitizeText(record.customerName) || "Cliente"}
+            {primaryLabel}
           </span>
-          <span
-            className="mono"
-            style={{
-              color: "var(--text-3)",
-              fontSize: 10,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              flexShrink: 1,
-              minWidth: 0,
-            }}
-            title={
-              ch === "email" && record.emailToAddress
-                ? record.emailToAddress
-                : record.phone
-            }
-          >
-            {ch === "email" && record.emailToAddress
-              ? record.emailToAddress
-              : record.phone}
-          </span>
+          {destination && (
+            <span
+              className="mono"
+              style={{
+                color: "var(--text-3)",
+                fontSize: 10,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                flexShrink: 1,
+                minWidth: 0,
+              }}
+              title={destination}
+            >
+              {destination}
+            </span>
+          )}
           <span
             style={{
               fontSize: 10,

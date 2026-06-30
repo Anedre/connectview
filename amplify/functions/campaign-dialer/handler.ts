@@ -559,6 +559,38 @@ async function markWhatsAppSent(
     });
 }
 
+/** Pilar 3: contacto suprimido por el motor (opt-out/DNC/dedup/frecuencia/horario).
+ *  Estado TERMINAL "suppressed" — NO es fallo y NO se reintenta. Cuenta como
+ *  "resuelto" (doneCount) para que la campaña drene y complete. */
+async function markWhatsAppSuppressed(c: CampaignContact, reason?: string): Promise<void> {
+  const now = new Date().toISOString();
+  await dynamo.send(
+    new UpdateItemCommand({
+      TableName: CONTACTS_TABLE,
+      Key: { campaignId: { S: c.campaignId }, rowId: { S: c.rowId } },
+      UpdateExpression: "SET #st = :sup, lastAttemptAt = :now, lastError = :err",
+      ExpressionAttributeNames: { "#st": "status" },
+      ExpressionAttributeValues: {
+        ":sup": { S: "suppressed" },
+        ":now": { S: now },
+        ":err": { S: `suprimido: ${reason || "política"}`.slice(0, 500) },
+      },
+    })
+  );
+  await dynamo
+    .send(
+      new UpdateItemCommand({
+        TableName: CAMPAIGNS_TABLE,
+        Key: { campaignId: { S: c.campaignId } },
+        UpdateExpression: "ADD doneCount :one, dialingCount :neg",
+        ExpressionAttributeValues: { ":one": { N: "1" }, ":neg": { N: "-1" } },
+      })
+    )
+    .catch(() => {
+      /* counter drift is OK */
+    });
+}
+
 /**
  * Recupera contactos de WhatsApp que quedaron trabados en "dialing": como el
  * envío de WhatsApp es síncrono (sub-segundo), cualquier contacto que lleve
@@ -638,9 +670,13 @@ async function processCampaignWhatsApp(campaign: Campaign): Promise<void> {
     // Claim atómico (pending→dialing) para evitar doble envío entre ticks.
     const claimed = await markAsDialing(contact);
     if (!claimed) continue;
-    const messageId = await sendWhatsAppTemplate(campaign, contact);
-    if (messageId) {
-      await markWhatsAppSent(contact, messageId);
+    const res = await sendWhatsAppTemplate(campaign, contact);
+    if (res.messageId) {
+      await markWhatsAppSent(contact, res.messageId);
+    } else if (res.suppressed) {
+      // Pilar 3: el número está suprimido (opt-out/DNC/dedup/frecuencia/horario)
+      // → estado TERMINAL "suppressed", no es un fallo y NO se reintenta.
+      await markWhatsAppSuppressed(contact, res.reason);
     } else {
       await markAsFailed(contact, "Envío de template de WhatsApp falló");
     }
@@ -654,13 +690,19 @@ async function processCampaignWhatsApp(campaign: Campaign): Promise<void> {
  * usual Connect events — Meta delivery webhooks would be needed for
  * accurate per-lead delivered/read tracking, and that's out of scope.
  */
+interface WaSendResult {
+  messageId: string | null;
+  suppressed?: boolean;
+  reason?: string;
+}
+
 async function sendWhatsAppTemplate(
   campaign: Campaign,
   contact: CampaignContact
-): Promise<string | null> {
+): Promise<WaSendResult> {
   if (!campaign.templateName) {
     console.error("whatsapp campaign missing templateName");
-    return null;
+    return { messageId: null };
   }
   let customAttrs: Record<string, string> = {};
   try {
@@ -685,7 +727,7 @@ async function sendWhatsAppTemplate(
   const url = process.env.SEND_WHATSAPP_TEMPLATE_URL;
   if (!url) {
     console.error("SEND_WHATSAPP_TEMPLATE_URL env not set");
-    return null;
+    return { messageId: null };
   }
   try {
     const r = await fetch(url, {
@@ -713,18 +755,25 @@ async function sendWhatsAppTemplate(
       sent?: boolean;
       messageId?: string;
       error?: string;
+      suppressed?: boolean;
+      blockedBy?: string;
     };
+    // Pilar 3: el gate de supresión cortó el envío (HTTP 200 + suppressed:true).
+    if (body.suppressed) {
+      console.log(`WhatsApp suppressed for ${contact.phone}: ${body.blockedBy || "?"}`);
+      return { messageId: null, suppressed: true, reason: body.blockedBy };
+    }
     if (!r.ok || !body.sent) {
       console.error(
         "WhatsApp template send failed:",
         body.error || `HTTP ${r.status}`
       );
-      return null;
+      return { messageId: null };
     }
-    return body.messageId || `wa-${Date.now()}-${contact.rowId.slice(0, 6)}`;
+    return { messageId: body.messageId || `wa-${Date.now()}-${contact.rowId.slice(0, 6)}` };
   } catch (err) {
     console.error("WhatsApp template fetch failed:", err);
-    return null;
+    return { messageId: null };
   }
 }
 
@@ -734,7 +783,7 @@ async function startOutbound(
 ): Promise<string | null> {
   // Route to the right dispatcher based on campaign type.
   if ((campaign.campaignType || "voice").toLowerCase() === "whatsapp") {
-    return sendWhatsAppTemplate(campaign, contact);
+    return (await sendWhatsAppTemplate(campaign, contact)).messageId;
   }
   try {
     // Pass custom attributes + campaign/name so the flow can identify the call

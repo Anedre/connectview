@@ -15,6 +15,7 @@ import {
   setActiveDynamo,
   setActiveProfiles,
 } from "../_shared/leadSync";
+import { sfPhoneCandidates } from "../_shared/phone";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
@@ -124,9 +125,17 @@ export const handler: Handler = async (event: any) => {
     }
     try {
       const voxHistory = phoneQ ? await getLeadHistoryByPhone(phoneQ) : [];
+      // Match por teléfono tolerante a formato (E.164 + dígitos pelados) → el
+      // panel encuentra el Lead aunque SF lo guarde distinto a Vox.
+      const phoneClause = sfPhoneCandidates(phoneQ)
+        .flatMap((c) => {
+          const p = soqlEscape(c);
+          return [`Phone = '${p}'`, `MobilePhone = '${p}'`];
+        })
+        .join(" OR ");
       const where = sfId
         ? `Id = '${soqlEscape(sfId)}'`
-        : `Phone = '${soqlEscape(phoneQ)}' OR MobilePhone = '${soqlEscape(phoneQ)}'`;
+        : phoneClause || `Phone = '${soqlEscape(phoneQ)}'`;
       const leads = await soql(
         `SELECT Id, Name, FirstName, LastName, Phone, MobilePhone, Email, Company, Status, LeadSource, Title, Industry, Rating, Website, IsConverted, CreatedDate, LastModifiedDate FROM Lead WHERE ${where} ORDER BY LastModifiedDate DESC LIMIT 1`
       );

@@ -487,7 +487,7 @@ export function WrapUpView({
   // el contacto (en el escritorio), así que acá solo cerramos — no re-registramos.
 
   return (
-    <div className="view" style={{ maxWidth: 1200 }}>
+    <div className="view">
       <div className="view__head">
         <div>
           <div className="view__crumb">

@@ -1,26 +1,32 @@
 import { useLocation, useNavigate } from "react-router-dom";
+import {
+  House,
+  Headset,
+  Stack,
+  ChatsCircle,
+  GraduationCap,
+  UserPlus,
+  Megaphone,
+  Robot,
+  Lightning,
+  Sparkle,
+  CalendarDots,
+  ChartBar,
+  Disc,
+  Gear,
+  type Icon as PhIcon,
+} from "@phosphor-icons/react";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useRoles } from "@/hooks/useRoles";
-import * as Icon from "./primitives";
 import { VoxSidebarFooter } from "./VoxSidebarFooter";
 
 interface NavItem {
   id: string;
   path: string;
   label: string;
-  icon: (typeof Icon)[
-    | "Home"
-    | "Phone"
-    | "Queue"
-    | "ContactCard"
-    | "Ticket"
-    | "Megaphone"
-    | "Workflow"
-    | "Lightning"
-    | "Chart"
-    | "Sparkles"
-    | "Settings"
-    | "Disc"];
+  // Iconos Phosphor: en el render usan weight "regular" (inactivo) y "fill"
+  // (activo) para marcar la sección actual con un relleno premium.
+  icon: PhIcon;
   count?: string;
   alert?: boolean;
   minRole?: "Agents" | "Supervisors" | "Admins";
@@ -30,76 +36,90 @@ type NavEntry = { section: string } | NavItem;
 
 const NAV: NavEntry[] = [
   { section: "Operación" },
-  { id: "home", path: "/", label: "Inicio", icon: Icon.Home, minRole: "Agents" },
+  { id: "home", path: "/", label: "Inicio", icon: House, minRole: "Agents" },
   {
     id: "call",
     path: "/agent",
     label: "Agent Desktop",
-    icon: Icon.Phone,
+    icon: Headset,
+    minRole: "Agents",
+  },
+  {
+    id: "inbox",
+    path: "/inbox",
+    label: "Conversaciones",
+    icon: ChatsCircle,
     minRole: "Agents",
   },
   {
     id: "queue",
     path: "/queue",
     label: "Cola en vivo",
-    icon: Icon.Queue,
+    icon: Stack,
     minRole: "Supervisors",
   },
   { section: "Crecimiento" },
   {
+    id: "programs",
+    path: "/programs",
+    label: "Programas",
+    icon: GraduationCap,
+    minRole: "Supervisors",
+  },
+  {
     id: "leads",
     path: "/leads",
     label: "Leads",
-    icon: Icon.Users,
+    icon: UserPlus,
     minRole: "Admins",
   },
   {
     id: "campaigns",
     path: "/campaigns",
     label: "Campañas",
-    icon: Icon.Megaphone,
+    icon: Megaphone,
     minRole: "Admins",
   },
   {
     id: "bots",
     path: "/bot",
     label: "Bots",
-    icon: Icon.Workflow,
+    icon: Robot,
     minRole: "Admins",
   },
   {
     id: "automations",
     path: "/automations",
     label: "Automatizaciones",
-    icon: Icon.Lightning,
+    icon: Lightning,
     minRole: "Admins",
   },
   {
     id: "agente",
     path: "/agente",
     label: "Agente IA",
-    icon: Icon.Sparkles,
+    icon: Sparkle,
     minRole: "Admins",
   },
   {
     id: "appointments",
     path: "/appointments",
     label: "Citas",
-    icon: Icon.Calendar,
+    icon: CalendarDots,
     minRole: "Admins",
   },
   {
     id: "reports",
     path: "/reports",
     label: "Reportes",
-    icon: Icon.Chart,
+    icon: ChartBar,
     minRole: "Supervisors",
   },
   {
     id: "recordings",
     path: "/recordings",
     label: "Grabaciones",
-    icon: Icon.Disc,
+    icon: Disc,
     minRole: "Supervisors",
   },
   { section: "Sistema" },
@@ -107,7 +127,7 @@ const NAV: NavEntry[] = [
     id: "admin",
     path: "/admin",
     label: "Configuración",
-    icon: Icon.Settings,
+    icon: Gear,
     minRole: "Admins",
   },
 ];
@@ -159,7 +179,7 @@ export function VoxSidebar() {
               onClick={() => navigate(entry.path)}
               aria-current={active ? "page" : undefined}
             >
-              <Icn className="sb__icon" size={16} />
+              <Icn className="sb__icon" size={18} weight={active ? "fill" : "regular"} />
               <div className="sb__label">{entry.label}</div>
               {entry.count && (
                 <div className={`sb__count ${entry.alert ? "sb__count--alert" : ""}`}>

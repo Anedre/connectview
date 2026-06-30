@@ -106,7 +106,14 @@ export function Spark({
   );
 }
 
-export type ChannelType = "voice" | "chat" | "wa" | "sms" | "email";
+export type ChannelType =
+  | "voice"
+  | "chat"
+  | "wa"
+  | "sms"
+  | "email"
+  | "instagram"
+  | "messenger";
 
 const CHANNEL_META: Record<
   ChannelType,
@@ -151,6 +158,27 @@ const CHANNEL_META: Record<
       <>
         <rect x="3" y="5" width="18" height="14" rx="2" />
         <path d="M3 7l9 7 9-7" />
+      </>
+    ),
+  },
+  instagram: {
+    cls: "ch--instagram",
+    label: "Instagram",
+    iconPath: (
+      <>
+        <rect x="3" y="3" width="18" height="18" rx="5" />
+        <circle cx="12" cy="12" r="4" />
+        <path d="M16.5 7.5h.01" />
+      </>
+    ),
+  },
+  messenger: {
+    cls: "ch--messenger",
+    label: "Messenger",
+    iconPath: (
+      <>
+        <path d="M12 3C6.8 3 3 6.8 3 11.5c0 2.6 1.2 4.9 3.1 6.4V22l2.9-1.6c.9.3 1.9.4 3 .4 5.2 0 9-3.8 9-8.8S17.2 3 12 3z" />
+        <path d="M6.8 13.6l3.6-3.8 2 2 3.3-2.1-3.4 3.7-2-2z" />
       </>
     ),
   },

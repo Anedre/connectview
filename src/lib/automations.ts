@@ -260,6 +260,20 @@ export const RULE_TEMPLATES: Array<{
     }),
   },
   {
+    id: "speed-to-lead-meta",
+    name: "Speed-to-lead · Meta (FB/IG)",
+    description: "Lead de un formulario de Facebook/Instagram → WhatsApp de bienvenida sub-minuto (mata Zapier).",
+    build: () => ({
+      name: "Speed-to-lead Meta",
+      enabled: false,
+      trigger: { type: "lead_created", params: {} },
+      conditions: [{ field: "source", op: "eq", value: "facebook" }],
+      actions: [
+        { type: "send_whatsapp_template", params: { templateName: "", variables: ["{{name}}"] } },
+      ],
+    }),
+  },
+  {
     id: "reactivate-7d",
     name: "Reactivación · 7 días inactivo",
     description: "Lead sin actividad 7 días → plantilla de reactivación.",

@@ -52,7 +52,9 @@ const DEFAULT_FLOW_ID =
 const DEFAULT_SOURCE_PHONE =
   process.env.DEFAULT_SOURCE_PHONE || "+5116433467";
 
-type Channel = "voice" | "email" | "whatsapp";
+// "task" = recordatorio genérico: cae en la rama no-voice → se marca DUE cuando
+// llega su hora (no se auto-despacha), igual que email/whatsapp.
+type Channel = "voice" | "email" | "whatsapp" | "task";
 
 interface CallbackRow {
   callbackId: string;

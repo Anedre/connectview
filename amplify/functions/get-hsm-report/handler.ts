@@ -79,9 +79,12 @@ export const handler: Handler = async (event: any) => {
       (a, b) => (b.sent || 0) - (a.sent || 0)
     );
 
-    // Derived rates (guard divide-by-zero). Read rate over delivered, etc.
+    // Embudo: "leído" implica "entregado" (delivered ⊇ read, como Chattigo). Los
+    // buckets guardan el ÚLTIMO estado (mutuamente excluyentes), así que el
+    // "entregado del embudo" = delivered + read. readRate = leídos / entregados.
+    const deliveredFunnel = (totals.delivered || 0) + (totals.read || 0);
     const readRate =
-      totals.delivered > 0 ? Math.round((totals.read / totals.delivered) * 100) : 0;
+      deliveredFunnel > 0 ? Math.round((totals.read / deliveredFunnel) * 100) : 0;
     const failRate =
       totals.total > 0 ? Math.round((totals.failed / totals.total) * 100) : 0;
 

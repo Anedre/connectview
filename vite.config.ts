@@ -1,11 +1,24 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { visualizer } from "rollup-plugin-visualizer";
 import path from "path";
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
+export default defineConfig(({ mode }) => ({
+  plugins: [
+    react(),
+    tailwindcss(),
+    // `npm run analyze` (vite build --mode analyze) → genera dist/stats.html con
+    // el treemap del bundle (útil con tantos @aws-sdk/* para ver qué pesa).
+    mode === "analyze" &&
+      visualizer({
+        open: true,
+        gzipSize: true,
+        brotliSize: true,
+        filename: "dist/stats.html",
+      }),
+  ].filter(Boolean),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -31,4 +44,4 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 1000,
   },
-});
+}));

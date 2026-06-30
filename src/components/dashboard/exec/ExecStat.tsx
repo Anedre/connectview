@@ -1,6 +1,10 @@
 import { useMemo } from "react";
-import type { LucideIcon } from "lucide-react";
 import { useCountUp, useMounted, useSvgId } from "./execUtils";
+
+/** Icono agnóstico de librería: acepta lucide, Phosphor, Tabler o los custom
+ *  (todos exponen al menos size + className). Así un KPI puede usar cualquier
+ *  estilo sin atarse a lucide. */
+export type AnyIcon = React.ComponentType<{ size?: number; className?: string }>;
 
 /**
  * ExecSpark — sparkline con trazo de gradiente + área, dibujo animado.
@@ -78,7 +82,7 @@ export function ExecSpark({
 
 export interface ExecStatProps {
   label: string;
-  icon?: LucideIcon;
+  icon?: AnyIcon;
   accent: string;
   value: number;
   unit?: string;
@@ -151,7 +155,11 @@ export function ExecStat({
       onClick={onClick}
     >
       <div className="exec-stat__label">
-        {Icn && <Icn className="exec-stat__icon" />}
+        {Icn && (
+          <span className="exec-stat__icobox">
+            <Icn />
+          </span>
+        )}
         {label}
       </div>
       <div className="exec-stat__value">

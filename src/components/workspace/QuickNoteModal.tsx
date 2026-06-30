@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import * as Icon from "@/components/vox/primitives";
@@ -10,11 +13,26 @@ interface QuickNoteModalProps {
   agentUsername: string;
 }
 
+// Validación declarativa con zod (PoC react-hook-form + zod): la nota es
+// obligatoria (sin contar espacios) y tiene un tope de 500 caracteres. El
+// mensaje de cada regla se muestra inline bajo el textarea.
+const noteSchema = z.object({
+  text: z
+    .string()
+    .trim()
+    .min(1, "Escribe una nota antes de guardar")
+    .max(500, "La nota no puede superar los 500 caracteres"),
+});
+type NoteForm = z.infer<typeof noteSchema>;
+
 /**
  * Tiny modal for jotting a quick note during a chat / voice contact
  * without opening the full Cliente 360° notes panel. The note gets
  * appended (with a timestamp) to whatever's already saved on
  * `saveAgentNotes` so nothing the agent typed before is overwritten.
+ *
+ * Formulario manejado con react-hook-form + zodResolver: validación tipada,
+ * estado de envío (isSubmitting) y errores sin useState a mano.
  */
 export function QuickNoteModal({
   open,
@@ -22,41 +40,47 @@ export function QuickNoteModal({
   contactId,
   agentUsername,
 }: QuickNoteModalProps) {
-  const [text, setText] = useState("");
-  const [saving, setSaving] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setFocus,
+    formState: { errors, isSubmitting },
+  } = useForm<NoteForm>({
+    resolver: zodResolver(noteSchema),
+    defaultValues: { text: "" },
+  });
 
+  // Limpia al cerrar; enfoca el textarea al abrir.
   useEffect(() => {
     if (!open) {
-      setText("");
-      setSaving(false);
+      reset({ text: "" });
       return;
     }
-    setTimeout(() => textareaRef.current?.focus(), 50);
-  }, [open]);
+    const t = setTimeout(() => setFocus("text"), 50);
+    return () => clearTimeout(t);
+  }, [open, reset, setFocus]);
 
+  // Esc cierra (salvo mientras se guarda).
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !saving) onClose();
+      if (e.key === "Escape" && !isSubmitting) onClose();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose, saving]);
+  }, [open, onClose, isSubmitting]);
 
-  const save = async () => {
+  const onSubmit = async ({ text }: NoteForm) => {
     if (!contactId) {
       toast.error("Sin contacto activo");
       return;
     }
-    const trimmed = text.trim();
-    if (!trimmed) return;
     const endpoints = getApiEndpoints();
     if (!endpoints?.saveAgentNotes) {
       toast.error("Endpoint de notas no configurado");
       return;
     }
-    setSaving(true);
     try {
       // Pull current notes first so we don't clobber anything the agent
       // already typed in the Cliente 360° panel.
@@ -70,25 +94,18 @@ export function QuickNoteModal({
       });
       const stamp = `[${ts} · ${agentUsername || "agente"}]`;
       const merged = current.notes
-        ? `${current.notes}\n${stamp} ${trimmed}`
-        : `${stamp} ${trimmed}`;
+        ? `${current.notes}\n${stamp} ${text}`
+        : `${stamp} ${text}`;
       const put = await fetch(endpoints.saveAgentNotes, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contactId,
-          agentUsername,
-          notes: merged,
-        }),
+        body: JSON.stringify({ contactId, agentUsername, notes: merged }),
       });
       if (!put.ok) throw new Error(`HTTP ${put.status}`);
       toast.success("Nota guardada");
       onClose();
     } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : "No se pudo guardar la nota"
-      );
-      setSaving(false);
+      toast.error(e instanceof Error ? e.message : "No se pudo guardar la nota");
     }
   };
 
@@ -99,7 +116,7 @@ export function QuickNoteModal({
       role="dialog"
       aria-modal="true"
       aria-label="Nota rápida"
-      onClick={() => !saving && onClose()}
+      onClick={() => !isSubmitting && onClose()}
       style={{
         position: "fixed",
         inset: 0,
@@ -111,8 +128,9 @@ export function QuickNoteModal({
         placeItems: "center",
       }}
     >
-      <div
+      <form
         onClick={(e) => e.stopPropagation()}
+        onSubmit={handleSubmit(onSubmit)}
         style={{
           width: 380,
           background: "var(--bg-1)",
@@ -138,7 +156,7 @@ export function QuickNoteModal({
             type="button"
             className="btn btn--ghost btn--sm btn--icon"
             onClick={onClose}
-            disabled={saving}
+            disabled={isSubmitting}
             aria-label="Cerrar"
           >
             <Icon.Close size={14} />
@@ -146,18 +164,19 @@ export function QuickNoteModal({
         </div>
 
         <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
+          {...register("text")}
           onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") save();
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              handleSubmit(onSubmit)();
+            }
           }}
           placeholder="Escribe una nota corta…"
           rows={5}
+          aria-invalid={errors.text ? "true" : "false"}
           style={{
             width: "100%",
             background: "var(--bg-2)",
-            border: "1px solid var(--border-1)",
+            border: `1px solid ${errors.text ? "var(--accent-red)" : "var(--border-1)"}`,
             borderRadius: 8,
             padding: "10px 12px",
             color: "var(--text-1)",
@@ -169,39 +188,48 @@ export function QuickNoteModal({
           }}
         />
 
-        <div
-          className="muted"
-          style={{ fontSize: 11, marginTop: 6, marginBottom: 10 }}
-        >
-          Se añade al panel de notas con tu nombre y la hora. ⌘+Enter para
-          guardar.
-        </div>
+        {errors.text ? (
+          <div
+            role="alert"
+            style={{ fontSize: 11.5, color: "var(--accent-red)", marginTop: 6 }}
+          >
+            {errors.text.message}
+          </div>
+        ) : (
+          <div
+            className="muted"
+            style={{ fontSize: 11, marginTop: 6, marginBottom: 10 }}
+          >
+            Se añade al panel de notas con tu nombre y la hora. ⌘+Enter para
+            guardar.
+          </div>
+        )}
 
         <div
           style={{
             display: "flex",
             justifyContent: "flex-end",
             gap: 8,
+            marginTop: 10,
           }}
         >
           <button
             type="button"
             className="btn btn--ghost"
             onClick={onClose}
-            disabled={saving}
+            disabled={isSubmitting}
           >
             Cancelar
           </button>
           <button
-            type="button"
+            type="submit"
             className="btn btn--success"
-            onClick={save}
-            disabled={saving || !text.trim() || !contactId}
+            disabled={isSubmitting || !contactId}
           >
-            {saving ? "Guardando…" : "Guardar"}
+            {isSubmitting ? "Guardando…" : "Guardar"}
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }

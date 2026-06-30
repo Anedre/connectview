@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Phone, Mail, MessageCircle } from "lucide-react";
+import { Phone, Mail, MessageCircle, ListTodo } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import * as Icon from "@/components/vox/primitives";
 
-type Channel = "voice" | "email" | "whatsapp";
+type Channel = "voice" | "email" | "whatsapp" | "task";
 
 interface WhatsAppTemplate {
   name: string;
@@ -83,6 +83,14 @@ const CHANNELS: {
     help: "Te recordamos enviar el template a la hora pactada",
     color: "var(--accent-cyan)",
     colorSoft: "var(--accent-cyan-soft)",
+  },
+  {
+    id: "task",
+    label: "Tarea",
+    icon: ListTodo,
+    help: "Recordatorio / to-do para ti a la hora pactada (sin contacto)",
+    color: "var(--accent-violet)",
+    colorSoft: "var(--accent-violet-soft)",
   },
 ];
 
@@ -240,7 +248,11 @@ export function ScheduleFollowupModal({
   const channelMeta = CHANNELS.find((c) => c.id === channel)!;
 
   const submit = async () => {
-    if (!phone) {
+    // Las tareas no necesitan contacto: si no hay teléfono, sintetizamos una
+    // clave (igual que el quick-create de Citas). El resto de canales sí lo piden.
+    const effectivePhone =
+      phone || (channel === "task" ? `task:${Date.now()}` : "");
+    if (!effectivePhone) {
       toast.error("No hay teléfono para programar el follow-up");
       return;
     }
@@ -280,7 +292,7 @@ export function ScheduleFollowupModal({
       // Build the payload — only include channel-specific fields when
       // they apply, so the row stays clean.
       const payload: Record<string, unknown> = {
-        phone,
+        phone: effectivePhone,
         customerName: customerName || "",
         scheduledAt: new Date(ts).toISOString(),
         assignedAgentUserId,
@@ -307,7 +319,7 @@ export function ScheduleFollowupModal({
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       toast.success(
-        `Follow-up agendado · ${new Date(ts).toLocaleString("es-PE", {
+        `${channel === "task" ? "Tarea agendada" : "Follow-up agendado"} · ${new Date(ts).toLocaleString("es-PE", {
           dateStyle: "short",
           timeStyle: "short",
         })}`
@@ -325,7 +337,7 @@ export function ScheduleFollowupModal({
 
   // Dynamic width — whatsapp + email need more space for the long
   // fields (subject, body, template preview).
-  const modalWidth = channel === "voice" ? 380 : 480;
+  const modalWidth = channel === "voice" || channel === "task" ? 380 : 480;
 
   return (
     <div
@@ -387,7 +399,7 @@ export function ScheduleFollowupModal({
           </span>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13.5, fontWeight: 600 }}>
-              Agendar follow-up
+              {channel === "task" ? "Nueva tarea" : "Agendar follow-up"}
             </div>
             <div className="muted" style={{ fontSize: 11 }}>
               {channelMeta.help}
@@ -786,7 +798,9 @@ export function ScheduleFollowupModal({
           >
             {channel === "voice"
               ? "Te lo asignamos a ti automáticamente — el sistema te llamará al cliente y a ti a la hora pactada."
-              : "A la hora pactada aparecerá en tu drawer de pendientes para que envíes el " +
+              : channel === "task"
+              ? "A la hora pactada aparecerá en tu lista de Tareas como pendiente para que la atiendas."
+              : "A la hora pactada aparecerá en tu lista de Tareas para que envíes el " +
                 (channel === "email" ? "correo" : "WhatsApp") +
                 " manualmente."}
           </div>
@@ -815,7 +829,7 @@ export function ScheduleFollowupModal({
             type="button"
             className="btn"
             onClick={submit}
-            disabled={submitting || !phone || !assignedAgentUserId}
+            disabled={submitting || (!phone && channel !== "task") || !assignedAgentUserId}
             style={{
               background: channelMeta.color,
               borderColor: channelMeta.color,
@@ -824,7 +838,11 @@ export function ScheduleFollowupModal({
             }}
           >
             <Icon.Calendar size={12} />
-            {submitting ? "Agendando…" : "Agendar follow-up"}
+            {submitting
+              ? "Agendando…"
+              : channel === "task"
+              ? "Crear tarea"
+              : "Agendar follow-up"}
           </button>
         </div>
       </div>

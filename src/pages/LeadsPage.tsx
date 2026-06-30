@@ -6,6 +6,7 @@ import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
+import { useProgram } from "@/context/ProgramContext";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useCan } from "@/hooks/usePermissions";
 import { useCCP } from "@/hooks/useCCP";
@@ -14,6 +15,7 @@ import { NotIntegrated } from "@/components/vox/NotIntegrated";
 import { type Valoracion } from "@/lib/dispositions";
 import * as Icon from "@/components/vox/primitives";
 import { PageHeader } from "@/components/vox/PageHeader";
+import { SourceHealthBar } from "@/components/leads/SourceHealthBar";
 import { PipelineSummary } from "@/components/leads/PipelineSummary";
 import { WhatsAppQuickSendModal } from "@/components/workspace/WhatsAppQuickSendModal";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -43,6 +45,8 @@ export interface Lead {
   /** Id del Lead en Salesforce — presente ⇒ está sincronizado con SF. */
   sfLeadId?: string;
   attributes?: Record<string, string>;
+  /** # de golpes (toques: llamadas + WhatsApp + email + gestiones) — manage-leads (Pilar 2). */
+  golpesCount?: number;
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -51,6 +55,11 @@ const SOURCE_LABEL: Record<string, string> = {
   salesforce: "Salesforce",
   whatsapp: "WhatsApp",
   manual: "Manual",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  meta_lead_ads: "Meta Lead Ads",
+  referral: "Referido",
+  call: "Llamada",
 };
 
 /**
@@ -277,6 +286,15 @@ export function LeadCard({
         {lead.source && lead.source !== "salesforce" ? (
           <span className="chip" style={{ height: 19, fontSize: 10 }}>
             {SOURCE_LABEL[lead.source] || lead.source}
+          </span>
+        ) : null}
+        {typeof lead.golpesCount === "number" && lead.golpesCount > 0 ? (
+          <span
+            className="chip"
+            title={`${lead.golpesCount} golpe(s): llamadas + WhatsApp + email + gestiones`}
+            style={{ height: 19, fontSize: 10, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }}
+          >
+            🎯 {lead.golpesCount} golpe{lead.golpesCount === 1 ? "" : "s"}
           </span>
         ) : null}
       </div>
@@ -813,6 +831,39 @@ function LeadDetailModal({
     }
   };
 
+  // R22 (Pilar 2): exportar el journey (golpes) del lead a CSV — incluye los
+  // WhatsApp fusionados que devuelve manage-leads ?phone=.
+  const exportJourney = async () => {
+    const ep = getApiEndpoints();
+    if (!ep?.manageLeads) return;
+    try {
+      const r = await authedFetch(`${ep.manageLeads}?phone=${encodeURIComponent(lead.phone)}`);
+      const d = await r.json();
+      const hist = (d.leads?.[0]?.history || []) as Array<Record<string, unknown>>;
+      const head = ["fecha", "tipo", "canal", "direccion", "etapa", "valoracion", "resumen", "agente"];
+      const rows = [
+        head,
+        ...hist.map((h) => [
+          String(h.ts || ""), String(h.type || ""), String(h.channel || ""), String(h.direction || ""),
+          String(h.stageLabel || h.stageId || ""), String(h.valoracion || ""),
+          String(h.summary || h.notes || "").replace(/[\r\n]+/g, " "), String(h.agent || ""),
+        ]),
+      ];
+      const csv = rows.map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `journey-${(lead.name || lead.phone).replace(/[^\w-]+/g, "_")}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+      toast.success(`Journey exportado (${hist.length} eventos)`);
+    } catch {
+      toast.error("No se pudo exportar el journey");
+    }
+  };
+
   const field = (key: keyof typeof f, label: string, type = "text") => (
     <label style={{ display: "block" }}>
       <span style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 600 }}>{label}</span>
@@ -844,7 +895,14 @@ function LeadDetailModal({
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700 }}>{lead.name || lead.phone}</div>
-            <div className="muted" style={{ fontSize: 12 }}>{lead.company || "Sin empresa"}</div>
+            <div className="muted" style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span>{lead.company || "Sin empresa"}</span>
+              {typeof lead.golpesCount === "number" && lead.golpesCount > 0 && (
+                <span className="chip" style={{ height: 18, fontSize: 10, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }} title="Golpes: llamadas + WhatsApp + email + gestiones">
+                  🎯 {lead.golpesCount} golpe{lead.golpesCount === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
           </div>
           <button className="btn btn--ghost btn--sm" onClick={onClose}><Icon.Close size={15} /></button>
         </div>
@@ -913,8 +971,11 @@ function LeadDetailModal({
         {/* Enviar a Salesforce a demanda — red de seguridad por si el sync
             automático no ocurrió (ej. lead de campaña sin contactar). Crea/
             actualiza el Lead en SF y registra la actividad. */}
-        {canManage && (
-          <div className="row" style={{ justifyContent: "flex-end", marginBottom: 10 }}>
+        <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginBottom: 10 }}>
+          <button className="btn btn--sm" onClick={exportJourney} title="Descargar el journey (golpes) de este lead en CSV">
+            ⬇ Exportar journey
+          </button>
+          {canManage && (
             <button
               className="btn btn--sm"
               onClick={pushToSf}
@@ -924,8 +985,8 @@ function LeadDetailModal({
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#00A1E0", display: "inline-block", marginRight: 6 }} />
               {sfPushing ? "Enviando…" : "Enviar a Salesforce"}
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Historial de contacto: timeline Vox + Salesforce, traído en vivo. */}
         <SalesforcePanel lead={lead} />
@@ -1031,12 +1092,17 @@ export function LeadsPage() {
     return () => window.removeEventListener("mouseup", up);
   }, []);
 
+  // Programa activo (Pilar 1): scopea el board a SUS leads (etapa por-programa).
+  const { activeProgramId, programs } = useProgram();
+  const scoped = !!activeProgramId && activeProgramId !== "all" && activeProgramId !== "none";
+
   const load = async () => {
     const ep = getApiEndpoints();
     if (!ep?.manageLeads) { setLoading(false); return; }
     setLoading(true);
     try {
-      const r = await authedFetch(ep.manageLeads);
+      const url = scoped ? `${ep.manageLeads}?programId=${encodeURIComponent(activeProgramId)}` : ep.manageLeads;
+      const r = await authedFetch(url);
       const d = await r.json();
       setLeads(Array.isArray(d.leads) ? d.leads : []);
     } finally {
@@ -1044,7 +1110,8 @@ export function LeadsPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  // Re-carga al cambiar el programa activo (switcher global del top-bar).
+  useEffect(() => { load(); }, [activeProgramId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const firstStage = tree[0]?.id;
 
@@ -1165,11 +1232,32 @@ export function LeadsPage() {
     try {
       await authedFetch(ep.manageLeads, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "move", leadId, stageId }),
+        body: JSON.stringify({ action: "move", leadId, stageId, programId: scoped ? activeProgramId : undefined }),
       });
     } catch {
       toast.error("No se pudo mover el lead");
       load();
+    }
+  };
+
+  // Pilar 1: asigna los leads seleccionados al programa activo (membership N:N).
+  const assignSelectedToProgram = async (programId: string) => {
+    const ep = getApiEndpoints();
+    if (!ep?.manageLeads || !programId) return;
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const prog = programs.find((p) => p.programId === programId);
+    try {
+      const r = await authedFetch(ep.manageLeads, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "assignProgram", programId, leadIds: ids }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error);
+      toast.success(`${ids.length} lead(s) asignado(s) a ${prog?.name || "el programa"}`);
+      clearSelection();
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo asignar");
     }
   };
 
@@ -1180,7 +1268,7 @@ export function LeadsPage() {
     try {
       const r = await authedFetch(ep.manageLeads, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, name: name || undefined, stageId, source: "manual" }),
+        body: JSON.stringify({ phone, name: name || undefined, stageId, source: "manual", programId: scoped ? activeProgramId : undefined }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error);
@@ -1203,6 +1291,7 @@ export function LeadsPage() {
           email: form.email.trim() || undefined, company: form.company.trim() || undefined,
           montoEstimado: form.monto.trim() ? Number(form.monto) || undefined : undefined,
           stageId: firstStage, source: "manual",
+          programId: scoped ? activeProgramId : undefined,
         }),
       });
       const d = await r.json();
@@ -1283,7 +1372,7 @@ export function LeadsPage() {
   };
 
   return (
-    <div className="view" style={{ maxWidth: 1600 }}>
+    <div className="view">
       <PageHeader
         crumb="Crecimiento"
         title="Embudo de leads"
@@ -1320,6 +1409,9 @@ export function LeadsPage() {
           </>
         }
       />
+
+      {/* Pilar 5 — Ingesta en vivo: leads por fuente (Meta/web/campaña/…) */}
+      <SourceHealthBar leads={leads} />
 
       {/* Chip-style filter bar */}
       <LeadFilterBar
@@ -1404,6 +1496,19 @@ export function LeadsPage() {
             <button className="btn btn--sm" onClick={toggleSelectAll} title="Seleccionar todos los leads filtrados">
               <Icon.Check size={13} /> Todos ({tableLeads.length})
             </button>
+          )}
+          {canManage && programs.filter((p) => p.status !== "archivado").length > 0 && (
+            <select
+              className="btn btn--sm"
+              value=""
+              onChange={(e) => { if (e.target.value) assignSelectedToProgram(e.target.value); }}
+              title="Asignar los seleccionados a un programa"
+            >
+              <option value="">Asignar a programa…</option>
+              {programs.filter((p) => p.status !== "archivado").map((p) => (
+                <option key={p.programId} value={p.programId}>{p.name}</option>
+              ))}
+            </select>
           )}
           {canManage && (
             <button className="btn btn--primary btn--sm" onClick={launchCampaign}>

@@ -10,7 +10,7 @@
  *   node scripts/create-lambda.mjs manage-connections CONNECTIONS_TABLE=connectview-connections
  */
 import { execSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -40,6 +40,13 @@ async function bundle() {
   if (!existsSync(entry)) throw new Error(`No existe: ${entry}`);
   const tmp = mkdtempSync(join(tmpdir(), `lambda-${dir}-`));
   const outFile = join(tmp, "index.js");
+  // Por defecto dejamos TODO @aws-sdk como external (lo provee el runtime). Pero
+  // algunos features (p.ej. WhatsApp Flows) necesitan un SDK más nuevo que el del
+  // runtime → con EXTERNAL_OVERRIDE listamos qué dejar external y bundleamos el resto
+  // (incluido @aws-sdk/client-socialmessaging nuevo, instalado como devDependency).
+  const external = process.env.EXTERNAL_OVERRIDE
+    ? process.env.EXTERNAL_OVERRIDE.split(",").map((s) => s.trim()).filter(Boolean)
+    : ["@aws-sdk/*", "aws-sdk", "node:*"];
   await esbuild.build({
     entryPoints: [entry],
     bundle: true,
@@ -47,7 +54,7 @@ async function bundle() {
     target: "node20",
     format: "cjs",
     outfile: outFile,
-    external: ["@aws-sdk/*", "aws-sdk", "node:*"],
+    external,
     logLevel: "warning",
   });
   const zipPath = join(tmp, "bundle.zip");
@@ -92,8 +99,6 @@ try {
   console.log(`   ✅ ${created.FunctionArn} (${created.State})`);
 
   console.log(`🔗 Function URL (auth NONE)…`);
-  // CORS lo maneja el handler (devuelve headers + responde OPTIONS), así no
-  // peleamos con el escapado de JSON en --cors a través del shell.
   const urlCfg = JSON.parse(
     aws([
       "lambda", "create-function-url-config",
@@ -101,6 +106,25 @@ try {
       "--auth-type", "NONE",
     ])
   );
+
+  // CORS a nivel de Function URL. SIN esto el navegador falla con "Failed to
+  // fetch" (el handler responde OPTIONS pero no manda Access-Control-Allow-Origin).
+  // Usamos --cli-input-json desde un archivo para no pelear con el escapado del JSON.
+  console.log(`🌐 CORS…`);
+  const corsInput = join(tmpDir, "cors.json");
+  writeFileSync(
+    corsInput,
+    JSON.stringify({
+      FunctionName: functionName,
+      Cors: {
+        AllowOrigins: ["http://localhost:5173", "https://master.drmn5d76emst6.amplifyapp.com"],
+        AllowMethods: ["*"],
+        AllowHeaders: ["*"],
+        MaxAge: 300,
+      },
+    })
+  );
+  aws(["lambda", "update-function-url-config", "--cli-input-json", `file://${corsInput}`]);
   // Function URL público requiere DOS permisos (gotcha conocido):
   //   1) lambda:InvokeFunctionUrl con condición FunctionUrlAuthType=NONE
   //   2) lambda:InvokeFunction (sin condición)

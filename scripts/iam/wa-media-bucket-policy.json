@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AccountRead",
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::731736972577:root" },
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::connectview-wa-media-731736972577/*"
+    },
+    {
+      "Sid": "SocialMessagingRead",
+      "Effect": "Allow",
+      "Principal": { "Service": "social-messaging.amazonaws.com" },
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::connectview-wa-media-731736972577/*"
+    }
+  ]
+}

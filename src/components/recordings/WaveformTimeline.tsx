@@ -117,6 +117,25 @@ export function WaveformTimeline({
     [segments, dur]
   );
 
+  // Barras memoizadas: solo dependen de segments/dur, NO del playhead. Así, al
+  // mover el cabezal a 60 fps no se re-renderizan las 120 barras (React reusa
+  // estos elementos) — el estado "reproducido/no" se pinta con un único velo.
+  const barEls = useMemo(
+    () =>
+      bars.map((b, i) => (
+        <div
+          key={i}
+          style={{
+            flex: 1,
+            height: `${Math.round(b.h * 100)}%`,
+            background: b.color,
+            borderRadius: 1.5,
+          }}
+        />
+      )),
+    [bars]
+  );
+
   const progressPct = Math.min(100, Math.max(0, (currentSec / dur) * 100));
 
   const seekFromClientX = (clientX: number) => {
@@ -228,23 +247,23 @@ export function WaveformTimeline({
           borderRadius: 4,
         }}
       >
-        {bars.map((b, i) => {
-          const barPct = ((i + 0.5) / BAR_COUNT) * 100;
-          const played = barPct <= progressPct;
-          return (
-            <div
-              key={i}
-              style={{
-                flex: 1,
-                height: `${Math.round(b.h * 100)}%`,
-                background: b.color,
-                opacity: played ? 1 : 0.4,
-                borderRadius: 1.5,
-                transition: "opacity 80ms linear",
-              }}
-            />
-          );
-        })}
+        {barEls}
+
+        {/* Velo de lo no-reproducido — atenúa con UN solo elemento la parte que
+            falta (antes cada barra cambiaba de opacidad → re-render de las 120 en
+            cada frame). El cabezal y el velo son lo único que se mueve a 60 fps. */}
+        <div
+          style={{
+            position: "absolute",
+            left: `${progressPct}%`,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            background: "color-mix(in srgb, var(--bg-2) 60%, transparent)",
+            pointerEvents: "none",
+            borderRadius: 4,
+          }}
+        />
 
         {/* Playhead */}
         <div

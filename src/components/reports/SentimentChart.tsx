@@ -62,7 +62,9 @@ export function SentimentChart({ contacts }: { contacts: ContactRecord[] }) {
 
   const option: EChartsOption = {
     animationDuration: 800,
-    grid: { left: 34, right: 12, top: 18, bottom: 26 },
+    // Margen inferior amplio para que las fechas del eje X y la leyenda
+    // (Positivo/Neutral/Mixto/Negativo) no se solapen.
+    grid: { left: 34, right: 12, top: 18, bottom: 54 },
     legend: {
       bottom: 0,
       itemWidth: 9,

@@ -25,6 +25,7 @@ const DEFAULT_MATRIX: Record<string, string> = {
   manage_appointments: "Admins",
   edit_taxonomy: "Admins",
   manage_catalogs: "Admins",
+  manage_suppression: "Admins",
   manage_users: "Admins",
   view_audit: "Admins",
   monitor_agents: "Supervisors",

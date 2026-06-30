@@ -3,6 +3,7 @@
   "configurations": [
     {
       "name": "dev",
+      "autoPort": false,
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "--host"],
       "port": 5173

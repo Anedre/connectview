@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeMetrics } from "@/hooks/useRealtimeMetrics";
 import { useRoles } from "@/hooks/useRoles";
-import { useCampaigns } from "@/hooks/useCampaigns";
 import { useContacts } from "@/hooks/useContacts";
 import { pluralES } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
@@ -16,8 +15,6 @@ import {
   Card,
   CardBody,
   CardHead,
-  ChannelChip,
-  StatusPill,
 } from "@/components/vox/primitives";
 
 type Role = "Agents" | "Supervisors" | "Admins" | "";
@@ -94,68 +91,6 @@ function AgentDashSections({ navigate }: { navigate: (path: string) => void }) {
   );
 }
 
-function LiveQueuesCard({
-  navigate,
-  metrics,
-}: {
-  navigate: (path: string) => void;
-  metrics: ReturnType<typeof useRealtimeMetrics>["metrics"];
-}) {
-  const queues = (metrics?.queues ?? []).slice(0, 6);
-  return (
-    <Card>
-      <CardHead
-        title="Colas en tiempo real"
-        right={
-          <button className="btn btn--ghost btn--sm" onClick={() => navigate("/queue")}>
-            Abrir supervisión <Icon.ChevRight size={12} />
-          </button>
-        }
-      />
-      <CardBody flush>
-        {queues.length === 0 ? (
-          <EmptyCardBody
-            icon={Icon.Queue}
-            title="Sin colas reportadas"
-            body="Aparecerán cuando haya tráfico en Amazon Connect."
-          />
-        ) : (
-          queues.map((q) => {
-            const status =
-              q.contactsInQueue > 20 ? "alert" : q.contactsInQueue > 5 ? "warn" : "ok";
-            return (
-              <div
-                key={q.queueId}
-                className={`queue-row ${
-                  status === "alert" ? "queue-row--alert" : status === "warn" ? "queue-row--warn" : ""
-                }`}
-              >
-                <ChannelChip type="voice" />
-                <div className="grow truncate">{q.queueName}</div>
-                <div className="mono col-num">
-                  <span className="muted" style={{ fontSize: 11 }}>cola </span>
-                  {q.contactsInQueue}
-                </div>
-                <div className="mono col-num">
-                  <span className="muted" style={{ fontSize: 11 }}>libres </span>
-                  {q.agentsAvailable}
-                </div>
-                <div className="mono col-num">
-                  <span className="muted" style={{ fontSize: 11 }}>esp </span>
-                  {fmtWait(q.oldestContactAge ?? 0)}
-                </div>
-                <div>
-                  <StatusPill status={status === "alert" ? "En riesgo" : status === "warn" ? "Media" : "OK"} />
-                </div>
-              </div>
-            );
-          })
-        )}
-      </CardBody>
-    </Card>
-  );
-}
-
 function SupervisorDashSections({
   navigate,
   metrics,
@@ -168,160 +103,64 @@ function SupervisorDashSections({
   );
 
   return (
-    <>
-      <div className="grid-2">
-        <LiveQueuesCard navigate={navigate} metrics={metrics} />
-
-        <Card>
-          <CardHead
-            title="Agentes que requieren atención"
-            right={
-              agentsNeedingAttention.length > 0 ? (
-                <span className="chip chip--amber">
-                  {agentsNeedingAttention.length} alertas
-                </span>
-              ) : (
-                <span className="chip chip--green">
-                  <span className="dot" /> Sin alertas
-                </span>
-              )
-            }
+    <Card>
+      <CardHead
+        title="Agentes que requieren atención"
+        right={
+          agentsNeedingAttention.length > 0 ? (
+            <span className="chip chip--amber">
+              {agentsNeedingAttention.length} alertas
+            </span>
+          ) : (
+            <span className="chip chip--green">
+              <span className="dot" /> Sin alertas
+            </span>
+          )
+        }
+      />
+      <CardBody>
+        {agentsNeedingAttention.length === 0 ? (
+          <EmptyCardBody
+            icon={Icon.Sparkles}
+            title="Sin alertas en este momento"
+            body="Aparecerán agentes con ACW prolongado, llamadas perdidas o sentiment negativo."
           />
-          <CardBody>
-            {agentsNeedingAttention.length === 0 ? (
-              <EmptyCardBody
-                icon={Icon.Sparkles}
-                title="Sin alertas en este momento"
-                body="Aparecerán agentes con ACW prolongado, llamadas perdidas o sentiment negativo."
-              />
-            ) : (
-              <div className="col" style={{ gap: 8 }}>
-                {agentsNeedingAttention.map((a) => (
+        ) : (
+          <div className="col" style={{ gap: 8 }}>
+            {agentsNeedingAttention.map((a) => (
+              <div
+                key={a.agentId}
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "center",
+                  padding: "10px 12px",
+                  background: "var(--bg-2)",
+                  borderRadius: 8,
+                }}
+              >
+                <Avatar name={a.username} />
+                <div className="grow">
                   <div
-                    key={a.agentId}
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "center",
-                      padding: "10px 12px",
-                      background: "var(--bg-2)",
-                      borderRadius: 8,
-                    }}
+                    style={{ fontSize: 13, fontWeight: 500, color: "var(--text-1)" }}
                   >
-                    <Avatar name={a.username} />
-                    <div className="grow">
-                      <div
-                        style={{ fontSize: 13, fontWeight: 500, color: "var(--text-1)" }}
-                      >
-                        {a.username}
-                      </div>
-                      <div className="muted" style={{ fontSize: 11.5 }}>
-                        {a.status === "AfterCallWork"
-                          ? "ACW · revisa wrap-up"
-                          : "Llamada perdida"}
-                      </div>
-                    </div>
-                    <button className="btn btn--sm" onClick={() => navigate("/queue")}>
-                      <Icon.Eye size={12} /> Ver
-                    </button>
+                    {a.username}
                   </div>
-                ))}
+                  <div className="muted" style={{ fontSize: 11.5 }}>
+                    {a.status === "AfterCallWork"
+                      ? "ACW · revisa wrap-up"
+                      : "Llamada perdida"}
+                  </div>
+                </div>
+                <button className="btn btn--sm" onClick={() => navigate("/queue")}>
+                  <Icon.Eye size={12} /> Ver
+                </button>
               </div>
-            )}
-          </CardBody>
-        </Card>
-      </div>
-    </>
-  );
-}
-
-function ManagerDashSections({
-  navigate,
-  metrics,
-}: {
-  navigate: (path: string) => void;
-  metrics: ReturnType<typeof useRealtimeMetrics>["metrics"];
-}) {
-  const { campaigns, loading } = useCampaigns(15000);
-  const active = campaigns.filter(
-    (c) => c.status === "RUNNING" || c.status === "PAUSED"
-  );
-  const topActive = active.slice(0, 5);
-
-  return (
-    <>
-      <div className="grid-2">
-        <Card>
-          <CardHead
-            title="Campañas activas"
-            right={
-              <span className="chip">
-                {active.length} de {campaigns.length}{" "}
-                {active.length === 1 ? "activa" : "activas"}
-              </span>
-            }
-          />
-          <CardBody flush>
-            {loading && campaigns.length === 0 ? (
-              <EmptyCardBody
-                icon={Icon.Megaphone}
-                title="Cargando campañas…"
-                body="Sincronizando con Amazon Connect."
-              />
-            ) : topActive.length === 0 ? (
-              <EmptyCardBody
-                icon={Icon.Megaphone}
-                title="Sin campañas activas en este momento"
-                body={
-                  campaigns.length > 0
-                    ? `Tienes ${campaigns.length} ${
-                        campaigns.length === 1 ? "campaña" : "campañas"
-                      } finalizadas o en borrador. Crea una nueva o relanza desde Campañas.`
-                    : "Crea una nueva desde el menú Campañas."
-                }
-              />
-            ) : (
-              topActive.map((c) => {
-                const total = Number(c.totalContacts || 0);
-                const done = (c.doneCount || 0) + (c.failedCount || 0);
-                const pct = total ? Math.round((done / total) * 100) : 0;
-                return (
-                  <div
-                    key={c.campaignId}
-                    style={{
-                      padding: "12px 16px",
-                      borderBottom: "1px solid var(--border-1)",
-                    }}
-                  >
-                    <div className="spread" style={{ marginBottom: 6 }}>
-                      <span style={{ fontSize: 12.5, fontWeight: 500 }}>
-                        {c.name}
-                      </span>
-                      <span className="mono muted" style={{ fontSize: 11 }}>
-                        {done} / {total}
-                      </span>
-                    </div>
-                    <div className="bar">
-                      <div
-                        style={{
-                          width: `${pct}%`,
-                          background:
-                            c.status === "PAUSED"
-                              ? "var(--accent-amber)"
-                              : "var(--accent-cyan)",
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </CardBody>
-        </Card>
-
-        <LiveQueuesCard navigate={navigate} metrics={metrics} />
-      </div>
-    </>
+            ))}
+          </div>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 
@@ -391,7 +230,11 @@ export function DashboardPage() {
   const isExec = role === "Admins" || role === "Supervisors";
 
   return (
-    <div className="view">
+    // El dashboard ejecutivo (.exec) trae su propio padding superior (26px);
+    // con `view--exec` anulamos el padding-top de `.view` para no duplicarlo
+    // (antes: 30+26 ≈ 56px de hueco bajo el top bar). Las tarjetas de manager
+    // que van debajo conservan el padding lateral/inferior de `.view`.
+    <div className={isExec ? "view view--exec" : "view"}>
       {/* Agents keep the standard PageHeader. Admins/Supervisors get a single
           fused Kommo-style header rendered INSIDE the InsightsPanel (title +
           context chips + control bar), so we don't stack two headers. */}
@@ -447,10 +290,13 @@ export function DashboardPage() {
         />
       )}
 
-      <div style={{ height: 16 }} />
-
+      {/* Admins/Supervisors: la vista ejecutiva (InsightsPanel) YA trae campañas
+          y colas en vivo. Aquí abajo solo van secciones que NO duplica: widgets
+          del agente y, para supervisores, "agentes que requieren atención".
+          (Antes ManagerDashSections/LiveQueuesCard duplicaban esos paneles.) */}
       {role === "Agents" && (
         <>
+          <div style={{ height: 16 }} />
           {/* Configurable real-data widgets (roadmap #8) — agents only;
               managers/supervisors get the same data in the InsightsPanel. */}
           <CustomWidgets />
@@ -458,10 +304,10 @@ export function DashboardPage() {
         </>
       )}
       {role === "Supervisors" && (
-        <SupervisorDashSections navigate={navigate} metrics={metrics} />
-      )}
-      {role === "Admins" && (
-        <ManagerDashSections navigate={navigate} metrics={metrics} />
+        <>
+          <div style={{ height: 16 }} />
+          <SupervisorDashSections navigate={navigate} metrics={metrics} />
+        </>
       )}
     </div>
   );

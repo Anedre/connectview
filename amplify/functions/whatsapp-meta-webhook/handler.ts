@@ -11,12 +11,21 @@ import { getTenantConnect } from "../_shared/tenantConnect";
 import { sendWhatsApp } from "../_shared/whatsappSend";
 import {
   appendLeadHistory,
+  getLeadByPhone,
   propagateLead,
   setActiveDynamo,
   setActiveProfiles,
 } from "../_shared/leadSync";
 import { setActiveTenant } from "../_shared/salesforceClient";
 import { fireAutomation } from "../_shared/automationHook";
+import {
+  matchesOptInKeyword,
+  matchesStopKeyword,
+  recordOptOut,
+  recordSuppression,
+  removeSuppression,
+} from "../_shared/suppression";
+import { updateHsmStatus, type HsmStatus } from "../_shared/hsmStatus";
 
 /**
  * whatsapp-meta-webhook — webhook de Meta Cloud API para números de WhatsApp
@@ -240,6 +249,65 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
     /* sin Connect/rol → usamos el pooled */
   }
 
+  // ── Pilar 3 · opt-out / STOP (compliance Meta) ────────────────────────────
+  // Si el inbound es una palabra de baja → suprimir WhatsApp + confirmar + NO
+  // correr el bot (un STOP no es un turno de conversación). Re-alta (ALTA/START)
+  // → quitar de la lista. Es lo que protege el número de baneos.
+  const phoneE164 = from.startsWith("+") ? from : `+${from}`;
+  const isStop = matchesStopKeyword(text);
+  const isOptIn = !isStop && matchesOptInKeyword(text);
+  if (isStop || isOptIn) {
+    setActiveDynamo(dynamo); // getLeadByPhone/appendLeadHistory usan el dynamo del tenant
+    let leadId: string | undefined;
+    try {
+      leadId = (await getLeadByPhone(phoneE164))?.leadId;
+    } catch {
+      /* sin lead → la entrada de supresión es el registro de verdad */
+    }
+    try {
+      if (isStop) {
+        await recordOptOut(dynamo, phoneE164, {
+          channels: ["whatsapp"],
+          reason: `Baja por WhatsApp: "${(text || "").trim().slice(0, 40)}"`,
+          source: "inbound_keyword",
+          tenantId: t.tenantId,
+          leadId,
+        });
+      } else {
+        await removeSuppression(dynamo, phoneE164);
+      }
+    } catch (e) {
+      console.error("opt-out/in record falló:", e);
+    }
+    const confirmText = isStop
+      ? "Listo ✅ No volverás a recibir mensajes de WhatsApp de nuestra parte. Si fue un error, respondé *ALTA* para reactivar."
+      : "Listo ✅ Reactivamos tus mensajes de WhatsApp. ¡Gracias por volver!";
+    try {
+      await sendWhatsApp(
+        { mode: "meta" as const, metaPhoneNumberId: phoneNumberId, tenantId: t.tenantId },
+        buildMetaMessage(from, { kind: "bot", text: confirmText })
+      );
+    } catch (e) {
+      console.error("opt-out confirm falló:", e);
+    }
+    if (leadId) {
+      try {
+        await appendLeadHistory(leadId, {
+          ts: new Date().toISOString(),
+          type: "note",
+          channel: "WhatsApp",
+          notes: isStop
+            ? `🚫 Opt-out (baja por WhatsApp): "${(text || "").trim().slice(0, 60)}"`
+            : `🔔 Re-alta (reactivó WhatsApp): "${(text || "").trim().slice(0, 60)}"`,
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+    console.log(`opt-${isStop ? "out" : "in"}: tenant=${t.tenantId} phone=${phoneE164} lead=${leadId || "—"}`);
+    return; // NO corremos el bot para un STOP/ALTA
+  }
+
   const botId = await pickBotId(dynamo, t.whatsapp?.botId);
   if (!botId) return; // sin bot configurado → no respondemos (evita loops)
 
@@ -300,6 +368,47 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
   }
 }
 
+/**
+ * Pilar 4 — recibo de entrega de Meta (value.statuses[]). Avanza el estado del
+ * HSM en connectview-hsm-sends y, si falló por número inválido/bloqueado,
+ * cuarentena el número (puente con el motor de supresión del Pilar 3). Resuelve
+ * el data-plane por phone_number_id; si no matchea un tenant meta, usa el pooled.
+ */
+async function handleStatus(
+  phoneNumberId: string,
+  st: { id?: string; status?: string; recipient_id?: string; errors?: { code?: number | string; title?: string }[] }
+): Promise<void> {
+  if (!st.id || !st.status) return;
+  let dynamo = legacyDynamo;
+  let tenantId: string | undefined;
+  const t = await findTenantByMetaPhone(phoneNumberId);
+  if (t?.tenantId) {
+    tenantId = t.tenantId;
+    try {
+      const tc = await getTenantConnect(t.tenantId);
+      if (tc?.dynamo) dynamo = tc.dynamo;
+    } catch {
+      /* sin rol → pooled */
+    }
+  }
+  const res = await updateHsmStatus(dynamo, st.id, st.status as HsmStatus, { errors: st.errors });
+  if (res.isPermanentFailure && st.recipient_id) {
+    const phone = st.recipient_id.startsWith("+") ? st.recipient_id : `+${st.recipient_id}`;
+    try {
+      await recordSuppression(dynamo, phone, {
+        status: "quarantined",
+        channels: ["whatsapp"],
+        reason: `Número inválido (WhatsApp): ${res.reason || "no entregable"}`,
+        source: "status_webhook",
+        tenantId,
+      });
+      console.log(`quarantine: ${phone} (${res.reason}) tenant=${tenantId || "—"}`);
+    } catch (e) {
+      console.error("quarantine falló:", e);
+    }
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   const method = event?.requestContext?.http?.method || event?.httpMethod || "GET";
@@ -345,6 +454,11 @@ export const handler: Handler = async (event: any) => {
             msg.button?.text ||
             "";
           if (phoneNumberId && from) await handleInbound(phoneNumberId, from, text);
+        }
+        // Pilar 4 — recibos de entrega (delivered/read/failed) llegan en el mismo
+        // webhook, en value.statuses[]. Avanzan el estado del HSM + cuarentena.
+        for (const st of value.statuses || []) {
+          if (phoneNumberId && st?.id) await handleStatus(phoneNumberId, st);
         }
       }
     }

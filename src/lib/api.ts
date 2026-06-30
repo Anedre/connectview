@@ -62,6 +62,11 @@ interface ApiEndpoints {
   // campaign type is "whatsapp").
   listWhatsAppTemplates?: string;
   sendWhatsAppTemplate?: string;
+  createWhatsAppTemplate?: string;
+  updateWhatsAppTemplate?: string;
+  deleteWhatsAppTemplate?: string;
+  uploadWhatsAppTemplateMedia?: string;
+  listWhatsAppFlows?: string;
   // Callback / follow-up scheduling — agent promises a future
   // call/email/whatsapp; dispatcher fires (voice) or marks DUE
   // (email/whatsapp).
@@ -94,6 +99,21 @@ interface ApiEndpoints {
   // Unified lead funnel — CRUD + move-stage over connectview-leads. Board
   // columns are the canonical taxonomy stages.
   manageLeads?: string;
+  // "Programa" como objeto operativo (Pilar 1) — CRUD + transición de estado +
+  // import + membership N:N (connectview-programs / connectview-lead-programs).
+  managePrograms?: string;
+  // Motor de supresión / consentimiento (Pilar 3 · R6) — CRUD de la lista DNC
+  // (connectview-suppression). La enforcement vive en _shared/suppression.ts.
+  manageSuppression?: string;
+  // Salud del número de WhatsApp (Pilar 4 · #13) — quality rating + modo
+  // (anclado a Connect vs Meta standalone) vía AWS End User Messaging.
+  getWhatsAppHealth?: string;
+  // Entrega agregada de WhatsApp (Pilar 4 · Fase C) — sent/delivered/read por
+  // plantilla pulleado de Meta Graph (template_analytics), para números Cloud API.
+  getWhatsAppAnalytics?: string;
+  // Inbox omnicanal (Pilar 6 · R13) — lista/thread/reply de conversaciones de
+  // Instagram DM / Messenger (connectview-conversations); responde por la Graph API.
+  manageConversations?: string;
   // Native appointment scheduling — CRUD over connectview-appointments.
   manageAppointment?: string;
   // Granular RBAC matrix — capability → minimum role. useCan() checks it.

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 
 /**
  * One segment from the contact transcript. The `type` field discriminates:
@@ -129,43 +130,34 @@ export interface ContactDetail {
  * the agent opens from the history timeline.
  */
 export function useContactDetail(contactId: string | null) {
-  const [detail, setDetail] = useState<ContactDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const url = getApiEndpoints()?.getContactDetail;
 
-  useEffect(() => {
-    if (!contactId) {
-      setDetail(null);
-      return;
-    }
-    const endpoints = getApiEndpoints();
-    if (!endpoints?.getContactDetail) {
-      setError("Endpoint getContactDetail no configurado");
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetch(`${endpoints.getContactDetail}?contactId=${encodeURIComponent(contactId)}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data) => {
-        if (cancelled) return;
-        setDetail(data as ContactDetail);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Error");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [contactId]);
+  const query = useQuery({
+    queryKey: ["contactDetail", contactId],
+    enabled: !!contactId && !!url,
+    // El detalle de un contacto cerrado (transcript / grabación / adjuntos /
+    // wrap-up) es prácticamente inmutable → lo cacheamos: reabrir un contacto
+    // ya visto es instantáneo (antes refetcheaba todo + spinner cada vez) y se
+    // deduplican llamadas concurrentes al mismo contactId.
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+    queryFn: async ({ signal }) => {
+      const r = await authedFetch(`${url}?contactId=${encodeURIComponent(contactId!)}`, { signal });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return (await r.json()) as ContactDetail;
+    },
+  });
 
-  return { detail, loading, error };
+  return {
+    detail: (query.data as ContactDetail | undefined) ?? null,
+    loading: !!contactId && query.isLoading,
+    error: !url
+      ? "Endpoint getContactDetail no configurado"
+      : query.error instanceof Error
+      ? query.error.message
+      : query.error
+      ? "Error"
+      : null,
+  };
 }

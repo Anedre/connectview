@@ -60,6 +60,23 @@ interface FnEvent {
 const VOICE = "Lupe"; // voz TTS español (Polly). Configurable a futuro por tenant.
 const LANG = "es-US";
 
+// Grabación + Contact Lens (analytics). Copiado EXACTO del flow real del tenant
+// (UDEP-Outbound-Smart) para que las llamadas tengan transcript + sentimiento, no
+// solo audio. Voice "RealTime" → transcript en vivo + post-call (Grabaciones).
+const RECORDING_PARAMS = {
+  RecordingBehavior: { RecordedParticipants: ["Agent", "Customer"] },
+  AnalyticsBehavior: {
+    Enabled: "True",
+    AnalyticsLanguage: LANG,
+    AnalyticsRedactionBehavior: "Enabled",
+    AnalyticsRedactionResults: "RedactedAndOriginal",
+    ChannelConfiguration: {
+      Chat: { AnalyticsModes: [] },
+      Voice: { AnalyticsModes: ["RealTime"] },
+    },
+  },
+};
+
 /** Despedida / cierre de chat. Texto del tenant o genérico. */
 function buildDisconnectFlow(farewell: string): object {
   return {
@@ -158,7 +175,7 @@ function buildOutboundFlow(queueId: string): object {
       {
         Identifier: "record",
         Type: "UpdateContactRecordingBehavior",
-        Parameters: { RecordingBehavior: { RecordedParticipants: ["Agent", "Customer"] } },
+        Parameters: RECORDING_PARAMS,
         Transitions: { NextAction: "setq" },
       },
       { Identifier: "setq", Type: "UpdateContactTargetQueue", Parameters: { QueueId: queueId }, Transitions: { NextAction: "xfer", Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }] } },
@@ -179,7 +196,8 @@ function buildSmartOutboundFlow(
   attribute: string,
   rules: { value: string; queueId: string }[],
   defaultQueueId: string,
-  flowName: string
+  flowName: string,
+  baseFlowId?: string
 ): object {
   const qActionId = (qid: string) => "q_" + qid.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
   const uniqueQueueIds = [...new Set([...rules.map((r) => r.queueId), defaultQueueId].filter(Boolean))];
@@ -189,7 +207,7 @@ function buildSmartOutboundFlow(
     { Identifier: "log", Type: "UpdateFlowLoggingBehavior", Parameters: { FlowLoggingBehavior: "Enabled" }, Transitions: { NextAction: "voice" } },
     { Identifier: "voice", Type: "UpdateContactTextToSpeechVoice", Parameters: { TextToSpeechVoice: VOICE }, Transitions: { NextAction: "lang", Errors: [{ NextAction: "lang", ErrorType: "NoMatchingError" }] } },
     { Identifier: "lang", Type: "UpdateContactData", Parameters: { LanguageCode: LANG }, Transitions: { NextAction: "record", Errors: [{ NextAction: "record", ErrorType: "NoMatchingError" }] } },
-    { Identifier: "record", Type: "UpdateContactRecordingBehavior", Parameters: { RecordingBehavior: { RecordedParticipants: ["Agent", "Customer"] } }, Transitions: { NextAction: "check" } },
+    { Identifier: "record", Type: "UpdateContactRecordingBehavior", Parameters: RECORDING_PARAMS, Transitions: { NextAction: "check" } },
     {
       Identifier: "check",
       Type: "Compare",
@@ -206,7 +224,12 @@ function buildSmartOutboundFlow(
       Parameters: { QueueId: qid },
       Transitions: { NextAction: "xfer", Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }] },
     })),
-    { Identifier: "xfer", Type: "TransferContactToQueue", Parameters: {}, Transitions: { NextAction: "end", Errors: [{ NextAction: "end", ErrorType: "QueueAtCapacity" }, { NextAction: "end", ErrorType: "NoMatchingError" }] } },
+    // Con flow base: fijamos la cola por atributo y TRANSFERIMOS al flow elegido
+    // (saludo/grabación/IVR del usuario), que usa la cola ya seteada. Sin base:
+    // transferimos directo a la cola.
+    baseFlowId
+      ? { Identifier: "xfer", Type: "TransferToFlow", Parameters: { ContactFlowId: baseFlowId }, Transitions: { NextAction: "end", Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }] } }
+      : { Identifier: "xfer", Type: "TransferContactToQueue", Parameters: {}, Transitions: { NextAction: "end", Errors: [{ NextAction: "end", ErrorType: "QueueAtCapacity" }, { NextAction: "end", ErrorType: "NoMatchingError" }] } },
     { Identifier: "end", Type: "DisconnectParticipant", Parameters: {}, Transitions: {} },
   ];
 
@@ -286,6 +309,7 @@ export const handler = async (event: FnEvent) => {
     attribute?: string;
     rules?: { value: string; queueId: string }[];
     flowName?: string;
+    baseFlowId?: string;
   } = {};
   try {
     body = JSON.parse(event.body || "{}");
@@ -312,11 +336,12 @@ export const handler = async (event: FnEvent) => {
       .filter((r) => r.value && r.queueId);
     const defaultQueueId = String(body.defaultQueueId || "");
     const flowName = String(body.flowName || "ARIA-Outbound-Smart").trim() || "ARIA-Outbound-Smart";
+    const baseFlowId = String(body.baseFlowId || "").trim() || undefined;
     if (!attribute || rules.length === 0 || !defaultQueueId) {
       return resp(400, { error: "Se requieren el atributo, al menos una regla (valor → cola) y la cola por defecto." });
     }
     try {
-      const content = JSON.stringify(buildSmartOutboundFlow(attribute, rules, defaultQueueId, flowName));
+      const content = JSON.stringify(buildSmartOutboundFlow(attribute, rules, defaultQueueId, flowName, baseFlowId));
       const existing = await existingFlows(client, instanceId);
       let flowId = existing.get(flowName);
       let act: "created" | "updated";

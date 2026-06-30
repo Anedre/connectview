@@ -6,11 +6,13 @@ import {
   UpdateItemCommand,
   DeleteItemCommand,
   ScanCommand,
+  QueryCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { randomUUID } from "node:crypto";
-import { propagateLead, pushLeadToSalesforce, appendLeadHistory, stageIdToLabel, setActiveDynamo, setActiveProfiles, type LeadHistoryEvent, type SfPushExtra } from "../_shared/leadSync";
+import { propagateLead, pushLeadToSalesforce, appendLeadHistory, stageIdToLabel, setActiveDynamo, setActiveProfiles, upsertLeadProgramMembership, isGolpe, summarizeGolpes, type LeadHistoryEvent, type SfPushExtra } from "../_shared/leadSync";
+import { normalizePhone, samePhone } from "../_shared/phone";
 import { setActiveTenant } from "../_shared/salesforceClient";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
@@ -37,6 +39,8 @@ const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 2 });
 const LEGACY_PROFILES_DOMAIN =
   process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
 const TABLE = process.env.LEADS_TABLE || "connectview-leads";
+const MEMBERSHIP = process.env.LEAD_PROGRAMS_TABLE || "connectview-lead-programs";
+const HSM_SENDS_TABLE = process.env.HSM_SENDS_TABLE || "connectview-hsm-sends";
 const CORS = { "Content-Type": "application/json" };
 const ok = (b: unknown) => ({ statusCode: 200, headers: CORS, body: JSON.stringify(b) });
 const bad = (c: number, e: string) => ({ statusCode: c, headers: CORS, body: JSON.stringify({ error: e }) });
@@ -117,6 +121,141 @@ async function scanAll(): Promise<Lead[]> {
   return out;
 }
 
+const byUpdatedDesc = (a: Lead, b: Lead) => (b.updatedAt || "").localeCompare(a.updatedAt || "");
+function stripHistory(l: Lead): Record<string, unknown> {
+  const r = { ...l } as Record<string, unknown>;
+  r.golpesCount = (Array.isArray(l.history) ? l.history : []).filter(isGolpe).length; // Pilar 2
+  delete r.history;
+  return r;
+}
+
+/** Envíos HSM (WhatsApp out) de un teléfono → eventos de golpe, para fusionar al
+ *  ledger del lead (no están en lead.history). Pilar 2. Best-effort. */
+async function hsmSendsAsHistory(phone: string): Promise<LeadHistoryEvent[]> {
+  const out: LeadHistoryEvent[] = [];
+  try {
+    let lastKey: Record<string, unknown> | undefined;
+    do {
+      const res = await dynamo.send(
+        new ScanCommand({ TableName: HSM_SENDS_TABLE, ExclusiveStartKey: lastKey as never })
+      );
+      for (const it of res.Items || []) {
+        const s = unmarshall(it) as {
+          phone?: string; sentAt?: string; templateName?: string; campaignId?: string; status?: string;
+        };
+        if (s.phone && samePhone(s.phone, phone)) {
+          out.push({
+            ts: s.sentAt || new Date().toISOString(),
+            type: "whatsapp_out",
+            channel: "WhatsApp",
+            direction: "out",
+            templateName: s.templateName,
+            programId: s.campaignId || undefined,
+            outcome: s.status || "sent",
+            summary: s.templateName ? `Plantilla: ${s.templateName}` : "WhatsApp enviado",
+          });
+        }
+      }
+      lastKey = res.LastEvaluatedKey;
+    } while (lastKey);
+  } catch {
+    /* sin acceso/tabla → sin eventos HSM */
+  }
+  return out;
+}
+
+/** Conteo de envíos HSM (WhatsApp out) por teléfono normalizado — un solo scan
+ *  para todo el board, para sumar al golpesCount. Pilar 2. */
+async function hsmCountsByPhone(): Promise<Map<string, number>> {
+  const m = new Map<string, number>();
+  try {
+    let lastKey: Record<string, unknown> | undefined;
+    do {
+      const res = await dynamo.send(
+        new ScanCommand({ TableName: HSM_SENDS_TABLE, ProjectionExpression: "phone", ExclusiveStartKey: lastKey as never })
+      );
+      for (const it of res.Items || []) {
+        const p = unmarshall(it).phone;
+        if (p) {
+          const k = normalizePhone(String(p))?.e164 || String(p);
+          m.set(k, (m.get(k) || 0) + 1);
+        }
+      }
+      lastKey = res.LastEvaluatedKey;
+    } while (lastKey);
+  } catch {
+    /* sin acceso/tabla → sin conteos HSM */
+  }
+  return m;
+}
+
+/** Envíos HSM (WhatsApp out) agrupados por teléfono normalizado → eventos de
+ *  golpe. Un solo scan para el reporte de atribución. Pilar 2. */
+async function hsmEventsByPhone(): Promise<Map<string, LeadHistoryEvent[]>> {
+  const m = new Map<string, LeadHistoryEvent[]>();
+  try {
+    let lastKey: Record<string, unknown> | undefined;
+    do {
+      const res = await dynamo.send(
+        new ScanCommand({ TableName: HSM_SENDS_TABLE, ExclusiveStartKey: lastKey as never })
+      );
+      for (const it of res.Items || []) {
+        const s = unmarshall(it) as { phone?: string; sentAt?: string; templateName?: string; campaignId?: string; status?: string };
+        if (!s.phone) continue;
+        const k = normalizePhone(s.phone)?.e164 || s.phone;
+        const ev: LeadHistoryEvent = {
+          ts: s.sentAt || new Date().toISOString(),
+          type: "whatsapp_out", channel: "WhatsApp", direction: "out",
+          templateName: s.templateName, programId: s.campaignId || undefined, outcome: s.status || "sent",
+        };
+        if (!m.has(k)) m.set(k, []);
+        m.get(k)!.push(ev);
+      }
+      lastKey = res.LastEvaluatedKey;
+    } while (lastKey);
+  } catch {
+    /* sin acceso/tabla → sin eventos HSM */
+  }
+  return m;
+}
+
+/** Pilar 1: leadId → stageId-por-programa (membership de un programa). */
+async function queryMembership(programId: string): Promise<Map<string, string | undefined>> {
+  const m = new Map<string, string | undefined>();
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const res = await dynamo.send(
+      new QueryCommand({
+        TableName: MEMBERSHIP,
+        KeyConditionExpression: "programId = :p",
+        ExpressionAttributeValues: { ":p": { S: programId } },
+        ProjectionExpression: "leadId, stageId",
+        ExclusiveStartKey: lastKey as never,
+      })
+    );
+    for (const it of res.Items || []) {
+      const r = unmarshall(it);
+      m.set(String(r.leadId), r.stageId ? String(r.stageId) : undefined);
+    }
+    lastKey = res.LastEvaluatedKey;
+  } while (lastKey);
+  return m;
+}
+
+/** Pilar 1: set de TODOS los leadId que pertenecen a algún programa (para "Sin programa"). */
+async function scanAssignedLeadIds(): Promise<Set<string>> {
+  const s = new Set<string>();
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const res = await dynamo.send(
+      new ScanCommand({ TableName: MEMBERSHIP, ProjectionExpression: "leadId", ExclusiveStartKey: lastKey as never })
+    );
+    for (const it of res.Items || []) s.add(String(unmarshall(it).leadId));
+    lastKey = res.LastEvaluatedKey;
+  } while (lastKey);
+  return s;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min — corta el cold start.
@@ -146,6 +285,55 @@ export const handler: Handler = async (event: any) => {
     if (method === "GET") {
       const all = await scanAll();
 
+      // Reporte de atribución "golpes→conversión" (Pilar 2). Opcionalmente
+      // scopeado por programa (?programId=). Fusiona WhatsApp (HSM) por teléfono.
+      if (params.report === "attribution") {
+        let leads = all;
+        if (params.programId && params.programId !== "all" && params.programId !== "none") {
+          const mem = await queryMembership(String(params.programId));
+          leads = all.filter((l) => mem.has(l.leadId));
+        }
+        const waByPhone = await hsmEventsByPhone();
+        const perLead = await Promise.all(
+          leads.map((l) => {
+            const wa = waByPhone.get(normalizePhone(l.phone)?.e164 || l.phone) || [];
+            const history = [...(Array.isArray(l.history) ? l.history : []), ...wa];
+            return summarizeGolpes(history, l.stageId);
+          })
+        );
+        const totalLeads = perLead.length;
+        const convertedArr = perLead.filter((g) => g.converted);
+        const converted = convertedArr.length;
+        const sum = (ns: number[]) => ns.reduce((a, b) => a + b, 0);
+        const tc = convertedArr.map((g) => g.touchesToClose).filter((n): n is number => typeof n === "number");
+        const dc = convertedArr.map((g) => g.daysToClose).filter((n): n is number => typeof n === "number");
+        const BUCKETS: Array<{ label: string; min: number; max: number }> = [
+          { label: "0", min: 0, max: 0 }, { label: "1-2", min: 1, max: 2 },
+          { label: "3-5", min: 3, max: 5 }, { label: "6-10", min: 6, max: 10 },
+          { label: "10+", min: 11, max: Infinity },
+        ];
+        const byBucket = BUCKETS.map((b) => {
+          const inB = perLead.filter((g) => g.total >= b.min && g.total <= b.max);
+          const conv = inB.filter((g) => g.converted).length;
+          return { label: b.label, leads: inB.length, converted: conv, rate: inB.length ? conv / inB.length : 0 };
+        });
+        const byChannel: Record<string, number> = {};
+        for (const g of perLead) for (const [ch, n] of Object.entries(g.byChannel)) byChannel[ch] = (byChannel[ch] || 0) + n;
+        return ok({
+          attribution: {
+            totalLeads,
+            converted,
+            conversionRate: totalLeads ? converted / totalLeads : 0,
+            avgGolpes: totalLeads ? sum(perLead.map((g) => g.total)) / totalLeads : 0,
+            avgGolpesToClose: tc.length ? sum(tc) / tc.length : 0,
+            avgDaysToClose: dc.length ? sum(dc) / dc.length : 0,
+            totalGolpes: sum(perLead.map((g) => g.total)),
+            byBucket,
+            byChannel,
+          },
+        });
+      }
+
       // Contacto reciente: leads ordenados por última actividad, con resumen del último evento.
       if (params.recent) {
         const n = Math.min(50, Math.max(1, Number(params.recent) || 15));
@@ -168,19 +356,49 @@ export const handler: Handler = async (event: any) => {
         return ok({ recent });
       }
 
-      // Un lead por teléfono → CON su historial completo (alimenta el detalle/Historial).
+      // Un lead por teléfono → CON su historial completo + golpes (Pilar 2). Se
+      // fusionan los envíos WhatsApp (HSM) que no viven en lead.history → el
+      // timeline y el conteo de golpes incluyen los WhatsApp salientes.
       if (params.phone) {
-        return ok({ leads: all.filter((l) => l.phone === params.phone) });
+        const matches = all.filter((l) => samePhone(l.phone, params.phone));
+        const waEvents = await hsmSendsAsHistory(params.phone);
+        const out = await Promise.all(
+          matches.map(async (l) => {
+            const history = [...(Array.isArray(l.history) ? l.history : []), ...waEvents].sort(
+              (a, b) => (a.ts || "").localeCompare(b.ts || "")
+            );
+            const golpes = await summarizeGolpes(history, l.stageId);
+            return { ...l, history, golpes };
+          })
+        );
+        return ok({ leads: out });
       }
 
-      // Board: lista completa, SIN historial (puede ser grande — se trae aparte).
-      const lean = all
-        .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
-        .map((l) => {
-          const r = { ...l } as Record<string, unknown>;
-          delete r.history;
-          return r;
-        });
+      // Scoping por programa (Pilar 1): leads del programa activo, con su etapa
+      // POR PROGRAMA (membership.stageId gana sobre lead.stageId). "none" = leads
+      // sin ningún programa.
+      if (params.programId && params.programId !== "all") {
+        if (params.programId === "none") {
+          const assigned = await scanAssignedLeadIds();
+          return ok({ leads: all.filter((l) => !assigned.has(l.leadId)).sort(byUpdatedDesc).map(stripHistory) });
+        }
+        const mem = await queryMembership(String(params.programId));
+        const scoped = all
+          .filter((l) => mem.has(l.leadId))
+          .map((l) => ({ ...l, stageId: mem.get(l.leadId) || l.stageId }))
+          .sort(byUpdatedDesc)
+          .map(stripHistory);
+        return ok({ leads: scoped });
+      }
+
+      // Board: golpesCount = toques en history + envíos WhatsApp (HSM) por teléfono (Pilar 2).
+      const hsmByPhone = await hsmCountsByPhone();
+      const lean = all.sort(byUpdatedDesc).map((l) => {
+        const r = stripHistory(l);
+        const k = normalizePhone(l.phone)?.e164 || l.phone;
+        r.golpesCount = (r.golpesCount as number) + (hsmByPhone.get(k) || 0);
+        return r;
+      });
       return ok({ leads: lean });
     }
 
@@ -201,6 +419,11 @@ export const handler: Handler = async (event: any) => {
             },
           })
         );
+        // Pilar 1: si el move ocurre dentro de un programa activo, actualizar
+        // también la etapa POR PROGRAMA (membership) — no afecta otros programas.
+        if (body.programId) {
+          await upsertLeadProgramMembership(String(body.leadId), String(body.programId), String(body.stageId));
+        }
         const stageLabel = await stageIdToLabel(String(body.stageId));
         const prop = await propagateById(String(body.leadId), {
           taskSubject: `ARIA · Etapa: ${stageLabel || String(body.stageId)}`.slice(0, 255),
@@ -221,6 +444,30 @@ export const handler: Handler = async (event: any) => {
           lead: { leadId: String(body.leadId), stageId: String(body.stageId) },
         });
         return ok({ moved: true, leadId: body.leadId, stageId: body.stageId });
+      }
+
+      // Pilar 1: asignar/quitar leads a un programa (membership N:N). El stageId
+      // de la membership = la etapa actual del lead.
+      if (body.action === "assignProgram" || body.action === "unassignProgram") {
+        const programId = String(body.programId || "");
+        const leadIds: string[] = Array.isArray(body.leadIds)
+          ? body.leadIds.map(String)
+          : body.leadId ? [String(body.leadId)] : [];
+        if (!programId || leadIds.length === 0) return bad(400, "programId y leadId(s) requeridos");
+        if (body.action === "assignProgram") {
+          const byId = new Map((await scanAll()).map((l) => [l.leadId, l] as const));
+          for (const id of leadIds) {
+            const l = byId.get(id);
+            await upsertLeadProgramMembership(id, programId, l?.stageId, l?.source || "manual");
+          }
+          return ok({ assigned: leadIds.length, programId });
+        }
+        for (const id of leadIds) {
+          await dynamo.send(
+            new DeleteItemCommand({ TableName: MEMBERSHIP, Key: { programId: { S: programId }, leadId: { S: id } } })
+          );
+        }
+        return ok({ unassigned: leadIds.length, programId });
       }
 
       // Forzar el envío de UN lead a Salesforce (botón "Enviar a Salesforce"
@@ -253,11 +500,14 @@ export const handler: Handler = async (event: any) => {
               taskSubject: "ARIA · Enviado a Salesforce",
               taskDescription: `Lead enviado manualmente a Salesforce desde ARIA${l.name ? ` · ${l.name}` : ""}.`,
               taskSubtype: "Task",
-            }
+            },
+            l.leadId // External Id (VoxLeadId__c) → dedup determinístico en SF
           );
           if (!sf) return ok({ pushed: false, error: "El lead necesita teléfono o email." });
-          // Persistir el sfLeadId nuevo → próximos sync idempotentes.
-          if (sf.leadId && !l.sfLeadId) {
+          // Persistir el sfLeadId nuevo → próximos sync idempotentes. SOLO si es un
+          // Lead (kind "lead"): un Contact id guardado como sfLeadId rompería el
+          // próximo update (updateSObject("Lead", contactId) → 404).
+          if (sf.leadId && sf.kind === "lead" && !l.sfLeadId) {
             await dynamo
               .send(
                 new UpdateItemCommand({
@@ -280,13 +530,14 @@ export const handler: Handler = async (event: any) => {
         }
       }
 
-      // Upsert. Dedup by phone — if a lead with this phone exists, update it.
+      // Upsert. Dedup by phone (tolerante a formato) — si ya existe un lead con
+      // ese teléfono escrito distinto, lo actualiza en vez de duplicarlo.
       const phone = (body.phone || "").trim();
       if (!phone) return bad(400, "phone is required");
 
       let leadId: string | undefined = body.leadId;
       if (!leadId) {
-        const existing = (await scanAll()).find((l) => l.phone === phone);
+        const existing = (await scanAll()).find((l) => samePhone(l.phone, phone));
         if (existing) leadId = existing.leadId;
       }
       const now = new Date().toISOString();
@@ -295,7 +546,8 @@ export const handler: Handler = async (event: any) => {
 
       const item: Lead = {
         leadId,
-        phone,
+        // Normalizado (E.164) → la tabla converge a un formato único.
+        phone: normalizePhone(phone)?.e164 || phone,
         name: body.name,
         email: body.email,
         company: body.company,
@@ -341,6 +593,10 @@ export const handler: Handler = async (event: any) => {
           : "Datos del lead actualizados desde ARIA.",
         taskSubtype: "Task",
       });
+      // Pilar 1: si la UI mandó el programa activo, escribir la membership.
+      if (body.programId) {
+        await upsertLeadProgramMembership(leadId, String(body.programId), item.stageId, item.source);
+      }
       if (!isNew) {
         await appendLeadHistory(leadId, {
           ts: new Date().toISOString(),

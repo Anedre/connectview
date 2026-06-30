@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getApiEndpoints } from "@/lib/api";
 
 export interface HistoricalContact {
@@ -20,36 +20,36 @@ export interface HistoricalContact {
 
 // Connect SearchContacts API limits time range to 1345 hours (~56 days)
 export function useContactHistory(phone: string | null, days = 55) {
-  const [contacts, setContacts] = useState<HistoricalContact[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const url = getApiEndpoints()?.getContactHistory;
 
-  useEffect(() => {
-    if (!phone) {
-      setContacts([]);
-      return;
-    }
+  // Caché por (teléfono, ventana): reabrir el historial de un lead ya visto es
+  // instantáneo (antes spinner + refetch cada vez). staleTime corto + gcTime
+  // largo → render inmediato desde caché con refresh en segundo plano.
+  const query = useQuery({
+    queryKey: ["contactHistory", phone, days],
+    enabled: !!phone && !!url,
+    staleTime: 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+    queryFn: async ({ signal }) => {
+      const r = await fetch(
+        `${url}?phone=${encodeURIComponent(phone!)}&days=${days}`,
+        { signal }
+      );
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      return (data.contacts || []) as HistoricalContact[];
+    },
+  });
 
-    const endpoints = getApiEndpoints();
-    if (!endpoints?.getContactHistory) return;
-
-    setLoading(true);
-    setError(null);
-
-    fetch(
-      `${endpoints.getContactHistory}?phone=${encodeURIComponent(phone)}&days=${days}`
-    )
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data) => setContacts(data.contacts || []))
-      .catch((e) => {
-        setError(e instanceof Error ? e.message : "Failed");
-        setContacts([]);
-      })
-      .finally(() => setLoading(false));
-  }, [phone, days]);
-
-  return { contacts, loading, error };
+  return {
+    contacts: query.data ?? [],
+    loading: !!phone && query.isLoading,
+    error:
+      query.error instanceof Error
+        ? query.error.message
+        : query.error
+        ? "Failed"
+        : null,
+  };
 }

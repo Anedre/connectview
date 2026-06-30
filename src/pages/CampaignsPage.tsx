@@ -311,10 +311,10 @@ export function CampaignsPage() {
             return (
               <div
                 key={c.campaignId}
+                className="row-clickable"
                 style={{
                   padding: "14px 18px",
                   borderBottom: "1px solid var(--border-1)",
-                  cursor: "pointer",
                 }}
                 onClick={() => navigate(`/campaigns/${c.campaignId}`)}
               >

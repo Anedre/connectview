@@ -14,6 +14,7 @@ import { DebugHUD } from "@/components/debug/DebugHUD";
 import { MissedCallNotifier } from "@/components/workspace/MissedCallNotifier";
 import { MonitorControlBar } from "@/components/workspace/MonitorControlBar";
 import { CopilotPanel } from "@/components/vox/CopilotPanel";
+import { TasksLauncher } from "@/components/vox/TasksLauncher";
 import { ActiveContactProvider } from "@/hooks/useActiveContact";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { DashboardPage } from "@/pages/DashboardPage";
@@ -26,6 +27,8 @@ import { CampaignsPage } from "@/pages/CampaignsPage";
 import { CampaignCreatePage } from "@/pages/CampaignCreatePage";
 import { CampaignDetailPage } from "@/pages/CampaignDetailPage";
 import { LeadsPage } from "@/pages/LeadsPage";
+import { InboxPage } from "@/pages/InboxPage";
+import { ProgramsHubPage } from "@/pages/ProgramsHubPage";
 import { AppointmentsPage } from "@/pages/AppointmentsPage";
 import { CoachDemoPage } from "@/pages/CoachDemoPage";
 import { WrapUpDemoPage } from "@/pages/WrapUpDemoPage";
@@ -501,6 +504,8 @@ function AnimatedRoutes() {
             <Route path="/recordings" element={<RecordingsPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/leads" element={<LeadsPage />} />
+            <Route path="/inbox" element={<InboxPage />} />
+            <Route path="/programs" element={<ProgramsHubPage />} />
             <Route path="/charts-lab" element={<ChartsLabPage />} />
             <Route path="/appointments" element={<AppointmentsPage />} />
             <Route path="/bot" element={<FlowBuilderPage />} />
@@ -579,6 +584,10 @@ function AppContent() {
                 <MonitorControlBar />
                 {/* Global ARIA Copilot — floating assistant on every route. */}
                 <CopilotPanel />
+                {/* Global Tareas — launcher debajo de Copilot; único punto de
+                    entrada a las tareas/follow-ups del agente (reemplaza el
+                    bubble flotante que vivía solo en Agent Desktop). */}
+                <TasksLauncher />
               </TooltipProvider>
             </BrowserRouter>
           </ActiveContactProvider>

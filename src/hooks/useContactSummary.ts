@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getApiEndpoints } from "@/lib/api";
 import type { ContactTranscriptSegment } from "@/hooks/useContactDetail";
 
@@ -44,61 +45,52 @@ export function useContactSummary(
   contactId: string | null,
   segments: ContactTranscriptSegment[] | null
 ) {
-  const [summary, setSummary] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const url = getApiEndpoints()?.generateCallSummary;
+  // El transcript de un contacto cerrado es inmutable → su texto (y por tanto
+  // el resumen) depende solo del contactId. Lo derivamos memoizado para usarlo
+  // como cuerpo de la petición.
+  const transcriptText = useMemo(
+    () => (segments && segments.length ? segmentsToTranscript(segments) : ""),
+    [segments]
+  );
+  const hasTranscript = !!transcriptText.trim();
 
-  useEffect(() => {
-    if (!contactId) {
-      setSummary(null);
-      return;
-    }
-    if (!segments || segments.length === 0) {
-      // We have a contactId but no usable transcript — let the caller
-      // render a "Sin transcripción" hint instead of calling Bedrock.
-      setSummary(null);
-      return;
-    }
-    const endpoints = getApiEndpoints();
-    if (!endpoints?.generateCallSummary) {
-      setError("Endpoint generateCallSummary no configurado");
-      return;
-    }
-    const ctrl = new AbortController();
-    setLoading(true);
-    setError(null);
-    setSummary(null);
-    const transcriptText = segmentsToTranscript(segments);
-    if (!transcriptText.trim()) {
-      setLoading(false);
-      setSummary(null);
-      return;
-    }
-    fetch(endpoints.generateCallSummary, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contactId,
-        mode: "summary",
-        transcript: transcriptText,
-      }),
-      signal: ctrl.signal,
-    })
-      .then((r) => r.json())
-      .then((j) => {
-        if (ctrl.signal.aborted) return;
-        const text = (j.result || j.summary || "").trim();
-        setSummary(text || null);
-      })
-      .catch((e) => {
-        if ((e as Error).name === "AbortError") return;
-        setError(e instanceof Error ? e.message : "Error generando resumen");
-      })
-      .finally(() => {
-        if (!ctrl.signal.aborted) setLoading(false);
+  // Cacheamos el resumen por contactId con staleTime infinito: el resumen IA de
+  // una interacción ya cerrada no cambia, así que reabrir el contacto NO vuelve
+  // a llamar a Bedrock (antes regeneraba el resumen — y pagaba la latencia —
+  // en cada apertura).
+  const query = useQuery({
+    queryKey: ["contactSummary", contactId],
+    enabled: !!contactId && !!url && hasTranscript,
+    staleTime: Infinity,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+    queryFn: async ({ signal }) => {
+      const r = await fetch(url!, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactId,
+          mode: "summary",
+          transcript: transcriptText,
+        }),
+        signal,
       });
-    return () => ctrl.abort();
-  }, [contactId, segments]);
+      const j = await r.json();
+      const text = (j.result || j.summary || "").trim();
+      return (text || null) as string | null;
+    },
+  });
 
-  return { summary, loading, error };
+  return {
+    summary: (query.data as string | null | undefined) ?? null,
+    loading: !!contactId && hasTranscript && query.isLoading,
+    error: !url
+      ? "Endpoint generateCallSummary no configurado"
+      : query.error instanceof Error
+      ? query.error.message
+      : query.error
+      ? "Error generando resumen"
+      : null,
+  };
 }

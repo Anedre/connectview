@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import { resolveDynamo, resolveWhatsApp } from "../_shared/tenantConnect";
 import { sendWhatsApp } from "../_shared/whatsappSend";
 import { getIdentity, isLegacyTenant } from "../_shared/cognitoAuth";
+import { evaluateSend } from "../_shared/suppression";
+import { normalizePhone } from "../_shared/phone";
 
 // Secreto compartido para llamadas server-to-server (campaign-dialer). El
 // frontend manda JWT; el dialer no tiene JWT y prueba que es interno con este
@@ -32,6 +34,8 @@ async function recordHsmSend(s: {
       Item: {
         sendId: { S: s.messageId || randomUUID() },
         phone: { S: s.phone },
+        // Dígitos normalizados → clave del GSI byPhone (frecuencia/anti-doble-envío, Pilar 3 Fase B).
+        phoneDigits: { S: normalizePhone(s.phone)?.digits || s.phone.replace(/\D/g, "") },
         templateName: { S: s.templateName },
         language: { S: s.language },
         campaignId: s.campaignId ? { S: s.campaignId } : { NULL: true },
@@ -199,6 +203,24 @@ export const handler: Handler = async (event: any) => {
       ...(components.length > 0 ? { components } : {}),
     },
   };
+
+  // Pilar 3 — gate de supresión: ningún HSM sale a un opt-out / DNC / número en
+  // cuarentena (channel-scoped a WhatsApp). Fail-open si la tabla falla (no frena
+  // el outbound por un error de infra). El caller (dialer/automation/blast) recibe
+  // {sent:false, suppressed:true} y NO reintenta.
+  const verdict = await evaluateSend(dynamo, {
+    phone,
+    channel: "whatsapp",
+    tenantId: effectiveTenantId,
+  });
+  if (!verdict.allowed) {
+    console.log(`suppressed whatsapp template → ${phone} (${verdict.blockedBy})`);
+    return {
+      statusCode: 200,
+      headers: CORS,
+      body: JSON.stringify({ sent: false, suppressed: true, blockedBy: verdict.blockedBy, phone }),
+    };
+  }
 
   try {
     // Router: modo AWS (End User Messaging) o Meta (Cloud API directa).

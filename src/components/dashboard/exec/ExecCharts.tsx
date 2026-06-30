@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { lighten, saturate, useMounted } from "./execUtils";
+import { useMounted } from "./execUtils";
 import type { ExecCampaign, ExecLiveQueue, ExecSlice } from "./execMock";
 
 /**
@@ -8,8 +8,12 @@ import type { ExecCampaign, ExecLiveQueue, ExecSlice } from "./execMock";
  * gradientes "infografía" animados por CSS (exec.css, respetan reduced-motion).
  */
 
+/* Paleta muteada del handoff (= InsightsPanel.DATA_PALETTE): cian/verde/violeta/
+   ámbar/rojo + sus variantes -2 para ciclar. Reemplaza la vívida v2. */
+const MUTED_DATA = ["#0F84A0","#138354","#6253CE","#B8761A","#C0353A","#0a6c84","#0f6e46","#5141b8","#9c6314","#a32a2f"];
+
 /* ---------- Ranking de agentes ---------- */
-const RANK_COLORS = ["#2BC6E6","#25B873","#A3D63B","#F5C518","#F5A524","#F2722E","#9B8CF0","#ED84C2","#ED5257","#6E8BFF"];
+const RANK_COLORS = MUTED_DATA;
 const initialsOf = (n: string) =>
   n.split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
@@ -38,8 +42,7 @@ export function ExecRank({
                 <div
                   className="exec-rank__fill"
                   style={{
-                    background: `linear-gradient(180deg, ${lighten(c, 0.4)}, ${c} 60%, ${saturate(c, 1)})`,
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -2px 3px rgba(0,0,0,0.3)",
+                    background: c,
                     width: `${(d.value / max) * 100}%`,
                     animationDelay: `${i * 0.07}s`,
                   }}
@@ -54,11 +57,8 @@ export function ExecRank({
 }
 
 /* ---------- Embudo de leads (barras horizontales, color por etapa + conversión) ---------- */
-// Paleta diversa: un color único por etapa (cicla si hay más etapas).
-const FUNNEL_PALETTE = [
-  "#2BC6E6", "#25B873", "#A3D63B", "#F5C518", "#F5A524",
-  "#F2722E", "#9B8CF0", "#ED84C2", "#ED5257", "#6E8BFF",
-];
+// Paleta diversa muteada (un color por etapa, cicla si hay más).
+const FUNNEL_PALETTE = MUTED_DATA;
 
 export function ExecFunnel({
   data,
@@ -100,7 +100,6 @@ export function ExecFunnel({
                 background: "var(--e-card)",
                 borderRadius: 6,
                 overflow: "hidden",
-                boxShadow: "inset 0 1px 2px rgba(0,0,0,0.3)",
               }}
             >
               <div
@@ -111,8 +110,8 @@ export function ExecFunnel({
                   transformOrigin: "left",
                   animation: "exec-grow-x 0.7s cubic-bezier(0.2,0.7,0.2,1) both",
                   animationDelay: `${i * 0.05}s`,
-                  background: `linear-gradient(90deg, ${lighten(c, 0.18)}, ${c} 70%, ${saturate(c, 1)})`,
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35)",
+                  background: c,
+                  opacity: 0.92,
                 }}
               />
             </div>
@@ -167,7 +166,7 @@ export function ExecPillBars({ data }: { data: ExecSlice[] }) {
                 <div
                   className="exec-pill-fill"
                   style={{
-                    background: `linear-gradient(180deg, ${lighten(d.color, 0.34)}, ${d.color} 58%, ${saturate(d.color, 1)})`,
+                    background: d.color,
                     width: `${(d.value / max) * 100}%`,
                     animationDelay: `${i * 0.07}s`,
                   }}
@@ -216,8 +215,10 @@ export function ExecHeatmap({
     const v = demoGrid[di][hi];
     return { v, count: null };
   };
+  // Cian del handoff mezclado con la superficie de tarjeta (theme-safe: funciona
+  // en dark y light, a diferencia del naranja-sobre-teal hardcodeado anterior).
   const colorFor = (v: number) =>
-    `color-mix(in srgb, #F2722E ${Math.round(v * 100)}%, #123A4A)`;
+    `color-mix(in srgb, var(--e-cyan) ${Math.round(v * 100)}%, var(--e-card))`;
   return (
     <div>
       <div className="exec-heat">
@@ -298,11 +299,7 @@ export function ExecCampaigns({ data }: { data: ExecCampaign[] }) {
                 className="exec-camp__fill"
                 style={{
                   width: `${pct}%`,
-                  background: running
-                    ? "linear-gradient(180deg, #5AD6B0, #25B873 60%, #1B8F5A)"
-                    : "linear-gradient(180deg, #FAC661, #F5A524 60%, #D8851A)",
-                  boxShadow:
-                    "inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -2px 3px rgba(0,0,0,0.3)",
+                  background: running ? "var(--e-green)" : "var(--e-amber)",
                 }}
               />
             </div>

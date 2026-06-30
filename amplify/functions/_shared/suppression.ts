@@ -1,0 +1,533 @@
+/**
+ * suppression — motor central de supresión / consentimiento (Pilar 3, R6).
+ *
+ * UNA librería compartida por la que pasa TODO envío saliente antes de salir.
+ * Convierte la dedup manual de Adriana en garantía por política + compliance
+ * Meta (opt-out/STOP, cuarentena de número, do-not-contact).
+ *
+ * Decisión de arquitectura (design/pilar-3-supresion.md §2): el gate es esta
+ * lib en proceso (patrón leadSync/phone), NO un Lambda con hop de red. El
+ * cliente DynamoDB se pasa EXPLÍCITO a cada función (cada sender ya lo resolvió
+ * con resolveDynamo) → sin estado de módulo oculto, testeable.
+ *
+ * Tabla `connectview-suppression` (PK = phone digits normalizados). El teléfono
+ * —no el lead— es la clave: un número que escribe STOP puede no ser lead aún, y
+ * el opt-out debe respetarse igual y sobrevivir a la rotación de leads.
+ *
+ * FASE A (este archivo): solo causas DURAS — opt_out / quarantine / dnc,
+ * channel-scoped. La Fase B suma dedup-window (R6) + frequency + quiet-hours +
+ * converted leyendo `connectview-suppression-rules` + GSI byPhone de hsm-sends.
+ *
+ * Fail-open por diseño: si la lectura de la tabla falla (no creada / AccessDenied
+ * / throttle), NO bloqueamos el envío — un error de infra no debe frenar TODO el
+ * outbound. La compliance se enforce cuando la tabla está sana; el error se loguea.
+ */
+import {
+  DynamoDBClient,
+  GetItemCommand,
+  PutItemCommand,
+  DeleteItemCommand,
+  QueryCommand,
+  ScanCommand,
+} from "@aws-sdk/client-dynamodb";
+import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
+import { normalizePhone } from "./phone";
+
+const SUPPRESSION_TABLE = process.env.SUPPRESSION_TABLE || "connectview-suppression";
+const RULES_TABLE = process.env.SUPPRESSION_RULES_TABLE || "connectview-suppression-rules";
+const HSM_TABLE = process.env.HSM_SENDS_TABLE || "connectview-hsm-sends";
+const DAY_MS = 86_400_000;
+
+/** Canales sobre los que el motor decide. WhatsApp-first en v1 (R6 + activo frágil). */
+export type SuppressionChannel = "whatsapp" | "voice" | "email";
+
+/** Por qué un número está en la lista. Las tres son bloqueo DURO. */
+export type SuppressionStatus = "opted_out" | "quarantined" | "dnc";
+
+export interface SuppressionEntry {
+  /** PK — dígitos normalizados (de _shared/phone.ts), clave natural cross-lead. */
+  phone: string;
+  /** Forma legible "+51999…". */
+  e164?: string;
+  status: SuppressionStatus;
+  /** Canales suprimidos: ["whatsapp"] | ["voice"] | ["all"] | combinación. */
+  channels: string[];
+  reason?: string;
+  source: "inbound_keyword" | "status_webhook" | "manual" | "import";
+  tenantId?: string;
+  /** Lead ligado, si se pudo resolver (conveniencia para la UI). */
+  leadId?: string;
+  createdAt: string;
+  createdBy?: string;
+  /** Opcional: cuarentena temporal. Opt-out = permanente (sin expiresAt). */
+  expiresAt?: string;
+}
+
+/** Causa del bloqueo. Fase A = las tres duras; el resto entra en Fase B. */
+export type BlockReason =
+  | "opt_out"
+  | "quarantine"
+  | "dnc"
+  | "dedup_window"
+  | "frequency"
+  | "quiet_hours"
+  | "converted";
+
+export interface SendVerdict {
+  allowed: boolean;
+  blockedBy?: BlockReason;
+  detail?: string;
+}
+
+/** Tope de frecuencia por canal: máx N envíos en una ventana de días. */
+export interface FreqCap {
+  channel: string; // "whatsapp" | "all"
+  max: number; // 0 = sin tope
+  windowDays: number;
+}
+
+/** Quiet hours por canal: no contactar fuera de [startHour, endHour) en la TZ. */
+export interface QuietHours {
+  channel: string;
+  startHour: number; // 0-23
+  endHour: number; // 0-23 (exclusivo)
+  timezone: string; // "America/Lima"
+  daysOfWeek?: number[]; // 0=Dom … 6=Sáb; vacío = todos
+}
+
+/** Política de supresión por tenant (1 doc). connectview-suppression-rules. */
+export interface SuppressionRules {
+  tenantId: string;
+  /** R6: no reenviar al mismo número en N días. 1 = "mismo día". 0 = desactivado. */
+  dedupWindowDays?: number;
+  freqCaps?: FreqCap[];
+  quietHours?: QuietHours[];
+  /** No contactar leads ya convertidos (se evalúa en el preview batch). */
+  suppressAfterConversion?: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+/** Default cuando el tenant no configuró reglas: anti-doble-envío 1 día (R6 out-of-the-box). */
+const DEFAULT_RULES: Omit<SuppressionRules, "tenantId"> = { dedupWindowDays: 1 };
+
+// Caché de reglas por tenant (TTL corto) — evita un GetItem por cada envío.
+const rulesCache = new Map<string, { rules: SuppressionRules; exp: number }>();
+const RULES_TTL_MS = 60_000;
+
+/** Lee la política del tenant (cacheada 60s). Default = anti-doble-envío 1 día. */
+export async function getRules(dynamo: DynamoDBClient, tenantId?: string): Promise<SuppressionRules> {
+  const key = tenantId || "_legacy";
+  const now = Date.now();
+  const hit = rulesCache.get(key);
+  if (hit && hit.exp > now) return hit.rules;
+  let rules: SuppressionRules = { tenantId: key, ...DEFAULT_RULES };
+  try {
+    const r = await dynamo.send(
+      new GetItemCommand({ TableName: RULES_TABLE, Key: { tenantId: { S: key } } })
+    );
+    if (r.Item) rules = unmarshall(r.Item) as SuppressionRules;
+  } catch (err) {
+    console.warn("getRules failed (default):", err instanceof Error ? err.message : err);
+  }
+  rulesCache.set(key, { rules, exp: now + RULES_TTL_MS });
+  return rules;
+}
+
+/** Guarda la política del tenant. Invalida el caché. */
+export async function saveRules(
+  dynamo: DynamoDBClient,
+  tenantId: string,
+  patch: Partial<SuppressionRules>,
+  actor?: string
+): Promise<SuppressionRules> {
+  const key = tenantId || "_legacy";
+  const prev = await getRules(dynamo, key);
+  const rules: SuppressionRules = {
+    ...prev,
+    ...patch,
+    tenantId: key,
+    updatedAt: new Date().toISOString(),
+    updatedBy: actor || prev.updatedBy,
+  };
+  await dynamo.send(
+    new PutItemCommand({ TableName: RULES_TABLE, Item: marshall(rules, { removeUndefinedValues: true }) })
+  );
+  rulesCache.delete(key);
+  return rules;
+}
+
+/** Palabras de baja por defecto (es/en). Configurable por tenant en Fase B. */
+export const DEFAULT_STOP_KEYWORDS = [
+  "STOP",
+  "BAJA",
+  "CANCELAR",
+  "CANCELAR SUSCRIPCION",
+  "DAR DE BAJA",
+  "DARME DE BAJA",
+  "NO MOLESTAR",
+  "NO CONTACTAR",
+  "NO ME ESCRIBAN",
+  "NO ENVIAR",
+  "ELIMINAR",
+  "REMOVER",
+  "UNSUBSCRIBE",
+  "REMOVE",
+];
+
+/** Palabras de re-alta (reactivar el contacto). */
+export const DEFAULT_OPTIN_KEYWORDS = ["ALTA", "SUSCRIBIR", "SUSCRIBIRME", "START", "REACTIVAR"];
+
+/** ¿El texto inbound es una palabra de baja? Match exacto o palabra completa. */
+export function matchesStopKeyword(text: string, keywords: string[] = DEFAULT_STOP_KEYWORDS): boolean {
+  return matchesKeyword(text, keywords);
+}
+
+/** ¿El texto inbound es una palabra de re-alta? */
+export function matchesOptInKeyword(text: string, keywords: string[] = DEFAULT_OPTIN_KEYWORDS): boolean {
+  return matchesKeyword(text, keywords);
+}
+
+function matchesKeyword(text: string, keywords: string[]): boolean {
+  const t = (text || "").trim().toUpperCase();
+  if (!t) return false;
+  for (const k of keywords) {
+    const kk = k.trim().toUpperCase();
+    if (!kk) continue;
+    if (t === kk) return true;
+    // palabra completa dentro de un mensaje corto ("por favor STOP")
+    const esc = kk.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`(^|\\s)${esc}(\\s|$|[.!,])`).test(t)) return true;
+  }
+  return false;
+}
+
+/** Clave de tabla a partir de un teléfono crudo (dígitos normalizados). */
+function keyOf(phone: string): string | null {
+  return normalizePhone(phone)?.digits || null;
+}
+
+function channelBlocked(entry: SuppressionEntry, channel: SuppressionChannel): boolean {
+  const ch = entry.channels || [];
+  return ch.includes("all") || ch.includes(channel);
+}
+
+/** Lee la entrada de supresión de un número (O(1) GetItem). Fail-open: null si falla. */
+export async function getSuppression(
+  dynamo: DynamoDBClient,
+  phone: string
+): Promise<SuppressionEntry | null> {
+  const key = keyOf(phone);
+  if (!key) return null;
+  try {
+    const r = await dynamo.send(
+      new GetItemCommand({ TableName: SUPPRESSION_TABLE, Key: { phone: { S: key } } })
+    );
+    if (!r.Item) return null;
+    const e = unmarshall(r.Item) as SuppressionEntry;
+    // Cuarentena temporal vencida → ya no bloquea.
+    if (e.expiresAt && e.expiresAt < new Date().toISOString()) return null;
+    return e;
+  } catch (err) {
+    console.warn("getSuppression failed (fail-open):", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** Veredicto de bloqueo DURO (Fase A) a partir de una entrada de supresión. */
+function hardVerdict(entry: SuppressionEntry): SendVerdict {
+  const blockedBy: BlockReason =
+    entry.status === "opted_out" ? "opt_out" : entry.status === "quarantined" ? "quarantine" : "dnc";
+  return { allowed: false, blockedBy, detail: entry.reason };
+}
+
+/** ¿La hora actual cae FUERA de la ventana permitida [startHour,endHour) / día? → bloquea. */
+function outsideContactWindow(qh: QuietHours, now: Date): boolean {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: qh.timezone || "America/Lima",
+      hour: "2-digit",
+      hour12: false,
+      weekday: "short",
+    });
+    const parts = fmt.formatToParts(now);
+    const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+    const wd = parts.find((p) => p.type === "weekday")?.value || "";
+    const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const weekday = map[wd] ?? -1;
+    const days = qh.daysOfWeek && qh.daysOfWeek.length ? qh.daysOfWeek : [0, 1, 2, 3, 4, 5, 6];
+    if (!days.includes(weekday)) return true;
+    return !(hour >= qh.startHour && hour < qh.endHour);
+  } catch {
+    return false; // fail-open
+  }
+}
+
+/** Timestamps (sentAt) de los HSM a este número desde {sinceISO} (GSI byPhone). Fail-open: []. */
+async function recentSendTimes(
+  dynamo: DynamoDBClient,
+  phoneDigits: string,
+  sinceISO: string
+): Promise<string[]> {
+  const out: string[] = [];
+  let ESK: Record<string, unknown> | undefined;
+  try {
+    do {
+      const r = await dynamo.send(
+        new QueryCommand({
+          TableName: HSM_TABLE,
+          IndexName: "byPhone",
+          KeyConditionExpression: "phoneDigits = :p AND sentAt >= :s",
+          ExpressionAttributeValues: { ":p": { S: phoneDigits }, ":s": { S: sinceISO } },
+          ProjectionExpression: "sentAt",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ExclusiveStartKey: ESK as any,
+        })
+      );
+      for (const it of r.Items || []) {
+        const m = unmarshall(it);
+        if (m.sentAt) out.push(String(m.sentAt));
+      }
+      ESK = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (ESK);
+  } catch (err) {
+    console.warn("recentSendTimes failed (fail-open):", err instanceof Error ? err.message : err);
+  }
+  return out;
+}
+
+/**
+ * Aplica las causas de POLÍTICA (configurables): quiet-hours + (WhatsApp)
+ * dedup-window R6 + frequency cap + converted (solo en batch con convertedDigits).
+ * Las causas DURAS (opt-out/dnc/quarantine) se evalúan antes, aparte.
+ */
+async function applyPolicy(
+  dynamo: DynamoDBClient,
+  c: { phone: string; channel: SuppressionChannel; programId?: string; ignoreFrequency?: boolean },
+  rules: SuppressionRules,
+  convertedDigits?: Set<string>
+): Promise<SendVerdict> {
+  const now = new Date();
+  const digits = normalizePhone(c.phone)?.digits;
+
+  // Quiet hours / ventana de contacto (por canal o "all").
+  const qh = (rules.quietHours || []).find((q) => q.channel === c.channel || q.channel === "all");
+  if (qh && outsideContactWindow(qh, now)) {
+    return { allowed: false, blockedBy: "quiet_hours", detail: `fuera de ${qh.startHour}-${qh.endHour}h` };
+  }
+
+  // No contactar convertidos (solo se evalúa si el caller pasó el set — preview batch).
+  if (rules.suppressAfterConversion && digits && convertedDigits?.has(digits)) {
+    return { allowed: false, blockedBy: "converted" };
+  }
+
+  // Dedup-window (R6) + frequency cap — WhatsApp en v1 (usa el GSI byPhone de hsm-sends).
+  if (c.channel === "whatsapp" && !c.ignoreFrequency && digits) {
+    const dedupDays = rules.dedupWindowDays ?? 0;
+    const cap = (rules.freqCaps || []).find((f) => f.channel === "whatsapp" || f.channel === "all");
+    const windows: number[] = [];
+    if (dedupDays > 0) windows.push(dedupDays);
+    if (cap && cap.max > 0) windows.push(cap.windowDays);
+    if (windows.length) {
+      const sinceISO = new Date(now.getTime() - Math.max(...windows) * DAY_MS).toISOString();
+      const times = await recentSendTimes(dynamo, digits, sinceISO);
+      if (dedupDays > 0) {
+        const dedupSince = now.getTime() - dedupDays * DAY_MS;
+        if (times.some((t) => Date.parse(t) >= dedupSince)) {
+          return { allowed: false, blockedBy: "dedup_window", detail: `ya enviado en ${dedupDays}d` };
+        }
+      }
+      if (cap && cap.max > 0) {
+        const capSince = now.getTime() - cap.windowDays * DAY_MS;
+        const n = times.filter((t) => Date.parse(t) >= capSince).length;
+        if (n >= cap.max) {
+          return { allowed: false, blockedBy: "frequency", detail: `${n}/${cap.max} en ${cap.windowDays}d` };
+        }
+      }
+    }
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * ¿Se puede enviar a {phone} por {channel}? Causas duras (opt-out/cuarentena/DNC)
+ * + política (quiet-hours + dedup-window R6 + frequency). `tenantId` para leer las
+ * reglas; `ignoreFrequency` = override del supervisor.
+ */
+export async function evaluateSend(
+  dynamo: DynamoDBClient,
+  c: {
+    phone: string;
+    channel: SuppressionChannel;
+    programId?: string;
+    tenantId?: string;
+    ignoreFrequency?: boolean;
+  }
+): Promise<SendVerdict> {
+  const entry = await getSuppression(dynamo, c.phone);
+  if (entry && channelBlocked(entry, c.channel)) return hardVerdict(entry);
+  const rules = await getRules(dynamo, c.tenantId);
+  return applyPolicy(dynamo, c, rules);
+}
+
+/** Desglose del preview honesto ("de N se excluyen M"). */
+export interface BatchSummary {
+  total: number;
+  willSend: number;
+  excluded: {
+    optOut: number;
+    quarantine: number;
+    dnc: number;
+    dedupWindow: number;
+    frequency: number;
+    quietHours: number;
+    converted: number;
+  };
+}
+
+/**
+ * Corre evaluateSend sobre una lista (preview del wizard de campañas). Devuelve el
+ * desglose por causa. `convertedDigits` (opcional) = set de dígitos de leads ya
+ * convertidos (el caller lo calcula con UN scan de leads) para la causa "converted".
+ */
+export async function evaluateBatch(
+  dynamo: DynamoDBClient,
+  phones: string[],
+  opts: { channel: SuppressionChannel; tenantId?: string; programId?: string; convertedDigits?: Set<string> }
+): Promise<BatchSummary> {
+  const rules = await getRules(dynamo, opts.tenantId);
+  const summary: BatchSummary = {
+    total: phones.length,
+    willSend: 0,
+    excluded: { optOut: 0, quarantine: 0, dnc: 0, dedupWindow: 0, frequency: 0, quietHours: 0, converted: 0 },
+  };
+  let i = 0;
+  const CONC = 8;
+  const worker = async () => {
+    while (i < phones.length) {
+      const phone = phones[i++];
+      const entry = await getSuppression(dynamo, phone);
+      const v =
+        entry && channelBlocked(entry, opts.channel)
+          ? hardVerdict(entry)
+          : await applyPolicy(dynamo, { phone, channel: opts.channel, programId: opts.programId }, rules, opts.convertedDigits);
+      if (v.allowed) summary.willSend++;
+      else {
+        const b = v.blockedBy;
+        if (b === "opt_out") summary.excluded.optOut++;
+        else if (b === "quarantine") summary.excluded.quarantine++;
+        else if (b === "dnc") summary.excluded.dnc++;
+        else if (b === "dedup_window") summary.excluded.dedupWindow++;
+        else if (b === "frequency") summary.excluded.frequency++;
+        else if (b === "quiet_hours") summary.excluded.quietHours++;
+        else if (b === "converted") summary.excluded.converted++;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONC, phones.length || 1) }, () => worker()));
+  return summary;
+}
+
+/**
+ * Registra/actualiza una entrada de supresión. Idempotente: MERGEA los canales
+ * con lo existente (un opt-out de voz + uno de WhatsApp → ambos canales), y
+ * preserva createdAt. "all" absorbe a los demás canales.
+ */
+export async function recordSuppression(
+  dynamo: DynamoDBClient,
+  phone: string,
+  e: { status: SuppressionStatus; channels?: string[]; reason?: string;
+       source?: SuppressionEntry["source"]; tenantId?: string; leadId?: string;
+       createdBy?: string; expiresAt?: string }
+): Promise<SuppressionEntry | null> {
+  const key = keyOf(phone);
+  if (!key) return null;
+  const prev = await getSuppression(dynamo, phone);
+  const merged = Array.from(new Set([...(prev?.channels || []), ...(e.channels || ["whatsapp"])]));
+  const channels = merged.includes("all") ? ["all"] : merged;
+  const entry: SuppressionEntry = {
+    phone: key,
+    e164: normalizePhone(phone)?.e164 || prev?.e164,
+    status: e.status,
+    channels,
+    reason: e.reason ?? prev?.reason,
+    source: e.source || prev?.source || "manual",
+    tenantId: e.tenantId ?? prev?.tenantId,
+    leadId: e.leadId ?? prev?.leadId,
+    createdAt: prev?.createdAt || new Date().toISOString(),
+    createdBy: e.createdBy ?? prev?.createdBy,
+    expiresAt: e.expiresAt ?? prev?.expiresAt,
+  };
+  try {
+    await dynamo.send(
+      new PutItemCommand({
+        TableName: SUPPRESSION_TABLE,
+        Item: marshall(entry, { removeUndefinedValues: true }),
+      })
+    );
+    return entry;
+  } catch (err) {
+    console.warn("recordSuppression failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/** Atajo: registra un opt-out (baja). Default channel-scoped a WhatsApp. */
+export async function recordOptOut(
+  dynamo: DynamoDBClient,
+  phone: string,
+  opts: { channels?: string[]; reason?: string; source?: SuppressionEntry["source"];
+          tenantId?: string; leadId?: string; createdBy?: string } = {}
+): Promise<SuppressionEntry | null> {
+  return recordSuppression(dynamo, phone, {
+    status: "opted_out",
+    channels: opts.channels?.length ? opts.channels : ["whatsapp"],
+    reason: opts.reason || "Opt-out",
+    source: opts.source || "inbound_keyword",
+    tenantId: opts.tenantId,
+    leadId: opts.leadId,
+    createdBy: opts.createdBy,
+  });
+}
+
+/** Quita un número de la lista (re-alta / corrección manual). */
+export async function removeSuppression(dynamo: DynamoDBClient, phone: string): Promise<boolean> {
+  const key = keyOf(phone);
+  if (!key) return false;
+  try {
+    await dynamo.send(
+      new DeleteItemCommand({ TableName: SUPPRESSION_TABLE, Key: { phone: { S: key } } })
+    );
+    return true;
+  } catch (err) {
+    console.warn("removeSuppression failed:", err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
+/** Lista la DNC (scan — la lista es chica). Orden: más reciente primero. */
+export async function listSuppression(
+  dynamo: DynamoDBClient,
+  opts: { limit?: number } = {}
+): Promise<SuppressionEntry[]> {
+  const out: SuppressionEntry[] = [];
+  const limit = opts.limit || 5000;
+  let ExclusiveStartKey: Record<string, unknown> | undefined;
+  try {
+    do {
+      const r = await dynamo.send(
+        new ScanCommand({
+          TableName: SUPPRESSION_TABLE,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ExclusiveStartKey: ExclusiveStartKey as any,
+        })
+      );
+      for (const it of r.Items || []) out.push(unmarshall(it) as SuppressionEntry);
+      ExclusiveStartKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (ExclusiveStartKey && out.length < limit);
+  } catch (err) {
+    console.warn("listSuppression failed:", err instanceof Error ? err.message : err);
+  }
+  return out.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+}

@@ -297,7 +297,7 @@ export function AgentePage() {
   (convs?.byAgent || []).forEach((a) => { if (a.agentBotId) convByAgent[a.agentBotId] = a; });
 
   return (
-    <div className="view" style={{ maxWidth: 1180 }}>
+    <div className="view">
       <div className="view__head">
         <div>
           <div className="view__crumb"><span>Inteligencia artificial</span></div>
@@ -459,7 +459,7 @@ function AgentHero({ onCreate }: { onCreate: () => void }) {
 /* ── Starter-template picker ──────────────────────────────────────── */
 function AgentPicker({ onPick, onBack }: { onPick: (a: AgentCfg) => void; onBack: () => void }) {
   return (
-    <div className="view" style={{ maxWidth: 1100 }}>
+    <div className="view">
       <div className="view__head">
         <div>
           <div className="view__crumb"><span>Inteligencia artificial · Nuevo agente</span></div>

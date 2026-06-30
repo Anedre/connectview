@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "social-messaging:ListLinkedWhatsAppBusinessAccounts",
+        "social-messaging:SendWhatsAppMessage",
+        "social-messaging:GetLinkedWhatsAppBusinessAccount",
+        "social-messaging:GetLinkedWhatsAppBusinessAccountPhoneNumber",
+        "social-messaging:ListWhatsAppMessageTemplates",
+        "social-messaging:GetWhatsAppMessageTemplate",
+        "social-messaging:ListWhatsAppFlows",
+        "social-messaging:GetWhatsAppFlow",
+        "social-messaging:CreateWhatsAppMessageTemplate",
+        "social-messaging:UpdateWhatsAppMessageTemplate",
+        "social-messaging:DeleteWhatsAppMessageTemplate",
+        "social-messaging:CreateWhatsAppMessageTemplateMedia"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

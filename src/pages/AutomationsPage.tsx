@@ -309,7 +309,7 @@ export function AutomationsPage() {
   if (editing) {
     const trig = TRIGGER_DEFS[editing.trigger.type];
     return (
-      <div className="view" style={{ maxWidth: 980 }}>
+      <div className="view">
         <PageHeader
           crumb="Crecimiento · Automatizaciones"
           title={editing.ruleId ? "Editar automatización" : "Nueva automatización"}
@@ -532,7 +532,7 @@ export function AutomationsPage() {
   // ── Picker de plantillas ──
   if (picking) {
     return (
-      <div className="view" style={{ maxWidth: 1100 }}>
+      <div className="view">
         <PageHeader
           crumb="Crecimiento · Automatizaciones"
           title="Elegí un punto de partida"
@@ -576,7 +576,7 @@ export function AutomationsPage() {
   const activeCount = rules.filter((r) => r.enabled).length;
 
   return (
-    <div className="view" style={{ maxWidth: 1180 }}>
+    <div className="view">
       <PageHeader
         crumb="Crecimiento"
         title="Automatizaciones"

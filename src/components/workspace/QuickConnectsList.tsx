@@ -92,12 +92,14 @@ export function QuickConnectsList({ onConnected }: QuickConnectsListProps) {
       <div
         style={{
           display: "flex",
-          gap: 6,
-          background: "var(--bg-2)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 6,
-          padding: "6px 8px",
+          gap: 7,
           alignItems: "center",
+          padding: "8px 11px",
+          borderRadius: 10,
+          background:
+            "linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 70%, var(--bg-1)), var(--bg-2))",
+          border: "1px solid var(--border-1)",
+          boxShadow: "inset 0 1px 2px rgba(0,0,0,0.10)",
         }}
       >
         <Icon.Search size={14} style={{ color: "var(--text-3)" }} />
@@ -160,18 +162,8 @@ export function QuickConnectsList({ onConnected }: QuickConnectsListProps) {
                 type="button"
                 onClick={() => handlePick(entry)}
                 disabled={!!submitting}
-                className="btn"
-                style={{
-                  display: "flex",
-                  width: "100%",
-                  padding: "8px 10px",
-                  justifyContent: "flex-start",
-                  alignItems: "center",
-                  gap: 8,
-                  height: "auto",
-                  textAlign: "left",
-                  borderRadius: 8,
-                }}
+                className="vox-listrow"
+                style={{ ["--vsa" as string]: meta.tone }}
               >
                 <span
                   style={{

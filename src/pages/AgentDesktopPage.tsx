@@ -29,8 +29,6 @@ import { LiveSummaryModal } from "@/components/workspace/LiveSummaryModal";
 import { QuickNoteModal } from "@/components/workspace/QuickNoteModal";
 import { OutboundActionsMenu } from "@/components/workspace/OutboundActionsMenu";
 import { CustomerBrowser } from "@/components/workspace/CustomerBrowser";
-import { ScheduleCallbackModal } from "@/components/workspace/ScheduleCallbackModal";
-import { CallbackHistoryDrawer } from "@/components/workspace/CallbackHistoryDrawer";
 import { WrapUpView } from "@/components/vox/WrapUpView";
 import {
   Avatar,
@@ -317,13 +315,8 @@ export function AgentDesktopPage() {
   const [conferenceOpen, setConferenceOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [quickNoteOpen, setQuickNoteOpen] = useState(false);
-  // "📅 Agendar callback" — agent promises to call the customer back at a
-  // future time. Submits to schedule-callback Lambda; the dispatcher
-  // Lambda fires the outbound call at the agreed time.
-  const [scheduleCallbackOpen, setScheduleCallbackOpen] = useState(false);
-  // Bumped each time the modal successfully schedules a callback so
-  // the drawer below re-fetches without waiting for the next 60s poll.
-  const [callbackRefreshKey, setCallbackRefreshKey] = useState(0);
+  // Agendar follow-up/tarea ahora vive SOLO en el launcher global "Tasks"
+  // (debajo de Copilot) — se quitaron los atajos in-call del softphone.
 
   // Right-rail tab: 'cliente' (Customer 360°) | 'coach' (Claude Coach) |
   // 'historial' (previous contacts of this customer). All three panels
@@ -976,18 +969,6 @@ export function AgentDesktopPage() {
               <Icon.Sparkles />
               <span>Resumen IA</span>
             </button>
-            <button
-              type="button"
-              className="vox-sp__sbtn"
-              onClick={() =>
-                activeContact?.customerPhone && setScheduleCallbackOpen(true)
-              }
-              disabled={!activeContact?.customerPhone}
-              title="Programar follow-up para más tarde"
-            >
-              <Icon.Calendar />
-              <span>Follow-up</span>
-            </button>
           </div>
         )}
 
@@ -995,11 +976,7 @@ export function AgentDesktopPage() {
         {isChat && isActive && (
           <div
             className="vox-sp__secondary"
-            style={{
-              gridTemplateColumns: activeContact?.customerPhone
-                ? "repeat(3, 1fr)"
-                : "repeat(2, 1fr)",
-            }}
+            style={{ gridTemplateColumns: "repeat(2, 1fr)" }}
           >
             <button
               type="button"
@@ -1019,17 +996,6 @@ export function AgentDesktopPage() {
               <Icon.Note />
               <span>Nota</span>
             </button>
-            {activeContact?.customerPhone && (
-              <button
-                type="button"
-                className="vox-sp__sbtn"
-                onClick={() => setScheduleCallbackOpen(true)}
-                title="Programar follow-up"
-              >
-                <Icon.Calendar />
-                <span>Follow-up</span>
-              </button>
-            )}
           </div>
         )}
 
@@ -1484,7 +1450,8 @@ export function AgentDesktopPage() {
       </div>
 
       </div>
-      <CallbackHistoryDrawer refreshKey={callbackRefreshKey} />
+      {/* El bubble flotante de Tareas se reemplazó por el launcher global
+          <TasksLauncher/> (debajo de Copilot, en App.tsx). */}
       <MissedHistoryDrawer />
 
       {/* Action modals — only one is visible at a time. Each is fully
@@ -1507,14 +1474,6 @@ export function AgentDesktopPage() {
         onClose={() => setQuickNoteOpen(false)}
         contactId={activeContact?.contactId ?? null}
         agentUsername={user?.username || ""}
-      />
-      <ScheduleCallbackModal
-        open={scheduleCallbackOpen}
-        onClose={() => setScheduleCallbackOpen(false)}
-        phone={activeContact?.customerPhone ?? null}
-        customerName={callerName}
-        assignedAgentUserId={user?.userId || ""}
-        onScheduled={() => setCallbackRefreshKey((k) => k + 1)}
       />
       <ConferenceModal
         open={conferenceOpen}

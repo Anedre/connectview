@@ -89,6 +89,11 @@ export interface ExecData {
   /** Heatmap hora×día REAL (grid 7×13, lun..dom × 08..20h). Si se omite,
    *  ExecHeatmap muestra un patrón demo (solo para /inicio-demo). */
   heatmap?: { grid: number[][]; max: number };
+  /** Nivel de servicio (% de contactos atendidos del período). Para la tira EN VIVO. */
+  sla?: number;
+  /** Nombres de agentes para los avatares de la tira EN VIVO (siempre poblado:
+   *  ranking del período o, si está vacío, los agentes de Connect). */
+  liveAgents?: string[];
 }
 
 /** Paleta de datos "infografía" del diseño v2 (tokenizada también como --data-* en index.css). */
@@ -137,10 +142,10 @@ export const EXEC_MOCK: ExecData = {
     { label: "30/5", actual: 96, anterior: 40 },
   ],
   sentiment: [
-    { name: "Positivo", value: 114, color: "#25B873" },
-    { name: "Neutral", value: 48, color: "#6E8BFF" },
-    { name: "Mixto", value: 14, color: "#F5C518" },
-    { name: "Negativo", value: 8, color: "#ED5257" },
+    { name: "Positivo", value: 114, color: "#138354" },
+    { name: "Neutral", value: 48, color: "#7A879F" },
+    { name: "Mixto", value: 14, color: "#B8761A" },
+    { name: "Negativo", value: 8, color: "#C0353A" },
   ],
   agentRank: [
     { name: "María Gonzales", value: 42 },
@@ -150,26 +155,26 @@ export const EXEC_MOCK: ExecData = {
     { name: "Diego Soto", value: 19 },
   ],
   byQueue: [
-    { name: "UDEP-Pregrado", value: 78, color: "#2BC6E6" },
-    { name: "UDEP-Posgrado", value: 41, color: "#25B873" },
-    { name: "UDEP-Alumnos", value: 33, color: "#A3D63B" },
-    { name: "UDEP-Diplomados", value: 20, color: "#F5C518" },
-    { name: "Gerencia", value: 12, color: "#F5A524" },
+    { name: "UDEP-Pregrado", value: 78, color: "#0F84A0" },
+    { name: "UDEP-Posgrado", value: 41, color: "#138354" },
+    { name: "UDEP-Alumnos", value: 33, color: "#6253CE" },
+    { name: "UDEP-Diplomados", value: 20, color: "#B8761A" },
+    { name: "Gerencia", value: 12, color: "#C0353A" },
   ],
   leadSources: [
-    { name: "Web", value: 18, color: "#2BC6E6" },
-    { name: "Campaña", value: 14, color: "#25B873" },
-    { name: "WhatsApp", value: 9, color: "#A3D63B" },
-    { name: "Salesforce", value: 4, color: "#F5C518" },
-    { name: "Manual", value: 2, color: "#F5A524" },
+    { name: "Web", value: 18, color: "#0F84A0" },
+    { name: "Campaña", value: 14, color: "#138354" },
+    { name: "WhatsApp", value: 9, color: "#6253CE" },
+    { name: "Salesforce", value: 4, color: "#B8761A" },
+    { name: "Manual", value: 2, color: "#C0353A" },
   ],
   funnel: [
-    { label: "Contactado", value: 47, color: "#15485A" },
-    { label: "Interesado", value: 31, color: "#1C97A6" },
-    { label: "Negociando", value: 18, color: "#2E9D8E" },
-    { label: "Cerrando", value: 9, color: "#92C73E" },
-    { label: "Inscrito", value: 5, color: "#F2972E" },
-    { label: "No interesado", value: 6, color: "#C2622A" },
+    { label: "Contactado", value: 47, color: "#0F84A0" },
+    { label: "Interesado", value: 31, color: "#138354" },
+    { label: "Negociando", value: 18, color: "#6253CE" },
+    { label: "Cerrando", value: 9, color: "#B8761A" },
+    { label: "Inscrito", value: 5, color: "#0f6e46" },
+    { label: "No interesado", value: 6, color: "#C0353A" },
   ],
   campaigns: [
     { name: "Admisión Pregrado 2026-I", done: 340, total: 500, status: "RUNNING" },
@@ -183,6 +188,7 @@ export const EXEC_MOCK: ExecData = {
   csat: { value: 88, meta: 85, encuestas: 142, promotores: 71, detractores: 6 },
   agentsOnline: 8,
   org: "UDEP",
+  sla: 94,
 };
 
 const PERIOD_FACTOR: Record<ExecPeriod, number> = {

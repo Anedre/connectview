@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 
@@ -42,33 +42,39 @@ export interface Campaign {
   skippedCount?: number;
 }
 
+async function fetchCampaigns(): Promise<Campaign[]> {
+  const endpoints = getApiEndpoints();
+  if (!endpoints?.listCampaigns) return [];
+  const r = await authedFetch(endpoints.listCampaigns);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const j = await r.json();
+  return (j.campaigns as Campaign[]) || [];
+}
+
+/**
+ * useCampaigns — lista de campañas con polling.
+ *
+ * Migrado a TanStack Query (antes era fetch + setInterval + useState a mano):
+ * - queryKey ["campaigns"]: varios componentes que lo usen comparten UNA sola
+ *   request y una sola caché (antes cada hook abría su propio fetch + timer).
+ * - refetchInterval: el polling lo maneja Query; con varios consumidores a
+ *   distinto intervalo, gana el más frecuente sobre la query compartida.
+ * - dedupe + reintento + estados de carga/error vienen de Query.
+ *
+ * Mantiene la MISMA interfaz { campaigns, loading, error, refresh } para no
+ * tocar los consumidores existentes.
+ */
 export function useCampaigns(refreshIntervalMs = 5000) {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const q = useQuery({
+    queryKey: ["campaigns"],
+    queryFn: fetchCampaigns,
+    refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
+  });
 
-  const refresh = useCallback(async () => {
-    const endpoints = getApiEndpoints();
-    if (!endpoints?.listCampaigns) return;
-    try {
-      const r = await authedFetch(endpoints.listCampaigns);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = await r.json();
-      setCampaigns(j.campaigns || []);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    }
-  }, []);
-
-  useEffect(() => {
-    setLoading(true);
-    refresh().finally(() => setLoading(false));
-    if (refreshIntervalMs > 0) {
-      const id = setInterval(refresh, refreshIntervalMs);
-      return () => clearInterval(id);
-    }
-  }, [refresh, refreshIntervalMs]);
-
-  return { campaigns, loading, error, refresh };
+  return {
+    campaigns: q.data ?? [],
+    loading: q.isLoading,
+    error: q.error ? (q.error instanceof Error ? q.error.message : "Failed") : null,
+    refresh: q.refetch,
+  };
 }

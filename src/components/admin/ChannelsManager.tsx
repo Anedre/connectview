@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Phone, MessageCircle, Globe, Mail, MessageSquare, Copy, Check } from "lucide-react";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
 import { useConnections } from "@/hooks/useConnections";
+import { WhatsAppHealthPanel } from "@/components/admin/WhatsAppHealthPanel";
 
 /**
  * ChannelsManager — "Canales" de Configuración: el centro omnicanal. Distinto de
@@ -156,6 +157,9 @@ export function ChannelsManager() {
           </div>
         ))}
       </div>
+
+      {/* Salud del número de WhatsApp (Pilar 4 · #13) */}
+      {waOn && <WhatsAppHealthPanel />}
 
       {/* Mensajes de conversación */}
       <Card>

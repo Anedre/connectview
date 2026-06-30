@@ -10,18 +10,6 @@ interface CreateTaskFormProps {
   onCreated?: () => void;
 }
 
-const inputBase: React.CSSProperties = {
-  width: "100%",
-  background: "var(--bg-2)",
-  border: "1px solid var(--border-1)",
-  borderRadius: 6,
-  padding: "8px 10px",
-  color: "var(--text-1)",
-  outline: "none",
-  fontSize: 12.5,
-  fontFamily: "var(--font-ui)",
-};
-
 /**
  * Inline form for creating an outbound Amazon Connect task. Posts to
  * the `startOutboundContact` Lambda with `{ type: "task", ... }`.
@@ -119,7 +107,7 @@ export function CreateTaskForm({ onCreated }: CreateTaskFormProps) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Ej. Seguimiento UDEP — Juan Pérez"
-          style={inputBase}
+          className="vox-field"
         />
       </label>
 
@@ -132,7 +120,8 @@ export function CreateTaskForm({ onCreated }: CreateTaskFormProps) {
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Notas o instrucciones…"
           rows={3}
-          style={{ ...inputBase, resize: "vertical", minHeight: 60 }}
+          className="vox-field"
+          style={{ minHeight: 60 }}
         />
       </label>
 
@@ -144,7 +133,7 @@ export function CreateTaskForm({ onCreated }: CreateTaskFormProps) {
           value={queueId}
           onChange={(e) => setQueueId(e.target.value)}
           disabled={queuesLoading}
-          style={inputBase}
+          className="vox-field"
         >
           {queues.length === 0 && (
             <option value="">{queuesLoading ? "Cargando…" : "Sin colas"}</option>
@@ -165,7 +154,7 @@ export function CreateTaskForm({ onCreated }: CreateTaskFormProps) {
           value={flowId}
           onChange={(e) => setFlowId(e.target.value)}
           disabled={flowsLoading}
-          style={inputBase}
+          className="vox-field"
         >
           {taskFlows.length === 0 && (
             <option value="">

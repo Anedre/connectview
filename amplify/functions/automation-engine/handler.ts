@@ -322,7 +322,18 @@ async function actSendTemplate(ctx: Ctx, params: Record<string, unknown>): Promi
       tenantId: ctx.tenantId, // BYO: manda desde el número del CLIENTE
     }),
   });
-  const body = (await r.json().catch(() => ({}))) as { sent?: boolean; error?: string };
+  const body = (await r.json().catch(() => ({}))) as {
+    sent?: boolean;
+    error?: string;
+    suppressed?: boolean;
+    blockedBy?: string;
+  };
+  // Pilar 3: el gate suprimió el envío (opt-out/DNC/dedup/frecuencia). NO es un
+  // error — la regla simplemente no manda a ese número. No reintentar ni alarmar.
+  if (body.suppressed) {
+    console.log(`automation: WhatsApp suprimido (${body.blockedBy || "?"})`);
+    return null;
+  }
   if (!r.ok || !body.sent) return body.error || `send falló (HTTP ${r.status})`;
   return null;
 }

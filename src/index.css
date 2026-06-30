@@ -134,6 +134,34 @@ button { font: inherit; color: inherit; background: transparent; border: 0; curs
 input, textarea, select { font: inherit; color: inherit; }
 a { color: inherit; text-decoration: none; }
 
+/* ── Campos de formulario — foco premium GLOBAL ────────────────────────────
+   Aro ámbar al enfocar cualquier campo real. Especificidad baja (:where) para
+   que cualquier componente con foco propio lo pueda pisar; los buscadores sin
+   borde y los campos con foco propio se excluyen abajo (si no = doble-borde). */
+input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="file"])),
+select,
+textarea {
+  transition: box-shadow .16s ease, border-color .16s ease;
+}
+input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="file"])):focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent-amber);
+  box-shadow: 0 0 0 3px var(--accent-amber-soft);
+}
+.tb__search input:focus,
+.searchbox input:focus,
+.phead__search input:focus,
+.dash-userpop__search input:focus,
+.gcal-pop__title-input:focus,
+.gcal-pop__row-input:focus,
+.gcal-evpop__title-input:focus,
+.camp-new__name:focus,
+.camp-edit:focus {
+  box-shadow: none;
+}
+
 .mono { font-family: var(--font-mono); font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .num { font-variant-numeric: tabular-nums; }
 
@@ -229,8 +257,8 @@ a { color: inherit; text-decoration: none; }
   content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 2px;
   background: var(--accent-amber); border-radius: 2px;
 }
-.sb__icon { width: 16px; height: 16px; flex-shrink: 0; color: currentColor; opacity: 0.85; }
-.sb__label { flex: 1; font-size: 13px; }
+.sb__icon { width: 18px; height: 18px; flex-shrink: 0; color: currentColor; opacity: 0.85; }
+.sb__label { flex: 1; font-size: 14px; }
 .sb__count { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
 .sb__count--alert { color: var(--accent-amber); }
 
@@ -318,7 +346,11 @@ a { color: inherit; text-decoration: none; }
 /* ============================================================
    View frame + cards
    ============================================================ */
-.view { padding: 30px 36px 120px; max-width: 1840px; margin: 0 auto; }
+.view { padding: 24px 30px 96px; max-width: none; }
+/* El dashboard ejecutivo (.exec) aporta su propio padding-top (26px); anulamos
+   el de .view para no duplicar el hueco bajo el top bar (antes ~62px en cozy).
+   Especificidad con [data-density] para ganarle a `[data-density="cozy"] .view`. */
+[data-density] .view.view--exec { padding-top: 0; }
 .view__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 24px; flex-wrap: wrap; }
 .view__head > div:first-child { min-width: 0; flex: 1 1 320px; }
 .view__title { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
@@ -402,53 +434,11 @@ a { color: inherit; text-decoration: none; }
 .kpi-band__value { font-size: 28px; font-weight: 700; line-height: 1.1; margin-top: 6px; color: var(--text-1); }
 .kpi-band__delta { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--text-3); margin-top: 5px; }
 
-/* ============================================================
-   Executive "Atención requerida" insights strip (design handoff)
-   Actionable, severity-colored cards driven by real data.
-   ============================================================ */
-.exec-insights {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.exec-ins {
-  position: relative;
-  flex: 1 1 280px;
-  max-width: 420px;
-  display: flex;
-  gap: 11px;
-  padding: 13px 15px 13px 16px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-1);
-  border-radius: 12px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform .15s, border-color .15s, box-shadow .15s;
-}
-.exec-ins::before {
-  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-  background: var(--ins, var(--accent-cyan));
-}
-.exec-ins:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--ins, var(--accent-cyan)) 45%, transparent);
-  box-shadow: 0 10px 24px -16px var(--ins, var(--accent-cyan));
-}
-.exec-ins__icon {
-  width: 30px; height: 30px; border-radius: 9px; flex: 0 0 auto;
-  display: grid; place-items: center;
-  color: var(--ins, var(--accent-cyan));
-  background: color-mix(in srgb, var(--ins, var(--accent-cyan)) 14%, transparent);
-}
-.exec-ins__kicker { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; color: var(--ins, var(--accent-cyan)); }
-.exec-ins__title { font-size: 13px; font-weight: 600; color: var(--text-1); margin-top: 2px; }
-.exec-ins__sub { font-size: 11.5px; color: var(--text-2); margin-top: 2px; line-height: 1.4; }
-.exec-ins__action { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 11.5px; font-weight: 600; color: var(--text-3); }
-.exec-ins:hover .exec-ins__action { color: var(--text-1); }
-.exec-gauge-meta { font-size: 11px; color: var(--text-3); margin-top: 6px; text-align: center; }
-.exec-gauge-meta b { font-weight: 700; }
+/* ════════════════════════════════════════════════════════════════════════
+   Dashboard ejecutivo (.exec-*): FUENTE ÚNICA en src/styles/exec.css.
+   Acá NO debe haber reglas .exec-* — se removieron las viejas/duplicadas que
+   pisaban el handoff y causaban colisiones de cascada (insights, charts, hero).
+   ════════════════════════════════════════════════════════════════════════ */
 
 /* Goal/meta KPI tile (% de meta) — matches StatCard footprint */
 .kpi-goal {
@@ -590,7 +580,9 @@ a { color: inherit; text-decoration: none; }
 
 /* agent board (big cards) */
 .mon-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-.mon-card { border: 1px solid var(--border-1); border-radius: 12px; padding: 12px 13px; background: var(--bg-1); display: flex; flex-direction: column; gap: 10px; animation: lead-card-in 0.24s cubic-bezier(0.2,0.7,0.2,1) both; }
+.mon-card { border: 1px solid var(--border-1); border-radius: 12px; padding: 12px 13px; background: var(--bg-1); display: flex; flex-direction: column; gap: 10px; animation: lead-card-in 0.24s cubic-bezier(0.2,0.7,0.2,1) both; transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .18s ease, border-color .15s ease; }
+/* !important en transform: el fill-mode de la animación de entrada deja transform:none y pisaría el hover */
+.mon-card:hover { transform: translateY(-2px) !important; box-shadow: var(--shadow-pop); border-color: var(--border-strong); }
 .mon-card__top { display: flex; align-items: center; gap: 10px; }
 .mon-card__av { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; flex: 0 0 auto; }
 .mon-card__name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -753,6 +745,10 @@ a { color: inherit; text-decoration: none; }
 @keyframes lead-card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .lead-card-anim { animation: lead-card-in 0.28s cubic-bezier(0.2,0.7,0.2,1) both; }
 @media (prefers-reduced-motion: reduce) { .lead-card-anim { animation: none; } }
+/* Filas de lista clickeables (reutilizable) — resaltado al hover */
+.row-clickable { transition: background-color .13s ease; cursor: pointer; }
+.row-clickable:hover { background: var(--bg-hover); }
+
 /* Raw-data table view (Leads) — clickable rows */
 .lead-trow { transition: background .12s; }
 .lead-trow:hover { background: var(--bg-hover); }
@@ -1716,10 +1712,24 @@ a { color: inherit; text-decoration: none; }
 .camp-new__h { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 700; margin-bottom: 14px; }
 .camp-new__hn { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; font-size: 11px; font-weight: 800; background: var(--accent-cyan-soft); color: var(--accent-cyan); }
 .camp-new__badge { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--accent-green); background: var(--accent-green-soft); border-radius: 999px; padding: 2px 9px; }
-.camp-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border-1); border-radius: 10px; margin-bottom: 12px; }
-.camp-tab { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 8px; font-size: 12.5px; font-weight: 600; border-radius: 7px; color: var(--text-3); }
-.camp-tab:hover { background: var(--bg-hover); color: var(--text-1); }
-.camp-tab--active, .camp-tab--active:hover { background: var(--accent-cyan); color: #fff; }
+.camp-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border-1); border-radius: 11px; margin-bottom: 12px; background: var(--bg-2); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.10); }
+.camp-tab { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; font-size: 12.5px; font-weight: 600; border-radius: 8px; color: var(--text-3); cursor: pointer; transition: color .15s, background .15s, box-shadow .15s; }
+.camp-tab:hover { color: var(--text-1); }
+.camp-tab--active, .camp-tab--active:hover {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 90%, #fff), var(--accent-cyan));
+  color: #fff;
+  box-shadow: 0 4px 12px -6px color-mix(in srgb, var(--accent-cyan) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+/* Barra de filtros (búsqueda + selects) — recesada, cohesiva */
+.camp-filterbar {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  padding: 8px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 70%, var(--bg-1)), var(--bg-2));
+  border: 1px solid var(--border-1);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+}
 .camp-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 28px 16px; border: 2px dashed var(--border-2); border-radius: 12px; cursor: pointer; transition: background .12s, border-color .12s; }
 .camp-drop:hover { background: var(--bg-hover); border-color: var(--accent-cyan); }
 .camp-leadrow { display: flex; align-items: center; gap: 10px; padding: 8px 11px; cursor: pointer; border-bottom: 1px solid var(--border-1); }
@@ -1743,15 +1753,24 @@ a { color: inherit; text-decoration: none; }
 .camp-adv { border-top: 1px dashed var(--border-1); padding-top: 14px; margin-top: 4px; }
 .camp-adv__title { font-size: 11.5px; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
 .camp-ltable { width: 100%; border-collapse: collapse; font-size: 12px; }
-.camp-ltable thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-2); text-align: left; padding: 8px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); font-weight: 700; border-bottom: 1px solid var(--border-1); white-space: nowrap; }
-.camp-ltable td { padding: 7px 10px; border-bottom: 1px solid var(--border-1); }
+.camp-ltable thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: linear-gradient(180deg, var(--bg-2), color-mix(in srgb, var(--bg-2) 86%, var(--bg-1)));
+  text-align: left; padding: 9px 10px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); font-weight: 700;
+  border-bottom: 1px solid var(--border-1); white-space: nowrap;
+}
+.camp-ltable td { padding: 8px 10px; border-bottom: 1px solid color-mix(in srgb, var(--border-1) 65%, transparent); }
 .camp-ltable tbody tr:last-child td { border-bottom: none; }
-.camp-ltr { cursor: pointer; transition: background .1s; }
+.camp-ltable input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent-cyan); cursor: pointer; vertical-align: middle; }
+.camp-ltr { cursor: pointer; transition: background .12s; }
 .camp-ltr:hover { background: var(--bg-hover); }
-.camp-ltr--on { background: var(--accent-cyan-soft); }
-.camp-edit { width: 100%; padding: 5px 7px; font-size: 12px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-1); }
-.camp-edit:hover { border-color: var(--border-1); }
-.camp-edit:focus { border-color: var(--accent-cyan); background: var(--bg-1); outline: none; }
+.camp-ltr--on { background: color-mix(in srgb, var(--accent-cyan) 13%, transparent); }
+/* barra de acento a la izquierda de la fila seleccionada */
+.camp-ltr--on td:first-child { box-shadow: inset 3px 0 0 var(--accent-cyan); }
+.camp-edit { width: 100%; padding: 5px 7px; font-size: 12px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-1); transition: background .12s, border-color .12s; }
+.camp-edit:hover { border-color: var(--border-1); background: var(--bg-2); }
+.camp-edit:focus { border-color: var(--accent-cyan); background: var(--bg-1); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-cyan) 16%, transparent); }
 
 /* Per-chart contextual toggle (Kommo "Comparación/Por canal" style) */
 .chart-toggle {
@@ -1799,75 +1818,9 @@ a { color: inherit; text-decoration: none; }
 @keyframes funnel-grow { from { transform: scaleX(0.4); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .funnel-bar { animation: none; } }
 
-/* ============================================================
-   Premium executive hero header (design-handoff style): elevated panel
-   with accent glow, gradient icon box, breadcrumb, title + chips.
-   ============================================================ */
-.exec-hero {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  flex-wrap: wrap;
-  margin-bottom: 18px;
-  padding: 20px 24px;
-  position: relative;
-  overflow: hidden;
-  border-radius: 18px;
-  border: 1px solid var(--border-1);
-  background:
-    radial-gradient(130% 180% at 0% 0%, var(--accent-green-soft), transparent 46%),
-    radial-gradient(120% 200% at 100% 0%, var(--accent-cyan-soft), transparent 50%),
-    var(--bg-1);
-  box-shadow: var(--shadow-card);
-}
-/* faint accent line across the very top */
-.exec-hero::before {
-  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
-  background: linear-gradient(90deg, var(--accent-green), var(--accent-cyan) 38%, transparent 78%);
-  opacity: 0.7;
-}
-.exec-hero__id { display: flex; align-items: center; gap: 16px; min-width: 0; flex: 1 1 340px; }
-.exec-hero__icon {
-  width: 52px; height: 52px; border-radius: 15px; flex-shrink: 0;
-  display: grid; place-items: center; color: #fff;
-  background: linear-gradient(140deg, var(--accent-cyan), var(--accent-green) 60%, var(--accent-cyan));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 6px 16px -6px var(--accent-green);
-}
-.exec-hero__crumb {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 11.5px; color: var(--text-3); font-weight: 500; margin-bottom: 6px;
-}
-.exec-hero__crumb svg { opacity: 0.6; }
-.exec-hero__title {
-  font-size: 26px; font-weight: 800; letter-spacing: -0.03em;
-  margin: 0; color: var(--text-1); line-height: 1;
-}
-.exec-hero__chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 11px; }
-.exec-hero__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.exec-chip b { color: var(--text-1); font-weight: 700; }
-.exec-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 26px; padding: 0 10px;
-  border-radius: 999px;
-  font-size: 11.5px; font-weight: 500;
-  color: var(--text-2);
-  background: var(--bg-2);
-  border: 1px solid var(--border-1);
-  font-variant-numeric: tabular-nums;
-}
-.exec-chip svg { color: var(--text-3); }
-.exec-chip--accent { background: var(--accent-cyan-soft); color: var(--accent-cyan); border-color: transparent; }
-.exec-chip--live { background: var(--accent-green-soft); color: var(--accent-green); border-color: transparent; }
-.exec-chip__pulse {
-  position: relative; width: 7px; height: 7px; border-radius: 50%;
-  background: currentColor;
-}
-.exec-chip__pulse::before {
-  content: ""; position: absolute; inset: -4px; border-radius: 50%;
-  border: 1px solid currentColor; opacity: 0.5;
-  animation: pulse 2s ease-out infinite;
-}
+/* (Hero/header ejecutivo viejo ".exec-hero" / ".exec-chip" — REMOVIDO: era código
+   muerto, 0 usos. El header de Inicio ahora es el AppTopBar + la barra de período
+   en exec.css.) */
 
 /* ============================================================
    Dashboard control bar (Kommo-style): segmented period + user filter
@@ -1975,54 +1928,10 @@ a { color: inherit; text-decoration: none; }
   box-shadow: 0 0 0 3px var(--accent-green-soft);
 }
 
-/* Pill bars with numbered ring-cap (Contactos por cola) */
-.exec-pills { display: flex; flex-direction: column; gap: 12px; }
-.exec-pill-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; }
-.exec-pill-cap {
-  width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
-  display: grid; place-items: center;
-  font-size: 13px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums;
-  background: var(--pc, var(--accent-cyan));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 6px -2px var(--pc, var(--accent-cyan));
-}
-.exec-pill-track { height: 16px; border-radius: 999px; background: var(--bg-3); overflow: hidden; position: relative; }
-.exec-pill-fill {
-  height: 100%; border-radius: 999px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--pc, var(--accent-cyan)) 75%, #fff), var(--pc, var(--accent-cyan)) 55%, color-mix(in srgb, var(--pc, var(--accent-cyan)) 75%, #000));
-  transition: width .9s cubic-bezier(0.4, 0, 0.1, 1);
-}
-.exec-pill-name { font-size: 12.5px; color: var(--text-1); font-weight: 500; white-space: nowrap; }
-
-/* Campaigns (executive bottom row) */
-.exec-camp { display: flex; flex-direction: column; gap: 14px; }
-.exec-camp__row { display: flex; flex-direction: column; gap: 7px; }
-.exec-camp__top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.exec-camp__name { font-size: 12.5px; font-weight: 500; color: var(--text-1); }
-.exec-camp__pill { font-size: 10.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
-.exec-camp__pill--running { background: var(--accent-green-soft); color: var(--accent-green); }
-.exec-camp__pill--paused { background: var(--accent-amber-soft); color: var(--accent-amber); }
-.exec-camp__track { height: 9px; border-radius: 999px; background: var(--bg-3); overflow: hidden; }
-.exec-camp__fill { height: 100%; border-radius: 999px; transition: width .9s; }
-.exec-camp__meta { display: flex; justify-content: space-between; margin-top: 2px; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-
-/* Live queues (executive bottom row) */
-.exec-lq { display: flex; flex-direction: column; gap: 10px; }
-.exec-lq__row { display: grid; grid-template-columns: 1fr auto auto auto auto; align-items: center; gap: 14px; padding: 12px 14px; background: var(--bg-1); border: 1px solid var(--border-1); border-radius: 11px; }
-.exec-lq__name { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--text-1); font-weight: 500; min-width: 0; }
-.exec-lq__status { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-.exec-lq__metric { text-align: center; }
-.exec-lq__metric .n { font-size: 14px; font-weight: 700; color: var(--text-1); font-variant-numeric: tabular-nums; }
-.exec-lq__metric .l { font-size: 9.5px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; }
-
-/* Heatmap (Contactos por hora × día de semana) */
-.exec-heat { width: 100%; overflow-x: auto; }
-.exec-heat__grid { display: grid; grid-template-columns: 36px repeat(13, 1fr); gap: 4px; align-items: center; min-width: 640px; }
-.exec-heat__collabel { font-size: 9.5px; color: var(--text-3); text-align: center; font-variant-numeric: tabular-nums; }
-.exec-heat__rowlabel { font-size: 10.5px; color: var(--text-3); text-align: right; padding-right: 4px; font-weight: 500; align-self: center; }
-.exec-heat__cell { height: 26px; border-radius: 4px; transition: transform .15s; cursor: pointer; }
-.exec-heat__cell:hover { transform: scale(1.18); outline: 1px solid var(--text-2); position: relative; z-index: 1; }
-.exec-heat__legend { display: flex; align-items: center; gap: 8px; margin-top: 12px; justify-content: flex-end; font-size: 10.5px; color: var(--text-3); }
-.exec-heat__legend i { width: 16px; height: 12px; border-radius: 3px; display: inline-block; }
+/* Charts del dashboard ejecutivo (pill-bars · campañas · colas · heatmap):
+   los estilos VIVOS viven en src/styles/exec.css (fuente única — los componentes
+   de ExecCharts.tsx usan esa estructura). El bloque viejo que estaba acá se
+   removió para deduplicar y que no compita en la cascada. */
 
 .card {
   background: var(--bg-1);
@@ -2035,7 +1944,7 @@ a { color: inherit; text-decoration: none; }
   padding: 16px 20px;
   border-bottom: 1px solid var(--border-1);
 }
-.card__title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; flex: 1; }
+.card__title { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; flex: 1; }
 .card__sub { font-size: 11.5px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; }
 .card__body { padding: 20px; }
 .card__body--flush { padding: 0; }
@@ -2045,42 +1954,140 @@ a { color: inherit; text-decoration: none; }
    ============================================================ */
 .btn {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 32px; padding: 0 12px;
+  height: 32px; padding: 0 13px;
   border-radius: var(--radius-2);
-  font-size: 12.5px; font-weight: 500;
+  font-size: 12.5px; font-weight: 500; line-height: 1;
   border: 1px solid var(--border-2);
   background: var(--bg-2);
   color: var(--text-1);
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.16);
+  transition: transform .12s cubic-bezier(.4, 0, .2, 1), box-shadow .16s ease,
+    background-color .16s ease, border-color .16s ease, filter .16s ease, color .16s ease;
 }
 .btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn--primary { background: var(--accent-amber); border-color: var(--accent-amber); color: #0B0F1A; font-weight: 600; }
-.btn--primary:hover { filter: brightness(1.06); background: var(--accent-amber); }
-.btn--ghost { background: transparent; border-color: transparent; color: var(--text-2); }
-.btn--ghost:hover { background: var(--bg-hover); color: var(--text-1); }
-.btn--danger { background: var(--accent-red); border-color: var(--accent-red); color: white; font-weight: 600; }
-.btn--success { background: var(--accent-green); border-color: var(--accent-green); color: white; font-weight: 600; }
-.btn--sm { height: 26px; padding: 0 8px; font-size: 11.5px; }
+.btn:active { transform: translateY(0.5px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; filter: none; }
+.btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-amber) 55%, transparent);
+  outline-offset: 2px;
+}
+
+/* Primary — glossy amber with a soft colored glow (derived from the theme token) */
+.btn--primary {
+  border-color: color-mix(in srgb, var(--accent-amber) 70%, #000);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent-amber) 90%, #fff) 0%,
+    var(--accent-amber) 48%,
+    color-mix(in srgb, var(--accent-amber) 86%, #000) 100%);
+  color: #0B0F1A; font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25),
+    0 4px 12px -4px color-mix(in srgb, var(--accent-amber) 55%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+.btn--primary:hover {
+  filter: brightness(1.04); transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25),
+    0 10px 22px -6px color-mix(in srgb, var(--accent-amber) 65%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.btn--primary:active {
+  transform: translateY(0); filter: brightness(0.97);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(0, 0, 0, 0.16);
+}
+
+.btn--ghost { background: transparent; border-color: transparent; color: var(--text-2); box-shadow: none; }
+.btn--ghost:hover { background: var(--bg-hover); color: var(--text-1); border-color: transparent; }
+
+/* Danger — glossy red */
+.btn--danger {
+  border-color: color-mix(in srgb, var(--accent-red) 70%, #000);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent-red) 92%, #fff) 0%,
+    var(--accent-red) 50%,
+    color-mix(in srgb, var(--accent-red) 86%, #000) 100%);
+  color: #fff; font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25),
+    0 4px 12px -4px color-mix(in srgb, var(--accent-red) 50%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn--danger:hover {
+  filter: brightness(1.05); transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25),
+    0 10px 22px -6px color-mix(in srgb, var(--accent-red) 60%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.btn--danger:active { transform: translateY(0); filter: brightness(0.97); }
+
+/* Success — glossy green */
+.btn--success {
+  border-color: color-mix(in srgb, var(--accent-green) 70%, #000);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent-green) 92%, #fff) 0%,
+    var(--accent-green) 50%,
+    color-mix(in srgb, var(--accent-green) 86%, #000) 100%);
+  color: #fff; font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25),
+    0 4px 12px -4px color-mix(in srgb, var(--accent-green) 50%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.btn--success:hover {
+  filter: brightness(1.05); transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25),
+    0 10px 22px -6px color-mix(in srgb, var(--accent-green) 60%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.btn--success:active { transform: translateY(0); filter: brightness(0.97); }
+
+.btn--sm { height: 27px; padding: 0 10px; font-size: 11.5px; }
 .btn--icon { padding: 0; width: 32px; justify-content: center; }
-.btn--icon.btn--sm { width: 26px; }
+.btn--icon.btn--sm { width: 27px; }
+
+/* ── Plantillas WhatsApp — pulido premium (campos + cards) ──────────────────
+   Los campos del editor usan estilo inline (outline:none) → sin foco visible.
+   Acá les damos un aro de foco ámbar (box-shadow, que el inline no pisa) +
+   transiciones, y a las tarjetas de la biblioteca un lift al hover. */
+.wa-tmpl :is(input, select, textarea) {
+  transition: box-shadow .16s ease, border-color .16s ease, background-color .16s ease;
+}
+.wa-tmpl :is(input, select, textarea):hover:not(:focus) {
+  border-color: var(--border-strong) !important;
+}
+.wa-tmpl :is(input, select, textarea):focus {
+  border-color: var(--accent-amber) !important;
+  box-shadow: 0 0 0 3px var(--accent-amber-soft);
+}
+.wa-tmpl #wa-editor { box-shadow: var(--shadow-card); }
+.wa-tmpl-card {
+  transition: transform .15s cubic-bezier(.4, 0, .2, 1), box-shadow .18s ease, border-color .15s ease;
+}
+.wa-tmpl-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-pop);
+  border-color: var(--border-strong) !important;
+}
 
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 22px; padding: 0 8px;
+  height: 22px; padding: 0 9px;
   border-radius: 999px;
-  font-size: 11px; font-weight: 500;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.01em;
+  white-space: nowrap;
   background: var(--bg-2);
   color: var(--text-2);
   border: 1px solid var(--border-2);
 }
-.chip--amber  { background: var(--accent-amber-soft);  color: var(--accent-amber);  border-color: transparent; }
-.chip--cyan   { background: var(--accent-cyan-soft);   color: var(--accent-cyan);   border-color: transparent; }
-.chip--green  { background: var(--accent-green-soft);  color: var(--accent-green);  border-color: transparent; }
-.chip--red    { background: var(--accent-red-soft);    color: var(--accent-red);    border-color: transparent; }
-.chip--violet { background: var(--accent-violet-soft); color: var(--accent-violet); border-color: transparent; }
-.chip--pink   { background: var(--accent-pink-soft);   color: var(--accent-pink);   border-color: transparent; }
-.chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* Variantes de estado: relleno suave + borde tenue del mismo acento (definición premium) */
+.chip--amber  { background: var(--accent-amber-soft);  color: var(--accent-amber);  border-color: color-mix(in srgb, var(--accent-amber) 24%, transparent); }
+.chip--cyan   { background: var(--accent-cyan-soft);   color: var(--accent-cyan);   border-color: color-mix(in srgb, var(--accent-cyan) 24%, transparent); }
+.chip--green  { background: var(--accent-green-soft);  color: var(--accent-green);  border-color: color-mix(in srgb, var(--accent-green) 24%, transparent); }
+.chip--red    { background: var(--accent-red-soft);    color: var(--accent-red);    border-color: color-mix(in srgb, var(--accent-red) 24%, transparent); }
+.chip--violet { background: var(--accent-violet-soft); color: var(--accent-violet); border-color: color-mix(in srgb, var(--accent-violet) 24%, transparent); }
+.chip--pink   { background: var(--accent-pink-soft);   color: var(--accent-pink);   border-color: color-mix(in srgb, var(--accent-pink) 24%, transparent); }
+.chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 18%, transparent); }
 
 /* ============================================================
    Stat tiles
@@ -2112,7 +2119,7 @@ a { color: inherit; text-decoration: none; }
 }
 .t th {
   text-align: left;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 11px;
   color: var(--text-3);
   text-transform: uppercase;
@@ -2177,6 +2184,8 @@ a { color: inherit; text-decoration: none; }
 .ch--wa       { background: #1FAE6C; }
 .ch--sms      { background: var(--accent-violet); }
 .ch--email    { background: var(--accent-amber); color: #0B0F1A; }
+.ch--instagram { background: linear-gradient(135deg, #f58529, #dd2a7b 55%, #8134af); }
+.ch--messenger { background: linear-gradient(135deg, #00b2ff, #006aff); }
 
 /* ============================================================
    Tabs
@@ -3523,26 +3532,69 @@ a { color: inherit; text-decoration: none; }
 .vox-start__grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
 }
+/* Premium: cada card deriva su profundidad del token del card (--vsa:
+   verde/cian/violeta/ámbar) → gradiente sutil + glow de color + lift +
+   icono con relieve. Adaptativo light/dark vía color-mix. */
 .vox-start__card {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
-  padding: 14px 14px 12px;
-  border-radius: 12px;
-  background: var(--bg-2); border: 1px solid var(--border-1);
+  position: relative;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+  padding: 14px 14px 13px;
+  border-radius: 13px;
+  background:
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--vsa, var(--accent-cyan)) 9%, var(--bg-2)),
+      var(--bg-2) 62%
+    );
+  border: 1px solid color-mix(in srgb, var(--vsa, var(--accent-cyan)) 22%, var(--border-1));
   color: var(--text-1); text-align: left;
-  transition: background .15s, border-color .15s, transform .12s, box-shadow .15s;
+  cursor: pointer;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 color-mix(in srgb, var(--vsa, var(--accent-cyan)) 14%, transparent);
+  transition: transform .14s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
 }
 .vox-start__card:hover {
-  background: var(--bg-hover); border-color: var(--accent-cyan);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 16px -10px var(--accent-cyan);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--vsa, var(--accent-cyan)) 55%, var(--border-1));
+  background:
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--vsa, var(--accent-cyan)) 16%, var(--bg-2)),
+      var(--bg-2) 58%
+    );
+  box-shadow:
+    0 12px 24px -12px color-mix(in srgb, var(--vsa, var(--accent-cyan)) 70%, transparent),
+    0 2px 6px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 color-mix(in srgb, var(--vsa, var(--accent-cyan)) 22%, transparent);
+}
+.vox-start__card:active {
+  transform: translateY(0);
+  box-shadow:
+    0 4px 10px -6px color-mix(in srgb, var(--vsa, var(--accent-cyan)) 60%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--vsa, var(--accent-cyan)) 18%, transparent);
+}
+.vox-start__card:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--vsa, var(--accent-cyan)) 70%, transparent);
+  outline-offset: 2px;
 }
 .vox-start__card-icon {
-  width: 32px; height: 32px; border-radius: 9px;
+  width: 34px; height: 34px; border-radius: 10px;
   display: grid; place-items: center;
-  background: color-mix(in srgb, var(--vsa, var(--accent-cyan)) 16%, transparent);
+  background:
+    linear-gradient(
+      150deg,
+      color-mix(in srgb, var(--vsa, var(--accent-cyan)) 26%, transparent),
+      color-mix(in srgb, var(--vsa, var(--accent-cyan)) 12%, transparent)
+    );
   color: var(--vsa, var(--accent-cyan));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--vsa, var(--accent-cyan)) 30%, transparent),
+    0 4px 10px -6px color-mix(in srgb, var(--vsa, var(--accent-cyan)) 55%, transparent);
+  transition: transform .14s ease;
 }
-.vox-start__card-label { font-size: 12.5px; font-weight: 600; color: var(--text-1); }
+.vox-start__card:hover .vox-start__card-icon { transform: scale(1.06); }
+.vox-start__card-label { font-size: 12.5px; font-weight: 600; color: var(--text-1); letter-spacing: -0.01em; }
 .vox-start__card-sub { font-size: 10.5px; color: var(--text-3); }
 
 /* ============================================================
@@ -3552,59 +3604,91 @@ a { color: inherit; text-decoration: none; }
   padding: 14px;
   display: flex; flex-direction: column; gap: 12px;
 }
+/* Campo de número — country + input + backspace en un bloque con relieve */
 .vox-dial__head {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 6px;
+  border-radius: 13px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 70%, var(--bg-1)), var(--bg-2));
+  border: 1px solid var(--border-1);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.14);
+  transition: border-color .15s, box-shadow .15s;
+}
+.vox-dial__head:focus-within {
+  border-color: color-mix(in srgb, var(--accent-green) 55%, var(--border-1));
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.14),
+    0 0 0 3px color-mix(in srgb, var(--accent-green) 18%, transparent);
 }
 .vox-dial__country {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 36px; padding: 0 8px 0 10px;
-  border-radius: 8px;
-  background: var(--bg-2); border: 1px solid var(--border-1);
+  height: 34px; padding: 0 8px 0 9px;
+  border-radius: 9px;
+  background: var(--bg-1); border: 1px solid var(--border-1);
   color: var(--text-1);
   font-size: 13px; font-weight: 600;
   cursor: pointer;
+  transition: background .15s, border-color .15s;
 }
 .vox-dial__country:hover { background: var(--bg-hover); border-color: var(--border-strong); }
 .vox-dial__country-flag { font-size: 16px; line-height: 1; }
 .vox-dial__country-code { font-family: var(--font-mono); color: var(--text-2); font-size: 12px; }
 .vox-dial__input {
   flex: 1;
-  height: 36px;
+  height: 34px;
   background: transparent; border: 0; outline: none;
   font-family: var(--font-mono);
-  font-size: 18px; font-weight: 600; letter-spacing: 0.02em;
+  font-size: 19px; font-weight: 600; letter-spacing: 0.04em;
   color: var(--text-1);
   font-variant-numeric: tabular-nums;
   text-align: left;
   min-width: 0;
 }
-.vox-dial__input::placeholder { color: var(--text-4); font-weight: 400; letter-spacing: 0.05em; }
+.vox-dial__input::placeholder { color: var(--text-4); font-weight: 400; letter-spacing: 0.08em; }
 .vox-dial__bksp {
-  width: 32px; height: 32px; border-radius: 8px;
+  width: 34px; height: 34px; border-radius: 9px;
   display: grid; place-items: center;
   color: var(--text-3);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background .12s, color .12s;
 }
-.vox-dial__bksp:hover { background: var(--bg-hover); color: var(--text-1); }
+.vox-dial__bksp:hover:not(:disabled) { background: var(--bg-hover); color: var(--accent-red); }
+.vox-dial__bksp:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .vox-dial__pad {
   display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 9px;
 }
 .vox-dial__key {
   position: relative;
-  height: 52px;
-  border-radius: 12px;
-  background: var(--bg-2); border: 1px solid var(--border-1);
+  height: 54px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 55%, var(--bg-1)), var(--bg-2));
+  border: 1px solid var(--border-1);
   color: var(--text-1);
   font-family: var(--font-mono);
-  font-size: 20px; font-weight: 600;
+  font-size: 21px; font-weight: 600;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 1px;
-  transition: background .12s, transform .08s, border-color .12s;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16), inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent);
+  transition: transform .1s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
   -webkit-user-select: none; user-select: none;
 }
-.vox-dial__key:hover { background: var(--bg-hover); border-color: var(--border-strong); }
-.vox-dial__key:active { background: var(--bg-active); transform: scale(0.97); }
+.vox-dial__key:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent-green) 40%, var(--border-1));
+  box-shadow:
+    0 8px 16px -10px color-mix(in srgb, var(--accent-green) 60%, transparent),
+    0 2px 4px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
+}
+.vox-dial__key:active {
+  transform: translateY(1px) scale(0.98);
+  background: var(--bg-2);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.22);
+}
 .vox-dial__key-sub {
   font-family: var(--font-ui);
   font-size: 8.5px; letter-spacing: 0.18em;
@@ -3613,43 +3697,162 @@ a { color: inherit; text-decoration: none; }
 }
 
 .vox-dial__call {
-  width: 100%; height: 48px;
-  border-radius: 12px;
-  background: var(--accent-green); color: white;
-  font-size: 14px; font-weight: 700; letter-spacing: -0.01em;
+  width: 100%; height: 50px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-green) 86%, #fff), var(--accent-green));
+  color: white;
+  font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  box-shadow: 0 6px 16px -8px var(--accent-green), inset 0 1px 0 rgba(255,255,255,0.18);
-  transition: filter .15s, transform .1s;
+  cursor: pointer;
+  box-shadow:
+    0 10px 22px -10px color-mix(in srgb, var(--accent-green) 85%, transparent),
+    0 2px 5px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transition: transform .1s ease, box-shadow .18s ease;
 }
-.vox-dial__call:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
-.vox-dial__call:disabled { opacity: 0.45; cursor: not-allowed; }
+.vox-dial__call:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    0 16px 30px -10px color-mix(in srgb, var(--accent-green) 92%, transparent),
+    0 3px 8px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+.vox-dial__call:active:not(:disabled) { transform: translateY(0); }
+.vox-dial__call:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
 .vox-dial__call svg { width: 18px; height: 18px; }
 
 /* Recents toggle row */
 .vox-dial__tabs {
   display: inline-flex; align-self: flex-start;
-  background: var(--bg-2); border: 1px solid var(--border-1); border-radius: 8px;
+  background: var(--bg-2); border: 1px solid var(--border-1); border-radius: 10px;
   padding: 3px; gap: 2px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 .vox-dial__tab {
-  padding: 4px 10px; font-size: 11.5px; font-weight: 600;
-  color: var(--text-3); border-radius: 6px;
+  padding: 5px 12px; font-size: 11.5px; font-weight: 600;
+  color: var(--text-3); border-radius: 7px; cursor: pointer;
+  transition: color .15s, background .15s;
 }
-.vox-dial__tab--active { background: var(--bg-3); color: var(--text-1); box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+.vox-dial__tab:hover { color: var(--text-2); }
+.vox-dial__tab--active {
+  background: linear-gradient(180deg, var(--bg-1), color-mix(in srgb, var(--bg-1) 88%, #000));
+  color: var(--text-1);
+  box-shadow: 0 2px 5px -2px rgba(0, 0, 0, 0.3), inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
+}
 
 .vox-dial__recents {
-  display: flex; flex-direction: column; gap: 4px;
-  max-height: 220px; overflow: auto;
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 240px; overflow: auto;
 }
 .vox-dial__recent {
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px; border-radius: 8px;
-  background: var(--bg-2); border: 1px solid var(--border-1);
+  padding: 9px 11px; border-radius: 10px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 55%, var(--bg-1)), var(--bg-2));
+  border: 1px solid var(--border-1);
   color: var(--text-1);
   font-family: var(--font-mono); font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: transform .1s, border-color .15s, box-shadow .15s;
 }
-.vox-dial__recent:hover { background: var(--bg-hover); border-color: var(--accent-green); }
+.vox-dial__recent:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent-green) 45%, var(--border-1));
+  box-shadow: 0 8px 16px -10px color-mix(in srgb, var(--accent-green) 55%, transparent);
+}
 .vox-dial__recent-time { font-size: 10.5px; color: var(--text-3); font-family: var(--font-ui); margin-left: auto; }
+
+/* ============================================================
+   Campos + filas premium reutilizables (sub-vistas del softphone:
+   Quick connects / Crear tarea / Nuevo email). Recesado con relieve +
+   focus ring ámbar; filas con lift + glow del token --vsa.
+   ============================================================ */
+.vox-field {
+  width: 100%;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 70%, var(--bg-1)), var(--bg-2));
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  padding: 9px 11px;
+  color: var(--text-1);
+  outline: none;
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.10);
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.vox-field::placeholder { color: var(--text-4); }
+.vox-field:hover { border-color: var(--border-strong); }
+.vox-field:focus, .vox-field:focus-visible {
+  border-color: color-mix(in srgb, var(--accent-amber) 55%, var(--border-1));
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.08),
+    0 0 0 3px color-mix(in srgb, var(--accent-amber) 16%, transparent);
+}
+select.vox-field { cursor: pointer; }
+textarea.vox-field { resize: vertical; line-height: 1.5; }
+
+.vox-listrow {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 8px 10px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 55%, var(--bg-1)), var(--bg-2));
+  border: 1px solid var(--border-1);
+  color: var(--text-1); text-align: left;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: transform .1s ease, border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.vox-listrow:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--vsa, var(--accent-cyan)) 48%, var(--border-1));
+  box-shadow:
+    0 8px 16px -10px color-mix(in srgb, var(--vsa, var(--accent-cyan)) 58%, transparent),
+    0 2px 4px rgba(0, 0, 0, 0.16);
+}
+.vox-listrow:active { transform: translateY(0); }
+.vox-listrow:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+
+/* ============================================================
+   Select premium (Base UI · data-slot) — trigger recesado, popup con
+   relieve y items con hover/seleccionado de acento. Global en toda la app.
+   ============================================================ */
+[data-slot="select-trigger"] {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 60%, var(--bg-1)), var(--bg-2)) !important;
+  border-color: var(--border-1) !important;
+  border-radius: 10px !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.07);
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+[data-slot="select-trigger"]:hover { border-color: var(--border-strong) !important; }
+[data-slot="select-trigger"][data-popup-open] {
+  border-color: color-mix(in srgb, var(--accent-cyan) 55%, var(--border-1)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-cyan) 16%, transparent);
+}
+[data-slot="select-content"] {
+  border-radius: 12px !important;
+  background: var(--bg-1) !important;
+  border: 1px solid var(--border-1);
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.5), 0 3px 10px rgba(0, 0, 0, 0.22) !important;
+  padding: 5px !important;
+}
+[data-slot="select-item"] {
+  border-radius: 8px !important;
+  padding-top: 7px !important;
+  padding-bottom: 7px !important;
+  padding-left: 10px !important;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+[data-slot="select-item"][data-highlighted],
+[data-slot="select-item"]:hover {
+  background: color-mix(in srgb, var(--accent-cyan) 14%, transparent) !important;
+  color: var(--text-1) !important;
+}
+[data-slot="select-item"][data-selected] {
+  color: var(--accent-cyan) !important;
+  font-weight: 600;
+}
 
 /* ============================================================
    Right-rail tab strip v2 — pill style
@@ -3765,7 +3968,7 @@ a { color: inherit; text-decoration: none; }
 .state-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
 /* Notion-spacious modifier hooks */
-[data-density="cozy"] .view { padding: 36px 40px 120px; }
+[data-density="cozy"] .view { padding: 30px 34px 100px; }
 [data-density="cozy"] .card__body { padding: 24px; }
 
 /* ============================================================

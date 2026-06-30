@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getApiEndpoints } from "@/lib/api";
 import { useContacts } from "@/hooks/useContacts";
 import { useUsers, UUID_RE } from "@/hooks/useUsers";
@@ -33,8 +34,8 @@ const EXEC_TO_PERIOD: Record<ExecPeriod, Period> = { hoy: "today", ayer: "yester
 const SOURCE_LABEL: Record<string, string> = {
   web_form: "Web", campaign: "Campaña", salesforce: "Salesforce", whatsapp: "WhatsApp", manual: "Manual",
 };
-// Paleta "infografía" del diseño v2 (decisión del usuario en Claude Design).
-const DATA_PALETTE = ["#2BC6E6","#25B873","#A3D63B","#F5C518","#F5A524","#F2722E","#9B8CF0","#ED84C2","#ED5257","#6E8BFF"];
+// Paleta muteada del handoff Claude Design (--cian/--verde/--violeta/--ambar/--rojo + variantes -2).
+const DATA_PALETTE = ["#0F84A0","#138354","#6253CE","#B8761A","#C0353A","#0a6c84","#0f6e46","#5141b8","#9c6314","#a32a2f"];
 
 const CHIP_COLOR: Record<string, string> = {
   "chip--green": "var(--accent-green)", "chip--red": "var(--accent-red)",
@@ -52,11 +53,12 @@ function normChannel(c?: string): ChannelKey {
   if (k === "WHATSAPP" || k === "WA") return "wa";
   return "voz";
 }
+// Colores del handoff: Positivo=verde · Neutral=gris(text-3) · Mixto=ámbar · Negativo=rojo.
 const SENTIMENT_META: { key: string; label: string; color: string }[] = [
-  { key: "POSITIVE", label: "Positivo", color: "#25B873" },
-  { key: "NEUTRAL", label: "Neutral", color: "#6E8BFF" },
-  { key: "MIXED", label: "Mixto", color: "#F5C518" },
-  { key: "NEGATIVE", label: "Negativo", color: "#ED5257" },
+  { key: "POSITIVE", label: "Positivo", color: "#138354" },
+  { key: "NEUTRAL", label: "Neutral", color: "#7A879F" },
+  { key: "MIXED", label: "Mixto", color: "#B8761A" },
+  { key: "NEGATIVE", label: "Negativo", color: "#C0353A" },
 ];
 
 const dayMs = 86400000;
@@ -78,6 +80,7 @@ interface InsightsPanelProps {
 }
 
 export function InsightsPanel({ metrics, lastRefresh, onRefresh }: InsightsPanelProps) {
+  const navigate = useNavigate();
   const { tree } = useTaxonomy();
   const { contacts, searchContacts } = useContacts();
   const { userIdToName } = useUsers();
@@ -308,6 +311,23 @@ export function InsightsPanel({ metrics, lastRefresh, onRefresh }: InsightsPanel
     return out.slice(0, 4);
   }, [metrics, campaigns, periodLeads, prevLeads, posPct, curContacts]);
 
+  // Nivel de servicio: % de contactos del período efectivamente atendidos
+  // (con duración > 0). No hay serviceLevel real en las métricas; este es el
+  // proxy más honesto. Sin contactos → 100% (no hay nada incumplido).
+  const sla = useMemo(() => {
+    if (!curContacts.length) return 100;
+    const handled = curContacts.filter((c) => (c.duration ?? 0) > 0).length;
+    return Math.round((handled / curContacts.length) * 100);
+  }, [curContacts]);
+
+  // Avatares de la tira EN VIVO: el ranking del período si lo hay; si el período
+  // no tuvo actividad, caemos a los agentes de Connect para que SIEMPRE se vean.
+  const liveAgents = useMemo(() => {
+    if (agentRank.length) return agentRank.map((a) => a.name);
+    return [...userIdToName.values()].slice(0, 6);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentRank, userIdToName]);
+
   const execData = useMemo<ExecData>(() => ({
     kpis: {
       contactos: { value: curContacts.length, delta: curContacts.length - prevContacts.length, spark: contactSpark },
@@ -342,7 +362,9 @@ export function InsightsPanel({ metrics, lastRefresh, onRefresh }: InsightsPanel
     org: "",
     insights,
     heatmap,
-  }), [curContacts, prevContacts, contactSpark, posPct, negPct, aht, periodLeads, prevLeads, leadSpark, upcoming, apptTotal, hsmSent, available, online, volumeByChannel, trend, sentiment, agentRank, byQueue, leadSources, funnel, campaigns, metrics, insights, heatmap]);
+    sla,
+    liveAgents,
+  }), [curContacts, prevContacts, contactSpark, posPct, negPct, aht, periodLeads, prevLeads, leadSpark, upcoming, apptTotal, hsmSent, available, online, volumeByChannel, trend, sentiment, agentRank, byQueue, leadSources, funnel, campaigns, metrics, insights, heatmap, sla, liveAgents]);
 
   return (
     <ExecutiveView
@@ -352,6 +374,7 @@ export function InsightsPanel({ metrics, lastRefresh, onRefresh }: InsightsPanel
       onRefresh={onRefresh}
       lastRefresh={lastRefresh}
       loading={loading && contacts.length === 0}
+      onNavigate={(path) => navigate(path)}
     />
   );
 }

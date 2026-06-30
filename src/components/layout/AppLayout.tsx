@@ -7,6 +7,7 @@ import { OnboardingBanner } from "@/components/vox/OnboardingBanner";
 import { SoftphoneBanner } from "@/components/vox/SoftphoneBanner";
 import { NavProgress } from "@/components/layout/NavProgress";
 import { TopBarSlotProvider } from "@/components/layout/TopBarSlot";
+import { ProgramProvider } from "@/context/ProgramContext";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -14,6 +15,7 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   return (
+    <ProgramProvider>
     <TopBarSlotProvider>
     <div className="app" data-density="cozy">
       <NavProgress />
@@ -36,5 +38,6 @@ export function AppLayout({ children }: AppLayoutProps) {
       <FloatingCallWidget />
     </div>
     </TopBarSlotProvider>
+    </ProgramProvider>
   );
 }

@@ -373,7 +373,13 @@ export function CCPProvider({ children }: { children: ReactNode }) {
                       if (j?.code === "mismatch") {
                         toast.error(j.error || "El agente de Connect con el que entraste no coincide con el que te asignaron.");
                       } else if (j?.ok && j?.confirmed) {
-                        toast.success(`Tu agente de Connect quedó confirmado: ${j.confirmed}`);
+                        // Solo la 1ra vez (por navegador): el vínculo es permanente,
+                        // avisarlo en cada login es ruido que tapa los botones del top bar.
+                        const seenKey = `aria.connectConfirmed.${j.confirmed}`;
+                        if (!localStorage.getItem(seenKey)) {
+                          localStorage.setItem(seenKey, "1");
+                          toast.success(`Tu agente de Connect quedó confirmado: ${j.confirmed}`);
+                        }
                       }
                       // code === "no_assignment" → silencio (el admin todavía no asignó).
                     })

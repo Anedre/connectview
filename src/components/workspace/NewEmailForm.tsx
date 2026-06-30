@@ -24,18 +24,6 @@ interface NewEmailFormProps {
   onSent?: () => void;
 }
 
-const inputBase: React.CSSProperties = {
-  width: "100%",
-  background: "var(--bg-2)",
-  border: "1px solid var(--border-1)",
-  borderRadius: 6,
-  padding: "8px 10px",
-  color: "var(--text-1)",
-  outline: "none",
-  fontSize: 12.5,
-  fontFamily: "var(--font-ui)",
-};
-
 /**
  * Inline form to send an outbound email via Amazon Connect Email +
  * SES. Posts to `startOutboundContact` with `{ type: "email", ... }`.
@@ -239,7 +227,7 @@ export function NewEmailForm({ onSent }: NewEmailFormProps) {
           value={fromId}
           onChange={(e) => setFromId(e.target.value)}
           disabled={addressesLoading}
-          style={inputBase}
+          className="vox-field"
         >
           {emailAddresses.length === 0 && (
             <option value="">
@@ -263,7 +251,7 @@ export function NewEmailForm({ onSent }: NewEmailFormProps) {
           onChange={(e) => setTo(e.target.value)}
           type="email"
           placeholder="cliente@dominio.com"
-          style={inputBase}
+          className="vox-field"
         />
       </label>
 
@@ -275,7 +263,7 @@ export function NewEmailForm({ onSent }: NewEmailFormProps) {
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Asunto del email"
-          style={inputBase}
+          className="vox-field"
         />
       </label>
 
@@ -288,7 +276,8 @@ export function NewEmailForm({ onSent }: NewEmailFormProps) {
           onChange={(e) => setBody(e.target.value)}
           placeholder="Escribe el contenido…"
           rows={5}
-          style={{ ...inputBase, resize: "vertical", minHeight: 100 }}
+          className="vox-field"
+          style={{ minHeight: 100 }}
         />
       </label>
 
@@ -430,7 +419,7 @@ export function NewEmailForm({ onSent }: NewEmailFormProps) {
           value={flowId}
           onChange={(e) => setFlowId(e.target.value)}
           disabled={flowsLoading}
-          style={inputBase}
+          className="vox-field"
         >
           {emailFlows.length === 0 && (
             <option value="">

@@ -4,6 +4,7 @@ import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useCCP, type ConnectAgentState } from "@/hooks/useCCP";
 import { useTopBarSlot } from "@/components/layout/TopBarSlot";
 import * as Icon from "@/components/vox/primitives";
+import { ProgramSwitcher } from "@/components/layout/ProgramSwitcher";
 
 /**
  * AppTopBar — la barra superior unificada con el sidebar (chrome en "L"): el
@@ -41,6 +42,7 @@ const CRUMBS: Record<string, { section: string; label: string }> = {
   "/": { section: "Operación", label: "Inicio" },
   "/agent": { section: "Operación", label: "Agent Desktop" },
   "/queue": { section: "Operación", label: "Cola en vivo" },
+  "/programs": { section: "Crecimiento", label: "Programas" },
   "/leads": { section: "Crecimiento", label: "Leads" },
   "/campaigns": { section: "Crecimiento", label: "Campañas" },
   "/bot": { section: "Crecimiento", label: "Bots" },
@@ -87,6 +89,8 @@ export function AppTopBar() {
       </nav>
 
       <div className="tbx__right">
+        <ProgramSwitcher />
+
         {ccpError && (
           <span className="chip chip--red" role="alert" title={ccpError} style={{ maxWidth: 240 }}>
             <span className="dot" /> <span className="truncate">{ccpError}</span>

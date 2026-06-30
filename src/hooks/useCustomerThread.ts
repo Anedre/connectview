@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getApiEndpoints } from "@/lib/api";
 
 export interface ThreadMessage {
@@ -57,42 +57,38 @@ interface State {
 }
 
 export function useCustomerThread(phone: string | null): State {
-  const [state, setState] = useState<State>({
-    data: null,
-    loading: false,
-    error: null,
+  const url = (getApiEndpoints() as unknown as Record<string, string | undefined>)
+    ?.getCustomerThread;
+
+  // El hilo completo del cliente (todas las sesiones + mensajes + transcripts)
+  // es el fetch más pesado de Grabaciones. Cachearlo por teléfono hace que
+  // volver a un cliente ya abierto sea instantáneo (antes recargaba todo el
+  // hilo con spinner) y deduplica las vistas que lo piden a la vez.
+  const query = useQuery({
+    queryKey: ["customerThread", phone],
+    enabled: !!phone && !!url,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+    queryFn: async ({ signal }) => {
+      const r = await fetch(`${url}?phone=${encodeURIComponent(phone!)}`, { signal });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || `HTTP ${r.status}`);
+      return j as CustomerThread;
+    },
   });
 
-  useEffect(() => {
-    if (!phone) {
-      setState({ data: null, loading: false, error: null });
-      return;
-    }
-    const endpoints = getApiEndpoints();
-    const url = (endpoints as unknown as Record<string, string | undefined>)
-      ?.getCustomerThread;
-    if (!url) {
-      setState({ data: null, loading: false, error: "Endpoint no configurado" });
-      return;
-    }
-    const ctrl = new AbortController();
-    setState({ data: null, loading: true, error: null });
-    fetch(`${url}?phone=${encodeURIComponent(phone)}`, { signal: ctrl.signal })
-      .then((r) => r.json().then((j) => ({ ok: r.ok, status: r.status, j })))
-      .then(({ ok, status, j }) => {
-        if (!ok) throw new Error(j.message || `HTTP ${status}`);
-        setState({ data: j as CustomerThread, loading: false, error: null });
-      })
-      .catch((e) => {
-        if ((e as Error).name === "AbortError") return;
-        setState({
-          data: null,
-          loading: false,
-          error: e instanceof Error ? e.message : "Error",
-        });
-      });
-    return () => ctrl.abort();
-  }, [phone]);
-
-  return state;
+  return {
+    data: query.data ?? null,
+    loading: !!phone && query.isLoading,
+    error: !phone
+      ? null
+      : !url
+      ? "Endpoint no configurado"
+      : query.error instanceof Error
+      ? query.error.message
+      : query.error
+      ? "Error"
+      : null,
+  };
 }

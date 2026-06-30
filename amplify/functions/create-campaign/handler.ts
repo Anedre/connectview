@@ -67,6 +67,9 @@ interface CreateCampaignBody {
   contacts: Contact[];
   createdBy?: string;
   startNow?: boolean;
+  /** Programa (Pilar 1) al que pertenece la campaña → auto-tag de sus leads
+   *  a la membership N:N (connectview-lead-programs). */
+  programId?: string;
   // If true (default), create an AWS Outbound Campaigns v2 resource too so
   // the service can handle dialing with AMD. If false, the campaign only
   // lives in our DynamoDB (legacy mode — no AMD).
@@ -271,6 +274,7 @@ export const handler: Handler = async (event: any, context: any) => {
               (body as { templateVarColumns?: string[] }).templateVarColumns || []
             ),
           },
+          programId: body.programId ? { S: body.programId } : { NULL: true },
           status: { S: status },
           createdAt: { S: now },
           createdBy: { S: body.createdBy || "system" },
@@ -358,6 +362,7 @@ export const handler: Handler = async (event: any, context: any) => {
       leadFunnel = await bulkUpsertVoxLeads(validContacts, {
         source: `Vox Campaña: ${body.name.trim()}`,
         deadlineMs: 15_000,
+        programId: body.programId,
       });
       console.log("lead funnel upsert:", leadFunnel);
     } catch (err) {

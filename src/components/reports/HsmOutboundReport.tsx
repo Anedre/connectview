@@ -93,26 +93,32 @@ export function HsmOutboundReport() {
 
   return (
     <div>
-      {/* KPI strip — Vox tracks send + volume (entregado/leído viven en Meta BM) */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+      {/* KPI strip — ciclo de entrega (delivered/read/failed los llena el
+          status-webhook desde números Meta no anclados a Connect, Pilar 4). */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
         {kpi("Enviados", totalSends)}
+        {/* Entregado del embudo = delivered + read (leído implica entregado). */}
+        {kpi("Entregados", (t.delivered || 0) + (t.read || 0), "var(--accent-cyan)")}
+        {kpi("Leídos", t.read || 0, "var(--accent-violet)")}
+        {kpi("Fallidos", t.failed || 0, (t.failed || 0) > 0 ? "var(--accent-red)" : undefined)}
         {kpi("Plantillas", data.templates.length)}
-        {kpi(
-          "Última actividad",
-          mostRecent ? new Date(mostRecent).toLocaleDateString("es-PE") : "—"
-        )}
+      </div>
+      <div className="muted" style={{ fontSize: 11, marginBottom: 14 }}>
+        Tasa de lectura <b>{data.rates.readRate}%</b> (leídos/entregados) · Tasa de fallo{" "}
+        <b>{data.rates.failRate}%</b> · Última actividad{" "}
+        {mostRecent ? new Date(mostRecent).toLocaleDateString("es-PE") : "—"}
       </div>
 
-      {/* Per-template table — send volume per template */}
+      {/* Per-template table — volumen + ciclo de entrega por plantilla */}
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", fontSize: 12.5, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border-1)" }}>
-              {["Plantilla", "Enviados", "% del volumen", "Último envío"].map((h, i) => (
+              {["Plantilla", "Enviados", "Entregados", "Leídos", "Fallidos", "Último envío"].map((h, i) => (
                 <th
                   key={h}
                   style={{
-                    textAlign: i === 0 || i === 3 ? "left" : "right",
+                    textAlign: i === 0 || i === 5 ? "left" : "right",
                     padding: "6px 10px",
                     color: "var(--text-2)",
                     fontWeight: 600,
@@ -128,30 +134,22 @@ export function HsmOutboundReport() {
             {data.templates.map((tpl) => {
               const sends =
                 tpl.sent + tpl.delivered + tpl.read + tpl.failed + tpl.expired + tpl.pending;
-              const pct = totalSends > 0 ? Math.round((sends / totalSends) * 100) : 0;
+              const cell = (v: number, color?: string) => (
+                <td style={{ padding: "7px 10px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: v > 0 ? color : "var(--text-3)" }}>
+                  {v || "—"}
+                </td>
+              );
               return (
                 <tr key={tpl.template} style={{ borderBottom: "1px solid var(--border-1)" }}>
                   <td style={{ padding: "7px 10px", fontFamily: "var(--font-mono, monospace)", fontSize: 12 }}>
                     {tpl.template}
                   </td>
-                  <td style={{ padding: "7px 10px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  <td style={{ padding: "7px 10px", textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
                     {sends}
                   </td>
-                  <td style={{ padding: "7px 10px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
-                      <div
-                        style={{
-                          flex: "0 0 80px", height: 6, borderRadius: 4, overflow: "hidden",
-                          background: "var(--border-1)",
-                        }}
-                      >
-                        <div style={{ width: `${pct}%`, height: "100%", background: "var(--accent-cyan)" }} />
-                      </div>
-                      <span style={{ fontVariantNumeric: "tabular-nums", color: "var(--text-2)", minWidth: 30, textAlign: "right" }}>
-                        {pct}%
-                      </span>
-                    </div>
-                  </td>
+                  {cell(tpl.delivered + tpl.read, "var(--accent-cyan)")}
+                  {cell(tpl.read, "var(--accent-violet)")}
+                  {cell(tpl.failed, "var(--accent-red)")}
                   <td style={{ padding: "7px 10px", color: "var(--text-3)", fontSize: 11 }}>
                     {tpl.lastSentAt ? new Date(tpl.lastSentAt).toLocaleString("es-PE") : "—"}
                   </td>
@@ -175,19 +173,19 @@ export function HsmOutboundReport() {
           color: "var(--text-2)",
         }}
       >
-        <strong style={{ color: "var(--text-1)" }}>Entregado · leído · fallido</strong> por
-        plantilla viven en{" "}
+        <strong style={{ color: "var(--text-1)" }}>Entregado · leído · fallido</strong> se llenan
+        automáticamente desde un número de WhatsApp <strong>de Meta no anclado a Amazon Connect</strong>{" "}
+        (ARIA recibe los recibos de entrega). Para un número <strong>anclado a Connect</strong> (chat de
+        agentes), los eventos van a Connect y el agregado vive en{" "}
         <a
           href="https://business.facebook.com/wa/manage/"
           target="_blank"
           rel="noopener noreferrer"
           style={{ color: "var(--accent-cyan)" }}
         >
-          Meta Business Manager → WhatsApp Manager → Analytics
+          Meta WhatsApp Manager → Analytics
         </a>
-        . ARIA registra el <strong>envío y el volumen</strong>; el estado posterior al envío no se
-        captura porque tu WhatsApp enruta los eventos a Amazon Connect (chat de agentes) y duplicar
-        ese destino rompería el inbound.
+        . Configurá el modo de cada número en Configuración → Canales.
       </div>
     </div>
   );
