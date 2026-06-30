@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Send, X, RotateCcw, Bot as BotIcon, Braces, Wrench } from "lucide-react";
+import { Send, X, RotateCcw, Bot as BotIcon, Braces, Wrench, Quote } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { NODE_KINDS, type Bot } from "@/lib/botFlow";
@@ -10,6 +10,15 @@ const TOOL_LABELS: Record<string, string> = {
   upsert_lead: "Creó / actualizó un lead",
   lookup_customer: "Buscó un cliente",
   send_whatsapp_template: "Envió una plantilla",
+};
+
+/** Motivo de derivación a humano (Pilar 8 Fase B) → etiqueta legible. */
+const HANDOFF_LABELS: Record<string, string> = {
+  low_confidence: "Baja confianza",
+  tool_budget: "Límite de acciones",
+  max_turns: "Máx. de turnos",
+  ai_error: "Error de IA",
+  agent: "Decisión del agente",
 };
 
 /**
@@ -166,6 +175,16 @@ export function BotTester({
     convState?.vars && typeof convState.vars === "object" ? Object.entries(convState.vars) : [];
   const toolsUsed: string[] = Array.isArray(convState?.toolsUsed) ? convState.toolsUsed : [];
   const aiTurns: number = typeof convState?.aiTurns === "number" ? convState.aiTurns : 0;
+  // Pilar 8 Fase B — auditoría: fuentes citadas, confianza, motivo de derivación.
+  const citations: { id: string; label: string }[] = Array.isArray(convState?.citations)
+    ? convState.citations
+    : [];
+  const confidences: number[] = Array.isArray(convState?.confidences) ? convState.confidences : [];
+  const confidenceAvg = confidences.length
+    ? Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length)
+    : null;
+  const handoffReason: string =
+    typeof convState?.handoffReason === "string" ? convState.handoffReason : "";
   const stepLabel: string = done
     ? "Finalizado"
     : (() => {
@@ -283,7 +302,25 @@ export function BotTester({
               <div className="fb-wa__insp-empty">Ninguna herramienta ejecutada todavía.</div>
             )}
           </div>
-          {(stepLabel || aiTurns > 0) && (
+          {/* Pilar 8 Fase B — fuentes citadas (auditoría del RAG) */}
+          <div className="fb-wa__insp-sec">
+            <div className="fb-wa__insp-h">
+              <Quote size={12} /> Fuentes citadas
+              <span className="fb-wa__insp-count">{citations.length}</span>
+            </div>
+            {citations.length > 0 ? (
+              <div className="fb-wa__insp-tools">
+                {citations.map((c) => (
+                  <span key={c.id} className="fb-wa__insp-tool" title={`${c.id} · ${c.label}`}>
+                    {c.label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="fb-wa__insp-empty">El agente todavía no citó ninguna fuente.</div>
+            )}
+          </div>
+          {(stepLabel || aiTurns > 0 || confidenceAvg != null || handoffReason) && (
             <div className="fb-wa__insp-meta">
               {stepLabel && (
                 <span>
@@ -293,6 +330,16 @@ export function BotTester({
               {aiTurns > 0 && (
                 <span>
                   Turnos IA: <b>{aiTurns}</b>
+                </span>
+              )}
+              {confidenceAvg != null && (
+                <span>
+                  Confianza: <b>{confidenceAvg}%</b>
+                </span>
+              )}
+              {handoffReason && (
+                <span>
+                  Derivó por: <b>{HANDOFF_LABELS[handoffReason] || handoffReason}</b>
                 </span>
               )}
             </div>

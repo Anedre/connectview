@@ -628,6 +628,29 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         options: ["No", "Sí"],
         help: "Si está en Sí, la IA conoce los programas activos (Pilar 1) para responder.",
       },
+      // Pilar 8 Fase B — gobernanza/auditoría del agente.
+      {
+        key: "cite",
+        label: "Citar fuentes (auditoría)",
+        type: "select",
+        options: ["Sí (recomendado)", "No"],
+        help: "Si está en Sí, el agente registra qué FAQ/catálogo usó en cada respuesta (no se le muestra al cliente; se ve en «Inspeccionar» y en los reportes).",
+      },
+      {
+        key: "toolBudget",
+        label: "Máx. de acciones por conversación",
+        type: "number",
+        placeholder: "8",
+        slider: { min: 1, max: 20 },
+        help: "Tope de herramientas que el agente puede ejecutar (agendar/crear lead/enviar) antes de derivar a un humano. Evita loops y gasto.",
+      },
+      {
+        key: "fallbackMessage",
+        label: "Mensaje si la IA falla",
+        type: "textarea",
+        placeholder: "Disculpá, no pude procesarlo. Te paso con un asesor.",
+        help: "Respuesta determinística cuando el modelo no responde (error de Bedrock). El agente deriva a un humano.",
+      },
     ],
     outlets: () => [
       { id: "resolved", label: "Resuelto" },
@@ -642,6 +665,9 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
       confidenceThreshold: 70,
       confirmSensitive: "Sí (recomendado)",
       ragPrograms: "No",
+      cite: "Sí (recomendado)",
+      toolBudget: 8,
+      fallbackMessage: "",
     }),
     summary: (d) => {
       const m = str(d.model, "IA").replace(" (Bedrock)", "");

@@ -80,6 +80,11 @@ interface State {
   aiTurns?: number;
   toolsUsed?: string[];
   logged?: boolean;
+  // Fase B — gobernanza/auditoría del agente.
+  toolCalls?: number; // ejecuciones de tools acumuladas (vs toolBudget)
+  confidences?: number[]; // confianza autoreportada por turno IA
+  citations?: { id: string; label: string }[]; // fuentes RAG citadas (únicas)
+  handoffReason?: string; // por qué derivó: low_confidence | tool_budget | max_turns | agent | ai_error
 }
 interface OutMsg {
   kind: "bot" | "note";
@@ -132,18 +137,33 @@ async function invokeModel(modelId: string, system: string, user: string): Promi
   return (parsed.content?.[0]?.text || "").trim();
 }
 
+/** Pilar 8 Fase B — una fuente RAG citable: un ID corto (F1/C1/P1) + su etiqueta
+ *  legible. El agente cita el ID; el runtime lo mapea a la etiqueta para auditar. */
+interface RagSource {
+  id: string;
+  label: string;
+}
+interface KnowledgeResult {
+  text: string;
+  sources: RagSource[];
+}
+
 /**
  * Pilar 8 — RAG: arma el bloque de conocimiento del agente cargando EN VIVO las
  * fuentes seleccionadas en el nodo (catálogos + programas + base de conocimiento)
  * y sumándolas al `knowledge` estático. Best-effort: si una fuente falla, se
  * saltea (el agente sigue con lo que tenga). Tablas chicas → se inyectan enteras.
+ * Fase B: cada fuente lleva un ID citable ([F1]/[C1]/[P1]) → el agente cita y el
+ * runtime audita qué usó (ver parseCitation).
  */
-async function buildKnowledge(data: Record<string, unknown>): Promise<string> {
+async function buildKnowledge(data: Record<string, unknown>): Promise<KnowledgeResult> {
   const parts: string[] = [];
+  const sources: RagSource[] = [];
   const staticK = str(data.knowledge);
   if (staticK) parts.push(staticK);
 
   const catIds = Array.isArray(data.ragCatalogs) ? (data.ragCatalogs as string[]) : [];
+  let cn = 0;
   for (const id of catIds.slice(0, 6)) {
     try {
       const r = await dynamo.send(
@@ -156,7 +176,9 @@ async function buildKnowledge(data: Record<string, unknown>): Promise<string> {
         .slice(0, 120)
         .map((row) => (Array.isArray(row) ? row.join(" | ") : ""))
         .join("\n");
-      parts.push(`📋 Catálogo "${c.name || id}":\n${head}\n${body}`);
+      const sid = `C${++cn}`;
+      sources.push({ id: sid, label: `Catálogo: ${c.name || id}` });
+      parts.push(`📋 [${sid}] Catálogo "${c.name || id}":\n${head}\n${body}`);
     } catch {
       /* fuente opcional */
     }
@@ -183,8 +205,9 @@ async function buildKnowledge(data: Record<string, unknown>): Promise<string> {
         .slice(0, 60);
       console.log(`[rag] programs: ${r.Items?.length || 0} total, ${active.length} activos`);
       if (active.length) {
+        sources.push({ id: "P1", label: "Programas activos" });
         parts.push(
-          "🎓 Programas activos:\n" +
+          "🎓 [P1] Programas activos:\n" +
             active
               .map(
                 (p) =>
@@ -208,7 +231,11 @@ async function buildKnowledge(data: Record<string, unknown>): Promise<string> {
         const kb = unmarshall(r.Item) as { name?: string; entries?: { q?: string; a?: string }[] };
         const faqs = (kb.entries || [])
           .slice(0, 80)
-          .map((e) => `P: ${e.q}\nR: ${e.a}`)
+          .map((e, i) => {
+            const sid = `F${i + 1}`;
+            sources.push({ id: sid, label: `FAQ: ${str(e.q).slice(0, 70)}` });
+            return `[${sid}] P: ${e.q}\nR: ${e.a}`;
+          })
           .join("\n\n");
         if (faqs) parts.push(`❓ Preguntas frecuentes "${kb.name || kbId}":\n${faqs}`);
       }
@@ -217,13 +244,61 @@ async function buildKnowledge(data: Record<string, unknown>): Promise<string> {
     }
   }
 
-  return parts.join("\n\n");
+  return { text: parts.join("\n\n"), sources };
+}
+
+/** Instrucción de citación para el system prompt (Fase B). Pide al modelo cerrar
+ *  con un marcador OCULTO ⟦src:F1,C2|conf:NN⟧ que el runtime stripea del texto al
+ *  cliente y usa para auditar fuentes + confianza. */
+function citeInstruction(sources: RagSource[], cite: boolean): string {
+  if (!cite || !sources.length) return "";
+  return (
+    `CITACIÓN (OBLIGATORIA): cada bloque de la base lleva una etiqueta entre corchetes ([F1], [C1], [P1]…). ` +
+    `Terminá SIEMPRE tu respuesta con un marcador OCULTO con las etiquetas EXACTAS que usaste y tu confianza, ` +
+    `formato EXACTO: ⟦src:F1,C1|conf:NN⟧ (NN = 0-100). ` +
+    `Ejemplo: si respondiste con un dato de la FAQ [F1], el marcador va al final así: ⟦src:F1|conf:90⟧. ` +
+    `Usá src:- SOLO si de verdad no usaste ningún dato de la base. ` +
+    `NUNCA muestres las etiquetas ni el marcador en el texto visible — el cliente NO debe verlo. ` +
+    `Etiquetas disponibles: ${sources.map((s) => `${s.id}=${s.label}`).join("; ")}.\n`
+  );
+}
+
+/** Extrae el marcador ⟦src:..|conf:..⟧ del texto: lo quita de la respuesta visible
+ *  y devuelve las citaciones (mapeadas a etiqueta) + la confianza. Best-effort. */
+function parseCitation(
+  text: string,
+  sources: RagSource[],
+): { clean: string; citations: RagSource[]; confidence: number | null } {
+  let confidence: number | null = null;
+  const citations: RagSource[] = [];
+  const m = text.match(/⟦([^⟧]*)⟧/);
+  if (m) {
+    const conf = m[1].match(/conf:\s*(\d{1,3})/i);
+    if (conf) confidence = Math.max(0, Math.min(100, Number(conf[1])));
+    const src = m[1].match(/src:\s*([^|]+)/i);
+    if (src) {
+      for (const raw of src[1].split(",").map((s) => s.trim())) {
+        const hit = sources.find((s) => s.id.toLowerCase() === raw.toLowerCase());
+        if (hit && !citations.some((c) => c.id === hit.id)) citations.push(hit);
+      }
+    }
+  }
+  const clean = text.replace(/⟦[^⟧]*⟧/g, "").trim();
+  return { clean, citations, confidence };
 }
 
 async function runAi(
   data: Record<string, unknown>,
   history: ChatMsg[],
-): Promise<{ reply: string; status: "continue" | "resolved" | "handoff"; modelUsed: string }> {
+  sources: RagSource[] = [],
+  cite = false,
+): Promise<{
+  reply: string;
+  status: "continue" | "resolved" | "handoff";
+  modelUsed: string;
+  confidence: number | null;
+  citations: RagSource[];
+}> {
   const objective = str(data.objective);
   const instructions = str(data.instructions);
   const knowledge = str(data.knowledge);
@@ -242,10 +317,16 @@ async function runAi(
     (guardrails ? `Restricciones — NO hagas esto: ${guardrails}\n` : "") +
     (handoffWhen ? `Derivá a un humano si: ${handoffWhen}.\n` : "") +
     `Responde SIEMPRE en español, breve (1-3 oraciones), tono cordial.`;
+  // Fase B — en el path JSON la citación va DENTRO del JSON (campo "cited"); el
+  // marcador oculto sólo sirve en el path de tools (texto libre).
+  const wantCite = cite && sources.length > 0;
   const user =
     `Conversación hasta ahora:\n${convo || "(aún no hay mensajes)"}\n\n` +
+    (wantCite
+      ? `La base de conocimiento marca cada bloque con una etiqueta entre corchetes ([F1], [C1], [P1]…): ${sources.map((s) => `${s.id}=${s.label}`).join("; ")}.\n`
+      : "") +
     `Generá el siguiente mensaje del BOT para avanzar hacia el objetivo. ` +
-    `Responde SOLO un JSON válido: {"reply":"<tu mensaje>","status":"continue"|"resolved"|"handoff","confidence":<0-100>}. ` +
+    `Responde SOLO un JSON válido: {"reply":"<tu mensaje>","status":"continue"|"resolved"|"handoff","confidence":<0-100>${wantCite ? `,"cited":[<etiquetas EXACTAS de la base que usaste, ej "F1","C1"; [] si ninguna>]` : ""}}. ` +
     `Usa "resolved" cuando ya lograste el objetivo, "handoff" si hay que pasar a un humano, si no "continue". ` +
     `"confidence" = qué tan seguro estás de tu respuesta (0=adivinando, 100=certeza).`;
 
@@ -263,9 +344,13 @@ async function runAi(
       const m2 = e2 instanceof Error ? `${e2.name}: ${e2.message}` : String(e2);
       console.error("bot-runtime AI invoke failed:", m1, "||", m2);
       return {
-        reply: "Disculpá, no pude procesar eso ahora mismo. Te paso con un asesor.",
+        reply:
+          str(data.fallbackMessage) ||
+          "Disculpá, no pude procesar eso ahora mismo. Te paso con un asesor.",
         status: "handoff",
         modelUsed: "none",
+        confidence: 0,
+        citations: [],
       };
     }
   }
@@ -273,6 +358,7 @@ async function runAi(
   let reply = raw;
   let status: "continue" | "resolved" | "handoff" = "continue";
   let confidence = 100;
+  const citations: RagSource[] = [];
   try {
     const m = raw.match(/\{[\s\S]*\}/);
     if (m) {
@@ -280,17 +366,29 @@ async function runAi(
       reply = str(j.reply, raw);
       if (j.status === "resolved" || j.status === "handoff") status = j.status;
       if (typeof j.confidence === "number") confidence = j.confidence;
+      // Fase B — citaciones en el JSON (path sin tools).
+      if (Array.isArray(j.cited)) {
+        for (const raw2 of j.cited) {
+          const hit = sources.find((s) => s.id.toLowerCase() === String(raw2).trim().toLowerCase());
+          if (hit && !citations.some((c) => c.id === hit.id)) citations.push(hit);
+        }
+      }
     }
   } catch {
     /* keep raw as reply */
   }
+  // Belt-and-suspenders: si igual apareció el marcador oculto, stripéalo y mergeá.
+  const cit = parseCitation(reply, sources);
+  reply = cit.clean;
+  if (cit.confidence != null) confidence = cit.confidence;
+  for (const c of cit.citations) if (!citations.some((x) => x.id === c.id)) citations.push(c);
   // Pilar 8 — human-in-the-loop por confianza: si el agente no está seguro y no
   // resolvió, escala a un humano (rama handoff).
   const threshold = Number(data.confidenceThreshold) || 0;
   if (status !== "resolved" && threshold > 0 && confidence < threshold) {
     status = "handoff";
   }
-  return { reply, status, modelUsed };
+  return { reply, status, modelUsed, confidence, citations };
 }
 
 /* ── Tool-using agent runtime (Claude function-calling) ───────────────
@@ -432,11 +530,17 @@ async function runAiWithTools(
   history: ChatMsg[],
   toolEndpoints: Record<string, string>,
   source: string,
+  sources: RagSource[] = [],
+  cite = false,
+  toolBudget = Number.POSITIVE_INFINITY,
 ): Promise<{
   reply: string;
   status: "continue" | "resolved" | "handoff";
   modelUsed: string;
   toolNotes: string[];
+  confidence: number | null;
+  citations: RagSource[];
+  toolCallsUsed: number;
 }> {
   const enabled = (Array.isArray(data.tools) ? (data.tools as string[]) : []).filter(
     (k) => IMPLEMENTED_TOOLS[k],
@@ -474,6 +578,7 @@ async function runAiWithTools(
     (confirmSensitive
       ? `IMPORTANTE: antes de ejecutar acciones que envían algo o crean/modifican datos (send_whatsapp_template, book_appointment, upsert_lead), CONFIRMÁ con el cliente primero — resumí qué vas a hacer y esperá su "sí". Las consultas de solo lectura (lookup_customer) NO necesitan confirmación.\n`
       : "") +
+    citeInstruction(sources, cite) +
     `Cuando te falte un dato para una herramienta (teléfono, fecha…), pedíselo al cliente primero. ` +
     `Llamá a resolve_conversation al completar el objetivo. Responde SIEMPRE en español, breve y cordial.`;
 
@@ -490,6 +595,7 @@ async function runAiWithTools(
   let reply = "";
   let status: "continue" | "resolved" | "handoff" = "continue";
   let modelUsed = chosen;
+  let toolCallsUsed = 0;
 
   for (let i = 0; i < 4; i++) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -502,10 +608,14 @@ async function runAiWithTools(
         modelUsed = FALLBACK_MODEL;
       } catch {
         return {
-          reply: "Disculpá, no pude procesar eso. Te paso con un asesor.",
+          reply:
+            str(data.fallbackMessage) || "Disculpá, no pude procesar eso. Te paso con un asesor.",
           status: "handoff",
           modelUsed: "none",
           toolNotes,
+          confidence: 0,
+          citations: [],
+          toolCallsUsed,
         };
       }
     }
@@ -532,10 +642,21 @@ async function runAiWithTools(
       } else if (tu.name === "resolve_conversation") {
         terminal = "resolved";
         results.push({ type: "tool_result", tool_use_id: tu.id, content: "ok" });
+      } else if (toolCallsUsed >= toolBudget) {
+        // Fase B — budget de tools agotado: no ejecutar, derivar a un humano.
+        terminal = "handoff";
+        results.push({
+          type: "tool_result",
+          tool_use_id: tu.id,
+          content:
+            "LÍMITE: se alcanzó el máximo de acciones de esta conversación. Derivá a un humano.",
+        });
+        toolNotes.push("⛔ Límite de acciones alcanzado");
       } else {
         const out = await execTool(tu.name, tu.input || {}, toolEndpoints, source);
         results.push({ type: "tool_result", tool_use_id: tu.id, content: out });
         toolNotes.push(`🔧 ${tu.name}`);
+        toolCallsUsed += 1;
       }
     }
     messages.push({ role: "user", content: results });
@@ -544,9 +665,28 @@ async function runAiWithTools(
       break;
     }
   }
+  // Fase B — citaciones + confianza desde el marcador oculto ⟦src:..|conf:..⟧.
+  const cit = parseCitation(reply, sources);
+  reply = cit.clean;
+  if (
+    status === "continue" &&
+    cit.confidence != null &&
+    threshold > 0 &&
+    cit.confidence < threshold
+  ) {
+    status = "handoff";
+  }
   if (!reply)
     reply = status === "handoff" ? "Te paso con un asesor." : "¿Algo más en lo que pueda ayudarte?";
-  return { reply, status, modelUsed, toolNotes };
+  return {
+    reply,
+    status,
+    modelUsed,
+    toolNotes,
+    confidence: cit.confidence,
+    citations: cit.citations,
+    toolCallsUsed,
+  };
 }
 
 function daysOf(preset: string): string[] {
@@ -738,20 +878,56 @@ export const handler: Handler = async (event: any) => {
       }
       if (k === "ai_agent") {
         // Pilar 8 — RAG: cargar las fuentes (catálogos/programas/FAQ) al prompt.
-        d.knowledge = await buildKnowledge(d);
+        const kn = await buildKnowledge(d);
+        d.knowledge = kn.text;
+        // Fase B — citar fuentes (default sí cuando hay fuentes); budget de tools.
+        const cite = d.cite !== false && d.cite !== "No" && kn.sources.length > 0;
+        const budget = Number(d.toolBudget);
+        const usedSoFar = Number(state.toolCalls) || 0;
+        const remaining =
+          Number.isFinite(budget) && budget > 0
+            ? Math.max(0, budget - usedSoFar)
+            : Number.POSITIVE_INFINITY;
         const hasTools =
           Array.isArray(d.tools) &&
           (d.tools as string[]).some((t) => IMPLEMENTED_TOOLS[t]) &&
           Object.keys(toolEndpoints).length > 0;
         const ai = hasTools
-          ? await runAiWithTools(d, state.history, toolEndpoints, source)
-          : { ...(await runAi(d, state.history)), toolNotes: [] as string[] };
+          ? await runAiWithTools(
+              d,
+              state.history,
+              toolEndpoints,
+              source,
+              kn.sources,
+              cite,
+              remaining,
+            )
+          : {
+              ...(await runAi(d, state.history, kn.sources, cite)),
+              toolNotes: [] as string[],
+              toolCallsUsed: 0,
+            };
         modelUsed = ai.modelUsed;
         for (const n of ai.toolNotes) messages.push({ kind: "note", text: n });
         const usedNames = ai.toolNotes
           .filter((n) => n.startsWith("🔧"))
           .map((n) => n.replace("🔧", "").trim());
         if (usedNames.length) state.toolsUsed = [...(state.toolsUsed || []), ...usedNames];
+        state.toolCalls = usedSoFar + (ai.toolCallsUsed || 0);
+        // Fase B — métricas: confianza por turno + citaciones únicas acumuladas.
+        if (typeof ai.confidence === "number")
+          state.confidences = [...(state.confidences || []), ai.confidence];
+        if (ai.citations && ai.citations.length) {
+          const seen = new Set((state.citations || []).map((c) => c.id));
+          state.citations = [
+            ...(state.citations || []),
+            ...ai.citations.filter((c) => !seen.has(c.id)),
+          ];
+          messages.push({
+            kind: "note",
+            text: `📎 Fuente: ${ai.citations.map((c) => c.label).join(", ")}`,
+          });
+        }
         if (ai.reply) {
           messages.push({ kind: "bot", text: ai.reply });
           state.history.push({ role: "bot", text: ai.reply });
@@ -763,6 +939,18 @@ export const handler: Handler = async (event: any) => {
           continue;
         }
         if (ai.status === "handoff" || aiTurns >= max) {
+          // Fase B — motivo de derivación (para métricas/reportes).
+          const thr = Number(d.confidenceThreshold) || 0;
+          state.handoffReason =
+            ai.status !== "handoff"
+              ? "max_turns"
+              : Number.isFinite(budget) && budget > 0 && (state.toolCalls || 0) >= budget
+                ? "tool_budget"
+                : typeof ai.confidence === "number" && thr > 0 && ai.confidence < thr
+                  ? "low_confidence"
+                  : ai.modelUsed === "none"
+                    ? "ai_error"
+                    : "agent";
           cur = nextFrom(cur.id, "handoff");
           continue;
         }
@@ -947,6 +1135,16 @@ export const handler: Handler = async (event: any) => {
         outcome,
         turns: aiTurns,
         toolsUsed: state.toolsUsed || [],
+        // Fase B — métricas de gobernanza para reportes (Pilar 9).
+        toolCalls: state.toolCalls || 0,
+        confidenceAvg: (state.confidences || []).length
+          ? Math.round(
+              (state.confidences || []).reduce((a, b) => a + b, 0) /
+                (state.confidences || []).length,
+            )
+          : null,
+        citations: (state.citations || []).map((c) => c.label),
+        handoffReason: state.handoffReason || (outcome === "handoff" ? "agent" : null),
         lastUserText: (lastUser?.text || "").slice(0, 200),
         history: (state.history || [])
           .slice(-24)
