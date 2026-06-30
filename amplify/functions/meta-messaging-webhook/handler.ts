@@ -2,15 +2,20 @@ import type { Handler } from "aws-lambda";
 import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
-import { appendInbound, type ConvChannel } from "../_shared/conversations";
+import { appendInbound, appendComment, type ConvChannel } from "../_shared/conversations";
 
 /**
- * meta-messaging-webhook — inbound de Instagram DM + Messenger (Pilar 6 · R13).
- * Gente que escribe directo a FB/IG → cae en el inbox omnicanal de ARIA
- * (connectview-conversations). El agente responde por la Graph API (manage-conversations).
+ * meta-messaging-webhook — inbound de Instagram DM + Messenger + comentarios
+ * FB/IG (Pilar 6 · R13). Gente que escribe directo o comenta en FB/IG → cae en
+ * el inbox omnicanal de ARIA (connectview-conversations). El agente responde por
+ * la Graph API (manage-conversations).
  *
  *   GET  ?hub.mode=subscribe&hub.verify_token=…&hub.challenge=…  → verificación
- *   POST { object:"page"|"instagram", entry:[{ id:<page|ig id>, messaging:[{ sender:{id}, message:{text,attachments} }] }] }
+ *   POST { object:"page"|"instagram", entry:[{ id, messaging:[…], changes:[…] }] }
+ *     · messaging[]      → DM (Fase A)
+ *     · changes[] feed   → comentario de Página FB (Fase B)
+ *     · changes[] comments → comentario de IG (Fase B)
+ *     · changes[] leadgen  → se REENVÍA al webhook de leads (Pilar 5)
  *
  * Tenant por page_id/ig_id (scan connections meta.pageId/meta.igId). El token del
  * tenant (secret) sirve para resolver el nombre del remitente (best-effort).
@@ -19,25 +24,35 @@ import { appendInbound, type ConvChannel } from "../_shared/conversations";
 const legacyDynamo = new DynamoDBClient({});
 const sm = new SecretsManagerClient({});
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
-const VERIFY_TOKEN = process.env.META_LEADGEN_VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN || "";
+const VERIFY_TOKEN =
+  process.env.META_LEADGEN_VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN || "";
 // El Page tiene UN solo override_callback_uri para todos sus campos → este webhook
 // es el unificado del Page: maneja messaging acá y reenvía leadgen al webhook de leads.
 const LEADGEN_WEBHOOK_URL = process.env.LEADGEN_WEBHOOK_URL || "";
 const GRAPH = "https://graph.facebook.com/v20.0";
 
-const TEXT = (statusCode: number, body: string) => ({ statusCode, headers: { "Content-Type": "text/plain" }, body });
+const TEXT = (statusCode: number, body: string) => ({
+  statusCode,
+  headers: { "Content-Type": "text/plain" },
+  body,
+});
 
 /** Tenant cuyo meta.pageId o meta.igId matchea el id del evento. */
 async function findTenant(metaId: string): Promise<{ tenantId: string } | null> {
   let lastKey: Record<string, unknown> | undefined;
   do {
-    const res = await legacyDynamo.send(new ScanCommand({ TableName: CONNECTIONS_TABLE, ExclusiveStartKey: lastKey as never }));
+    const res = await legacyDynamo.send(
+      new ScanCommand({ TableName: CONNECTIONS_TABLE, ExclusiveStartKey: lastKey as never }),
+    );
     for (const it of res.Items || []) {
       const row = unmarshall(it) as { tenantId?: string; configJson?: string };
       try {
         const cfg = JSON.parse(row.configJson || "{}");
-        if (cfg.meta?.pageId === metaId || cfg.meta?.igId === metaId) return { tenantId: row.tenantId || "" };
-      } catch { /* */ }
+        if (cfg.meta?.pageId === metaId || cfg.meta?.igId === metaId)
+          return { tenantId: row.tenantId || "" };
+      } catch {
+        /* */
+      }
     }
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (lastKey);
@@ -46,9 +61,16 @@ async function findTenant(metaId: string): Promise<{ tenantId: string } | null> 
 
 async function getTenantToken(tenantId: string): Promise<string | null> {
   try {
-    const r = await sm.send(new GetSecretValueCommand({ SecretId: `connectview/tenant/${tenantId}/whatsapp` }));
+    const r = await sm.send(
+      new GetSecretValueCommand({ SecretId: `connectview/tenant/${tenantId}/whatsapp` }),
+    );
     const raw = r.SecretString || "";
-    try { const j = JSON.parse(raw); if (j && typeof j.token === "string") return j.token; } catch { /* */ }
+    try {
+      const j = JSON.parse(raw);
+      if (j && typeof j.token === "string") return j.token;
+    } catch {
+      /* */
+    }
     return raw.trim() || null;
   } catch {
     return null;
@@ -65,7 +87,11 @@ async function graph(path: string, token: string): Promise<any> {
 }
 
 /** Nombre del remitente (best-effort). */
-async function fetchName(senderId: string, channel: ConvChannel, token: string | null): Promise<string | undefined> {
+async function fetchName(
+  senderId: string,
+  channel: ConvChannel,
+  token: string | null,
+): Promise<string | undefined> {
   if (!token) return undefined;
   try {
     if (channel === "instagram") {
@@ -95,7 +121,7 @@ export const handler: Handler = async (event: any) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let body: any = {};
   try {
-    body = typeof event.body === "string" ? JSON.parse(event.body) : (event.body || {});
+    body = typeof event.body === "string" ? JSON.parse(event.body) : event.body || {};
   } catch {
     return TEXT(200, "ok");
   }
@@ -124,24 +150,64 @@ export const handler: Handler = async (event: any) => {
 
   try {
     for (const entry of body.entry || []) {
-      // Las entradas puramente leadgen no traen messaging[] → el loop las saltea solo.
       const metaId = String(entry.id || "");
-      if (!Array.isArray(entry.messaging) || entry.messaging.length === 0) continue;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const changes: any[] = Array.isArray(entry.changes) ? entry.changes : [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const messaging: any[] = Array.isArray(entry.messaging) ? entry.messaging : [];
+      const hasComments = changes.some((c) => c.field === "feed" || c.field === "comments");
+      // Entradas puramente leadgen (ya reenviadas) o sin nada que hacer → saltar.
+      if (!messaging.length && !hasComments) continue;
+
       const t = await findTenant(metaId);
       if (!t?.tenantId) {
-        console.warn(`messaging: ${metaId} no mapeado a tenant`);
+        console.warn(`${metaId} no mapeado a tenant`);
         continue;
       }
       const token = await getTenantToken(t.tenantId);
-      // Messenger usa entry.messaging[]; IG también (objeto "instagram").
-      for (const ev of entry.messaging || []) {
+
+      // ── Comentarios FB (feed) / IG (comments) → conversación fb_comment (Fase B) ──
+      for (const ch of changes) {
+        if (ch.field !== "feed" && ch.field !== "comments") continue;
+        const v = ch.value || {};
+        // FB feed trae muchísimos verbos (like, status, share…); solo comentarios nuevos.
+        if (ch.field === "feed" && (v.item !== "comment" || v.verb !== "add")) continue;
+        const fromId = String(v.from?.id || "");
+        const commentId = String(v.comment_id || v.id || "");
+        if (!fromId || !commentId) continue;
+        if (fromId === metaId) continue; // comentario nuestro (de la propia Página/IG)
+        const platform: "facebook" | "instagram" =
+          ch.field === "comments" ? "instagram" : "facebook";
+        const text = String(v.message ?? v.text ?? "");
+        const fromName = v.from?.name || (v.from?.username ? `@${v.from.username}` : undefined);
+        const postId = String(v.post_id || v.media?.id || "");
+        await appendComment(legacyDynamo, {
+          platform,
+          fromId,
+          fromName,
+          text,
+          commentId,
+          postId,
+          tenantId: t.tenantId,
+          // FB created_time viene en segundos epoch; IG normalmente no lo trae.
+          ts: v.created_time ? new Date(Number(v.created_time) * 1000).toISOString() : undefined,
+        });
+        console.log(
+          `comment inbound: ${platform} from=${fromId} comment=${commentId} tenant=${t.tenantId}`,
+        );
+      }
+
+      // ── Mensajería IG DM / Messenger → conversación instagram|messenger (Fase A) ──
+      for (const ev of messaging) {
         const msg = ev.message;
         if (!msg || msg.is_echo) continue; // ignorar echoes (nuestros propios envíos)
         const senderId = String(ev.sender?.id || "");
         if (!senderId) continue;
         const text = String(msg.text || "");
         const att = msg.attachments?.[0];
-        const attachment = att?.payload?.url ? { type: String(att.type || "file"), url: String(att.payload.url) } : undefined;
+        const attachment = att?.payload?.url
+          ? { type: String(att.type || "file"), url: String(att.payload.url) }
+          : undefined;
         const customerName = await fetchName(senderId, channel, token);
         await appendInbound(legacyDynamo, {
           channel,

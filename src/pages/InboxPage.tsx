@@ -17,6 +17,7 @@ const FILTERS: { id: ChannelFilter; label: string }[] = [
   { id: "all", label: "Todas" },
   { id: "instagram", label: "Instagram" },
   { id: "messenger", label: "Messenger" },
+  { id: "fb_comment", label: "Comentarios" },
   { id: "whatsapp", label: "WhatsApp" },
 ];
 
@@ -31,7 +32,9 @@ export function InboxPage() {
     return conversations.filter((c) => {
       if (filter !== "all" && c.channel !== filter) return false;
       if (!needle) return true;
-      return `${c.customerName || ""} ${c.senderId} ${c.lastMessagePreview || ""}`.toLowerCase().includes(needle);
+      return `${c.customerName || ""} ${c.senderId} ${c.lastMessagePreview || ""}`
+        .toLowerCase()
+        .includes(needle);
     });
   }, [conversations, q, filter]);
 
@@ -77,7 +80,9 @@ export function InboxPage() {
         {header}
         <div style={{ display: "grid", placeItems: "center", height: "70%", padding: 24 }}>
           <div style={{ textAlign: "center", maxWidth: 420 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Inbox no disponible</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
+              Inbox no disponible
+            </div>
             <div className="muted" style={{ fontSize: 13, lineHeight: 1.5 }}>
               El backend de conversaciones (<code>manage-conversations</code>) todavía no está
               configurado para esta organización.
@@ -91,18 +96,53 @@ export function InboxPage() {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
       {header}
-      <div style={{ flex: 1, minHeight: 0, display: "flex", border: "1px solid var(--border-1)", borderRadius: 12, margin: 12, overflow: "hidden", background: "var(--bg-1)" }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          border: "1px solid var(--border-1)",
+          borderRadius: 12,
+          margin: 12,
+          overflow: "hidden",
+          background: "var(--bg-1)",
+        }}
+      >
         {/* Panel lista */}
-        <aside style={{ width: 340, flex: "0 0 auto", borderRight: "1px solid var(--border-1)", display: "flex", flexDirection: "column", minHeight: 0, background: "var(--bg-2)" }}>
+        <aside
+          style={{
+            width: 340,
+            flex: "0 0 auto",
+            borderRight: "1px solid var(--border-1)",
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            background: "var(--bg-2)",
+          }}
+        >
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
             {loading && conversations.length === 0 ? (
-              <div className="muted" style={{ padding: 20, fontSize: 13 }}>Cargando…</div>
+              <div className="muted" style={{ padding: 20, fontSize: 13 }}>
+                Cargando…
+              </div>
             ) : error ? (
-              <div className="muted" style={{ padding: 20, fontSize: 13, color: "var(--accent-red)" }}>{error}</div>
+              <div
+                className="muted"
+                style={{ padding: 20, fontSize: 13, color: "var(--accent-red)" }}
+              >
+                {error}
+              </div>
             ) : filtered.length === 0 ? (
-              <div className="muted" style={{ padding: 24, fontSize: 13, textAlign: "center", lineHeight: 1.5 }}>
+              <div
+                className="muted"
+                style={{ padding: 24, fontSize: 13, textAlign: "center", lineHeight: 1.5 }}
+              >
                 <Icon.Chat size={26} style={{ opacity: 0.4, marginBottom: 8 }} />
-                <div>{conversations.length === 0 ? "Aún no hay conversaciones." : "Nada coincide con el filtro."}</div>
+                <div>
+                  {conversations.length === 0
+                    ? "Aún no hay conversaciones."
+                    : "Nada coincide con el filtro."}
+                </div>
                 {conversations.length === 0 && (
                   <div style={{ fontSize: 11.5, marginTop: 6 }}>
                     Cuando alguien te escriba por Instagram o Messenger, aparecerá acá.
@@ -110,19 +150,27 @@ export function InboxPage() {
                 )}
               </div>
             ) : (
-              <ConversationList conversations={filtered} selectedId={effectiveId} onSelect={setSelectedId} />
+              <ConversationList
+                conversations={filtered}
+                selectedId={effectiveId}
+                onSelect={setSelectedId}
+              />
             )}
           </div>
         </aside>
 
         {/* Panel hilo */}
-        <section style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <section
+          style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}
+        >
           {effectiveId ? (
             <ConversationThread key={effectiveId} conversationId={effectiveId} />
           ) : (
             <div style={{ margin: "auto", textAlign: "center", padding: 24 }}>
               <Icon.Chat size={34} style={{ opacity: 0.35 }} />
-              <div className="muted" style={{ fontSize: 13, marginTop: 10 }}>Elige una conversación para ver el hilo.</div>
+              <div className="muted" style={{ fontSize: 13, marginTop: 10 }}>
+                Elige una conversación para ver el hilo.
+              </div>
             </div>
           )}
         </section>

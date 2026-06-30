@@ -20,7 +20,12 @@ function fmtTime(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString([], {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function Bubble({ m }: { m: ConvMessage }) {
@@ -45,14 +50,34 @@ function Bubble({ m }: { m: ConvMessage }) {
             href={m.attachment.url}
             target="_blank"
             rel="noreferrer"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: out ? "#fff" : "var(--accent-cyan)", marginBottom: m.text ? 6 : 0, textDecoration: "underline" }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              color: out ? "#fff" : "var(--accent-cyan)",
+              marginBottom: m.text ? 6 : 0,
+              textDecoration: "underline",
+            }}
           >
             <Icon.Download size={13} /> {m.attachment.type || "adjunto"}
           </a>
         )}
-        {m.text && <div style={{ fontSize: 13.5, lineHeight: 1.4, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.text}</div>}
+        {m.text && (
+          <div
+            style={{
+              fontSize: 13.5,
+              lineHeight: 1.4,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {m.text}
+          </div>
+        )}
         <div style={{ fontSize: 10, marginTop: 4, opacity: 0.7, textAlign: "right" }}>
-          {m.agent ? `${m.agent} · ` : ""}{fmtTime(m.ts)}
+          {m.agent ? `${m.agent} · ` : ""}
+          {fmtTime(m.ts)}
         </div>
       </div>
     </div>
@@ -61,10 +86,11 @@ function Bubble({ m }: { m: ConvMessage }) {
 
 export function ConversationThread({ conversationId }: { conversationId: string }) {
   const { conversation, loading } = useConversation(conversationId);
-  const { reply, markRead, close } = useConversationActions();
+  const { reply, replyComment, commentToDm, markRead, close } = useConversationActions();
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const msgs = conversation?.messages ?? [];
+  const isComment = conversation?.channel === "fb_comment";
 
   // Marcar leída al abrir (si tiene no-leídas). markRead invalida la lista.
   const markedRef = useRef<string | null>(null);
@@ -81,6 +107,7 @@ export function ConversationThread({ conversationId }: { conversationId: string 
     if (el) el.scrollTop = el.scrollHeight;
   }, [msgs.length, conversationId]);
 
+  // DM directo (IG/Messenger) — Enter o botón Enviar.
   const send = async () => {
     const t = text.trim();
     if (!t) return;
@@ -93,11 +120,34 @@ export function ConversationThread({ conversationId }: { conversationId: string 
     }
   };
 
+  // Comentarios (Fase B): responder en público o pasar a privado.
+  const runComment = async (kind: "public" | "dm") => {
+    const t = text.trim();
+    if (!t) return;
+    const m = kind === "public" ? replyComment : commentToDm;
+    setText("");
+    try {
+      await m.mutateAsync({ conversationId, text: t });
+      toast.success(kind === "public" ? "Respondido en público" : "Pasado a privado (DM)");
+    } catch (e) {
+      setText(t);
+      toast.error(e instanceof Error ? e.message : "No se pudo enviar");
+    }
+  };
+
   if (!conversation && loading) {
-    return <div className="muted" style={{ padding: 24, fontSize: 13 }}>Cargando conversación…</div>;
+    return (
+      <div className="muted" style={{ padding: 24, fontSize: 13 }}>
+        Cargando conversación…
+      </div>
+    );
   }
   if (!conversation) {
-    return <div className="muted" style={{ padding: 24, fontSize: 13 }}>Conversación no encontrada.</div>;
+    return (
+      <div className="muted" style={{ padding: 24, fontSize: 13 }}>
+        Conversación no encontrada.
+      </div>
+    );
   }
 
   const name = conversation.customerName || conversation.senderId;
@@ -117,15 +167,45 @@ export function ConversationThread({ conversationId }: { conversationId: string 
         }}
       >
         <span style={{ position: "relative", flex: "0 0 auto" }}>
-          <span style={{ width: 38, height: 38, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 13, fontWeight: 700, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }}>
+          <span
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              fontSize: 13,
+              fontWeight: 700,
+              background: "var(--accent-cyan-soft)",
+              color: "var(--accent-cyan)",
+            }}
+          >
             {initials(name)}
           </span>
-          <span style={{ position: "absolute", right: -3, bottom: -3, transform: "scale(0.72)", transformOrigin: "bottom right" }}>
+          <span
+            style={{
+              position: "absolute",
+              right: -3,
+              bottom: -3,
+              transform: "scale(0.72)",
+              transformOrigin: "bottom right",
+            }}
+          >
             <ChannelChip type={chipType(conversation.channel)} />
           </span>
         </span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 14,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {name}
+          </div>
           <div className="muted" style={{ fontSize: 11.5 }}>
             {CH_LABEL[conversation.channel] || conversation.channel}
             {closed ? " · cerrada" : ""}
@@ -145,27 +225,56 @@ export function ConversationThread({ conversationId }: { conversationId: string 
       </div>
 
       {/* Mensajes */}
-      <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 8, background: "var(--bg-1)" }}>
+      <div
+        ref={scrollRef}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          background: "var(--bg-1)",
+        }}
+      >
         {msgs.length === 0 ? (
-          <div className="muted" style={{ margin: "auto", fontSize: 12.5 }}>Sin mensajes todavía.</div>
+          <div className="muted" style={{ margin: "auto", fontSize: 12.5 }}>
+            Sin mensajes todavía.
+          </div>
         ) : (
           msgs.map((m) => <Bubble key={m.id} m={m} />)
         )}
       </div>
 
       {/* Composer */}
-      <div style={{ flex: "0 0 auto", borderTop: "1px solid var(--border-1)", padding: 12, background: "var(--bg-2)" }}>
+      <div
+        style={{
+          flex: "0 0 auto",
+          borderTop: "1px solid var(--border-1)",
+          padding: 12,
+          background: "var(--bg-2)",
+        }}
+      >
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              // En comentarios NO auto-enviamos con Enter (evita publicar en
+              // público sin querer); el agente elige público vs privado.
+              if (e.key === "Enter" && !e.shiftKey && !isComment) {
                 e.preventDefault();
                 send();
               }
             }}
-            placeholder={closed ? "Reabrir respondiendo…" : "Escribe una respuesta…  (Enter para enviar)"}
+            placeholder={
+              closed
+                ? "Reabrir respondiendo…"
+                : isComment
+                  ? "Escribe tu respuesta al comentario…"
+                  : "Escribe una respuesta…  (Enter para enviar)"
+            }
             rows={1}
             style={{
               flex: 1,
@@ -181,19 +290,66 @@ export function ConversationThread({ conversationId }: { conversationId: string 
               lineHeight: 1.4,
             }}
           />
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={send}
-            disabled={reply.isPending || !text.trim()}
-            title="Enviar"
-            style={{ flex: "0 0 auto" }}
-          >
-            {reply.isPending ? "Enviando…" : <><Icon.Send size={14} /> Enviar</>}
-          </button>
+          {isComment ? (
+            <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => runComment("public")}
+                disabled={replyComment.isPending || !text.trim()}
+                title="Responder EN PÚBLICO al comentario (visible para todos)"
+              >
+                {replyComment.isPending ? (
+                  "…"
+                ) : (
+                  <>
+                    <Icon.Chat size={13} /> Público
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary btn--sm"
+                onClick={() => runComment("dm")}
+                disabled={commentToDm.isPending || !text.trim() || conversation.dmSent}
+                title={
+                  conversation.dmSent
+                    ? "Ya se pasó a privado (Meta permite un solo DM por comentario)"
+                    : "Pasar a privado: enviar un DM al autor del comentario"
+                }
+              >
+                {commentToDm.isPending ? (
+                  "…"
+                ) : (
+                  <>
+                    <Icon.Send size={13} /> {conversation.dmSent ? "DM enviado" : "Privado"}
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={send}
+              disabled={reply.isPending || !text.trim()}
+              title="Enviar"
+              style={{ flex: "0 0 auto" }}
+            >
+              {reply.isPending ? (
+                "Enviando…"
+              ) : (
+                <>
+                  <Icon.Send size={14} /> Enviar
+                </>
+              )}
+            </button>
+          )}
         </div>
         <div className="muted" style={{ fontSize: 10.5, marginTop: 6 }}>
-          La respuesta se envía por la Graph API de Meta al remitente.
+          {isComment
+            ? "“Público” responde en el hilo del comentario; “Privado” abre un DM al autor (1 vez por comentario, ventana de Meta)."
+            : "La respuesta se envía por la Graph API de Meta al remitente."}
         </div>
       </div>
     </div>

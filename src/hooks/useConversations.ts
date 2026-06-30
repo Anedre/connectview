@@ -31,6 +31,12 @@ export interface Conversation {
   lastMessagePreview: string;
   assignedAgent?: string;
   leadId?: string;
+  /** Solo `fb_comment` (Fase B): id del comentario + post + plataforma + si ya
+   *  se pasó a privado (dmSent). */
+  commentId?: string;
+  postId?: string;
+  platform?: "facebook" | "instagram";
+  dmSent?: boolean;
   messages?: ConvMessage[];
   createdAt: string;
   updatedAt: string;
@@ -68,7 +74,9 @@ export function useConversation(conversationId: string | null) {
     enabled: !!url && !!conversationId,
     refetchInterval: 8_000,
     queryFn: async ({ signal }) => {
-      const r = await authedFetch(`${url}?conversationId=${encodeURIComponent(conversationId!)}`, { signal });
+      const r = await authedFetch(`${url}?conversationId=${encodeURIComponent(conversationId!)}`, {
+        signal,
+      });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return ((await r.json()).conversation ?? null) as Conversation | null;
     },
@@ -107,6 +115,18 @@ export function useConversationActions() {
       post({ action: "reply", conversationId: v.conversationId, text: v.text }),
     onSuccess: (_d, v) => invalidate(v.conversationId),
   });
+  // Comentarios (Fase B): responder EN PÚBLICO al comentario…
+  const replyComment = useMutation({
+    mutationFn: (v: { conversationId: string; text: string }) =>
+      post({ action: "replyComment", conversationId: v.conversationId, text: v.text }),
+    onSuccess: (_d, v) => invalidate(v.conversationId),
+  });
+  // …o pasarlo a PRIVADO (DM por private-reply de Meta).
+  const commentToDm = useMutation({
+    mutationFn: (v: { conversationId: string; text: string }) =>
+      post({ action: "commentToDm", conversationId: v.conversationId, text: v.text }),
+    onSuccess: (_d, v) => invalidate(v.conversationId),
+  });
   const markRead = useMutation({
     mutationFn: (conversationId: string) => post({ action: "markRead", conversationId }),
     onSuccess: (_d, conversationId) => invalidate(conversationId),
@@ -116,5 +136,5 @@ export function useConversationActions() {
     onSuccess: (_d, conversationId) => invalidate(conversationId),
   });
 
-  return { reply, markRead, close };
+  return { reply, replyComment, commentToDm, markRead, close };
 }

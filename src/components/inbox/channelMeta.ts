@@ -9,7 +9,7 @@ import type { ConvChannel } from "@/hooks/useConversations";
 /** Canal del modelo → tipo de chip de las primitives. */
 export function chipType(channel: ConvChannel): ChannelType {
   if (channel === "whatsapp") return "wa";
-  if (channel === "fb_comment") return "messenger";
+  if (channel === "fb_comment") return "comment";
   return channel; // instagram | messenger
 }
 
@@ -18,7 +18,7 @@ export const CH_COLOR: Record<ConvChannel, string> = {
   instagram: "#dd2a7b",
   messenger: "#0084ff",
   whatsapp: "#1FAE6C",
-  fb_comment: "#0084ff",
+  fb_comment: "#4f46e5",
 };
 
 /** Etiqueta legible del canal (subtítulo del hilo). */
