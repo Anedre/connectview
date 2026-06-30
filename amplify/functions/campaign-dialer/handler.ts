@@ -1,6 +1,7 @@
 import type { Handler } from "aws-lambda";
 import {
   DynamoDBClient,
+  GetItemCommand,
   QueryCommand,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
@@ -25,10 +26,11 @@ const legacyConnect = new ConnectClient({ maxAttempts: 1 });
 let activeConnect = legacyConnect;
 let activeInstanceId = "";
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
-const CONTACTS_TABLE =
-  process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
-const CAMPAIGN_AGENTS_TABLE =
-  process.env.CAMPAIGN_AGENTS_TABLE || "connectview-campaign-agents";
+const CONTACTS_TABLE = process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+// Pilar 7 — el pool global de marcación por tenant vive en la config de
+// conexiones (orchestration.maxConcurrentDials). Pooled siempre legacyDynamo.
+const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
+const CAMPAIGN_AGENTS_TABLE = process.env.CAMPAIGN_AGENTS_TABLE || "connectview-campaign-agents";
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 // Setear activeInstanceId al legacy en boot para no romper el primer tick si
 // no hay campañas tenant-scoped todavía.
@@ -80,6 +82,17 @@ interface Campaign {
   /** CSV columns whose values fill the template's {{1}}, {{2}}, …
    *  placeholders in order. Stored as a JSON array of column names. */
   templateVarColumns?: string;
+  // ── Pilar 7 · orquestación ────────────────────────────────────────────
+  /** 1–10 (default 5). Mayor = se sirve primero cuando el pool no alcanza. */
+  priority?: number;
+  /** Peso relativo para el % del pool global (default 1). El 80/20 sale de acá. */
+  weight?: number;
+  /** Meta de la campaña: "contacts" (contactados) | "conversions" | "none". */
+  goalType?: string;
+  goalTarget?: number;
+  /** Contadores (mantenidos por process-contact-event / wrap-up). Para metas. */
+  connectedCount?: number;
+  conversionsCount?: number;
 }
 
 interface CampaignContact {
@@ -101,9 +114,7 @@ interface CampaignContact {
 // Check whether we're inside the allowed calling window for the campaign timezone.
 function isWithinWindow(campaign: Campaign): boolean {
   try {
-    const allowedDays: number[] = JSON.parse(
-      campaign.windowDaysOfWeek || "[1,2,3,4,5]"
-    );
+    const allowedDays: number[] = JSON.parse(campaign.windowDaysOfWeek || "[1,2,3,4,5]");
     const fmt = new Intl.DateTimeFormat("en-US", {
       timeZone: campaign.timezone || "America/Lima",
       hour: "2-digit",
@@ -111,20 +122,21 @@ function isWithinWindow(campaign: Campaign): boolean {
       weekday: "short",
     });
     const parts = fmt.formatToParts(new Date());
-    const hour = parseInt(
-      parts.find((p) => p.type === "hour")?.value || "0"
-    );
+    const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0");
     const weekdayStr = parts.find((p) => p.type === "weekday")?.value || "";
     const weekdayMap: Record<string, number> = {
-      Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
     };
     const weekday = weekdayMap[weekdayStr] ?? -1;
     if (weekday < 0) return true; // if we can't determine, be permissive
     if (!allowedDays.includes(weekday)) return false;
-    return (
-      hour >= Number(campaign.windowStartHour) &&
-      hour < Number(campaign.windowEndHour)
-    );
+    return hour >= Number(campaign.windowStartHour) && hour < Number(campaign.windowEndHour);
   } catch {
     return true;
   }
@@ -138,7 +150,7 @@ async function listRunningCampaigns(): Promise<Campaign[]> {
       KeyConditionExpression: "#st = :s",
       ExpressionAttributeNames: { "#st": "status" },
       ExpressionAttributeValues: { ":s": { S: "RUNNING" } },
-    })
+    }),
   );
   return (res.Items || []).map((it) => unmarshall(it) as Campaign);
 }
@@ -155,15 +167,12 @@ async function countDialingForCampaign(campaignId: string): Promise<number> {
         ":s": { S: "dialing" },
       },
       Select: "COUNT",
-    })
+    }),
   );
   return res.Count || 0;
 }
 
-async function findPendingContacts(
-  campaignId: string,
-  limit: number
-): Promise<CampaignContact[]> {
+async function findPendingContacts(campaignId: string, limit: number): Promise<CampaignContact[]> {
   const nowIso = new Date().toISOString();
   // Pending contacts whose nextRetryAt <= now (initial insert uses now, so all eligible)
   const res = await dynamo.send(
@@ -177,14 +186,11 @@ async function findPendingContacts(
         ":s": { S: "pending" },
         ":now": { S: nowIso },
       },
-      FilterExpression:
-        "attribute_not_exists(nextRetryAt) OR nextRetryAt <= :now",
+      FilterExpression: "attribute_not_exists(nextRetryAt) OR nextRetryAt <= :now",
       Limit: limit,
-    })
+    }),
   );
-  const items = (res.Items || []).map(
-    (it) => unmarshall(it) as CampaignContact
-  );
+  const items = (res.Items || []).map((it) => unmarshall(it) as CampaignContact);
   // Extra filter client-side because FilterExpression after Query limit may over-filter
   return items.filter((c) => !c.nextRetryAt || c.nextRetryAt <= nowIso);
 }
@@ -207,7 +213,7 @@ async function countPendingContacts(campaignId: string): Promise<number> {
           ":s": { S: "pending" },
         },
         Select: "COUNT",
-      })
+      }),
     );
     return res.Count || 0;
   } catch (err) {
@@ -221,9 +227,7 @@ async function countPendingContacts(campaignId: string): Promise<number> {
  * per-agent-bucket logic to compute buckets and unassigned pool client-side.
  * Capped at 10 pages (~10k contacts) to bound the Lambda run time.
  */
-async function listAllPendingForCampaign(
-  campaignId: string
-): Promise<CampaignContact[]> {
+async function listAllPendingForCampaign(campaignId: string): Promise<CampaignContact[]> {
   const nowIso = new Date().toISOString();
   const out: CampaignContact[] = [];
   let lastKey: Record<string, unknown> | undefined;
@@ -239,13 +243,11 @@ async function listAllPendingForCampaign(
           ":s": { S: "pending" },
           ":now": { S: nowIso },
         },
-        FilterExpression:
-          "attribute_not_exists(nextRetryAt) OR nextRetryAt <= :now",
+        FilterExpression: "attribute_not_exists(nextRetryAt) OR nextRetryAt <= :now",
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
-    for (const it of res.Items || [])
-      out.push(unmarshall(it) as CampaignContact);
+    for (const it of res.Items || []) out.push(unmarshall(it) as CampaignContact);
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
     if (!lastKey) break;
   }
@@ -257,10 +259,7 @@ async function listAllPendingForCampaign(
  * or connected. They occupy a slot in the agent's bucket so the bucket
  * refill calculation needs to include them.
  */
-async function countAgentInFlight(
-  campaignId: string,
-  userId: string
-): Promise<number> {
+async function countAgentInFlight(campaignId: string, userId: string): Promise<number> {
   let total = 0;
   for (const status of ["dialing", "connected"]) {
     try {
@@ -277,7 +276,7 @@ async function countAgentInFlight(
           },
           FilterExpression: "assignedAgentUserId = :uid",
           Select: "COUNT",
-        })
+        }),
       );
       total += res.Count || 0;
     } catch (err) {
@@ -291,10 +290,7 @@ async function countAgentInFlight(
  * Atomically mark an unassigned pending row as belonging to a specific agent.
  * Uses ConditionExpression to avoid races between concurrent dialer ticks.
  */
-async function assignContactToAgent(
-  contact: CampaignContact,
-  userId: string
-): Promise<boolean> {
+async function assignContactToAgent(contact: CampaignContact, userId: string): Promise<boolean> {
   try {
     await dynamo.send(
       new UpdateItemCommand({
@@ -310,7 +306,7 @@ async function assignContactToAgent(
           ":uid": { S: userId },
           ":empty": { S: "" },
         },
-      })
+      }),
     );
     return true;
   } catch {
@@ -333,7 +329,7 @@ async function listAllUserIds(): Promise<string[]> {
         InstanceId: activeInstanceId,
         MaxResults: 100,
         NextToken: nextToken,
-      })
+      }),
     );
     for (const u of res.UserSummaryList || []) {
       if (u.Id) ids.push(u.Id);
@@ -351,7 +347,7 @@ async function getAssignedAgents(campaignId: string): Promise<string[]> {
       TableName: CAMPAIGN_AGENTS_TABLE,
       KeyConditionExpression: "campaignId = :cid",
       ExpressionAttributeValues: { ":cid": { S: campaignId } },
-    })
+    }),
   );
   return (res.Items || []).map((it) => (it.userId?.S as string) || "").filter(Boolean);
 }
@@ -369,14 +365,11 @@ async function countAvailableFromUsers(userIds: string[]): Promise<number> {
         new GetCurrentUserDataCommand({
           InstanceId: activeInstanceId,
           Filters: { Agents: batch },
-        })
+        }),
       );
       for (const u of res.UserDataList || []) {
         const contacts = u.Contacts || [];
-        if (
-          u.Status?.StatusName === "Available" &&
-          contacts.length === 0
-        ) {
+        if (u.Status?.StatusName === "Available" && contacts.length === 0) {
           available++;
         }
       }
@@ -392,9 +385,7 @@ async function countAvailableFromUsers(userIds: string[]): Promise<number> {
  * have no active contact. Used by the per-agent-bucket dialer to decide
  * which buckets are ready to fire their next call.
  */
-async function listIdleAvailableUsers(
-  userIds: string[]
-): Promise<Set<string>> {
+async function listIdleAvailableUsers(userIds: string[]): Promise<Set<string>> {
   const idle = new Set<string>();
   if (userIds.length === 0) return idle;
   try {
@@ -404,16 +395,12 @@ async function listIdleAvailableUsers(
         new GetCurrentUserDataCommand({
           InstanceId: activeInstanceId,
           Filters: { Agents: batch },
-        })
+        }),
       );
       for (const u of res.UserDataList || []) {
         const id = u.User?.Id;
         const contacts = u.Contacts || [];
-        if (
-          id &&
-          u.Status?.StatusName === "Available" &&
-          contacts.length === 0
-        ) {
+        if (id && u.Status?.StatusName === "Available" && contacts.length === 0) {
           idle.add(id);
         }
       }
@@ -434,8 +421,7 @@ async function markAsDialing(c: CampaignContact): Promise<boolean> {
           campaignId: { S: c.campaignId },
           rowId: { S: c.rowId },
         },
-        UpdateExpression:
-          "SET #st = :dialing, lastAttemptAt = :now, attempts = attempts + :one",
+        UpdateExpression: "SET #st = :dialing, lastAttemptAt = :now, attempts = attempts + :one",
         ConditionExpression: "#st = :pending",
         ExpressionAttributeNames: { "#st": "status" },
         ExpressionAttributeValues: {
@@ -444,7 +430,7 @@ async function markAsDialing(c: CampaignContact): Promise<boolean> {
           ":now": { S: now },
           ":one": { N: "1" },
         },
-      })
+      }),
     );
     // Mirror the transition into the campaign meta counters so the list
     // page doesn't show stale or negative values. Without this, when
@@ -461,7 +447,7 @@ async function markAsDialing(c: CampaignContact): Promise<boolean> {
             ":one": { N: "1" },
             ":neg": { N: "-1" },
           },
-        })
+        }),
       )
       .catch(() => {
         /* counter drift is acceptable — real source of truth is the rows */
@@ -469,20 +455,14 @@ async function markAsDialing(c: CampaignContact): Promise<boolean> {
     return true;
   } catch (err) {
     // ConditionalCheckFailedException → another dialer grabbed it
-    if (
-      err instanceof Error &&
-      err.name === "ConditionalCheckFailedException"
-    ) {
+    if (err instanceof Error && err.name === "ConditionalCheckFailedException") {
       return false;
     }
     throw err;
   }
 }
 
-async function markAsFailed(
-  c: CampaignContact,
-  reason: string
-): Promise<void> {
+async function markAsFailed(c: CampaignContact, reason: string): Promise<void> {
   const now = new Date().toISOString();
   await dynamo.send(
     new UpdateItemCommand({
@@ -491,15 +471,14 @@ async function markAsFailed(
         campaignId: { S: c.campaignId },
         rowId: { S: c.rowId },
       },
-      UpdateExpression:
-        "SET #st = :failed, lastAttemptAt = :now, lastError = :err",
+      UpdateExpression: "SET #st = :failed, lastAttemptAt = :now, lastError = :err",
       ExpressionAttributeNames: { "#st": "status" },
       ExpressionAttributeValues: {
         ":failed": { S: "failed" },
         ":now": { S: now },
         ":err": { S: reason.slice(0, 500) },
       },
-    })
+    }),
   );
   // markAsFailed only runs when StartOutboundVoiceContact rejected the
   // dial — at that point markAsDialing already moved the contact OUT of
@@ -511,13 +490,12 @@ async function markAsFailed(
       new UpdateItemCommand({
         TableName: CAMPAIGNS_TABLE,
         Key: { campaignId: { S: c.campaignId } },
-        UpdateExpression:
-          "ADD failedCount :one, dialingCount :neg",
+        UpdateExpression: "ADD failedCount :one, dialingCount :neg",
         ExpressionAttributeValues: {
           ":one": { N: "1" },
           ":neg": { N: "-1" },
         },
-      })
+      }),
     )
     .catch(() => {
       /* counter drift is OK, authoritative counts via Query */
@@ -526,10 +504,7 @@ async function markAsFailed(
 
 /** Marca un contacto de WhatsApp como ENVIADO (terminal). No hay eventos de
  *  Connect para WhatsApp, así que cerramos el contacto acá mismo. */
-async function markWhatsAppSent(
-  c: CampaignContact,
-  messageId: string
-): Promise<void> {
+async function markWhatsAppSent(c: CampaignContact, messageId: string): Promise<void> {
   const now = new Date().toISOString();
   await dynamo.send(
     new UpdateItemCommand({
@@ -543,7 +518,7 @@ async function markWhatsAppSent(
         ":now": { S: now },
         ":mid": { S: messageId },
       },
-    })
+    }),
   );
   await dynamo
     .send(
@@ -552,7 +527,7 @@ async function markWhatsAppSent(
         Key: { campaignId: { S: c.campaignId } },
         UpdateExpression: "ADD doneCount :one, dialingCount :neg",
         ExpressionAttributeValues: { ":one": { N: "1" }, ":neg": { N: "-1" } },
-      })
+      }),
     )
     .catch(() => {
       /* counter drift is OK */
@@ -575,7 +550,7 @@ async function markWhatsAppSuppressed(c: CampaignContact, reason?: string): Prom
         ":now": { S: now },
         ":err": { S: `suprimido: ${reason || "política"}`.slice(0, 500) },
       },
-    })
+    }),
   );
   await dynamo
     .send(
@@ -584,7 +559,7 @@ async function markWhatsAppSuppressed(c: CampaignContact, reason?: string): Prom
         Key: { campaignId: { S: c.campaignId } },
         UpdateExpression: "ADD doneCount :one, dialingCount :neg",
         ExpressionAttributeValues: { ":one": { N: "1" }, ":neg": { N: "-1" } },
-      })
+      }),
     )
     .catch(() => {
       /* counter drift is OK */
@@ -610,7 +585,7 @@ async function reclaimStaleWhatsAppDialing(campaignId: string): Promise<number> 
         ExpressionAttributeNames: { "#st": "status" },
         ExpressionAttributeValues: { ":cid": { S: campaignId }, ":s": { S: "dialing" } },
         Limit: 50,
-      })
+      }),
     );
     const items = (res.Items || []).map((it) => unmarshall(it) as CampaignContact);
     for (const c of items) {
@@ -624,8 +599,11 @@ async function reclaimStaleWhatsAppDialing(campaignId: string): Promise<number> 
             UpdateExpression: "SET #st = :pending",
             ConditionExpression: "#st = :dialing",
             ExpressionAttributeNames: { "#st": "status" },
-            ExpressionAttributeValues: { ":pending": { S: "pending" }, ":dialing": { S: "dialing" } },
-          })
+            ExpressionAttributeValues: {
+              ":pending": { S: "pending" },
+              ":dialing": { S: "dialing" },
+            },
+          }),
         );
         // Espejar contadores (dialing→pending) para que la lista no quede desfasada.
         await dynamo
@@ -635,9 +613,11 @@ async function reclaimStaleWhatsAppDialing(campaignId: string): Promise<number> 
               Key: { campaignId: { S: campaignId } },
               UpdateExpression: "ADD dialingCount :neg, pendingCount :one",
               ExpressionAttributeValues: { ":neg": { N: "-1" }, ":one": { N: "1" } },
-            })
+            }),
           )
-          .catch(() => { /* drift aceptable, fuente real son las filas */ });
+          .catch(() => {
+            /* drift aceptable, fuente real son las filas */
+          });
         reclaimed++;
       } catch (e) {
         // Otro tick lo movió primero → ignorar.
@@ -647,7 +627,8 @@ async function reclaimStaleWhatsAppDialing(campaignId: string): Promise<number> 
   } catch (err) {
     console.error("reclaimStaleWhatsAppDialing error:", err);
   }
-  if (reclaimed > 0) console.log(`reclaimed ${reclaimed} stale dialing contacts (whatsapp) for ${campaignId}`);
+  if (reclaimed > 0)
+    console.log(`reclaimed ${reclaimed} stale dialing contacts (whatsapp) for ${campaignId}`);
   return reclaimed;
 }
 
@@ -698,7 +679,7 @@ interface WaSendResult {
 
 async function sendWhatsAppTemplate(
   campaign: Campaign,
-  contact: CampaignContact
+  contact: CampaignContact,
 ): Promise<WaSendResult> {
   if (!campaign.templateName) {
     console.error("whatsapp campaign missing templateName");
@@ -764,10 +745,7 @@ async function sendWhatsAppTemplate(
       return { messageId: null, suppressed: true, reason: body.blockedBy };
     }
     if (!r.ok || !body.sent) {
-      console.error(
-        "WhatsApp template send failed:",
-        body.error || `HTTP ${r.status}`
-      );
+      console.error("WhatsApp template send failed:", body.error || `HTTP ${r.status}`);
       return { messageId: null };
     }
     return { messageId: body.messageId || `wa-${Date.now()}-${contact.rowId.slice(0, 6)}` };
@@ -777,10 +755,7 @@ async function sendWhatsAppTemplate(
   }
 }
 
-async function startOutbound(
-  campaign: Campaign,
-  contact: CampaignContact
-): Promise<string | null> {
+async function startOutbound(campaign: Campaign, contact: CampaignContact): Promise<string | null> {
   // Route to the right dispatcher based on campaign type.
   if ((campaign.campaignType || "voice").toLowerCase() === "whatsapp") {
     return (await sendWhatsAppTemplate(campaign, contact)).messageId;
@@ -801,7 +776,7 @@ async function startOutbound(
       ...Object.fromEntries(
         Object.entries(customAttrs)
           .slice(0, 30) // Connect attribute limit safety
-          .map(([k, v]) => [k.slice(0, 127), String(v).slice(0, 256)])
+          .map(([k, v]) => [k.slice(0, 127), String(v).slice(0, 256)]),
       ),
     };
 
@@ -824,8 +799,7 @@ async function startOutbound(
         DestinationPhoneNumber: contact.phone,
         SourcePhoneNumber: campaign.sourcePhoneNumber,
         Attributes: attributes,
-        ClientToken:
-          `${contact.rowId}-${contact.attempts}-${Date.now()}`.slice(0, 500),
+        ClientToken: `${contact.rowId}-${contact.attempts}-${Date.now()}`.slice(0, 500),
         // AMD config — works on GENERAL traffic. The contact flow (AMD_FLOW_ID)
         // reads the result via CheckOutboundCallStatus and branches.
         ...(useAmd
@@ -836,7 +810,7 @@ async function startOutbound(
               },
             }
           : {}),
-      })
+      }),
     );
     return res.ContactId || null;
   } catch (err) {
@@ -845,10 +819,7 @@ async function startOutbound(
   }
 }
 
-async function linkConnectContact(
-  c: CampaignContact,
-  connectContactId: string
-): Promise<void> {
+async function linkConnectContact(c: CampaignContact, connectContactId: string): Promise<void> {
   await dynamo.send(
     new UpdateItemCommand({
       TableName: CONTACTS_TABLE,
@@ -858,7 +829,7 @@ async function linkConnectContact(
       },
       UpdateExpression: "SET connectContactId = :cid",
       ExpressionAttributeValues: { ":cid": { S: connectContactId } },
-    })
+    }),
   );
 }
 
@@ -874,7 +845,7 @@ async function rollbackToPending(c: CampaignContact): Promise<void> {
       UpdateExpression: "SET #st = :pending",
       ExpressionAttributeNames: { "#st": "status" },
       ExpressionAttributeValues: { ":pending": { S: "pending" } },
-    })
+    }),
   );
 }
 
@@ -895,27 +866,63 @@ async function maybeCompleteCampaign(campaign: Campaign): Promise<void> {
           ":s": { S: st },
         },
         Select: "COUNT",
-      })
+      }),
     );
     total += r.Count || 0;
   }
   if (total === 0) {
-    await dynamo.send(
+    await dynamo
+      .send(
+        new UpdateItemCommand({
+          TableName: CAMPAIGNS_TABLE,
+          Key: { campaignId: { S: campaign.campaignId } },
+          UpdateExpression: "SET #st = :c, completedAt = :now",
+          ConditionExpression: "#st = :running",
+          ExpressionAttributeNames: { "#st": "status" },
+          ExpressionAttributeValues: {
+            ":c": { S: "COMPLETED" },
+            ":running": { S: "RUNNING" },
+            ":now": { S: new Date().toISOString() },
+          },
+        }),
+      )
+      .catch(() => {
+        /* already not running, ignore */
+      });
+  }
+}
+
+/** Pilar 7 — completar la campaña por meta alcanzada (incondicional). Resuelve
+ *  el dynamo del tenant dueño porque el goal-check corre antes del switch. */
+async function forceCompleteCampaign(campaign: Campaign, reason: string): Promise<void> {
+  let d = legacyDynamo;
+  if (campaign.tenantId) {
+    try {
+      const tc = await getTenantConnect(campaign.tenantId);
+      if (tc) d = tc.dynamo;
+    } catch {
+      /* sin Connect → legacy */
+    }
+  }
+  await d
+    .send(
       new UpdateItemCommand({
         TableName: CAMPAIGNS_TABLE,
         Key: { campaignId: { S: campaign.campaignId } },
-        UpdateExpression:
-          "SET #st = :c, completedAt = :now",
+        UpdateExpression: "SET #st = :c, completedAt = :now, completedReason = :r",
         ConditionExpression: "#st = :running",
         ExpressionAttributeNames: { "#st": "status" },
         ExpressionAttributeValues: {
           ":c": { S: "COMPLETED" },
           ":running": { S: "RUNNING" },
           ":now": { S: new Date().toISOString() },
+          ":r": { S: reason },
         },
-      })
-    ).catch(() => { /* already not running, ignore */ });
-  }
+      }),
+    )
+    .catch(() => {
+      /* already not running */
+    });
 }
 
 /**
@@ -928,12 +935,10 @@ async function maybeCompleteCampaign(campaign: Campaign): Promise<void> {
  */
 async function processCampaignWithBuckets(
   campaign: Campaign,
-  assignedAgentIds: string[]
+  assignedAgentIds: string[],
+  slotOverride?: number,
 ): Promise<void> {
-  const maxPerAgent = Math.max(
-    1,
-    Math.min(50, Number(campaign.maxContactsPerAgent) || 5)
-  );
+  const maxPerAgent = Math.max(1, Math.min(50, Number(campaign.maxContactsPerAgent) || 5));
 
   // 1. Load every pending contact for this campaign in one query.
   const allPending = await listAllPendingForCampaign(campaign.campaignId);
@@ -986,9 +991,7 @@ async function processCampaignWithBuckets(
   //      the agent context BEFORE the call so they can decide whether to
   //      call now, skip, or reschedule.
   if (campaign.dialMode === "manual") {
-    console.log(
-      `[dialer] ${campaign.campaignId}: manual mode · buckets ready, no auto-dial`
-    );
+    console.log(`[dialer] ${campaign.campaignId}: manual mode · buckets ready, no auto-dial`);
     if (allPending.length === 0) {
       await maybeCompleteCampaign(campaign);
     }
@@ -1008,13 +1011,17 @@ async function processCampaignWithBuckets(
   //    no_answer rows and double-rings on the customer.
   const idleSet = await listIdleAvailableUsers(assignedAgentIds);
   console.log(
-    `[dialer] ${campaign.campaignId}: bucket-mode · agents=${assignedAgentIds.length}, idle=${idleSet.size}, unassignedLeft=${unassigned.length}`
+    `[dialer] ${campaign.campaignId}: bucket-mode · agents=${assignedAgentIds.length}, idle=${idleSet.size}, unassignedLeft=${unassigned.length}`,
   );
 
-  // Concurrency cap still applies (campaign-level safety).
-  const currentlyDialing = await countDialingForCampaign(campaign.campaignId);
+  // Concurrency cap still applies (campaign-level safety). Pilar 7: si el
+  // orquestador asignó un presupuesto de slots para este ciclo, ese manda
+  // (ya descontó el dialing en vuelo y la concurrencia al calcular el reparto).
   const maxConcurrency = Number(campaign.concurrency) || 1;
-  let slotsLeft = Math.max(0, maxConcurrency - currentlyDialing);
+  let slotsLeft =
+    slotOverride !== undefined
+      ? slotOverride
+      : Math.max(0, maxConcurrency - (await countDialingForCampaign(campaign.campaignId)));
 
   let dialedAny = false;
   for (const userId of assignedAgentIds) {
@@ -1052,10 +1059,14 @@ async function processCampaignWithBuckets(
  * Legacy single-pool dialing — used for `agentless` mode or campaigns
  * that don't have any assigned agents (no bucket targets to fill).
  */
-async function processCampaignLegacy(campaign: Campaign): Promise<void> {
+async function processCampaignLegacy(campaign: Campaign, slotOverride?: number): Promise<void> {
   const currentlyDialing = await countDialingForCampaign(campaign.campaignId);
   const maxConcurrency = Number(campaign.concurrency) || 1;
-  const availableSlots = Math.max(0, maxConcurrency - currentlyDialing);
+  // Pilar 7: el presupuesto del orquestador acota la concurrencia de la campaña.
+  const availableSlots =
+    slotOverride !== undefined
+      ? Math.min(slotOverride, Math.max(0, maxConcurrency - currentlyDialing))
+      : Math.max(0, maxConcurrency - currentlyDialing);
 
   const ratio = campaign.dialMode === "power" ? 2 : 1;
   let toDial: number;
@@ -1067,7 +1078,7 @@ async function processCampaignLegacy(campaign: Campaign): Promise<void> {
     const poolIds = await listAllUserIds();
     slotsRemaining = await countAvailableFromUsers(poolIds);
     console.log(
-      `[dialer] ${campaign.campaignId}: legacy · pool=${poolIds.length}, available=${slotsRemaining}`
+      `[dialer] ${campaign.campaignId}: legacy · pool=${poolIds.length}, available=${slotsRemaining}`,
     );
     toDial = Math.min(availableSlots, slotsRemaining * ratio);
   }
@@ -1129,6 +1140,103 @@ interface DialerEvent {
   reserved?: never;
 }
 
+/**
+ * Pilar 7 — pool global de marcación por tenant (config de conexiones).
+ * Default = suma de concurrencias activas (sin throttle, = comportamiento de
+ * hoy). El supervisor lo baja a ~Nº de agentes para que el peso (80/20) muerda.
+ */
+async function resolvePoolCap(tenantId: string | undefined, defaultCap: number): Promise<number> {
+  if (!tenantId) return defaultCap;
+  try {
+    const it = await legacyDynamo.send(
+      new GetItemCommand({ TableName: CONNECTIONS_TABLE, Key: { tenantId: { S: tenantId } } }),
+    );
+    if (it.Item) {
+      const cfg = JSON.parse((unmarshall(it.Item) as { configJson?: string }).configJson || "{}");
+      const m = Number(cfg.orchestration?.maxConcurrentDials);
+      if (Number.isFinite(m) && m > 0) return m;
+    }
+  } catch {
+    /* sin config → default */
+  }
+  return defaultCap;
+}
+
+/**
+ * Pilar 7 — calcula los slots de marcación de ESTE ciclo por campaña de voz.
+ * Reparte el pool global de cada tenant entre sus campañas activas según
+ * **peso** (% del pool) en orden de **prioridad** (la de mayor prioridad toma
+ * su parte primero; si el pool se agota, las de menor prioridad reciben 0).
+ * Fail-safe: ante cualquier error devuelve un mapa vacío → cada campaña cae a
+ * su concurrencia normal (comportamiento de hoy, sin regresión).
+ */
+async function computeSlotBudget(voiceCampaigns: Campaign[]): Promise<Map<string, number>> {
+  const budget = new Map<string, number>();
+  if (voiceCampaigns.length <= 1) return budget; // sin contención → sin reparto
+  try {
+    type Row = { c: Campaign; dialing: number; headroom: number };
+    const byTenant = new Map<string, Row[]>();
+    for (const c of voiceCampaigns) {
+      // Contar dialing con el dynamo del tenant dueño.
+      if (c.tenantId) {
+        const tc = await getTenantConnect(c.tenantId);
+        dynamo = tc ? tc.dynamo : legacyDynamo;
+      } else {
+        dynamo = legacyDynamo;
+      }
+      const dialing = await countDialingForCampaign(c.campaignId);
+      const conc = Number(c.concurrency) || 1;
+      const row: Row = { c, dialing, headroom: Math.max(0, conc - dialing) };
+      const key = c.tenantId || "default";
+      const arr = byTenant.get(key) || [];
+      arr.push(row);
+      byTenant.set(key, arr);
+    }
+    for (const [tenantKey, group] of byTenant) {
+      if (group.length <= 1) continue; // una sola campaña → sin reparto (usa su concurrencia)
+      const sumConc = group.reduce((n, r) => n + (Number(r.c.concurrency) || 1), 0);
+      const poolCap = await resolvePoolCap(
+        tenantKey === "default" ? undefined : tenantKey,
+        sumConc,
+      );
+      const inFlight = group.reduce((n, r) => n + r.dialing, 0);
+      let remainingPool = Math.max(0, poolCap - inFlight);
+      // Orden: prioridad DESC, peso DESC, antigüedad ASC.
+      group.sort((a, b) => {
+        const pa = Number(a.c.priority ?? 5),
+          pb = Number(b.c.priority ?? 5);
+        if (pb !== pa) return pb - pa;
+        const wa = Number(a.c.weight ?? 1),
+          wb = Number(b.c.weight ?? 1);
+        return wb - wa;
+      });
+      let remainingWeight = group.reduce((n, r) => n + (Number(r.c.weight ?? 1) || 1), 0);
+      for (const r of group) {
+        const w = Number(r.c.weight ?? 1) || 1;
+        const share =
+          remainingWeight > 0 ? Math.round((remainingPool * w) / remainingWeight) : remainingPool;
+        const alloc = Math.max(0, Math.min(r.headroom, share, remainingPool));
+        budget.set(r.c.campaignId, alloc);
+        remainingPool -= alloc;
+        remainingWeight -= w;
+      }
+    }
+  } catch (e) {
+    console.error("[dialer] computeSlotBudget falló (fail-safe a concurrencia):", e);
+    return new Map();
+  }
+  return budget;
+}
+
+/** Pilar 7 — ¿la campaña alcanzó su meta? (contactados / conversiones). */
+function goalReached(c: Campaign): boolean {
+  const target = Number(c.goalTarget) || 0;
+  if (target <= 0) return false;
+  if (c.goalType === "contacts") return (Number(c.connectedCount) || 0) >= target;
+  if (c.goalType === "conversions") return (Number(c.conversionsCount) || 0) >= target;
+  return false;
+}
+
 /** Run one dial cycle across all RUNNING campaigns. Extracted so the
  *  handler can call it N times per invocation. Returns true when there
  *  is still work pending (so we keep cycling) and false when every
@@ -1141,10 +1249,30 @@ async function dialCycle(): Promise<{
   if (campaigns.length === 0) {
     return { campaignsProcessed: 0, anyPendingLeft: false };
   }
+  // Pilar 7 — orden por prioridad (no FIFO por creación) + presupuesto de slots
+  // del ciclo repartido por peso entre campañas de voz activas.
+  campaigns.sort((a, b) => {
+    const pa = Number(a.priority ?? 5),
+      pb = Number(b.priority ?? 5);
+    if (pb !== pa) return pb - pa;
+    return Number(b.weight ?? 1) - Number(a.weight ?? 1);
+  });
+  const voiceCampaigns = campaigns.filter(
+    (c) => isWithinWindow(c) && (c.campaignType || "voice").toLowerCase() !== "whatsapp",
+  );
+  const slotBudget = await computeSlotBudget(voiceCampaigns);
   let anyPendingLeft = false;
   for (const campaign of campaigns) {
     if (!isWithinWindow(campaign)) {
       console.log(`[dialer] ${campaign.campaignId} outside calling window`);
+      continue;
+    }
+    // Pilar 7 — meta alcanzada → completar y saltar (no marca más).
+    if (goalReached(campaign)) {
+      console.log(
+        `[dialer] ${campaign.campaignId} meta alcanzada (${campaign.goalType}=${campaign.goalTarget}) → completar`,
+      );
+      await forceCompleteCampaign(campaign, "goal");
       continue;
     }
     // Resolver el Connect del tenant dueño de esta campaña. Si no hay tenantId
@@ -1152,9 +1280,7 @@ async function dialCycle(): Promise<{
     // Connect de Vox (transición). Las campañas se procesan SERIALMENTE, así
     // que mutar las vars module-active acá es seguro.
     {
-      const tc = campaign.tenantId
-        ? await getTenantConnect(campaign.tenantId)
-        : null;
+      const tc = campaign.tenantId ? await getTenantConnect(campaign.tenantId) : null;
       if (tc) {
         activeConnect = tc.client;
         activeInstanceId = tc.instanceId;
@@ -1173,12 +1299,13 @@ async function dialCycle(): Promise<{
       continue;
     }
     const assignedAgentIds = await getAssignedAgents(campaign.campaignId);
-    const useBuckets =
-      campaign.dialMode !== "agentless" && assignedAgentIds.length > 0;
+    const useBuckets = campaign.dialMode !== "agentless" && assignedAgentIds.length > 0;
+    // Pilar 7 — presupuesto de slots de este ciclo (si hubo reparto por peso).
+    const slotOverride = slotBudget.get(campaign.campaignId);
     if (useBuckets) {
-      await processCampaignWithBuckets(campaign, assignedAgentIds);
+      await processCampaignWithBuckets(campaign, assignedAgentIds, slotOverride);
     } else {
-      await processCampaignLegacy(campaign);
+      await processCampaignLegacy(campaign, slotOverride);
     }
     const pending = await countPendingContacts(campaign.campaignId);
     if (pending > 0) anyPendingLeft = true;
@@ -1196,7 +1323,7 @@ export const handler: Handler<DialerEvent> = async () => {
       cyclesRun++;
       lastProcessed = campaignsProcessed;
       console.log(
-        `[dialer] cycle ${i + 1}/${SUB_TICK_COUNT} · campaigns=${campaignsProcessed} · pending=${anyPendingLeft}`
+        `[dialer] cycle ${i + 1}/${SUB_TICK_COUNT} · campaigns=${campaignsProcessed} · pending=${anyPendingLeft}`,
       );
       // Exit early when there's nothing to do — no point burning
       // duration time sleeping if every campaign is drained.

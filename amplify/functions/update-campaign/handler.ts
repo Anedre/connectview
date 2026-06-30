@@ -1,9 +1,5 @@
 import type { Handler } from "aws-lambda";
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  UpdateItemCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
 import { resolveDynamo } from "../_shared/tenantConnect";
 
 // BYO Data Plane (#46): tenant primero, fallback Vox pooled.
@@ -30,6 +26,11 @@ interface UpdateBody {
   retryNoAnswerMinutes?: number;
   retryMaxAttempts?: number;
   maxContactsPerAgent?: number;
+  // Pilar 7 — orquestación
+  priority?: number;
+  weight?: number;
+  goalType?: "none" | "contacts" | "conversions";
+  goalTarget?: number;
 }
 
 // Each editable field → a builder that knows its DynamoDB value type.
@@ -60,6 +61,11 @@ const FIELD_MAP: Record<
   retryNoAnswerMinutes: { toAttrValue: (v: number) => ({ N: String(v) }) },
   retryMaxAttempts: { toAttrValue: (v: number) => ({ N: String(v) }) },
   maxContactsPerAgent: { toAttrValue: (v: number) => ({ N: String(v) }) },
+  // Pilar 7 — orquestación (prioridad / peso / meta).
+  priority: { toAttrValue: (v: number) => ({ N: String(v) }) },
+  weight: { toAttrValue: (v: number) => ({ N: String(v) }) },
+  goalType: { toAttrValue: (v: string) => ({ S: v }) },
+  goalTarget: { toAttrValue: (v: number) => ({ N: String(v) }) },
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,7 +87,7 @@ export const handler: Handler = async (event: any) => {
       new GetItemCommand({
         TableName: CAMPAIGNS_TABLE,
         Key: { campaignId: { S: body.campaignId } },
-      })
+      }),
     );
     if (!current.Item) {
       return {
@@ -141,7 +147,7 @@ export const handler: Handler = async (event: any) => {
         UpdateExpression: "SET " + setExpressions.join(", "),
         ExpressionAttributeNames: exprNames,
         ExpressionAttributeValues: exprVals,
-      })
+      }),
     );
 
     return {

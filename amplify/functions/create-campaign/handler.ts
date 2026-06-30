@@ -1,9 +1,5 @@
 import type { Handler } from "aws-lambda";
-import {
-  DynamoDBClient,
-  PutItemCommand,
-  BatchWriteItemCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, PutItemCommand, BatchWriteItemCommand } from "@aws-sdk/client-dynamodb";
 import {
   ConnectCampaignsV2Client,
   CreateCampaignCommand,
@@ -25,17 +21,14 @@ const campaignsV2 = new ConnectCampaignsV2Client({ maxAttempts: 2 });
 // Customer Profiles para el enrichment del CSV. Fallback Novasys SOLO para el
 // tenant legacy — resolveCustomerProfiles bloquea a un tenant real sin CP.
 const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 2 });
-const LEGACY_PROFILES_DOMAIN =
-  process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+const LEGACY_PROFILES_DOMAIN = process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
-const CONTACTS_TABLE =
-  process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+const CONTACTS_TABLE = process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 const CONNECT_INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 // The AMD-aware flow created specifically for campaigns. Has a
 // CheckOutboundCallStatus block at the start so voicemails/no-answer are
 // dropped before reaching an agent.
-const AMD_FLOW_ID =
-  process.env.AMD_FLOW_ID || "a40dc527-8348-4694-a389-7b675c0ac3ac";
+const AMD_FLOW_ID = process.env.AMD_FLOW_ID || "a40dc527-8348-4694-a389-7b675c0ac3ac";
 
 interface Contact {
   phone: string; // E.164
@@ -70,6 +63,11 @@ interface CreateCampaignBody {
   /** Programa (Pilar 1) al que pertenece la campaña → auto-tag de sus leads
    *  a la membership N:N (connectview-lead-programs). */
   programId?: string;
+  // Pilar 7 — orquestación: prioridad (1-10), peso (% del pool), meta.
+  priority?: number;
+  weight?: number;
+  goalType?: "none" | "contacts" | "conversions";
+  goalTarget?: number;
   // If true (default), create an AWS Outbound Campaigns v2 resource too so
   // the service can handle dialing with AMD. If false, the campaign only
   // lives in our DynamoDB (legacy mode — no AMD).
@@ -83,10 +81,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 // Map our "dialMode" to connectcampaignsv2 outboundMode shape.
-function buildOutboundMode(
-  dialMode: string,
-  concurrency: number
-): Record<string, unknown> {
+function buildOutboundMode(dialMode: string, concurrency: number): Record<string, unknown> {
   const cap = Math.max(0.1, Math.min(1.0, concurrency / 2));
   if (dialMode === "power" || dialMode === "predictive") {
     return { predictive: { bandwidthAllocation: cap } };
@@ -113,10 +108,7 @@ async function createNativeCampaign(params: {
           telephony: {
             capacity: 1.0,
             connectQueueId: params.queueId,
-            outboundMode: buildOutboundMode(
-              params.dialMode,
-              params.concurrency
-            ) as never,
+            outboundMode: buildOutboundMode(params.dialMode, params.concurrency) as never,
             defaultOutboundConfig: {
               connectContactFlowId: params.contactFlowId,
               connectSourcePhoneNumber: params.sourcePhoneNumber,
@@ -134,7 +126,7 @@ async function createNativeCampaign(params: {
         tags: {
           owner: `arn:aws:connect:us-east-1:${params.awsAccountId}:instance/${CONNECT_INSTANCE_ID}`,
         },
-      })
+      }),
     );
     return res.id || null;
   } catch (err) {
@@ -166,8 +158,7 @@ export const handler: Handler = async (event: any, context: any) => {
 
     const errors: string[] = [];
     if (!body.name?.trim()) errors.push("name is required");
-    if (!body.sourcePhoneNumber?.trim())
-      errors.push("sourcePhoneNumber is required");
+    if (!body.sourcePhoneNumber?.trim()) errors.push("sourcePhoneNumber is required");
     if (!body.contactFlowId?.trim()) errors.push("contactFlowId is required");
     if (!Array.isArray(body.contacts) || body.contacts.length === 0)
       errors.push("contacts must be a non-empty array");
@@ -182,9 +173,7 @@ export const handler: Handler = async (event: any, context: any) => {
       };
     }
 
-    const validContacts = body.contacts.filter((c) =>
-      /^\+\d{8,15}$/.test((c.phone || "").trim())
-    );
+    const validContacts = body.contacts.filter((c) => /^\+\d{8,15}$/.test((c.phone || "").trim()));
     const skippedCount = body.contacts.length - validContacts.length;
 
     if (validContacts.length === 0) {
@@ -243,9 +232,7 @@ export const handler: Handler = async (event: any, context: any) => {
           sourcePhoneNumber: { S: body.sourcePhoneNumber },
           contactFlowId: { S: body.contactFlowId },
           contactFlowName: { S: body.contactFlowName || "" },
-          campaignQueueId: body.campaignQueueId
-            ? { S: body.campaignQueueId }
-            : { NULL: true },
+          campaignQueueId: body.campaignQueueId ? { S: body.campaignQueueId } : { NULL: true },
           campaignQueueName: { S: body.campaignQueueName || "" },
           dialMode: { S: body.dialMode || "progressive" },
           concurrency: { N: String(body.concurrency || 1) },
@@ -258,9 +245,7 @@ export const handler: Handler = async (event: any, context: any) => {
           retryNoAnswerMinutes: { N: String(body.retryNoAnswerMinutes ?? 30) },
           retryMaxAttempts: { N: String(body.retryMaxAttempts ?? 3) },
           maxContactsPerAgent: {
-            N: String(
-              Math.max(1, Math.min(50, body.maxContactsPerAgent ?? 5))
-            ),
+            N: String(Math.max(1, Math.min(50, body.maxContactsPerAgent ?? 5))),
           },
           // WhatsApp template campaign fields. When campaignType is
           // "whatsapp" the dialer routes to send-whatsapp-template
@@ -270,11 +255,17 @@ export const handler: Handler = async (event: any, context: any) => {
           templateName: { S: (body as { templateName?: string }).templateName || "" },
           templateLanguage: { S: (body as { templateLanguage?: string }).templateLanguage || "es" },
           templateVarColumns: {
-            S: JSON.stringify(
-              (body as { templateVarColumns?: string[] }).templateVarColumns || []
-            ),
+            S: JSON.stringify((body as { templateVarColumns?: string[] }).templateVarColumns || []),
           },
           programId: body.programId ? { S: body.programId } : { NULL: true },
+          // Pilar 7 — orquestación (defaults: prioridad 5, peso 1, sin meta).
+          priority: {
+            N: String(Math.max(1, Math.min(10, Math.round(Number(body.priority) || 5)))),
+          },
+          weight: { N: String(Math.max(0.1, Math.min(10, Number(body.weight) || 1))) },
+          goalType: { S: body.goalType || "none" },
+          goalTarget: { N: String(Math.max(0, Math.round(Number(body.goalTarget) || 0))) },
+          conversionsCount: { N: "0" },
           status: { S: status },
           createdAt: { S: now },
           createdBy: { S: body.createdBy || "system" },
@@ -289,12 +280,10 @@ export const handler: Handler = async (event: any, context: any) => {
           noAnswerCount: { N: "0" },
           skippedCount: { N: String(skippedCount) },
           // Native campaign link (null if creation failed or legacy mode)
-          awsCampaignId: awsCampaignId
-            ? { S: awsCampaignId }
-            : { NULL: true },
+          awsCampaignId: awsCampaignId ? { S: awsCampaignId } : { NULL: true },
           useNativeCampaign: { BOOL: !!awsCampaignId },
         },
-      })
+      }),
     );
 
     // 3. Batch insert contacts
@@ -322,7 +311,7 @@ export const handler: Handler = async (event: any, context: any) => {
               };
             }),
           },
-        })
+        }),
       );
     }
 
@@ -333,21 +322,19 @@ export const handler: Handler = async (event: any, context: any) => {
     //    Best-effort: errors are counted but don't fail the campaign
     //    creation. Bounded by a 20s soft deadline so the Lambda's 30s
     //    timeout still has headroom for very large CSVs.
-    let profileEnrichment: Awaited<
-      ReturnType<typeof bulkUpsertProfilesFromCsv>
-    > | null = null;
+    let profileEnrichment: Awaited<ReturnType<typeof bulkUpsertProfilesFromCsv>> | null = null;
     try {
       // CP tenant-scoped (fail-closed): un tenant real sin CP resuelto NO
       // escribe estos contactos en el dominio de perfiles de Novasys.
       const cp = await resolveCustomerProfiles(
         event?.headers,
         legacyProfiles,
-        LEGACY_PROFILES_DOMAIN
+        LEGACY_PROFILES_DOMAIN,
       );
       profileEnrichment = await bulkUpsertProfilesFromCsv(
         validContacts,
         { concurrency: 20, deadlineMs: 20_000 },
-        { profiles: cp.client, domainName: cp.domainName }
+        { profiles: cp.client, domainName: cp.domainName },
       );
       console.log("customer-profile enrichment:", profileEnrichment);
     } catch (err) {

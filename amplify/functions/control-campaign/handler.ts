@@ -16,6 +16,7 @@ import {
 } from "@aws-sdk/client-connectcampaignsv2";
 import { randomUUID } from "node:crypto";
 import { resolveDynamo } from "../_shared/tenantConnect";
+import { resolveTenantId } from "../_shared/cognitoAuth";
 import { kickDialer } from "../_shared/invokeDialer";
 
 // BYO Data Plane (#46): DDB del tenant; ConnectCampaignsV2 queda legacy.
@@ -23,8 +24,8 @@ const legacyDynamo = new DynamoDBClient({});
 let dynamo: DynamoDBClient = legacyDynamo;
 const campaignsV2 = new ConnectCampaignsV2Client({ maxAttempts: 2 });
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
-const CONTACTS_TABLE =
-  process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+const CONTACTS_TABLE = process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
 
 const ALLOWED_ACTIONS = new Set([
   "start",
@@ -36,6 +37,10 @@ const ALLOWED_ACTIONS = new Set([
   // every minute when it computes how many StartOutboundVoiceContact
   // calls to make per tick.
   "set-concurrency",
+  // Pilar 7 — blend en vivo: prioridad + peso de la campaña (sin pausar).
+  "set-blend",
+  // Pilar 7 — pool global de marcación del tenant (orchestration.maxConcurrentDials).
+  "set-pool",
 ]);
 
 interface ContactRow {
@@ -68,7 +73,7 @@ async function queryPendingContacts(campaignId: string): Promise<ContactRow[]> {
           ":s": { S: "pending" },
         },
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
     for (const it of res.Items || []) items.push(unmarshall(it) as ContactRow);
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
@@ -79,10 +84,7 @@ async function queryPendingContacts(campaignId: string): Promise<ContactRow[]> {
 
 // Push pending contacts into the AWS Outbound Campaigns service.
 // Returns the count of rows enqueued. Service takes over dialing with AMD/pacing.
-async function pushContactsToAws(
-  awsCampaignId: string,
-  contacts: ContactRow[]
-): Promise<number> {
+async function pushContactsToAws(awsCampaignId: string, contacts: ContactRow[]): Promise<number> {
   if (contacts.length === 0) return 0;
   let queued = 0;
   // Max 25 per PutOutboundRequestBatch (AWS limit)
@@ -103,9 +105,7 @@ async function pushContactsToAws(
               clientToken: `${c.rowId}-${Date.now()}`.slice(0, 500),
               // AWS Campaigns v2 enforces max 15 minutes for expirationTime.
               // Use 10 minutes to leave a safety margin.
-              expirationTime: new Date(
-                Date.now() + 10 * 60 * 1000
-              ),
+              expirationTime: new Date(Date.now() + 10 * 60 * 1000),
               channelSubtypeParameters: {
                 telephony: {
                   destinationPhoneNumber: c.phone,
@@ -121,14 +121,14 @@ async function pushContactsToAws(
                           k.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 127),
                           String(v).slice(0, 256),
                         ])
-                        .filter(([k]) => k.length > 0)
+                        .filter(([k]) => k.length > 0),
                     ),
                   },
                 },
               },
             };
           }),
-        })
+        }),
       );
       // Mark as "queued" (status=dialing) — the service will dial them soon
       for (const c of batch) {
@@ -149,7 +149,7 @@ async function pushContactsToAws(
                 ":zero": { N: "0" },
                 ":one": { N: "1" },
               },
-            })
+            }),
           )
           .catch((err) => {
             console.warn("markDialing failed for", c.rowId, err);
@@ -175,6 +175,49 @@ export const handler: Handler = async (event: any) => {
     const requestedConcurrency: number | undefined =
       body.concurrency !== undefined ? Number(body.concurrency) : undefined;
 
+    // ── Pilar 7 · set-pool: pool global de marcación del tenant (no necesita
+    //    campaignId). Lo lee el dialer (orchestration.maxConcurrentDials). ───
+    if (action === "set-pool") {
+      const tenantId = await resolveTenantId(event?.headers);
+      if (!tenantId) {
+        return {
+          statusCode: 401,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "no autorizado" }),
+        };
+      }
+      const poolMax = Number(body.poolMax);
+      const it = await legacyDynamo.send(
+        new GetItemCommand({ TableName: CONNECTIONS_TABLE, Key: { tenantId: { S: tenantId } } }),
+      );
+      const cfg = it.Item ? JSON.parse((unmarshall(it.Item).configJson as string) || "{}") : {};
+      cfg.orchestration = cfg.orchestration || {};
+      if (Number.isFinite(poolMax) && poolMax > 0) {
+        cfg.orchestration.maxConcurrentDials = Math.round(poolMax);
+      } else {
+        delete cfg.orchestration.maxConcurrentDials; // 0/vacío → quitar el tope
+      }
+      await legacyDynamo.send(
+        new UpdateItemCommand({
+          TableName: CONNECTIONS_TABLE,
+          Key: { tenantId: { S: tenantId } },
+          UpdateExpression: "SET configJson = :c, updatedAt = :now",
+          ExpressionAttributeValues: {
+            ":c": { S: JSON.stringify(cfg) },
+            ":now": { S: new Date().toISOString() },
+          },
+        }),
+      );
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          maxConcurrentDials: cfg.orchestration.maxConcurrentDials ?? null,
+        }),
+      };
+    }
+
     if (!campaignId || !action) {
       return {
         statusCode: 400,
@@ -198,7 +241,7 @@ export const handler: Handler = async (event: any) => {
       new GetItemCommand({
         TableName: CAMPAIGNS_TABLE,
         Key: { campaignId: { S: campaignId } },
-      })
+      }),
     );
     if (!current.Item) {
       return {
@@ -214,10 +257,7 @@ export const handler: Handler = async (event: any) => {
 
     // ── set-concurrency: live tuning, doesn't touch status ───────
     if (action === "set-concurrency") {
-      if (
-        requestedConcurrency === undefined ||
-        !Number.isFinite(requestedConcurrency)
-      ) {
+      if (requestedConcurrency === undefined || !Number.isFinite(requestedConcurrency)) {
         return {
           statusCode: 400,
           headers: { "Content-Type": "application/json" },
@@ -235,7 +275,7 @@ export const handler: Handler = async (event: any) => {
           ExpressionAttributeValues: {
             ":c": { N: String(clamped) },
           },
-        })
+        }),
       );
       return {
         statusCode: 200,
@@ -244,6 +284,46 @@ export const handler: Handler = async (event: any) => {
           campaignId,
           concurrency: clamped,
           previous: Number(campaign.concurrency) || null,
+        }),
+      };
+    }
+
+    // ── Pilar 7 · set-blend: prioridad + peso en vivo (sin tocar status) ──────
+    if (action === "set-blend") {
+      const sets: string[] = [];
+      const vals: Record<string, { N: string }> = {};
+      if (body.priority !== undefined) {
+        const p = Math.max(1, Math.min(10, Math.round(Number(body.priority) || 5)));
+        sets.push("priority = :p");
+        vals[":p"] = { N: String(p) };
+      }
+      if (body.weight !== undefined) {
+        const w = Math.max(0.1, Math.min(10, Number(body.weight) || 1));
+        sets.push("weight = :w");
+        vals[":w"] = { N: String(w) };
+      }
+      if (sets.length === 0) {
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "priority y/o weight requeridos" }),
+        };
+      }
+      await dynamo.send(
+        new UpdateItemCommand({
+          TableName: CAMPAIGNS_TABLE,
+          Key: { campaignId: { S: campaignId } },
+          UpdateExpression: `SET ${sets.join(", ")}`,
+          ExpressionAttributeValues: vals,
+        }),
+      );
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId,
+          priority: vals[":p"] ? Number(vals[":p"].N) : undefined,
+          weight: vals[":w"] ? Number(vals[":w"].N) : undefined,
         }),
       };
     }
@@ -290,10 +370,7 @@ export const handler: Handler = async (event: any) => {
         newStatus = "RUNNING";
         break;
       case "cancel":
-        if (
-          currentStatus === "COMPLETED" ||
-          currentStatus === "CANCELLED"
-        ) {
+        if (currentStatus === "COMPLETED" || currentStatus === "CANCELLED") {
           return {
             statusCode: 409,
             headers: { "Content-Type": "application/json" },
@@ -327,7 +404,7 @@ export const handler: Handler = async (event: any) => {
                     ":cancelled": { S: "cancelled" },
                     ":pending": { S: "pending" },
                   },
-                })
+                }),
               )
               .catch(() => {
                 /* race with dialer is fine — leave it as-is */
@@ -366,19 +443,12 @@ export const handler: Handler = async (event: any) => {
           const pending = await queryPendingContacts(campaignId);
           queuedCount = await pushContactsToAws(awsCampaignId, pending);
         } else if (action === "pause") {
-          await campaignsV2.send(
-            new PauseCampaignCommand({ id: awsCampaignId })
-          );
+          await campaignsV2.send(new PauseCampaignCommand({ id: awsCampaignId }));
         } else if (action === "cancel") {
-          await campaignsV2.send(
-            new StopCampaignCommand({ id: awsCampaignId })
-          );
+          await campaignsV2.send(new StopCampaignCommand({ id: awsCampaignId }));
         }
       } catch (err) {
-        console.error(
-          "AWS campaigns v2 action failed (continuing with DynamoDB update):",
-          err
-        );
+        console.error("AWS campaigns v2 action failed (continuing with DynamoDB update):", err);
         // Don't fail the whole operation — the user can retry
       }
     }
@@ -400,7 +470,7 @@ export const handler: Handler = async (event: any) => {
         UpdateExpression: "SET " + setExpressions.join(", "),
         ExpressionAttributeNames: exprNames,
         ExpressionAttributeValues: exprVals,
-      })
+      }),
     );
 
     // Disparo inmediato del dialer al arrancar/reanudar → la primera llamada

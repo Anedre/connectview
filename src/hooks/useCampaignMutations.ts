@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { authedFetch } from "@/lib/authedFetch";
 
 export interface UpdateCampaignInput {
   campaignId: string;
@@ -31,10 +32,19 @@ async function postJson(url: string, body: unknown) {
     body: JSON.stringify(body),
   });
   const json = await r.json().catch(() => ({}));
-  if (!r.ok)
-    throw new Error(
-      (json && (json.error || json.message)) || `HTTP ${r.status}`
-    );
+  if (!r.ok) throw new Error((json && (json.error || json.message)) || `HTTP ${r.status}`);
+  return json;
+}
+
+/** Igual que postJson pero con el Bearer del tenant (Pilar 7 set-pool lo necesita). */
+async function postJsonAuthed(url: string, body: unknown) {
+  const r = await authedFetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((json && (json.error || json.message)) || `HTTP ${r.status}`);
   return json;
 }
 
@@ -54,7 +64,7 @@ export function useCampaignMutations() {
         setPending(false);
       }
     },
-    [endpoints?.updateCampaign]
+    [endpoints?.updateCampaign],
   );
 
   const relaunch = useCallback(
@@ -62,7 +72,7 @@ export function useCampaignMutations() {
       campaignId: string,
       scope: RelaunchScope = "all",
       specificRowIds?: string[],
-      resetAttempts = true
+      resetAttempts = true,
     ) => {
       if (!endpoints?.relaunchCampaign) throw new Error("No endpoint");
       setPending(true);
@@ -77,7 +87,7 @@ export function useCampaignMutations() {
         setPending(false);
       }
     },
-    [endpoints?.relaunchCampaign]
+    [endpoints?.relaunchCampaign],
   );
 
   const setConcurrency = useCallback(
@@ -94,13 +104,13 @@ export function useCampaignMutations() {
         setPending(false);
       }
     },
-    [endpoints?.controlCampaign]
+    [endpoints?.controlCampaign],
   );
 
   const clone = useCallback(
     async (
       campaignId: string,
-      opts: { name?: string; includeContacts?: boolean; resetAttempts?: boolean } = {}
+      opts: { name?: string; includeContacts?: boolean; resetAttempts?: boolean } = {},
     ) => {
       if (!endpoints?.cloneCampaign) throw new Error("No endpoint");
       setPending(true);
@@ -114,8 +124,43 @@ export function useCampaignMutations() {
         setPending(false);
       }
     },
-    [actor, endpoints?.cloneCampaign]
+    [actor, endpoints?.cloneCampaign],
   );
 
-  return { pending, update, relaunch, clone, setConcurrency };
+  // Pilar 7 — blend en vivo: prioridad + peso de la campaña.
+  const setBlend = useCallback(
+    async (campaignId: string, blend: { priority?: number; weight?: number }) => {
+      if (!endpoints?.controlCampaign) throw new Error("No endpoint");
+      setPending(true);
+      try {
+        return await postJsonAuthed(endpoints.controlCampaign, {
+          campaignId,
+          action: "set-blend",
+          ...blend,
+        });
+      } finally {
+        setPending(false);
+      }
+    },
+    [endpoints?.controlCampaign],
+  );
+
+  // Pilar 7 — pool global de marcación del tenant (0 = sin tope).
+  const setPool = useCallback(
+    async (poolMax: number) => {
+      if (!endpoints?.controlCampaign) throw new Error("No endpoint");
+      setPending(true);
+      try {
+        return await postJsonAuthed(endpoints.controlCampaign, {
+          action: "set-pool",
+          poolMax,
+        });
+      } finally {
+        setPending(false);
+      }
+    },
+    [endpoints?.controlCampaign],
+  );
+
+  return { pending, update, relaunch, clone, setConcurrency, setBlend, setPool };
 }

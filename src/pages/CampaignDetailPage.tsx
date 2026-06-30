@@ -18,6 +18,7 @@ import { CampaignCharts } from "@/components/campaigns/CampaignCharts";
 import { CampaignActivity } from "@/components/campaigns/CampaignActivity";
 import { CampaignMonitoringPanel } from "@/components/campaigns/CampaignMonitoringPanel";
 import { PacingControlCard } from "@/components/campaigns/PacingControlCard";
+import { CampaignOrchestrationCard } from "@/components/campaigns/CampaignOrchestrationCard";
 import { WhatsAppTemplateSummary } from "@/components/campaigns/WhatsAppTemplateSummary";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
@@ -27,8 +28,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 // the contacts table to detect legacy rows where agentUsername was written
 // as a user-id instead of an actual username (the bug was fixed in
 // process-contact-event but old rows may still have UUIDs).
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Map contact-row statuses → Vox chip variant classes. The Vox design
 // system uses `.chip + .chip--<color>` for tags / status pills.
@@ -65,14 +65,12 @@ export function CampaignDetailPage() {
   const { contacts, refresh: refreshContacts } = useCampaignContacts(
     campaignId || null,
     filterStatus,
-    5000
+    5000,
   );
   const [controlling, setControlling] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [addContactsOpen, setAddContactsOpen] = useState(false);
-  const [editingContact, setEditingContact] = useState<CampaignContactRow | null>(
-    null
-  );
+  const [editingContact, setEditingContact] = useState<CampaignContactRow | null>(null);
   // Contacts table — search + bulk select state.
   const [contactSearch, setContactSearch] = useState("");
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
@@ -101,9 +99,7 @@ export function CampaignDetailPage() {
   // real name. We bulk-lookup the profiles in the background and
   // fall back to the resolved name in the table.
   const phonesNeedingName = useMemo(() => {
-    return contacts
-      .filter((c) => !c.customerName && c.phone)
-      .map((c) => c.phone);
+    return contacts.filter((c) => !c.customerName && c.phone).map((c) => c.phone);
   }, [contacts]);
   const namesByPhone = useCustomerNamesByPhone(phonesNeedingName);
 
@@ -111,11 +107,9 @@ export function CampaignDetailPage() {
   const lockedRowCount = useMemo(
     () =>
       contacts.filter(
-        (r) =>
-          selectedRowIds.has(r.rowId) &&
-          (r.status === "dialing" || r.status === "connected")
+        (r) => selectedRowIds.has(r.rowId) && (r.status === "dialing" || r.status === "connected"),
       ).length,
-    [contacts, selectedRowIds]
+    [contacts, selectedRowIds],
   );
   const mutations = useCampaignMutations();
   const contactMutations = useCampaignContactMutations();
@@ -164,9 +158,7 @@ export function CampaignDetailPage() {
     }
   };
 
-  const handleControl = async (
-    action: "start" | "pause" | "resume" | "cancel"
-  ) => {
+  const handleControl = async (action: "start" | "pause" | "resume" | "cancel") => {
     if (!campaignId) return;
     setControlling(true);
     try {
@@ -178,8 +170,7 @@ export function CampaignDetailPage() {
         body: JSON.stringify({ campaignId, action }),
       });
       const body = await r.json().catch(() => ({}));
-      if (!r.ok)
-        throw new Error(body?.error || body?.message || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(body?.error || body?.message || `HTTP ${r.status}`);
       toast.success(`Campaña ${action}d`);
       refresh();
     } catch (err) {
@@ -203,9 +194,7 @@ export function CampaignDetailPage() {
   const handleRelaunch = async (scope: RelaunchScope = "all") => {
     if (!campaignId) return;
     const label =
-      scope === "all"
-        ? "TODOS los contactos (se reenvían)"
-        : "solo los failed / no-answer";
+      scope === "all" ? "TODOS los contactos (se reenvían)" : "solo los failed / no-answer";
     if (
       !(await confirm({
         title: "¿Relanzar la campaña?",
@@ -217,9 +206,7 @@ export function CampaignDetailPage() {
       return;
     try {
       const res = await mutations.relaunch(campaignId, scope);
-      toast.success(
-        `Campaña relanzada · ${res.rowsReset} contactos reseteados a pending`
-      );
+      toast.success(`Campaña relanzada · ${res.rowsReset} contactos reseteados a pending`);
       refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error relanzando");
@@ -234,11 +221,10 @@ export function CampaignDetailPage() {
       <div className="view">
         <div className="view__head">
           <div>
-            <div className="view__crumb"><span>Crecimiento</span></div>
-            <h1
-              className="view__title skel skel--text"
-              style={{ width: 320, height: 28 }}
-            />
+            <div className="view__crumb">
+              <span>Crecimiento</span>
+            </div>
+            <h1 className="view__title skel skel--text" style={{ width: 320, height: 28 }} />
             <div
               className="view__sub skel skel--text"
               style={{ width: 220, height: 14, marginTop: 6 }}
@@ -247,11 +233,7 @@ export function CampaignDetailPage() {
         </div>
         <div className="kpi-grid">
           {[0, 1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="kpi skel"
-              style={{ minHeight: 86 }}
-            />
+            <div key={i} className="kpi skel" style={{ minHeight: 86 }} />
           ))}
         </div>
         <div style={{ height: 16 }} />
@@ -295,30 +277,61 @@ export function CampaignDetailPage() {
   const win = (() => {
     try {
       const tz = c.timezone || "America/Lima";
-      const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false, weekday: "short" }).formatToParts(new Date());
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: tz,
+        hour: "numeric",
+        hour12: false,
+        weekday: "short",
+      }).formatToParts(new Date());
       const hour = Number(parts.find((p) => p.type === "hour")?.value || "0") % 24;
-      const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-      const day = dayMap[parts.find((p) => p.type === "weekday")?.value || ""] ?? new Date().getDay();
+      const dayMap: Record<string, number> = {
+        Sun: 0,
+        Mon: 1,
+        Tue: 2,
+        Wed: 3,
+        Thu: 4,
+        Fri: 5,
+        Sat: 6,
+      };
+      const day =
+        dayMap[parts.find((p) => p.type === "weekday")?.value || ""] ?? new Date().getDay();
       const days: number[] = JSON.parse(c.windowDaysOfWeek || "[1,2,3,4,5]");
-      const start = Number(c.windowStartHour ?? 9), end = Number(c.windowEndHour ?? 18);
+      const start = Number(c.windowStartHour ?? 9),
+        end = Number(c.windowEndHour ?? 18);
       return { within: days.includes(day) && hour >= start && hour < end, start, end };
-    } catch { return { within: true, start: 9, end: 18 }; }
+    } catch {
+      return { within: true, start: 9, end: 18 };
+    }
   })();
   const dialingBlocked = c.status === "RUNNING" && counts.pending > 0 && !win.within;
   // Voz en ventana con pendientes pero nada marcando ⇒ probablemente sin agente disponible.
-  const waitingAgent = c.status === "RUNNING" && !isWa && win.within && counts.pending > 0 && counts.dialing === 0;
+  const waitingAgent =
+    c.status === "RUNNING" && !isWa && win.within && counts.pending > 0 && counts.dialing === 0;
 
   const dialNow = async () => {
     const ep = getApiEndpoints();
-    if (!ep?.updateCampaign) { toast.error("Endpoint no configurado"); return; }
+    if (!ep?.updateCampaign) {
+      toast.error("Endpoint no configurado");
+      return;
+    }
     try {
       await fetch(ep.updateCampaign, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignId, windowStartHour: 0, windowEndHour: 24, windowDaysOfWeek: [0, 1, 2, 3, 4, 5, 6] }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId,
+          windowStartHour: 0,
+          windowEndHour: 24,
+          windowDaysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        }),
       });
-      toast.success(isWa ? "Ventana 24h activada — enviará ahora" : "Ventana 24h activada — discará ahora");
+      toast.success(
+        isWa ? "Ventana 24h activada — enviará ahora" : "Ventana 24h activada — discará ahora",
+      );
       refresh();
-    } catch { toast.error("No se pudo activar la ventana 24h"); }
+    } catch {
+      toast.error("No se pudo activar la ventana 24h");
+    }
   };
 
   const toggleRowSelected = (rowId: string) => {
@@ -333,7 +346,7 @@ export function CampaignDetailPage() {
   const toggleAllSelected = () => {
     setSelectedRowIds((prev) => {
       const eligible = visibleContacts.filter(
-        (r) => r.status !== "dialing" && r.status !== "connected"
+        (r) => r.status !== "dialing" && r.status !== "connected",
       );
       const allSelected = eligible.every((r) => prev.has(r.rowId));
       const next = new Set(prev);
@@ -419,7 +432,7 @@ export function CampaignDetailPage() {
           r.connectContactId,
         ]
           .map(escape)
-          .join(",")
+          .join(","),
       ),
     ].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -443,7 +456,7 @@ export function CampaignDetailPage() {
     if (!contactId || !recordingEndpoint) return;
     try {
       const r = await authedFetch(
-        `${recordingEndpoint}?contactId=${encodeURIComponent(contactId)}`
+        `${recordingEndpoint}?contactId=${encodeURIComponent(contactId)}`,
       );
       const j = await r.json().catch(() => ({}));
       if (j?.recordingUrl) window.open(j.recordingUrl, "_blank", "noopener");
@@ -455,20 +468,17 @@ export function CampaignDetailPage() {
 
   // ── Disposition (post-call outcome the agent annotates) ──────
   const DISPOSITION_OPTIONS = [
-    { value: "",               label: "—",             chip: "" },
-    { value: "interesado",     label: "Interesado",    chip: "chip chip--green" },
-    { value: "callback",       label: "Pedir callback",chip: "chip chip--cyan" },
-    { value: "no_interesado",  label: "No interesado", chip: "chip chip--red" },
-    { value: "vendido",        label: "Vendido",       chip: "chip chip--violet" },
-    { value: "buzon",          label: "Buzón / VM",    chip: "chip chip--amber" },
-    { value: "no_calificado",  label: "No califica",   chip: "chip chip--amber" },
-    { value: "otro",           label: "Otro",          chip: "chip" },
+    { value: "", label: "—", chip: "" },
+    { value: "interesado", label: "Interesado", chip: "chip chip--green" },
+    { value: "callback", label: "Pedir callback", chip: "chip chip--cyan" },
+    { value: "no_interesado", label: "No interesado", chip: "chip chip--red" },
+    { value: "vendido", label: "Vendido", chip: "chip chip--violet" },
+    { value: "buzon", label: "Buzón / VM", chip: "chip chip--amber" },
+    { value: "no_calificado", label: "No califica", chip: "chip chip--amber" },
+    { value: "otro", label: "Otro", chip: "chip" },
   ];
 
-  const handleSetDisposition = async (
-    row: CampaignContactRow,
-    value: string
-  ) => {
+  const handleSetDisposition = async (row: CampaignContactRow, value: string) => {
     if (!campaignId) return;
     try {
       const next: Record<string, string> = {
@@ -496,18 +506,18 @@ export function CampaignDetailPage() {
   }> = isWa
     ? [
         // WhatsApp: sin agentes ni "conectado/sin contestar" — sólo el ciclo de envío.
-        { key: "pending", label: "Pendientes", Icn: Icon.Clock,    color: "var(--text-3)" },
-        { key: "dialing", label: "Enviando",   Icn: Icon.WhatsApp, color: "var(--accent-cyan)" },
-        { key: "done",    label: "Enviados",   Icn: Icon.Check,    color: "var(--accent-green)" },
-        { key: "failed",  label: "Fallidos",   Icn: Icon.Close,    color: "var(--accent-red)" },
+        { key: "pending", label: "Pendientes", Icn: Icon.Clock, color: "var(--text-3)" },
+        { key: "dialing", label: "Enviando", Icn: Icon.WhatsApp, color: "var(--accent-cyan)" },
+        { key: "done", label: "Enviados", Icn: Icon.Check, color: "var(--accent-green)" },
+        { key: "failed", label: "Fallidos", Icn: Icon.Close, color: "var(--accent-red)" },
       ]
     : [
-        { key: "pending",   label: "Pendientes",   Icn: Icon.Clock,    color: "var(--text-3)" },
-        { key: "dialing",   label: "Marcando",     Icn: Icon.Phone,    color: "var(--accent-cyan)" },
-        { key: "connected", label: "Conectados",   Icn: Icon.PhoneIn,  color: "var(--accent-green)" },
-        { key: "done",      label: "Completados",  Icn: Icon.Check,    color: "var(--accent-green)" },
-        { key: "no_answer", label: "Sin contestar",Icn: Icon.Phone,    color: "var(--accent-amber)" },
-        { key: "failed",    label: "Fallidos",     Icn: Icon.Close,    color: "var(--accent-red)" },
+        { key: "pending", label: "Pendientes", Icn: Icon.Clock, color: "var(--text-3)" },
+        { key: "dialing", label: "Marcando", Icn: Icon.Phone, color: "var(--accent-cyan)" },
+        { key: "connected", label: "Conectados", Icn: Icon.PhoneIn, color: "var(--accent-green)" },
+        { key: "done", label: "Completados", Icn: Icon.Check, color: "var(--accent-green)" },
+        { key: "no_answer", label: "Sin contestar", Icn: Icon.Phone, color: "var(--accent-amber)" },
+        { key: "failed", label: "Fallidos", Icn: Icon.Close, color: "var(--accent-red)" },
       ];
 
   return (
@@ -529,8 +539,7 @@ export function CampaignDetailPage() {
               width: 40,
               height: 40,
               borderRadius: 12,
-              background:
-                "linear-gradient(135deg, var(--accent-amber), var(--accent-pink) 70%)",
+              background: "linear-gradient(135deg, var(--accent-amber), var(--accent-pink) 70%)",
               color: "#0B0F1A",
               flexShrink: 0,
             }}
@@ -567,7 +576,9 @@ export function CampaignDetailPage() {
               <span>·</span>
               {isWa ? (
                 <>
-                  <span className="row" style={{ gap: 4 }}><Icon.WhatsApp size={12} /> WhatsApp</span>
+                  <span className="row" style={{ gap: 4 }}>
+                    <Icon.WhatsApp size={12} /> WhatsApp
+                  </span>
                   {(c as unknown as { templateName?: string }).templateName && (
                     <>
                       <span>·</span>
@@ -600,24 +611,14 @@ export function CampaignDetailPage() {
         </div>
         <div className="view__actions" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
           {/* Edit — only while still editable */}
-          {(c.status === "DRAFT" ||
-            c.status === "RUNNING" ||
-            c.status === "PAUSED") && (
-            <button
-              className="btn"
-              onClick={() => setEditOpen(true)}
-              disabled={controlling}
-            >
+          {(c.status === "DRAFT" || c.status === "RUNNING" || c.status === "PAUSED") && (
+            <button className="btn" onClick={() => setEditOpen(true)} disabled={controlling}>
               <Icon.Pencil size={13} /> Editar
             </button>
           )}
 
           {/* Clone — always available */}
-          <button
-            className="btn"
-            onClick={handleClone}
-            disabled={mutations.pending}
-          >
+          <button className="btn" onClick={handleClone} disabled={mutations.pending}>
             <Icon.Copy size={13} /> Clonar
           </button>
 
@@ -653,11 +654,7 @@ export function CampaignDetailPage() {
           )}
           {c.status === "RUNNING" && (
             <>
-              <button
-                className="btn"
-                onClick={() => handleControl("pause")}
-                disabled={controlling}
-              >
+              <button className="btn" onClick={() => handleControl("pause")} disabled={controlling}>
                 <Icon.Pause size={13} /> Pausar
               </button>
               <button
@@ -685,8 +682,12 @@ export function CampaignDetailPage() {
       {dialingBlocked && (
         <div
           style={{
-            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
-            padding: "12px 16px", borderRadius: 14,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            padding: "12px 16px",
+            borderRadius: 14,
             border: "1px solid color-mix(in srgb, var(--accent-amber) 40%, transparent)",
             background: "color-mix(in srgb, var(--accent-amber) 12%, transparent)",
           }}
@@ -694,10 +695,13 @@ export function CampaignDetailPage() {
           <Icon.Clock size={18} style={{ color: "var(--accent-amber)", flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontWeight: 600, fontSize: 13.5 }}>
-              Fuera de la ventana de {isWa ? "envío" : "llamadas"} ({String(win.start).padStart(2, "0")}:00–{String(win.end).padStart(2, "0")}:00)
+              Fuera de la ventana de {isWa ? "envío" : "llamadas"} (
+              {String(win.start).padStart(2, "0")}:00–{String(win.end).padStart(2, "0")}:00)
             </div>
             <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-              La campaña está activa con {counts.pending} pendiente{counts.pending === 1 ? "" : "s"}. {isWa ? "Se enviarán" : "Se discarán"} automáticamente al volver al horario, o podés forzar ahora.
+              La campaña está activa con {counts.pending} pendiente{counts.pending === 1 ? "" : "s"}
+              . {isWa ? "Se enviarán" : "Se discarán"} automáticamente al volver al horario, o podés
+              forzar ahora.
             </div>
           </div>
           <button className="btn btn--primary btn--sm" onClick={dialNow} disabled={controlling}>
@@ -710,15 +714,21 @@ export function CampaignDetailPage() {
       {waitingAgent && (
         <div
           style={{
-            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-            padding: "10px 14px", borderRadius: 14,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            padding: "10px 14px",
+            borderRadius: 14,
             border: "1px solid color-mix(in srgb, var(--accent-cyan) 30%, transparent)",
             background: "color-mix(in srgb, var(--accent-cyan) 10%, transparent)",
           }}
         >
           <Icon.PhoneIn size={16} style={{ color: "var(--accent-cyan)", flexShrink: 0 }} />
           <div className="muted" style={{ fontSize: 12 }}>
-            En horario y con {counts.pending} pendiente{counts.pending === 1 ? "" : "s"}, pero todavía no hay llamadas en curso. En modo progresivo el discador espera a que haya un agente disponible; el siguiente ciclo marcará apenas se libere uno.
+            En horario y con {counts.pending} pendiente{counts.pending === 1 ? "" : "s"}, pero
+            todavía no hay llamadas en curso. En modo progresivo el discador espera a que haya un
+            agente disponible; el siguiente ciclo marcará apenas se libere uno.
           </div>
         </div>
       )}
@@ -749,35 +759,24 @@ export function CampaignDetailPage() {
               </div>
             </div>
             <div style={{ textAlign: "right", fontSize: 12 }}>
-              <div
-                className="row"
-                style={{ gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}
-              >
+              <div className="row" style={{ gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 {/* Pending — show only when there's something pending. */}
                 {counts.pending > 0 && (
                   <button
-                    className={`chip${
-                      filterStatus === "pending" ? " chip--amber" : ""
-                    }`}
-                    onClick={() =>
-                      setFilterStatus(
-                        filterStatus === "pending" ? null : "pending"
-                      )
-                    }
+                    className={`chip${filterStatus === "pending" ? " chip--amber" : ""}`}
+                    onClick={() => setFilterStatus(filterStatus === "pending" ? null : "pending")}
                     style={{
                       border: "1px solid var(--border-1)",
                       cursor: "pointer",
                       background:
-                        filterStatus === "pending"
-                          ? "var(--accent-amber-soft)"
-                          : "transparent",
+                        filterStatus === "pending" ? "var(--accent-amber-soft)" : "transparent",
                     }}
                     title="Filtrar pendientes"
                   >
                     <Icon.Clock size={11} /> {counts.pending} pendientes
                   </button>
                 )}
-                {(counts.dialing + counts.connected) > 0 && (
+                {counts.dialing + counts.connected > 0 && (
                   <span className="chip chip--green">
                     <span className="dot pulse" />
                     {counts.dialing + counts.connected} {isWa ? "enviando" : "en vivo"}
@@ -792,17 +791,11 @@ export function CampaignDetailPage() {
                     {counts.done > 0 && (
                       <button
                         className={`chip chip--green`}
-                        onClick={() =>
-                          setFilterStatus(
-                            filterStatus === "done" ? null : "done"
-                          )
-                        }
+                        onClick={() => setFilterStatus(filterStatus === "done" ? null : "done")}
                         style={{
                           cursor: "pointer",
                           outline:
-                            filterStatus === "done"
-                              ? "2px solid var(--accent-green)"
-                              : "none",
+                            filterStatus === "done" ? "2px solid var(--accent-green)" : "none",
                         }}
                         title="Filtrar completados"
                       >
@@ -813,16 +806,12 @@ export function CampaignDetailPage() {
                       <button
                         className={`chip chip--amber`}
                         onClick={() =>
-                          setFilterStatus(
-                            filterStatus === "no_answer" ? null : "no_answer"
-                          )
+                          setFilterStatus(filterStatus === "no_answer" ? null : "no_answer")
                         }
                         style={{
                           cursor: "pointer",
                           outline:
-                            filterStatus === "no_answer"
-                              ? "2px solid var(--accent-amber)"
-                              : "none",
+                            filterStatus === "no_answer" ? "2px solid var(--accent-amber)" : "none",
                         }}
                         title="Filtrar sin contestar"
                       >
@@ -832,17 +821,11 @@ export function CampaignDetailPage() {
                     {counts.failed > 0 && (
                       <button
                         className={`chip chip--red`}
-                        onClick={() =>
-                          setFilterStatus(
-                            filterStatus === "failed" ? null : "failed"
-                          )
-                        }
+                        onClick={() => setFilterStatus(filterStatus === "failed" ? null : "failed")}
                         style={{
                           cursor: "pointer",
                           outline:
-                            filterStatus === "failed"
-                              ? "2px solid var(--accent-red)"
-                              : "none",
+                            filterStatus === "failed" ? "2px solid var(--accent-red)" : "none",
                         }}
                         title="Filtrar fallidos"
                       >
@@ -874,8 +857,7 @@ export function CampaignDetailPage() {
               style={{
                 height: "100%",
                 width: `${pct}%`,
-                background:
-                  "linear-gradient(90deg, var(--accent-amber), var(--accent-pink))",
+                background: "linear-gradient(90deg, var(--accent-amber), var(--accent-pink))",
                 transition: "width 0.3s ease",
               }}
             />
@@ -909,11 +891,24 @@ export function CampaignDetailPage() {
           concurrency={Number(c.concurrency) || 1}
           dialMode={c.dialMode}
           onUpdated={() => refresh()}
-          disabled={
-            c.status === "COMPLETED" ||
-            c.status === "CANCELLED" ||
-            mutations.pending
+          disabled={c.status === "COMPLETED" || c.status === "CANCELLED" || mutations.pending}
+        />
+      )}
+
+      {/* ── Orquestación (Pilar 7): prioridad · peso · meta · pool ─── */}
+      {!isWa && (
+        <CampaignOrchestrationCard
+          campaignId={c.campaignId}
+          priority={Number((c as unknown as { priority?: number }).priority) || undefined}
+          weight={Number((c as unknown as { weight?: number }).weight) || undefined}
+          goalType={(c as unknown as { goalType?: string }).goalType}
+          goalTarget={Number((c as unknown as { goalTarget?: number }).goalTarget) || undefined}
+          connectedCount={Number((c as unknown as { connectedCount?: number }).connectedCount) || 0}
+          conversionsCount={
+            Number((c as unknown as { conversionsCount?: number }).conversionsCount) || 0
           }
+          onUpdated={() => refresh()}
+          disabled={c.status === "COMPLETED" || c.status === "CANCELLED" || mutations.pending}
         />
       )}
 
@@ -936,15 +931,14 @@ export function CampaignDetailPage() {
         from only 1 bucket having a non-zero value.
       */}
       {c.status !== "COMPLETED" && c.status !== "CANCELLED" && (
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 10,
-        }}
-      >
-        {statusCards
-          .map((s) => {
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+          }}
+        >
+          {statusCards.map((s) => {
             const active = filterStatus === s.key;
             const Icn = s.Icn;
             return (
@@ -956,9 +950,7 @@ export function CampaignDetailPage() {
                   cursor: "pointer",
                   padding: "10px 14px",
                   borderRadius: 10,
-                  border: active
-                    ? `1px solid ${s.color}`
-                    : "1px solid var(--border-1)",
+                  border: active ? `1px solid ${s.color}` : "1px solid var(--border-1)",
                   background: active ? "var(--bg-2)" : "var(--bg-1)",
                   textAlign: "left",
                   display: "flex",
@@ -1019,7 +1011,7 @@ export function CampaignDetailPage() {
               </button>
             );
           })}
-      </div>
+        </div>
       )}
 
       {/* ── Monitoreo en vivo: pools por cola/agente + nombres ──────── */}
@@ -1043,9 +1035,7 @@ export function CampaignDetailPage() {
           // "no assignees AND nobody answered yet".
           participatingAgentsCount={
             new Set(
-              contacts
-                .map((r) => resolveAgentLabel(r.agentUsername))
-                .filter((n) => n && n !== "—")
+              contacts.map((r) => resolveAgentLabel(r.agentUsername)).filter((n) => n && n !== "—"),
             ).size
           }
         />
@@ -1127,10 +1117,7 @@ export function CampaignDetailPage() {
             <Icon.Download size={11} /> CSV
           </button>
           {c.status !== "COMPLETED" && c.status !== "CANCELLED" && (
-            <button
-              className="btn btn--sm"
-              onClick={() => setAddContactsOpen(true)}
-            >
+            <button className="btn btn--sm" onClick={() => setAddContactsOpen(true)}>
               <Icon.Plus size={11} /> Agregar
             </button>
           )}
@@ -1155,8 +1142,8 @@ export function CampaignDetailPage() {
             </span>
             {lockedRowCount > 0 && (
               <span className="muted" style={{ fontSize: 11 }}>
-                ({lockedRowCount} bloqueado{lockedRowCount === 1 ? "" : "s"} por
-                estar en llamada activa)
+                ({lockedRowCount} bloqueado{lockedRowCount === 1 ? "" : "s"} por estar en llamada
+                activa)
               </span>
             )}
             <button
@@ -1167,18 +1154,12 @@ export function CampaignDetailPage() {
                 borderColor: "var(--accent-red)",
               }}
               onClick={handleBulkDelete}
-              disabled={
-                contactMutations.pending ||
-                lockedRowCount === selectedRowIds.size
-              }
+              disabled={contactMutations.pending || lockedRowCount === selectedRowIds.size}
             >
               <Icon.Trash size={11} />
               Eliminar {selectedRowIds.size - lockedRowCount}
             </button>
-            <button
-              className="btn btn--ghost btn--sm"
-              onClick={() => setSelectedRowIds(new Set())}
-            >
+            <button className="btn btn--ghost btn--sm" onClick={() => setSelectedRowIds(new Set())}>
               Limpiar
             </button>
           </div>
@@ -1214,10 +1195,7 @@ export function CampaignDetailPage() {
                       checked={
                         visibleContacts.length > 0 &&
                         visibleContacts
-                          .filter(
-                            (r) =>
-                              r.status !== "dialing" && r.status !== "connected"
-                          )
+                          .filter((r) => r.status !== "dialing" && r.status !== "connected")
                           .every((r) => selectedRowIds.has(r.rowId))
                       }
                       onChange={toggleAllSelected}
@@ -1274,11 +1252,8 @@ export function CampaignDetailPage() {
                   </tr>
                 )}
                 {visibleContacts.map((row) => {
-                  const locked =
-                    row.status === "dialing" || row.status === "connected";
-                  const assignedLabel = resolveAgentLabel(
-                    row.assignedAgentUserId
-                  );
+                  const locked = row.status === "dialing" || row.status === "connected";
+                  const assignedLabel = resolveAgentLabel(row.assignedAgentUserId);
                   const handlerLabel = resolveAgentLabel(row.agentUsername);
                   const isSelected = selectedRowIds.has(row.rowId);
                   const recUrl = !!(row.connectContactId && recordingEndpoint);
@@ -1287,9 +1262,7 @@ export function CampaignDetailPage() {
                       key={row.rowId}
                       style={{
                         borderTop: "1px solid var(--border-1)",
-                        background: isSelected
-                          ? "var(--accent-amber-soft)"
-                          : undefined,
+                        background: isSelected ? "var(--accent-amber-soft)" : undefined,
                         transition: "background 0.12s ease",
                       }}
                     >
@@ -1299,18 +1272,11 @@ export function CampaignDetailPage() {
                           checked={isSelected}
                           onChange={() => toggleRowSelected(row.rowId)}
                           disabled={locked}
-                          title={
-                            locked
-                              ? "Llamada activa — no seleccionable"
-                              : "Seleccionar"
-                          }
+                          title={locked ? "Llamada activa — no seleccionable" : "Seleccionar"}
                           style={{ cursor: locked ? "not-allowed" : "pointer" }}
                         />
                       </td>
-                      <td
-                        className="mono"
-                        style={{ padding: "8px 10px", fontSize: 11.5 }}
-                      >
+                      <td className="mono" style={{ padding: "8px 10px", fontSize: 11.5 }}>
                         {row.phone}
                       </td>
                       <td style={{ padding: "8px 10px", color: "var(--text-1)" }}>
@@ -1364,10 +1330,7 @@ export function CampaignDetailPage() {
                           onChange={(v) => handleSetDisposition(row, v)}
                         />
                       </td>
-                      <td
-                        className="mono"
-                        style={{ padding: "8px 10px", fontSize: 11.5 }}
-                      >
+                      <td className="mono" style={{ padding: "8px 10px", fontSize: 11.5 }}>
                         {row.attempts}
                       </td>
                       <td style={{ padding: "8px 10px" }}>
@@ -1376,10 +1339,7 @@ export function CampaignDetailPage() {
                             —
                           </span>
                         ) : (
-                          <span
-                            className="chip chip--amber"
-                            style={{ fontSize: 10 }}
-                          >
+                          <span className="chip chip--amber" style={{ fontSize: 10 }}>
                             {assignedLabel}
                           </span>
                         )}
@@ -1391,16 +1351,9 @@ export function CampaignDetailPage() {
                           color: "var(--text-2)",
                         }}
                       >
-                        {handlerLabel === "—" ? (
-                          <span className="muted">—</span>
-                        ) : (
-                          handlerLabel
-                        )}
+                        {handlerLabel === "—" ? <span className="muted">—</span> : handlerLabel}
                       </td>
-                      <td
-                        className="muted"
-                        style={{ padding: "8px 10px", fontSize: 11 }}
-                      >
+                      <td className="muted" style={{ padding: "8px 10px", fontSize: 11 }}>
                         {row.lastAttemptAt
                           ? formatDistanceToNow(new Date(row.lastAttemptAt), {
                               addSuffix: true,
@@ -1436,11 +1389,7 @@ export function CampaignDetailPage() {
                             className="btn btn--ghost btn--sm btn--icon"
                             onClick={() => setEditingContact(row)}
                             disabled={locked}
-                            title={
-                              locked
-                                ? "No se puede editar llamada activa"
-                                : "Editar"
-                            }
+                            title={locked ? "No se puede editar llamada activa" : "Editar"}
                           >
                             <Icon.Pencil size={12} />
                           </button>
@@ -1448,15 +1397,9 @@ export function CampaignDetailPage() {
                             className="btn btn--ghost btn--sm btn--icon"
                             onClick={() => handleDeleteContact(row)}
                             disabled={locked || contactMutations.pending}
-                            title={
-                              locked
-                                ? "No se puede eliminar llamada activa"
-                                : "Eliminar"
-                            }
+                            title={locked ? "No se puede eliminar llamada activa" : "Eliminar"}
                             style={{
-                              color: locked
-                                ? undefined
-                                : "var(--accent-red)",
+                              color: locked ? undefined : "var(--accent-red)",
                             }}
                           >
                             <Icon.Trash size={12} />
