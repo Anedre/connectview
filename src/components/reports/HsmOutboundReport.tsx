@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 
 /**
  * HsmOutboundReport — WhatsApp template (HSM) Outbound report (roadmap #6),
@@ -21,10 +22,39 @@ interface TemplateAgg {
   pending: number;
   lastSentAt: string;
 }
+interface PhoneAgg {
+  phone: string;
+  sends: number;
+  delivered: number;
+  read: number;
+  failed: number;
+  lastTemplate: string;
+  lastSentAt: string;
+  lastStatus: string;
+  responded: boolean;
+  firstResponseSec: number | null;
+}
+interface ResponseStats {
+  sentPhones: number;
+  respondedPhones: number;
+  responseRate: number;
+  avgFirstResponseSec: number | null;
+  inboundTracked: boolean;
+}
 interface Report {
   totals: Record<string, number>;
   templates: TemplateAgg[];
   rates: { readRate: number; failRate: number };
+  byPhone?: PhoneAgg[];
+  response?: ResponseStats;
+}
+
+/** Segundos → "2m 13s" / "1h 4m" / "—". */
+function fmtDur(sec: number | null): string {
+  if (sec == null) return "—";
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+  return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
 }
 
 export function HsmOutboundReport() {
@@ -33,20 +63,35 @@ export function HsmOutboundReport() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const ep = getApiEndpoints();
-    if (!ep?.getHsmReport) {
-      setError("Endpoint no configurado");
-      setLoading(false);
-      return;
-    }
-    fetch(ep.getHsmReport)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.error) setError(d.error);
-        else setData(d);
-      })
-      .catch(() => setError("No se pudo cargar el reporte"))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    const load = async () => {
+      const ep = getApiEndpoints();
+      if (!ep?.getHsmReport) {
+        if (!cancelled) {
+          setError("Endpoint no configurado");
+          setLoading(false);
+        }
+        return;
+      }
+      // authedFetch → tenant del JWT: lee los hsm-sends + el inbound (conversations)
+      // del tenant. Con fetch anónimo resolvía datos inconsistentes (legacy/blocked).
+      try {
+        const r = await authedFetch(ep.getHsmReport);
+        const d = await r.json();
+        if (!cancelled) {
+          if (d?.error) setError(d.error);
+          else setData(d);
+        }
+      } catch {
+        if (!cancelled) setError("No se pudo cargar el reporte");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) {
@@ -58,8 +103,7 @@ export function HsmOutboundReport() {
   if (!data || data.totals.total === 0) {
     return (
       <div style={{ padding: 24, textAlign: "center", color: "var(--text-3)", fontSize: 12.5 }}>
-        Aún no hay envíos de plantillas registrados. Las campañas de WhatsApp
-        aparecerán aquí.
+        Aún no hay envíos de plantillas registrados. Las campañas de WhatsApp aparecerán aquí.
       </div>
     );
   }
@@ -76,7 +120,10 @@ export function HsmOutboundReport() {
         background: "var(--bg-2)",
       }}
     >
-      <div className="muted" style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4 }}>
+      <div
+        className="muted"
+        style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4 }}
+      >
         {label}
       </div>
       <div style={{ fontSize: 20, fontWeight: 700, color: color || "var(--text-1)", marginTop: 2 }}>
@@ -88,7 +135,7 @@ export function HsmOutboundReport() {
   const totalSends = t.total;
   const mostRecent = data.templates.reduce(
     (acc, tpl) => (tpl.lastSentAt > acc ? tpl.lastSentAt : acc),
-    ""
+    "",
   );
 
   return (
@@ -102,6 +149,17 @@ export function HsmOutboundReport() {
         {kpi("Leídos", t.read || 0, "var(--accent-violet)")}
         {kpi("Fallidos", t.failed || 0, (t.failed || 0) > 0 ? "var(--accent-red)" : undefined)}
         {kpi("Plantillas", data.templates.length)}
+        {/* Pilar 9 Fase C (R16/R17) — respuesta + 1ª respuesta (del inbound). */}
+        {data.response && data.response.inboundTracked && (
+          <>
+            {kpi(
+              "Respuestas",
+              `${Math.round(data.response.responseRate * 100)}%`,
+              "var(--accent-green)",
+            )}
+            {kpi("1ª respuesta", fmtDur(data.response.avgFirstResponseSec), "var(--accent-cyan)")}
+          </>
+        )}
       </div>
       <div className="muted" style={{ fontSize: 11, marginBottom: 14 }}>
         Tasa de lectura <b>{data.rates.readRate}%</b> (leídos/entregados) · Tasa de fallo{" "}
@@ -114,20 +172,22 @@ export function HsmOutboundReport() {
         <table style={{ width: "100%", fontSize: 12.5, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border-1)" }}>
-              {["Plantilla", "Enviados", "Entregados", "Leídos", "Fallidos", "Último envío"].map((h, i) => (
-                <th
-                  key={h}
-                  style={{
-                    textAlign: i === 0 || i === 5 ? "left" : "right",
-                    padding: "6px 10px",
-                    color: "var(--text-2)",
-                    fontWeight: 600,
-                    fontSize: 11,
-                  }}
-                >
-                  {h}
-                </th>
-              ))}
+              {["Plantilla", "Enviados", "Entregados", "Leídos", "Fallidos", "Último envío"].map(
+                (h, i) => (
+                  <th
+                    key={h}
+                    style={{
+                      textAlign: i === 0 || i === 5 ? "left" : "right",
+                      padding: "6px 10px",
+                      color: "var(--text-2)",
+                      fontWeight: 600,
+                      fontSize: 11,
+                    }}
+                  >
+                    {h}
+                  </th>
+                ),
+              )}
             </tr>
           </thead>
           <tbody>
@@ -135,16 +195,36 @@ export function HsmOutboundReport() {
               const sends =
                 tpl.sent + tpl.delivered + tpl.read + tpl.failed + tpl.expired + tpl.pending;
               const cell = (v: number, color?: string) => (
-                <td style={{ padding: "7px 10px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: v > 0 ? color : "var(--text-3)" }}>
+                <td
+                  style={{
+                    padding: "7px 10px",
+                    textAlign: "right",
+                    fontVariantNumeric: "tabular-nums",
+                    color: v > 0 ? color : "var(--text-3)",
+                  }}
+                >
                   {v || "—"}
                 </td>
               );
               return (
                 <tr key={tpl.template} style={{ borderBottom: "1px solid var(--border-1)" }}>
-                  <td style={{ padding: "7px 10px", fontFamily: "var(--font-mono, monospace)", fontSize: 12 }}>
+                  <td
+                    style={{
+                      padding: "7px 10px",
+                      fontFamily: "var(--font-mono, monospace)",
+                      fontSize: 12,
+                    }}
+                  >
                     {tpl.template}
                   </td>
-                  <td style={{ padding: "7px 10px", textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+                  <td
+                    style={{
+                      padding: "7px 10px",
+                      textAlign: "right",
+                      fontVariantNumeric: "tabular-nums",
+                      fontWeight: 600,
+                    }}
+                  >
                     {sends}
                   </td>
                   {cell(tpl.delivered + tpl.read, "var(--accent-cyan)")}
@@ -160,6 +240,133 @@ export function HsmOutboundReport() {
         </table>
       </div>
 
+      {/* Pilar 9 Fase C — detalle POR NÚMERO (R16) + respuesta (R17). */}
+      {data.byPhone && data.byPhone.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--text-2)",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              marginBottom: 8,
+            }}
+          >
+            Por número {data.response && `· ${data.response.sentPhones} clientes`}
+            {data.response && data.response.inboundTracked && (
+              <span
+                className="muted"
+                style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, marginLeft: 6 }}
+              >
+                · {data.response.respondedPhones}/{data.response.sentPhones} respondieron (
+                {Math.round(data.response.responseRate * 100)}%)
+              </span>
+            )}
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: 12.5, borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border-1)" }}>
+                  {[
+                    "Número",
+                    "Envíos",
+                    "Entregados",
+                    "Leídos",
+                    "Fallidos",
+                    "Responde",
+                    "1ª respuesta",
+                    "Último envío",
+                  ].map((h, i) => (
+                    <th
+                      key={h}
+                      style={{
+                        textAlign: i === 0 || i === 7 ? "left" : "right",
+                        padding: "6px 10px",
+                        color: "var(--text-2)",
+                        fontWeight: 600,
+                        fontSize: 11,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.byPhone.map((p) => {
+                  const cell = (v: number, color?: string) => (
+                    <td
+                      style={{
+                        padding: "7px 10px",
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                        color: v > 0 ? color : "var(--text-3)",
+                      }}
+                    >
+                      {v || "—"}
+                    </td>
+                  );
+                  return (
+                    <tr key={p.phone} style={{ borderBottom: "1px solid var(--border-1)" }}>
+                      <td
+                        style={{
+                          padding: "7px 10px",
+                          fontFamily: "var(--font-mono, monospace)",
+                          fontSize: 12,
+                        }}
+                      >
+                        {p.phone}
+                      </td>
+                      <td
+                        style={{
+                          padding: "7px 10px",
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {p.sends}
+                      </td>
+                      {cell(p.delivered + p.read, "var(--accent-cyan)")}
+                      {cell(p.read, "var(--accent-violet)")}
+                      {cell(p.failed, "var(--accent-red)")}
+                      <td style={{ padding: "7px 10px", textAlign: "right" }}>
+                        {p.responded ? (
+                          <span style={{ color: "var(--accent-green)", fontWeight: 600 }}>Sí</span>
+                        ) : (
+                          <span style={{ color: "var(--text-3)" }}>—</span>
+                        )}
+                      </td>
+                      <td
+                        style={{
+                          padding: "7px 10px",
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                          color: p.firstResponseSec != null ? "var(--text-1)" : "var(--text-3)",
+                        }}
+                      >
+                        {fmtDur(p.firstResponseSec)}
+                      </td>
+                      <td style={{ padding: "7px 10px", color: "var(--text-3)", fontSize: 11 }}>
+                        {p.lastSentAt ? new Date(p.lastSentAt).toLocaleString("es-PE") : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {data.response && !data.response.inboundTracked && (
+            <div className="muted" style={{ fontSize: 11, marginTop: 8, lineHeight: 1.5 }}>
+              La <b>tasa de respuesta</b> y el <b>tiempo de 1ª respuesta</b> se miden con el inbound
+              de WhatsApp del inbox (Pilar 6). Para números <b>anclados a Connect</b> el inbound
+              vive en Connect, así que la respuesta no se mide acá.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Honest note: delivered/read/failed are not tracked in Vox by design (#14) */}
       <div
         style={{
@@ -174,9 +381,10 @@ export function HsmOutboundReport() {
         }}
       >
         <strong style={{ color: "var(--text-1)" }}>Entregado · leído · fallido</strong> se llenan
-        automáticamente desde un número de WhatsApp <strong>de Meta no anclado a Amazon Connect</strong>{" "}
-        (ARIA recibe los recibos de entrega). Para un número <strong>anclado a Connect</strong> (chat de
-        agentes), los eventos van a Connect y el agregado vive en{" "}
+        automáticamente desde un número de WhatsApp{" "}
+        <strong>de Meta no anclado a Amazon Connect</strong> (ARIA recibe los recibos de entrega).
+        Para un número <strong>anclado a Connect</strong> (chat de agentes), los eventos van a
+        Connect y el agregado vive en{" "}
         <a
           href="https://business.facebook.com/wa/manage/"
           target="_blank"
