@@ -16,6 +16,7 @@ import {
   type Conversation,
 } from "../_shared/conversations";
 import { samePhone } from "../_shared/phone";
+import { sendWhatsApp } from "../_shared/whatsappSend";
 
 /**
  * manage-conversations — backend del inbox omnicanal (Pilar 6 · R13).
@@ -119,8 +120,10 @@ const bad = (c: number, e: string) => ({
   body: JSON.stringify({ error: e }),
 });
 
-async function getTenantMeta(tenantId: string): Promise<{ token?: string; pageId?: string }> {
-  let token: string | undefined, pageId: string | undefined;
+async function getTenantMeta(
+  tenantId: string,
+): Promise<{ token?: string; pageId?: string; waPhoneId?: string }> {
+  let token: string | undefined, pageId: string | undefined, waPhoneId: string | undefined;
   try {
     const it = await legacyDynamo.send(
       new GetItemCommand({ TableName: CONNECTIONS_TABLE, Key: { tenantId: { S: tenantId } } }),
@@ -128,6 +131,8 @@ async function getTenantMeta(tenantId: string): Promise<{ token?: string; pageId
     if (it.Item) {
       const cfg = JSON.parse(unmarshall(it.Item).configJson || "{}");
       pageId = cfg.meta?.pageId;
+      // WhatsApp meta-mode: phone_number_id para responder por la Cloud API.
+      if (cfg.whatsapp?.mode === "meta") waPhoneId = cfg.whatsapp?.metaPhoneNumberId;
     }
   } catch {
     /* */
@@ -146,7 +151,7 @@ async function getTenantMeta(tenantId: string): Promise<{ token?: string; pageId
   } catch {
     /* */
   }
-  return { token, pageId };
+  return { token, pageId, waPhoneId };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -317,12 +322,19 @@ export const handler: Handler = async (event: any) => {
         if (!text) return bad(400, "text requerido");
         const conv = await getConversation(legacyDynamo, conversationId);
         if (!conv) return bad(404, "conversación no encontrada");
-        const { token, pageId } = await getTenantMeta(tenantId);
-        if (!token || !pageId) return bad(400, "Meta no configurado para este tenant");
-        const pageToken = await resolvePageToken(token, pageId);
+        const { token, pageId, waPhoneId } = await getTenantMeta(tenantId);
+        if (!token) return bad(400, "Meta no configurado para este tenant");
         const actor = typeof body.actor === "string" ? body.actor : "agente";
         const isComment = conv.channel === "fb_comment";
+        const isWhatsApp = conv.channel === "whatsapp";
         let outboundText = text; // lo que se loguea como mensaje saliente
+
+        // El page token solo hace falta para IG/Messenger/comentarios (no WhatsApp).
+        let pageToken = token;
+        if (!isWhatsApp) {
+          if (!pageId) return bad(400, "Meta (Página) no configurado para este tenant");
+          pageToken = await resolvePageToken(token, pageId);
+        }
 
         try {
           if (body.action === "replyComment") {
@@ -333,16 +345,28 @@ export const handler: Handler = async (event: any) => {
             // Comentario → privado: Send API por comment_id (FB) o private_replies (IG).
             if (!isComment || !conv.commentId) return bad(400, "no es un comentario");
             await privateReplyToComment(
-              pageId,
+              pageId!,
               conv.commentId,
               conv.platform || "facebook",
               pageToken,
               text,
             );
             await patchConversation(legacyDynamo, conversationId, { dmSent: true });
+          } else if (isWhatsApp) {
+            // WhatsApp (meta) → respuesta libre por la Cloud API (ventana 24h).
+            if (!waPhoneId) return bad(400, "WhatsApp (meta) no configurado para este tenant");
+            await sendWhatsApp(
+              { mode: "meta", metaPhoneNumberId: waPhoneId, tenantId },
+              {
+                messaging_product: "whatsapp",
+                to: conv.senderId,
+                type: "text",
+                text: { body: text },
+              },
+            );
           } else {
             // reply directo (IG DM / Messenger).
-            await sendMetaMessage(pageId, pageToken, conv.senderId, text);
+            await sendMetaMessage(pageId!, pageToken, conv.senderId, text);
           }
         } catch (e) {
           return bad(502, `Meta rechazó el envío: ${e instanceof Error ? e.message : "error"}`);

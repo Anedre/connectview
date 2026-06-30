@@ -26,6 +26,7 @@ import {
   removeSuppression,
 } from "../_shared/suppression";
 import { updateHsmStatus, type HsmStatus } from "../_shared/hsmStatus";
+import { appendInbound, appendOutbound, convId } from "../_shared/conversations";
 
 /**
  * whatsapp-meta-webhook — webhook de Meta Cloud API para números de WhatsApp
@@ -73,7 +74,12 @@ interface BotMsg {
 function buildMetaMessage(to: string, m: BotMsg): Record<string, unknown> {
   const base = { messaging_product: "whatsapp", recipient_type: "individual", to };
   if (m.media && m.media.url) {
-    const TYPE: Record<string, string> = { Imagen: "image", Video: "video", Documento: "document", Audio: "audio" };
+    const TYPE: Record<string, string> = {
+      Imagen: "image",
+      Video: "video",
+      Documento: "document",
+      Audio: "audio",
+    };
     const t = TYPE[m.media.type] || "image";
     const payload: Record<string, unknown> = { link: m.media.url };
     if (t !== "audio" && m.media.caption) payload.caption = String(m.media.caption).slice(0, 1024);
@@ -84,25 +90,47 @@ function buildMetaMessage(to: string, m: BotMsg): Record<string, unknown> {
   const rows = (m.rows || []).slice(0, 10);
   if (rows.length > 0) {
     return {
-      ...base, type: "interactive",
+      ...base,
+      type: "interactive",
       interactive: {
         type: "list",
         body: { text: (m.text || "Elegí una opción:").slice(0, 1024) },
-        action: { button: "Ver opciones", sections: [{ rows: rows.map((r) => ({ id: String(r.id).slice(0, 200), title: String(r.title || "Opción").slice(0, 24), description: (r.description || "").slice(0, 72) })) }] },
+        action: {
+          button: "Ver opciones",
+          sections: [
+            {
+              rows: rows.map((r) => ({
+                id: String(r.id).slice(0, 200),
+                title: String(r.title || "Opción").slice(0, 24),
+                description: (r.description || "").slice(0, 72),
+              })),
+            },
+          ],
+        },
       },
     };
   }
   if (buttons.length > 0) {
     return {
-      ...base, type: "interactive",
+      ...base,
+      type: "interactive",
       interactive: {
         type: "button",
         body: { text: (m.text || "…").slice(0, 1024) },
-        action: { buttons: buttons.map((b) => ({ type: "reply", reply: { id: String(b.id).slice(0, 256), title: String(b.label || "OK").slice(0, 20) } })) },
+        action: {
+          buttons: buttons.map((b) => ({
+            type: "reply",
+            reply: { id: String(b.id).slice(0, 256), title: String(b.label || "OK").slice(0, 20) },
+          })),
+        },
       },
     };
   }
-  return { ...base, type: "text", text: { body: (m.text || "…").slice(0, 4096), preview_url: false } };
+  return {
+    ...base,
+    type: "text",
+    text: { body: (m.text || "…").slice(0, 4096), preview_url: false },
+  };
 }
 
 interface TenantWa {
@@ -116,7 +144,7 @@ async function findTenantByMetaPhone(phoneNumberId: string): Promise<TenantWa | 
   let lastKey: Record<string, unknown> | undefined;
   do {
     const res = await legacyDynamo.send(
-      new ScanCommand({ TableName: CONNECTIONS_TABLE, ExclusiveStartKey: lastKey as never })
+      new ScanCommand({ TableName: CONNECTIONS_TABLE, ExclusiveStartKey: lastKey as never }),
     );
     for (const it of res.Items || []) {
       const row = unmarshall(it) as { tenantId?: string; configJson?: string };
@@ -140,10 +168,12 @@ async function pickBotId(dynamo: DynamoDBClient, configBotId?: string): Promise<
   if (configBotId) return configBotId;
   try {
     const res = await dynamo.send(new ScanCommand({ TableName: BOTS_TABLE }));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const bots = (res.Items || [])
-      .map((it) => unmarshall(it) as any)
-      .filter((b) => b.botId && !String(b.botId).startsWith("conv#") && !String(b.botId).startsWith("sess#"));
+      .map((it) => unmarshall(it) as { botId?: string; status?: string })
+      .filter(
+        (b) =>
+          b.botId && !String(b.botId).startsWith("conv#") && !String(b.botId).startsWith("sess#"),
+      );
     const pub = bots.find((b) => b.status === "published" || b.status === "active") || bots[0];
     return pub?.botId || "";
   } catch {
@@ -166,7 +196,7 @@ const cpFailClosed = new CustomerProfilesClient({ maxAttempts: 1 });
 async function handleFlowReply(
   phoneNumberId: string,
   from: string,
-  nfm: { name?: string; body?: string; response_json?: string }
+  nfm: { name?: string; body?: string; response_json?: string },
 ): Promise<void> {
   const t = await findTenantByMetaPhone(phoneNumberId);
   if (!t || !t.tenantId) return;
@@ -212,7 +242,7 @@ async function handleFlowReply(
   try {
     const result = await propagateLead(
       { phone, name, source: "WhatsApp Flow", attributes },
-      { origin: "vox" }
+      { origin: "vox" },
     );
     if (result.leadId) {
       await appendLeadHistory(result.leadId, {
@@ -229,7 +259,7 @@ async function handleFlowReply(
       flow: { name: nfm.name },
     });
     console.log(
-      `flow reply: tenant=${t.tenantId} phone=${phone} flow=${nfm.name || "—"} lead=${result.leadId || "—"} fields=${Object.keys(attributes).length}`
+      `flow reply: tenant=${t.tenantId} phone=${phone} flow=${nfm.name || "—"} lead=${result.leadId || "—"} fields=${Object.keys(attributes).length}`,
     );
   } catch (e) {
     console.error("flow reply → CRM falló:", e);
@@ -285,7 +315,7 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
     try {
       await sendWhatsApp(
         { mode: "meta" as const, metaPhoneNumberId: phoneNumberId, tenantId: t.tenantId },
-        buildMetaMessage(from, { kind: "bot", text: confirmText })
+        buildMetaMessage(from, { kind: "bot", text: confirmText }),
       );
     } catch (e) {
       console.error("opt-out confirm falló:", e);
@@ -304,8 +334,32 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
         /* best-effort */
       }
     }
-    console.log(`opt-${isStop ? "out" : "in"}: tenant=${t.tenantId} phone=${phoneE164} lead=${leadId || "—"}`);
+    console.log(
+      `opt-${isStop ? "out" : "in"}: tenant=${t.tenantId} phone=${phoneE164} lead=${leadId || "—"}`,
+    );
     return; // NO corremos el bot para un STOP/ALTA
+  }
+
+  // ── Pilar 6 · espejo al inbox omnicanal (best-effort, aditivo) ────────────
+  // Toda conversación de WhatsApp aparece en la bandeja de ARIA junto a IG/
+  // Messenger. El teléfono = senderId → se auto-vincula al lead (Cliente 360).
+  // La tabla `connectview-conversations` es pooled → usamos el dynamo legacy.
+  let mirrored: Awaited<ReturnType<typeof appendInbound>> | null = null;
+  try {
+    mirrored = await appendInbound(legacyDynamo, {
+      channel: "whatsapp",
+      senderId: from,
+      text,
+      tenantId: t.tenantId,
+    });
+  } catch (e) {
+    console.error("mirror WhatsApp→inbox falló:", e);
+  }
+  // Handoff bot↔humano: si un AGENTE ya tomó esta conversación en la bandeja
+  // (assignedAgent != "bot"), el bot se retira y deja que el humano responda.
+  if (mirrored?.assignedAgent && mirrored.assignedAgent !== "bot") {
+    console.log(`WhatsApp ${from}: tomada por ${mirrored.assignedAgent} → bot omitido`);
+    return;
   }
 
   const botId = await pickBotId(dynamo, t.whatsapp?.botId);
@@ -317,7 +371,9 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let state: any = null;
   try {
-    const r = await dynamo.send(new GetItemCommand({ TableName: CONV_TABLE, Key: { botId: { S: sessKey } } }));
+    const r = await dynamo.send(
+      new GetItemCommand({ TableName: CONV_TABLE, Key: { botId: { S: sessKey } } }),
+    );
     if (r.Item) {
       const it = unmarshall(r.Item) as { state?: string };
       state = it.state ? JSON.parse(it.state) : null;
@@ -334,7 +390,12 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
       const resp = await fetch(BOT_RUNTIME_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ botId, state, input: text ? { text } : undefined, source: "whatsapp" }),
+        body: JSON.stringify({
+          botId,
+          state,
+          input: text ? { text } : undefined,
+          source: "whatsapp",
+        }),
       });
       d = await resp.json();
     } catch (e) {
@@ -345,13 +406,21 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
 
   // 3) persistir estado
   try {
-    await dynamo.send(new PutItemCommand({
-      TableName: CONV_TABLE,
-      Item: marshall(
-        { botId: sessKey, recType: "session", agentBotId: botId, state: JSON.stringify(d.state || {}), updatedAt: new Date().toISOString() },
-        { removeUndefinedValues: true }
-      ),
-    }));
+    await dynamo.send(
+      new PutItemCommand({
+        TableName: CONV_TABLE,
+        Item: marshall(
+          {
+            botId: sessKey,
+            recType: "session",
+            agentBotId: botId,
+            state: JSON.stringify(d.state || {}),
+            updatedAt: new Date().toISOString(),
+          },
+          { removeUndefinedValues: true },
+        ),
+      }),
+    );
   } catch {
     /* best-effort */
   }
@@ -362,6 +431,14 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
   for (const m of botMsgs) {
     try {
       await sendWhatsApp(route, buildMetaMessage(from, m));
+      // Espejo de la respuesta del bot al inbox (best-effort).
+      if (m.text) {
+        try {
+          await appendOutbound(legacyDynamo, convId("whatsapp", from), m.text, "bot");
+        } catch {
+          /* mirror best-effort */
+        }
+      }
     } catch (e) {
       console.error("reply Meta falló:", e);
     }
@@ -376,7 +453,12 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
  */
 async function handleStatus(
   phoneNumberId: string,
-  st: { id?: string; status?: string; recipient_id?: string; errors?: { code?: number | string; title?: string }[] }
+  st: {
+    id?: string;
+    status?: string;
+    recipient_id?: string;
+    errors?: { code?: number | string; title?: string }[];
+  },
 ): Promise<void> {
   if (!st.id || !st.status) return;
   let dynamo = legacyDynamo;
@@ -428,7 +510,7 @@ export const handler: Handler = async (event: any) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let body: any = {};
   try {
-    body = typeof event.body === "string" ? JSON.parse(event.body) : (event.body || {});
+    body = typeof event.body === "string" ? JSON.parse(event.body) : event.body || {};
   } catch {
     return TEXT(200, "ok");
   }

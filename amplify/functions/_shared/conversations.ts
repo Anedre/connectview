@@ -144,6 +144,10 @@ export async function appendInbound(
   const hint = extractContact(m.text || "");
   if (hint.phone && !conv.phone) conv.phone = hint.phone;
   if (hint.email && !conv.email) conv.email = hint.email;
+  // En WhatsApp el remitente ES el teléfono → identidad directa (auto-vínculo).
+  if (m.channel === "whatsapp" && !conv.phone) {
+    conv.phone = normalizePhone(m.senderId)?.e164 || `+${m.senderId.replace(/\D/g, "")}`;
+  }
   conv.status = "open";
   conv.updatedAt = now;
   await put(dynamo, conv);
