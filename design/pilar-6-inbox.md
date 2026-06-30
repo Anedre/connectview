@@ -121,3 +121,24 @@ Del Pilar 4/5: Meta App "Novasys del Perú" (`932893188309221`) + token **system
 **⚠️ Pre-commit hook (husky/lint-staged):** otra sesión agregó `.husky/pre-commit`. `eslint --fix` (a) hace OOM/SIGKILL sobre lotes enormes (commit de recuperación 194 files → `--no-verify`) y (b) falla por `react-refresh/only-export-components` en `primitives.tsx` (mixto). Fix de (b): `eslint-disable` en el archivo. Commits chicos pasan normal.
 
 **⚠️ INCIDENTE DE PÉRDIDA (2026-06-19):** otra sesión corrió `git stash -u` + `git reset --hard HEAD` y barrió TODO el árbol sin commitear (Pilares 3–6, 193 files). Recuperado con `git stash apply stash@{0}` (base==HEAD, limpio) y commiteado de checkpoint (`2c60f93`). **Lección: commitear seguido** — el repo lo tocan varias sesiones a la vez.
+
+## 10. Fase C-A/B — CONSTRUIDA + VERIFICADA EN VIVO ✅ (2026-06-19, commit `8a79650`)
+
+**Decisiones confirmadas con el usuario:** (1) vínculo **manual + auto-inteligente**; (2) la actividad social vinculada **sí cuenta como golpes** (Pilar 2).
+
+**El gap (del mapeo):** los canales sociales dan `senderId` (PSID/IGSID) + nombre, pero **no teléfono**. Todo lo demás (leads, Customer Profiles de Amazon Connect, WhatsApp, voz) se deduplica **por teléfono** (`samePhone`). La conversación ya tenía `leadId?` sin usar = punto de enganche. NO existía ningún vínculo social-id↔teléfono.
+
+**Backend:**
+
+- `_shared/conversations.ts` — `Conversation` += `phone`/`email`; `extractContact(text)` (regex teléfono/email); `appendInbound` auto-extrae del DM (no pisa lo conocido); `patchConversation` acepta `leadId`/`phone`/`email`/`customerName`.
+- `manage-conversations` — `findLeadByPhone` (scan `connectview-leads` + `samePhone`, sin GSI hoy) + `appendLeadGolpe` (UpdateItem `list_append` en `lead.history`, `type:"gestion"` → cuenta como golpe). GET `?conversationId` **auto-vincula perezoso** por teléfono (+ golpe entrante). Acciones `link`/`unlink`. Cada reply de conv vinculada → golpe saliente.
+- IAM: `connectview-campaign-lambda-role` ya tiene `LeadsAccess` (Scan+UpdateItem) → no hubo que tocar permisos.
+
+**Frontend:**
+
+- `useConversations.ts` — `Conversation` += `phone`/`email`; acciones `link`/`unlink`.
+- `components/inbox/CustomerContextBar.tsx` — **"Cliente 360" en el hilo**: vinculado → nombre + chip de origen + `🎯 golpes` + teléfono + `Ver`(→/leads)/desvincular; sin vincular → hint `📞 {tel} detectado` + buscador de leads (reusa `manage-leads ?phone=` y la lista). Cableado en `ConversationThread` entre header y mensajes.
+
+**Verificado en vivo (Browser 1, 2026-06-19):** mandé un DM de Messenger con `+51953730189 / juan@example.com` en el texto → el webhook **extrajo** phone+email; al abrir la conversación el **auto-vínculo** matcheó el lead "Lead Prueba ARIA" (renombró la conv + barra Cliente 360 mostró `Lead Prueba ARIA · Facebook · +51953730189 · Ver/✕`); en el comentario (sin teléfono) la barra mostró "Sin vincular" + **el picker cargó los leads reales** (búsqueda por nombre/tel/empresa). Fase B revisada de paso (botones Público/Privado + nota).
+
+**Pendiente Fase C:** **WhatsApp meta-mode en la misma bandeja** (hoy WhatsApp entra por `whatsapp-meta-webhook`→bot-runtime, no al inbox — traerlo es la última pieza de la omnicanalidad) + GSI `byPhone` en `connectview-leads` (hoy el match es scan O(n)) + opcional: regla de automatización comentario→DM full-auto (opt-in).
