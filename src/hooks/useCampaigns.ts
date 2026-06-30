@@ -40,6 +40,12 @@ export interface Campaign {
   failedCount: number;
   noAnswerCount: number;
   skippedCount?: number;
+  // Pilar 7 — orquestación
+  priority?: number;
+  weight?: number;
+  goalType?: string;
+  goalTarget?: number;
+  conversionsCount?: number;
 }
 
 async function fetchCampaigns(): Promise<Campaign[]> {

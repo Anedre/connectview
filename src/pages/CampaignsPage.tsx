@@ -5,14 +5,10 @@ import { useCampaigns, type Campaign } from "@/hooks/useCampaigns";
 import { useCampaignMutations } from "@/hooks/useCampaignMutations";
 import { formatDistanceToNow } from "date-fns";
 import * as Icon from "@/components/vox/primitives";
-import {
-  Avatar,
-  Card,
-  CardBody,
-  Kpi,
-} from "@/components/vox/primitives";
+import { Avatar, Card, CardBody, Kpi } from "@/components/vox/primitives";
 import { PageHeader } from "@/components/vox/PageHeader";
 import { NotIntegrated } from "@/components/vox/NotIntegrated";
+import { CampaignBlendBoard } from "@/components/campaigns/CampaignBlendBoard";
 import { useConnections } from "@/hooks/useConnections";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 
@@ -87,7 +83,7 @@ export function CampaignsPage() {
         (c) =>
           (c.name || "").toLowerCase().includes(q) ||
           (c.description || "").toLowerCase().includes(q) ||
-          (c.sourcePhoneNumber || "").toLowerCase().includes(q)
+          (c.sourcePhoneNumber || "").toLowerCase().includes(q),
       );
     }
     return list;
@@ -125,12 +121,9 @@ export function CampaignsPage() {
 
   const totalReached = campaigns.reduce(
     (acc, c) => acc + (c.doneCount || 0) + (c.failedCount || 0),
-    0
+    0,
   );
-  const totalContacts = campaigns.reduce(
-    (acc, c) => acc + (c.totalContacts || 0),
-    0
-  );
+  const totalContacts = campaigns.reduce((acc, c) => acc + (c.totalContacts || 0), 0);
   // Solo cuenta actividad en vivo de campañas ACTIVAS (RUNNING/PAUSED) — antes
   // sumaba también contadores stale de campañas terminadas → "EN VIVO 1" con
   // "0 activas" (contacto fantasma).
@@ -140,7 +133,7 @@ export function CampaignsPage() {
       (c.status === "RUNNING" || c.status === "PAUSED"
         ? (c.dialingCount || 0) + (c.connectedCount || 0)
         : 0),
-    0
+    0,
   );
 
   return (
@@ -178,9 +171,7 @@ export function CampaignsPage() {
           value={String(tabCounts.all)}
           delta={
             tabCounts.active > 0
-              ? `${tabCounts.active} ${
-                  tabCounts.active === 1 ? "activa" : "activas"
-                }`
+              ? `${tabCounts.active} ${tabCounts.active === 1 ? "activa" : "activas"}`
               : "ninguna activa"
           }
           // Bug #21 — only show an up-arrow when there's actually
@@ -196,23 +187,22 @@ export function CampaignsPage() {
         <Kpi
           label="En vivo ahora"
           value={String(live)}
-          delta={
-            live > 0 ? "conectados/marcando" : "sin actividad en vivo"
-          }
+          delta={live > 0 ? "conectados/marcando" : "sin actividad en vivo"}
           deltaDir={live > 0 ? "up" : "flat"}
           color="var(--accent-green)"
         />
         <Kpi
           label="Tasa de progreso"
-          value={`${
-            totalContacts ? Math.round((totalReached / totalContacts) * 100) : 0
-          }%`}
+          value={`${totalContacts ? Math.round((totalReached / totalContacts) * 100) : 0}%`}
           delta="acumulado"
           deltaDir="flat"
         />
       </div>
 
       <div style={{ height: 16 }} />
+
+      {/* Pilar 7 · Fase B — tablero blend en vivo (solo si hay voz activa). */}
+      <CampaignBlendBoard />
 
       <Card>
         <div className="card__head" style={{ flexWrap: "wrap" }}>
@@ -267,7 +257,9 @@ export function CampaignsPage() {
             </div>
           )}
 
-          {!loading && !error && visibleCampaigns.length === 0 &&
+          {!loading &&
+            !error &&
+            visibleCampaigns.length === 0 &&
             (campaigns.length === 0 && !dataPlaneEnabled ? (
               <NotIntegrated
                 title="Todavía no integraste tu base de datos"
@@ -288,8 +280,8 @@ export function CampaignsPage() {
                   {query
                     ? `No hay campañas que coincidan con "${query}".`
                     : campaigns.length === 0
-                    ? "Sin campañas todavía. Crea la primera para empezar."
-                    : "No hay campañas en este tab."}
+                      ? "Sin campañas todavía. Crea la primera para empezar."
+                      : "No hay campañas en este tab."}
                 </div>
                 {campaigns.length === 0 && (
                   <button
@@ -397,9 +389,7 @@ export function CampaignsPage() {
                     style={{
                       width: `${pct}%`,
                       background:
-                        c.status === "PAUSED"
-                          ? "var(--accent-amber)"
-                          : "var(--accent-cyan)",
+                        c.status === "PAUSED" ? "var(--accent-amber)" : "var(--accent-cyan)",
                     }}
                   />
                 </div>
@@ -417,9 +407,7 @@ export function CampaignsPage() {
                   >
                     {/* Bug #22/#23 — for finished campaigns "Avance" is
                         misleading; it's really the success rate. */}
-                    {c.status === "COMPLETED" || c.status === "CANCELLED"
-                      ? "Tasa éxito"
-                      : "Avance"}{" "}
+                    {c.status === "COMPLETED" || c.status === "CANCELLED" ? "Tasa éxito" : "Avance"}{" "}
                     <span className="mono" style={{ color: "var(--text-1)" }}>
                       {pct}%
                     </span>
