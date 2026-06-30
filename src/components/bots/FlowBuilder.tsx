@@ -16,7 +16,21 @@ import {
   type Connection,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Save, Trash2, AlertTriangle, Check, Play, Bot as BotIcon, Search, Network, Braces, HelpCircle, X, GripVertical } from "lucide-react";
+import {
+  Plus,
+  Save,
+  Trash2,
+  AlertTriangle,
+  Check,
+  Play,
+  Bot as BotIcon,
+  Search,
+  Network,
+  Braces,
+  HelpCircle,
+  X,
+  GripVertical,
+} from "lucide-react";
 import {
   NODE_KINDS,
   PALETTE_GROUPS,
@@ -34,9 +48,23 @@ import { StepNode } from "@/components/bots/StepNode";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { BuilderCtx } from "@/components/bots/builderCtx";
 import { BotTester } from "@/components/bots/BotTester";
-import { NodePreview, ConditionPreview, DelayPresets, StartPreview, AiPersonaPresets, BusinessHoursPreview, ABSplitPreview, WebhookTester, HandoffPreview } from "@/components/bots/NodePreview";
+import {
+  NodePreview,
+  ConditionPreview,
+  DelayPresets,
+  StartPreview,
+  AiPersonaPresets,
+  AiAgentTools,
+  BusinessHoursPreview,
+  ABSplitPreview,
+  WebhookTester,
+  HandoffPreview,
+} from "@/components/bots/NodePreview";
 import { getApiEndpoints } from "@/lib/api";
-import { WaTemplateConfigurator, type WaTemplate } from "@/components/whatsapp/WaTemplateConfigurator";
+import {
+  WaTemplateConfigurator,
+  type WaTemplate,
+} from "@/components/whatsapp/WaTemplateConfigurator";
 
 /**
  * FlowBuilder — the visual chat-flow editor (roadmap #16). A react-flow canvas
@@ -65,7 +93,10 @@ const ROW_GAP = 175;
 function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
   const outgoing = new Map<string, string[]>();
   const indeg = new Map<string, number>();
-  nodes.forEach((n) => { outgoing.set(n.id, []); indeg.set(n.id, 0); });
+  nodes.forEach((n) => {
+    outgoing.set(n.id, []);
+    indeg.set(n.id, 0);
+  });
   edges.forEach((e) => {
     if (outgoing.has(e.source) && indeg.has(e.target)) {
       outgoing.get(e.source)!.push(e.target);
@@ -75,20 +106,31 @@ function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
   const depth = new Map<string, number>();
   const queue: string[] = [];
   const start = nodes.find((n) => (n.data as { kind?: string }).kind === "start");
-  if (start) { depth.set(start.id, 0); queue.push(start.id); }
+  if (start) {
+    depth.set(start.id, 0);
+    queue.push(start.id);
+  }
   nodes.forEach((n) => {
-    if (!depth.has(n.id) && (indeg.get(n.id) || 0) === 0) { depth.set(n.id, 0); queue.push(n.id); }
+    if (!depth.has(n.id) && (indeg.get(n.id) || 0) === 0) {
+      depth.set(n.id, 0);
+      queue.push(n.id);
+    }
   });
   let qi = 0;
   while (qi < queue.length) {
     const id = queue[qi++];
     const d = depth.get(id)!;
     for (const t of outgoing.get(id) || []) {
-      if (!depth.has(t)) { depth.set(t, d + 1); queue.push(t); }
+      if (!depth.has(t)) {
+        depth.set(t, d + 1);
+        queue.push(t);
+      }
     }
   }
   const maxD = depth.size ? Math.max(...depth.values()) : 0;
-  nodes.forEach((n) => { if (!depth.has(n.id)) depth.set(n.id, maxD + 1); });
+  nodes.forEach((n) => {
+    if (!depth.has(n.id)) depth.set(n.id, maxD + 1);
+  });
   const cols = new Map<number, string[]>();
   nodes.forEach((n) => {
     const d = depth.get(n.id)!;
@@ -96,12 +138,14 @@ function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
     cols.get(d)!.push(n.id);
   });
   const pos = new Map<string, { x: number; y: number }>();
-  [...cols.keys()].sort((a, b) => a - b).forEach((d) => {
-    const ids = cols.get(d)!;
-    ids.forEach((id, i) => {
-      pos.set(id, { x: d * COL_GAP, y: i * ROW_GAP - ((ids.length - 1) * ROW_GAP) / 2 });
+  [...cols.keys()]
+    .sort((a, b) => a - b)
+    .forEach((d) => {
+      const ids = cols.get(d)!;
+      ids.forEach((id, i) => {
+        pos.set(id, { x: d * COL_GAP, y: i * ROW_GAP - ((ids.length - 1) * ROW_GAP) / 2 });
+      });
     });
-  });
   return nodes.map((n) => ({ ...n, position: pos.get(n.id) || n.position }));
 }
 
@@ -115,7 +159,7 @@ const NODE_W_APPROX = 246;
 function findDropConnection(
   p: { x: number; y: number },
   nodes: Node[],
-  edges: Edge[]
+  edges: Edge[],
 ): { source: string; sourceHandle: string } | null {
   let best: { source: string; sourceHandle: string } | null = null;
   let bestDist = Infinity;
@@ -124,7 +168,7 @@ function findDropConnection(
     if (!kind) continue;
     const outlets = NODE_KINDS[kind]?.outlets(n.data as Record<string, unknown>) || [];
     const free = outlets.find(
-      (o) => !edges.some((e) => e.source === n.id && e.sourceHandle === o.id)
+      (o) => !edges.some((e) => e.source === n.id && e.sourceHandle === o.id),
     );
     if (!free) continue;
     const w = n.measured?.width ?? NODE_W_APPROX;
@@ -233,7 +277,9 @@ function FlowBuilderInner({
     fetch(ep.listWhatsAppTemplates)
       .then((r) => r.json())
       .then((j) => setWaTemplates(Array.isArray(j.templates) ? j.templates : []))
-      .catch(() => { /* templates optional */ });
+      .catch(() => {
+        /* templates optional */
+      });
   }, []);
 
   // Reset when a different bot is loaded.
@@ -248,7 +294,7 @@ function FlowBuilderInner({
 
   const onConnect = useCallback(
     (c: Connection) => setEdges((eds) => addEdge({ ...c, ...edgeDefaults }, eds)),
-    [setEdges]
+    [setEdges],
   );
 
   const currentBot = useMemo<Bot>(
@@ -261,9 +307,7 @@ function FlowBuilderInner({
         id: n.id,
         kind: (n.data as { kind: NodeKind }).kind,
         position: n.position,
-        data: Object.fromEntries(
-          Object.entries(n.data).filter(([k]) => k !== "kind")
-        ),
+        data: Object.fromEntries(Object.entries(n.data).filter(([k]) => k !== "kind")),
       })) as BotNode[],
       edges: edges.map((e) => ({
         id: e.id,
@@ -273,7 +317,7 @@ function FlowBuilderInner({
         targetHandle: e.targetHandle ?? null,
       })),
     }),
-    [initial.botId, initial.trigger, name, status, nodes, edges]
+    [initial.botId, initial.trigger, name, status, nodes, edges],
   );
 
   const issues = useMemo(() => validateBot(currentBot), [currentBot]);
@@ -283,16 +327,19 @@ function FlowBuilderInner({
     (nodeId?: string) => {
       if (!nodeId) return;
       setSelectedId(nodeId);
-      window.setTimeout(() => fitView({ nodes: [{ id: nodeId }], duration: 400, maxZoom: 1.2, padding: 0.6 }), 30);
+      window.setTimeout(
+        () => fitView({ nodes: [{ id: nodeId }], duration: 400, maxZoom: 1.2, padding: 0.6 }),
+        30,
+      );
     },
-    [fitView]
+    [fitView],
   );
 
   const addNode = useCallback(
     (
       kind: NodeKind,
       dropPos?: { x: number; y: number },
-      autoConnect?: { source: string; sourceHandle: string }
+      autoConnect?: { source: string; sourceHandle: string },
     ) => {
       // Soltar (arrastrar desde la paleta) = posición exacta del cursor. Click =
       // a la derecha del nodo seleccionado. En ambos casos puede autoconectar.
@@ -316,20 +363,30 @@ function FlowBuilderInner({
       // Conexión AUTOMÁTICA: al soltar cerca de una salida (autoConnect) o, en
       // click-add, desde el primer outlet libre del nodo seleccionado.
       if (autoConnect) {
-        const conn: Connection = { source: autoConnect.source, sourceHandle: autoConnect.sourceHandle, target: node.id, targetHandle: null };
+        const conn: Connection = {
+          source: autoConnect.source,
+          sourceHandle: autoConnect.sourceHandle,
+          target: node.id,
+          targetHandle: null,
+        };
         setEdges((eds) => addEdge({ ...conn, ...edgeDefaults }, eds));
       } else if (sel) {
         const def = NODE_KINDS[(sel.data as { kind: NodeKind }).kind];
         const firstOutlet = def?.outlets(sel.data as Record<string, unknown>)[0];
         const taken = edges.some((e) => e.source === sel.id && e.sourceHandle === firstOutlet?.id);
         if (firstOutlet && !taken) {
-          const conn: Connection = { source: sel.id, sourceHandle: firstOutlet.id, target: node.id, targetHandle: null };
+          const conn: Connection = {
+            source: sel.id,
+            sourceHandle: firstOutlet.id,
+            target: node.id,
+            targetHandle: null,
+          };
           setEdges((eds) => addEdge({ ...conn, ...edgeDefaults }, eds));
         }
       }
       setSelectedId(node.id);
     },
-    [screenToFlowPosition, setNodes, setEdges, selectedId, nodes, edges]
+    [screenToFlowPosition, setNodes, setEdges, selectedId, nodes, edges],
   );
 
   // "Ordenar" — auto-layout L→R + encuadrar.
@@ -355,16 +412,16 @@ function FlowBuilderInner({
       const conn = findDropConnection(p, nodes, edges);
       addNode(kind, { x: p.x - 117, y: p.y - 20 }, conn ?? undefined);
     },
-    [screenToFlowPosition, addNode, nodes, edges]
+    [screenToFlowPosition, addNode, nodes, edges],
   );
 
   const updateNodeData = useCallback(
     (id: string, patch: Record<string, unknown>) => {
       setNodes((nds) =>
-        nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n))
+        nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)),
       );
     },
-    [setNodes]
+    [setNodes],
   );
 
   const deleteNode = useCallback(
@@ -373,7 +430,7 @@ function FlowBuilderInner({
       setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
       setSelectedId(null);
     },
-    [setNodes, setEdges]
+    [setNodes, setEdges],
   );
 
   const selectedNode = nodes.find((n) => n.id === selectedId) || null;
@@ -397,176 +454,210 @@ function FlowBuilderInner({
       selectNode: (id: string) => setSelectedId(id),
       numberOf: (id: string) => numberMap.get(id),
     }),
-    [updateNodeData, numberMap]
+    [updateNodeData, numberMap],
   );
 
   return (
     <BuilderCtx.Provider value={builderActions}>
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      {/* Toolbar */}
-      <div className="fb-bar">
-        {onBack && (
-          <button onClick={onBack} title="Volver a mis bots" className="fb-bar__back">←</button>
-        )}
-        <span className="fb-bar__icon"><BotIcon size={16} /></span>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nombre del bot"
-          className="fb-bar__name"
-        />
-        <div className={`fb-status fb-status--${status}`}>
-          <span className="fb-status__dot" />
-          <select value={status} onChange={(e) => setStatus(e.target.value as Bot["status"])}>
-            <option value="draft">Borrador</option>
-            <option value="active">Activo</option>
-            <option value="paused">Pausado</option>
-          </select>
-        </div>
-
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            onClick={() => setShowHelp((s) => !s)}
-            title="¿Cómo funciona el constructor?"
-            className={`fb-chip ${showHelp ? "fb-chip--ok" : ""}`}
-          >
-            <HelpCircle size={13} /> Ayuda
-          </button>
-          <button
-            onClick={() => setShowIssues((s) => !s)}
-            title="Validación del flujo"
-            className={`fb-chip ${issues.length ? "fb-chip--warn" : "fb-chip--ok"}`}
-          >
-            {issues.length ? <AlertTriangle size={13} /> : <Check size={13} />}
-            {issues.length ? `${issues.length} aviso${issues.length > 1 ? "s" : ""}` : "Sin avisos"}
-          </button>
-          <button onClick={arrange} title="Ordenar el flujo automáticamente (izquierda → derecha)" className="btn btn--sm">
-            <Network size={13} /> Ordenar
-          </button>
-          <button
-            onClick={() => setTesting((t) => !t)}
-            title="Probar el bot en un chat de prueba"
-            className={`btn btn--sm ${testing ? "fb-test-on" : ""}`}
-          >
-            <Play size={13} /> Probar
-          </button>
-          <button onClick={() => onSave?.(currentBot)} disabled={saving} className="btn btn--primary btn--sm">
-            <Save size={13} /> {saving ? "Guardando…" : "Guardar"}
-          </button>
-        </div>
-      </div>
-
-      {showIssues && issues.length > 0 && (
-        <div className="fb-issues">
-          {issues.map((i, idx) => (
-            <button
-              key={idx}
-              className="fb-issue"
-              onClick={() => goToIssue(i.nodeId)}
-              disabled={!i.nodeId}
-              title={i.nodeId ? "Ir al paso" : undefined}
-            >
-              <AlertTriangle size={12} />
-              <span className="fb-issue__msg">{i.message}</span>
-              {i.nodeId && <span className="fb-issue__go">Ver paso →</span>}
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+        {/* Toolbar */}
+        <div className="fb-bar">
+          {onBack && (
+            <button onClick={onBack} title="Volver a mis bots" className="fb-bar__back">
+              ←
             </button>
-          ))}
-        </div>
-      )}
-
-      {showHelp && (
-        <div className="fb-tips">
-          <div className="fb-tips__head">
-            <HelpCircle size={14} /> Primeros pasos
-            <button className="fb-tips__close" onClick={() => setShowHelp(false)} title="Cerrar"><X size={14} /></button>
+          )}
+          <span className="fb-bar__icon">
+            <BotIcon size={16} />
+          </span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nombre del bot"
+            className="fb-bar__name"
+          />
+          <div className={`fb-status fb-status--${status}`}>
+            <span className="fb-status__dot" />
+            <select value={status} onChange={(e) => setStatus(e.target.value as Bot["status"])}>
+              <option value="draft">Borrador</option>
+              <option value="active">Activo</option>
+              <option value="paused">Pausado</option>
+            </select>
           </div>
-          <ul className="fb-tips__list">
-            <li>Arrastrá pasos desde la izquierda al lienzo (o hacé click para agregarlos).</li>
-            <li>Conectá dos pasos tirando una línea de un punto al siguiente — o soltá un paso cerca de la salida de otro y se conecta solo.</li>
-            <li>Guardá datos con «Preguntar y guardar» y reutilizalos con «Insertar variable».</li>
-            <li>Mirá la «Vista previa» del inspector para ver cómo le llega el mensaje al cliente.</li>
-            <li>Tocá «Ordenar» para acomodar el flujo y «Probar» para chatear con el bot.</li>
-          </ul>
-        </div>
-      )}
 
-      {/* Body: palette | canvas | inspector */}
-      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        <Palette onAdd={addNode} />
-
-        <div ref={wrapperRef} style={{ flex: 1, position: "relative", minWidth: 0 }}>
-          {/* Absolute-fill so react-flow always measures a concrete size
-              (avoids the #004 "needs width and height" warning under flex). */}
-          <div
-            style={{ position: "absolute", inset: 0 }}
-            className={isDropping ? "fb-canvas--drop" : undefined}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
-            onDragEnter={() => setIsDropping(true)}
-            onDragLeave={(e) => {
-              // Solo apaga el resaltado al salir del lienzo (no al pasar sobre hijos).
-              if (!e.currentTarget.contains(e.relatedTarget as HTMLElement)) setIsDropping(false);
-            }}
-          >
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onNodeClick={(_, n) => setSelectedId(n.id)}
-              onPaneClick={() => setSelectedId(null)}
-              nodeTypes={nodeTypes}
-              defaultEdgeOptions={edgeDefaults}
-              fitView
-              proOptions={{ hideAttribution: true }}
-              style={{ background: "var(--bg-1)" }}
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => setShowHelp((s) => !s)}
+              title="¿Cómo funciona el constructor?"
+              className={`fb-chip ${showHelp ? "fb-chip--ok" : ""}`}
             >
-              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border-1)" />
-              <Controls showInteractive={false} />
-              <MiniMap
-                pannable
-                zoomable
-                nodeColor={(n) =>
-                  NODE_KINDS[(n.data as { kind: NodeKind }).kind]?.accent || "#888"
-                }
-                nodeStrokeWidth={2}
-                maskColor="rgba(10,16,28,0.6)"
-                style={{ background: "var(--bg-2)", border: "1px solid var(--border-1)", borderRadius: 8 }}
-              />
-            </ReactFlow>
+              <HelpCircle size={13} /> Ayuda
+            </button>
+            <button
+              onClick={() => setShowIssues((s) => !s)}
+              title="Validación del flujo"
+              className={`fb-chip ${issues.length ? "fb-chip--warn" : "fb-chip--ok"}`}
+            >
+              {issues.length ? <AlertTriangle size={13} /> : <Check size={13} />}
+              {issues.length
+                ? `${issues.length} aviso${issues.length > 1 ? "s" : ""}`
+                : "Sin avisos"}
+            </button>
+            <button
+              onClick={arrange}
+              title="Ordenar el flujo automáticamente (izquierda → derecha)"
+              className="btn btn--sm"
+            >
+              <Network size={13} /> Ordenar
+            </button>
+            <button
+              onClick={() => setTesting((t) => !t)}
+              title="Probar el bot en un chat de prueba"
+              className={`btn btn--sm ${testing ? "fb-test-on" : ""}`}
+            >
+              <Play size={13} /> Probar
+            </button>
+            <button
+              onClick={() => onSave?.(currentBot)}
+              disabled={saving}
+              className="btn btn--primary btn--sm"
+            >
+              <Save size={13} /> {saving ? "Guardando…" : "Guardar"}
+            </button>
           </div>
-          {nodes.filter((n) => (n.data as { kind?: string }).kind !== "start").length === 0 && (
-            <div className="fb-coach">
-              <div className="fb-coach__card">
-                <span className="fb-coach__arrow" aria-hidden>←</span>
-                <div>
-                  <div className="fb-coach__h">Armá tu primer flujo</div>
-                  <div className="fb-coach__p">
-                    Arrastrá un paso desde la izquierda (o hacé click en uno). Para conectar dos
-                    pasos, tirá una línea de un punto al siguiente — o soltá un paso cerca de la
-                    salida de otro y se conecta solo.
+        </div>
+
+        {showIssues && issues.length > 0 && (
+          <div className="fb-issues">
+            {issues.map((i, idx) => (
+              <button
+                key={idx}
+                className="fb-issue"
+                onClick={() => goToIssue(i.nodeId)}
+                disabled={!i.nodeId}
+                title={i.nodeId ? "Ir al paso" : undefined}
+              >
+                <AlertTriangle size={12} />
+                <span className="fb-issue__msg">{i.message}</span>
+                {i.nodeId && <span className="fb-issue__go">Ver paso →</span>}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {showHelp && (
+          <div className="fb-tips">
+            <div className="fb-tips__head">
+              <HelpCircle size={14} /> Primeros pasos
+              <button className="fb-tips__close" onClick={() => setShowHelp(false)} title="Cerrar">
+                <X size={14} />
+              </button>
+            </div>
+            <ul className="fb-tips__list">
+              <li>Arrastrá pasos desde la izquierda al lienzo (o hacé click para agregarlos).</li>
+              <li>
+                Conectá dos pasos tirando una línea de un punto al siguiente — o soltá un paso cerca
+                de la salida de otro y se conecta solo.
+              </li>
+              <li>
+                Guardá datos con «Preguntar y guardar» y reutilizalos con «Insertar variable».
+              </li>
+              <li>
+                Mirá la «Vista previa» del inspector para ver cómo le llega el mensaje al cliente.
+              </li>
+              <li>Tocá «Ordenar» para acomodar el flujo y «Probar» para chatear con el bot.</li>
+            </ul>
+          </div>
+        )}
+
+        {/* Body: palette | canvas | inspector */}
+        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+          <Palette onAdd={addNode} />
+
+          <div ref={wrapperRef} style={{ flex: 1, position: "relative", minWidth: 0 }}>
+            {/* Absolute-fill so react-flow always measures a concrete size
+              (avoids the #004 "needs width and height" warning under flex). */}
+            <div
+              style={{ position: "absolute", inset: 0 }}
+              className={isDropping ? "fb-canvas--drop" : undefined}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
+              onDragEnter={() => setIsDropping(true)}
+              onDragLeave={(e) => {
+                // Solo apaga el resaltado al salir del lienzo (no al pasar sobre hijos).
+                if (!e.currentTarget.contains(e.relatedTarget as HTMLElement)) setIsDropping(false);
+              }}
+            >
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onNodeClick={(_, n) => setSelectedId(n.id)}
+                onPaneClick={() => setSelectedId(null)}
+                nodeTypes={nodeTypes}
+                defaultEdgeOptions={edgeDefaults}
+                fitView
+                proOptions={{ hideAttribution: true }}
+                style={{ background: "var(--bg-1)" }}
+              >
+                <Background
+                  variant={BackgroundVariant.Dots}
+                  gap={20}
+                  size={1}
+                  color="var(--border-1)"
+                />
+                <Controls showInteractive={false} />
+                <MiniMap
+                  pannable
+                  zoomable
+                  nodeColor={(n) =>
+                    NODE_KINDS[(n.data as { kind: NodeKind }).kind]?.accent || "#888"
+                  }
+                  nodeStrokeWidth={2}
+                  maskColor="rgba(10,16,28,0.6)"
+                  style={{
+                    background: "var(--bg-2)",
+                    border: "1px solid var(--border-1)",
+                    borderRadius: 8,
+                  }}
+                />
+              </ReactFlow>
+            </div>
+            {nodes.filter((n) => (n.data as { kind?: string }).kind !== "start").length === 0 && (
+              <div className="fb-coach">
+                <div className="fb-coach__card">
+                  <span className="fb-coach__arrow" aria-hidden>
+                    ←
+                  </span>
+                  <div>
+                    <div className="fb-coach__h">Armá tu primer flujo</div>
+                    <div className="fb-coach__p">
+                      Arrastrá un paso desde la izquierda (o hacé click en uno). Para conectar dos
+                      pasos, tirá una línea de un punto al siguiente — o soltá un paso cerca de la
+                      salida de otro y se conecta solo.
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-          {testing && <BotTester bot={currentBot} onClose={() => setTesting(false)} />}
-        </div>
+            )}
+            {testing && <BotTester bot={currentBot} onClose={() => setTesting(false)} />}
+          </div>
 
-        {selectedNode && (
-          <Inspector
-            key={selectedNode.id}
-            node={selectedNode}
-            allNodes={nodes}
-            waTemplates={waTemplates}
-            onChange={(patch) => updateNodeData(selectedNode.id, patch)}
-            onDelete={() => deleteNode(selectedNode.id)}
-            onClose={() => setSelectedId(null)}
-          />
-        )}
+          {selectedNode && (
+            <Inspector
+              key={selectedNode.id}
+              node={selectedNode}
+              allNodes={nodes}
+              waTemplates={waTemplates}
+              onChange={(patch) => updateNodeData(selectedNode.id, patch)}
+              onDelete={() => deleteNode(selectedNode.id)}
+              onClose={() => setSelectedId(null)}
+            />
+          )}
+        </div>
       </div>
-    </div>
     </BuilderCtx.Provider>
   );
 }
@@ -585,7 +676,11 @@ function Palette({ onAdd }: { onAdd: (kind: NodeKind) => void }) {
       </div>
       {PALETTE_GROUPS.map((group) => {
         const items = Object.values(NODE_KINDS).filter(
-          (k) => k.group === group && (!query || k.label.toLowerCase().includes(query) || k.blurb.toLowerCase().includes(query))
+          (k) =>
+            k.group === group &&
+            (!query ||
+              k.label.toLowerCase().includes(query) ||
+              k.blurb.toLowerCase().includes(query)),
         );
         if (items.length === 0) return null;
         return (
@@ -605,7 +700,10 @@ function Palette({ onAdd }: { onAdd: (kind: NodeKind) => void }) {
                   title={`${def.blurb} — clic para agregar o arrastrá al lienzo`}
                   className="fb-pal__item"
                 >
-                  <span className="fb-pal__icon" style={{ background: `${def.accent}1a`, color: def.accent }}>
+                  <span
+                    className="fb-pal__icon"
+                    style={{ background: `${def.accent}1a`, color: def.accent }}
+                  >
                     <Icn size={14} strokeWidth={2.2} />
                   </span>
                   <span className="fb-pal__item-label">{def.label}</span>
@@ -649,24 +747,34 @@ function Inspector({
       allNodes.flatMap((n) => {
         const d = n.data as { kind?: string; saveAs?: unknown; field?: unknown };
         const out: string[] = [];
-        if (d.kind === "question" && typeof d.saveAs === "string" && d.saveAs.trim()) out.push(d.saveAs.trim());
-        if (d.kind === "set_field" && typeof d.field === "string" && d.field.trim()) out.push(d.field.trim());
+        if (d.kind === "question" && typeof d.saveAs === "string" && d.saveAs.trim())
+          out.push(d.saveAs.trim());
+        if (d.kind === "set_field" && typeof d.field === "string" && d.field.trim())
+          out.push(d.field.trim());
         return out;
-      })
-    )
+      }),
+    ),
   );
 
   return (
     <div className="fb-insp">
-      <div className="fb-insp__head" style={{ background: `linear-gradient(135deg, ${def.accent}14, transparent 80%)` }}>
-        <span className="fb-insp__icon" style={{ background: `${def.accent}1f`, color: def.accent }}>
+      <div
+        className="fb-insp__head"
+        style={{ background: `linear-gradient(135deg, ${def.accent}14, transparent 80%)` }}
+      >
+        <span
+          className="fb-insp__icon"
+          style={{ background: `${def.accent}1f`, color: def.accent }}
+        >
           <Icn size={15} strokeWidth={2.2} />
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="fb-insp__title">{def.label}</div>
           <div className="fb-insp__blurb">{def.blurb}</div>
         </div>
-        <button onClick={onClose} className="fb-insp__close" title="Cerrar">×</button>
+        <button onClick={onClose} className="fb-insp__close" title="Cerrar">
+          ×
+        </button>
       </div>
 
       <div className="fb-insp__body">
@@ -677,6 +785,7 @@ function Inspector({
         {kind === "ab_split" && <ABSplitPreview data={data} />}
         {kind === "delay" && <DelayPresets data={data} onChange={onChange} />}
         {kind === "ai_agent" && <AiPersonaPresets onChange={onChange} />}
+        {kind === "ai_agent" && <AiAgentTools data={data} onChange={onChange} />}
         {kind === "handoff" && <HandoffPreview data={data} />}
         {kind === "webhook" && <WebhookTester data={data} />}
         {kind === "template" ? (
@@ -703,7 +812,9 @@ function Inspector({
               />
             ))}
             {def.fields.length === 0 && (
-              <div style={{ fontSize: 12, color: "var(--text-3)" }}>Este paso no tiene opciones.</div>
+              <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                Este paso no tiene opciones.
+              </div>
             )}
           </div>
         )}
@@ -734,13 +845,36 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-const EMOJIS = ["😊", "👋", "🎉", "✅", "❤️", "🙌", "👍", "📅", "📞", "💳", "🎁", "⭐", "🔥", "💡", "📌", "🛒", "🤖", "🙏", "✨", "📎"];
+const EMOJIS = [
+  "😊",
+  "👋",
+  "🎉",
+  "✅",
+  "❤️",
+  "🙌",
+  "👍",
+  "📅",
+  "📞",
+  "💳",
+  "🎁",
+  "⭐",
+  "🔥",
+  "💡",
+  "📌",
+  "🛒",
+  "🤖",
+  "🙏",
+  "✨",
+  "📎",
+];
 
 /** Fila de chips para insertar una variable guardada en el cursor del campo. */
 function VarInsert({ vars, onInsert }: { vars: string[]; onInsert: (name: string) => void }) {
   return (
     <div className="fb-varins">
-      <span className="fb-varins__lbl"><Braces size={11} /> Insertar variable</span>
+      <span className="fb-varins__lbl">
+        <Braces size={11} /> Insertar variable
+      </span>
       {vars.map((vn) => (
         <button
           key={vn}
@@ -835,13 +969,25 @@ function Field({
       )}
       {field.type === "textarea" && (
         <div style={{ marginTop: 4 }}>
-          <button type="button" className="fb-emoji-btn" onClick={() => setShowEmoji((s) => !s)} title="Insertar emoji">
+          <button
+            type="button"
+            className="fb-emoji-btn"
+            onClick={() => setShowEmoji((s) => !s)}
+            title="Insertar emoji"
+          >
             <span style={{ fontSize: 13 }}>😊</span> Emoji
           </button>
           {showEmoji && (
             <div className="fb-emoji-grid">
               {EMOJIS.map((em) => (
-                <button key={em} type="button" className="fb-emoji" onClick={() => insertAtCursor(em)}>{em}</button>
+                <button
+                  key={em}
+                  type="button"
+                  className="fb-emoji"
+                  onClick={() => insertAtCursor(em)}
+                >
+                  {em}
+                </button>
               ))}
             </div>
           )}
@@ -860,7 +1006,7 @@ function Field({
       )}
       {hasList && (
         <datalist id={dataListId}>
-          {(isUse ? flowVars : field.suggestions ?? []).map((opt) => (
+          {(isUse ? flowVars : (field.suggestions ?? [])).map((opt) => (
             <option key={opt} value={opt} />
           ))}
         </datalist>
@@ -877,7 +1023,16 @@ function Field({
             onChange={(e) => onChange(Number(e.target.value))}
             style={{ flex: 1 }}
           />
-          <span style={{ minWidth: 26, textAlign: "right", fontSize: 13, fontWeight: 700, color: "var(--text-1)", fontVariantNumeric: "tabular-nums" }}>
+          <span
+            style={{
+              minWidth: 26,
+              textAlign: "right",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--text-1)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
             {Number(v) || field.slider.min}
           </span>
         </div>
@@ -893,7 +1048,11 @@ function Field({
       )}
 
       {field.type === "select" && (
-        <select value={String(v ?? "")} onChange={(e) => onChange(e.target.value)} style={inputStyle}>
+        <select
+          value={String(v ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          style={inputStyle}
+        >
           {field.options?.map((o) => (
             <option key={o} value={o}>
               {labelMap?.[o] || o}
@@ -903,7 +1062,11 @@ function Field({
       )}
 
       {field.type === "node-ref" && (
-        <select value={String(v ?? "")} onChange={(e) => onChange(e.target.value)} style={inputStyle}>
+        <select
+          value={String(v ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          style={inputStyle}
+        >
           <option value="">— elegir paso —</option>
           {allNodes
             .filter((n) => n.id !== selfId)
@@ -911,7 +1074,8 @@ function Field({
               const k = (n.data as { kind: NodeKind }).kind;
               return (
                 <option key={n.id} value={n.id}>
-                  {NODE_KINDS[k].label}: {NODE_KINDS[k].summary(n.data as Record<string, unknown>).slice(0, 28)}
+                  {NODE_KINDS[k].label}:{" "}
+                  {NODE_KINDS[k].summary(n.data as Record<string, unknown>).slice(0, 28)}
                 </option>
               );
             })}
@@ -935,7 +1099,9 @@ function Field({
         <div className="fb-vardef">
           <Braces size={11} />
           {String(v ?? "").trim() ? (
-            <span>Se crea la variable <span className="fb-var">{`{{${String(v).trim()}}}`}</span></span>
+            <span>
+              Se crea la variable <span className="fb-var">{`{{${String(v).trim()}}}`}</span>
+            </span>
           ) : (
             <span>Ponele un nombre y se crea una variable reutilizable.</span>
           )}
@@ -949,7 +1115,8 @@ function Field({
       {isInsert && flowVars.length > 0 && <VarInsert vars={flowVars} onInsert={insertVar} />}
       {isInsert && flowVars.length === 0 && field.type === "textarea" && (
         <div className="fb-varhint">
-          <Braces size={11} /> Guardá datos con un paso «Preguntar y guardar» y aparecerán acá para insertarlos.
+          <Braces size={11} /> Guardá datos con un paso «Preguntar y guardar» y aparecerán acá para
+          insertarlos.
         </div>
       )}
 
@@ -957,7 +1124,15 @@ function Field({
         <div className="fb-fieldmeta">
           {field.json && txt.trim() && (
             <span className={jsonError ? "fb-meta-bad" : "fb-meta-ok"}>
-              {jsonError ? <><AlertTriangle size={11} /> Revisá el JSON</> : <><Check size={11} /> JSON válido</>}
+              {jsonError ? (
+                <>
+                  <AlertTriangle size={11} /> Revisá el JSON
+                </>
+              ) : (
+                <>
+                  <Check size={11} /> JSON válido
+                </>
+              )}
             </span>
           )}
           {field.counter && (
@@ -1032,13 +1207,18 @@ function ButtonsEditor({
           type === "url" && b.value && !/^https?:\/\/.+/i.test(b.value.trim())
             ? "Empezá con http:// o https://"
             : type === "phone" && b.value && !/^\+?[\d\s().-]{6,}$/.test(b.value.trim())
-            ? "Usá formato internacional, p. ej. +51 999 888 777"
-            : null;
+              ? "Usá formato internacional, p. ej. +51 999 888 777"
+              : null;
         return (
           <div
             key={b.id}
-            onDragOver={(e) => { if (dragIdx !== null) e.preventDefault(); }}
-            onDrop={() => { if (dragIdx !== null) move(dragIdx, i); setDragIdx(null); }}
+            onDragOver={(e) => {
+              if (dragIdx !== null) e.preventDefault();
+            }}
+            onDrop={() => {
+              if (dragIdx !== null) move(dragIdx, i);
+              setDragIdx(null);
+            }}
             style={{
               display: "flex",
               flexDirection: "column",
@@ -1066,7 +1246,9 @@ function ButtonsEditor({
                 placeholder="Texto del botón"
                 style={{ ...inputStyle, flex: 1 }}
               />
-              <button onClick={() => remove(b.id)} style={xBtnStyle} title="Quitar">×</button>
+              <button onClick={() => remove(b.id)} style={xBtnStyle} title="Quitar">
+                ×
+              </button>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <select
@@ -1083,18 +1265,30 @@ function ButtonsEditor({
                   value={b.value || ""}
                   onChange={(e) => update(b.id, { value: e.target.value })}
                   placeholder={type === "url" ? "https://…" : "+51…"}
-                  style={{ ...inputStyle, flex: 1, borderColor: valErr ? "var(--accent-red)" : undefined }}
+                  style={{
+                    ...inputStyle,
+                    flex: 1,
+                    borderColor: valErr ? "var(--accent-red)" : undefined,
+                  }}
                 />
               )}
             </div>
-            {valErr && <div className="fb-btnerr"><AlertTriangle size={10} /> {valErr}</div>}
+            {valErr && (
+              <div className="fb-btnerr">
+                <AlertTriangle size={10} /> {valErr}
+              </div>
+            )}
           </div>
         );
       })}
       <button
         onClick={add}
         disabled={value.length >= max}
-        style={{ ...addBtnStyle, opacity: value.length >= max ? 0.5 : 1, cursor: value.length >= max ? "default" : "pointer" }}
+        style={{
+          ...addBtnStyle,
+          opacity: value.length >= max ? 0.5 : 1,
+          cursor: value.length >= max ? "default" : "pointer",
+        }}
       >
         <Plus size={12} /> Agregar botón · {value.length}/{max}
       </button>
@@ -1113,7 +1307,14 @@ function VarListEditor({ value, onChange }: { value: string[]; onChange: (v: str
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {value.map((val, i) => (
         <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span style={{ fontSize: 11, fontFamily: "var(--font-mono, monospace)", color: "var(--text-3)", flex: "0 0 36px" }}>
+          <span
+            style={{
+              fontSize: 11,
+              fontFamily: "var(--font-mono, monospace)",
+              color: "var(--text-3)",
+              flex: "0 0 36px",
+            }}
+          >
             {`{{${i + 1}}}`}
           </span>
           <input
@@ -1122,7 +1323,9 @@ function VarListEditor({ value, onChange }: { value: string[]; onChange: (v: str
             placeholder="valor o {{variable}}"
             style={{ ...inputStyle, flex: 1 }}
           />
-          <button onClick={() => remove(i)} style={xBtnStyle} title="Quitar">×</button>
+          <button onClick={() => remove(i)} style={xBtnStyle} title="Quitar">
+            ×
+          </button>
         </div>
       ))}
       <button onClick={add} style={addBtnStyle}>
@@ -1132,7 +1335,13 @@ function VarListEditor({ value, onChange }: { value: string[]; onChange: (v: str
   );
 }
 
-function ListRowsEditor({ value, onChange }: { value: ListRow[]; onChange: (v: ListRow[]) => void }) {
+function ListRowsEditor({
+  value,
+  onChange,
+}: {
+  value: ListRow[];
+  onChange: (v: ListRow[]) => void;
+}) {
   const max = 10; // WhatsApp list messages allow up to 10 rows
   const add = () => {
     if (value.length >= max) return;
@@ -1154,8 +1363,13 @@ function ListRowsEditor({ value, onChange }: { value: ListRow[]; onChange: (v: L
       {value.map((r, i) => (
         <div
           key={r.id}
-          onDragOver={(e) => { if (dragIdx !== null) e.preventDefault(); }}
-          onDrop={() => { if (dragIdx !== null) move(dragIdx, i); setDragIdx(null); }}
+          onDragOver={(e) => {
+            if (dragIdx !== null) e.preventDefault();
+          }}
+          onDrop={() => {
+            if (dragIdx !== null) move(dragIdx, i);
+            setDragIdx(null);
+          }}
           style={{
             display: "flex",
             flexDirection: "column",
@@ -1168,7 +1382,13 @@ function ListRowsEditor({ value, onChange }: { value: ListRow[]; onChange: (v: L
           }}
         >
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <span className="fb-grip" draggable onDragStart={() => setDragIdx(i)} onDragEnd={() => setDragIdx(null)} title="Arrastrar para reordenar">
+            <span
+              className="fb-grip"
+              draggable
+              onDragStart={() => setDragIdx(i)}
+              onDragEnd={() => setDragIdx(null)}
+              title="Arrastrar para reordenar"
+            >
               <GripVertical size={13} />
             </span>
             <input
@@ -1177,7 +1397,9 @@ function ListRowsEditor({ value, onChange }: { value: ListRow[]; onChange: (v: L
               placeholder="Título de la opción"
               style={{ ...inputStyle, flex: 1 }}
             />
-            <button onClick={() => remove(r.id)} style={xBtnStyle} title="Quitar">×</button>
+            <button onClick={() => remove(r.id)} style={xBtnStyle} title="Quitar">
+              ×
+            </button>
           </div>
           <input
             value={r.description || ""}
@@ -1190,7 +1412,11 @@ function ListRowsEditor({ value, onChange }: { value: ListRow[]; onChange: (v: L
       <button
         onClick={add}
         disabled={value.length >= max}
-        style={{ ...addBtnStyle, opacity: value.length >= max ? 0.5 : 1, cursor: value.length >= max ? "default" : "pointer" }}
+        style={{
+          ...addBtnStyle,
+          opacity: value.length >= max ? 0.5 : 1,
+          cursor: value.length >= max ? "default" : "pointer",
+        }}
       >
         <Plus size={12} /> Agregar opción · {value.length}/{max}
       </button>

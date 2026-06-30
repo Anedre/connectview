@@ -364,10 +364,9 @@ const IMPLEMENTED_TOOLS: Record<string, { endpointKey: string; def: object }> = 
   send_whatsapp_template: { endpointKey: "sendWhatsAppTemplate", def: WA_DEF },
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function execTool(
   name: string,
-  input: any,
+  input: Record<string, unknown>,
   toolEndpoints: Record<string, string>,
   source: string,
 ): Promise<string> {
@@ -404,12 +403,12 @@ async function execTool(
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function invokeWithTools(
   modelId: string,
   system: string,
-  messages: any[],
-  tools: any[],
+  messages: Record<string, unknown>[],
+  tools: Record<string, unknown>[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
   const resp = await bedrock.send(
     new InvokeModelCommand({
@@ -612,7 +611,10 @@ export const handler: Handler = async (event: any) => {
   const method = event.requestContext?.http?.method || event.httpMethod || "POST";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
 
-  // BYO Data Plane (#46): tenant primero, fallback Vox.
+  // BYO Data Plane (#46): tenant primero, fallback Vox. OJO: este Lambda es
+  // hand-managed (deploy-lambda.mjs) — si quedó con _shared viejo, resolveDynamo
+  // no resuelve el data-plane del tenant y el RAG vuelve vacío. Re-deployá tras
+  // tocar tenantConnect/cognitoAuth.
   ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
 
   try {

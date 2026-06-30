@@ -3,16 +3,10 @@ import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 import * as Icon from "@/components/vox/primitives";
-import {
-  Avatar,
-  Card,
-  CardBody,
-  CardHead,
-  Kpi,
-  StatusPill,
-} from "@/components/vox/primitives";
+import { Avatar, Card, CardBody, CardHead, Kpi, StatusPill } from "@/components/vox/primitives";
 import { TaxonomyEditor } from "@/components/admin/TaxonomyEditor";
 import { CatalogEditor } from "@/components/admin/CatalogEditor";
+import { KnowledgeEditor } from "@/components/admin/KnowledgeEditor";
 import { ChannelsManager } from "@/components/admin/ChannelsManager";
 import { WhatsAppTemplatesManager } from "@/components/admin/WhatsAppTemplatesManager";
 import { SuppressionManager } from "@/components/admin/SuppressionManager";
@@ -53,9 +47,7 @@ export function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [section, setSection] = useState("users");
-  const [availableProfiles, setAvailableProfiles] = useState<
-    { id: string; name: string }[]
-  >([]);
+  const [availableProfiles, setAvailableProfiles] = useState<{ id: string; name: string }[]>([]);
   const [editingUser, setEditingUser] = useState<ConnectUser | null>(null);
 
   const fetchUsers = useCallback(async (opts?: { silent?: boolean }) => {
@@ -125,6 +117,7 @@ export function AdminPage() {
     { id: "users", label: "Usuarios y roles", icon: Icon.Users },
     { id: "tipificacion", label: "Tipificación", icon: Icon.Tag },
     { id: "catalogos", label: "Catálogos", icon: Icon.Pad },
+    { id: "knowledge", label: "Base de conocimiento", icon: Icon.Knowledge },
     { id: "channels", label: "Canales", icon: Icon.Globe },
     { id: "watemplates", label: "Plantillas WhatsApp", icon: Icon.Chat },
     { id: "suppression", label: "Supresión", icon: Icon.Stop },
@@ -151,9 +144,7 @@ export function AdminPage() {
           <>
             <button
               className="btn"
-              onClick={() =>
-                window.open(`${instanceUrl}/connect/users`, "_blank")
-              }
+              onClick={() => window.open(`${instanceUrl}/connect/users`, "_blank")}
             >
               Abrir en Connect
             </button>
@@ -199,7 +190,8 @@ export function AdminPage() {
                   Agentes de Amazon Connect · telefonía
                 </div>
                 <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
-                  Los que toman llamadas y chats. Se crean y gestionan en la consola de Amazon Connect.
+                  Los que toman llamadas y chats. Se crean y gestionan en la consola de Amazon
+                  Connect.
                 </div>
               </div>
 
@@ -212,10 +204,7 @@ export function AdminPage() {
                 <Kpi label="Supervisores" value={String(stats.managers)} deltaDir="flat" />
                 <Kpi label="Agentes" value={String(stats.agents)} deltaDir="flat" />
               </div>
-              <div
-                className="muted"
-                style={{ fontSize: 11.5, marginTop: -4 }}
-              >
+              <div className="muted" style={{ fontSize: 11.5, marginTop: -4 }}>
                 Un mismo usuario puede tener varios perfiles, por lo que la suma de
                 Administradores/Supervisores/Agentes puede superar el total.
               </div>
@@ -302,10 +291,7 @@ export function AdminPage() {
                                 style={{ flexWrap: "wrap", gap: 4, alignItems: "center" }}
                               >
                                 {u.groups.map((p) => (
-                                  <span
-                                    key={p}
-                                    className={`chip ${PROFILE_CHIP[p] || ""}`}
-                                  >
+                                  <span key={p} className={`chip ${PROFILE_CHIP[p] || ""}`}>
                                     {p}
                                   </span>
                                 ))}
@@ -349,6 +335,7 @@ export function AdminPage() {
 
           {section === "tipificacion" && <TaxonomyEditor />}
           {section === "catalogos" && <CatalogEditor />}
+          {section === "knowledge" && <KnowledgeEditor />}
           {section === "channels" && <ChannelsManager />}
           {section === "watemplates" && <WhatsAppTemplatesManager />}
           {section === "suppression" && <SuppressionManager />}
@@ -357,38 +344,42 @@ export function AdminPage() {
           {section === "ai" && <AiContactLensManager />}
           {section === "security" && <SecurityManager />}
 
-          {section !== "users" && section !== "tipificacion" && section !== "catalogos" && section !== "channels" && section !== "watemplates" && section !== "suppression" && section !== "security" && section !== "integrations" && section !== "queues" && section !== "ai" && (
-            <Card>
-              <CardBody
-                style={{
-                  padding: 48,
-                  textAlign: "center",
-                  color: "var(--text-3)",
-                }}
-              >
-                <Icon.Sparkles size={32} style={{ opacity: 0.4 }} />
-                <div style={{ marginTop: 12, fontSize: 14 }}>
-                  Próximamente · {sections.find((s) => s.id === section)?.label}
-                </div>
-                <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)" }}>
-                  Por ahora gestiona esta sección desde la consola de Amazon Connect.
-                </div>
-                <button
-                  className="btn btn--ghost btn--sm"
-                  style={{ marginTop: 14 }}
-                  onClick={() =>
-                    window.open(
-                      `${instanceUrl}/connect`,
-                      "_blank",
-                      "noopener"
-                    )
-                  }
+          {section !== "users" &&
+            section !== "tipificacion" &&
+            section !== "catalogos" &&
+            section !== "knowledge" &&
+            section !== "channels" &&
+            section !== "watemplates" &&
+            section !== "suppression" &&
+            section !== "security" &&
+            section !== "integrations" &&
+            section !== "queues" &&
+            section !== "ai" && (
+              <Card>
+                <CardBody
+                  style={{
+                    padding: 48,
+                    textAlign: "center",
+                    color: "var(--text-3)",
+                  }}
                 >
-                  Abrir consola de Connect <Icon.ChevRight size={12} />
-                </button>
-              </CardBody>
-            </Card>
-          )}
+                  <Icon.Sparkles size={32} style={{ opacity: 0.4 }} />
+                  <div style={{ marginTop: 12, fontSize: 14 }}>
+                    Próximamente · {sections.find((s) => s.id === section)?.label}
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)" }}>
+                    Por ahora gestiona esta sección desde la consola de Amazon Connect.
+                  </div>
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    style={{ marginTop: 14 }}
+                    onClick={() => window.open(`${instanceUrl}/connect`, "_blank", "noopener")}
+                  >
+                    Abrir consola de Connect <Icon.ChevRight size={12} />
+                  </button>
+                </CardBody>
+              </Card>
+            )}
         </div>
       </div>
     </div>

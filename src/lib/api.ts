@@ -96,6 +96,9 @@ interface ApiEndpoints {
   // Custom Lists / Catálogos — arbitrary lookup tables (products, SKUs,
   // price lists) referenceable from leads / bot / scripts.
   manageCatalog?: string;
+  // Base de conocimiento / FAQ del agente IA (Pilar 8) — { kbId, name,
+  // entries:[{q,a,tags}] }. El bot-runtime la lee (ragKbId) para RAG.
+  manageKnowledge?: string;
   // Unified lead funnel — CRUD + move-stage over connectview-leads. Board
   // columns are the canonical taxonomy stages.
   manageLeads?: string;

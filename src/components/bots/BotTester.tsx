@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Send, X, RotateCcw, Bot as BotIcon, Braces, Wrench } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { NODE_KINDS, type Bot } from "@/lib/botFlow";
 
 /** Nombres internos de herramientas → etiqueta legible para el panel de inspección. */
@@ -38,7 +39,15 @@ interface ChatItem {
   media?: MediaRef;
 }
 
-export function BotTester({ bot, onClose, suggestions }: { bot: Bot; onClose: () => void; suggestions?: string[] }) {
+export function BotTester({
+  bot,
+  onClose,
+  suggestions,
+}: {
+  bot: Bot;
+  onClose: () => void;
+  suggestions?: string[];
+}) {
   const [items, setItems] = useState<ChatItem[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [convState, setConvState] = useState<any>(null);
@@ -54,7 +63,7 @@ export function BotTester({ bot, onClose, suggestions }: { bot: Bot; onClose: ()
   const call = async (
     input: { text?: string; choice?: string } | undefined,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    st: any
+    st: any,
   ) => {
     if (!ep?.botRuntime) {
       setItems((i) => [...i, { from: "note", text: "Runtime no configurado." }]);
@@ -62,11 +71,18 @@ export function BotTester({ bot, onClose, suggestions }: { bot: Bot; onClose: ()
     }
     setLoading(true);
     try {
-      const r = await fetch(ep.botRuntime, {
+      // authedFetch → Bearer idToken: el bot-runtime resuelve el tenant del admin
+      // logueado (Novasys/default) y así buildKnowledge LEE de verdad catálogos/
+      // programas/FAQ. Con fetch anónimo, resolveDynamo cae a blockedDynamoClient
+      // y el RAG vuelve vacío (el agente alucina). El playground debe correr con
+      // la misma identidad de tenant que producción.
+      const r = await authedFetch(ep.botRuntime, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          bot, state: st, input,
+          bot,
+          state: st,
+          input,
           source: "playground",
           // Tool endpoints so the agent's function-calling can hit the real Lambdas.
           toolEndpoints: {
@@ -163,45 +179,69 @@ export function BotTester({ bot, onClose, suggestions }: { bot: Bot; onClose: ()
     <div className="fb-wa">
       {/* WhatsApp-style header */}
       <div className="fb-wa__head">
-        <span className="fb-wa__avatar"><BotIcon size={18} /></span>
+        <span className="fb-wa__avatar">
+          <BotIcon size={18} />
+        </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="fb-wa__name">{bot.name || "Asistente ARIA"}</div>
           <div className="fb-wa__presence">{loading ? "escribiendo…" : "en línea"}</div>
         </div>
-        <button onClick={() => setInspect((v) => !v)} title="Inspeccionar variables y herramientas" className={`fb-wa__ibtn ${inspect ? "is-on" : ""}`}><Braces size={14} /></button>
-        <button onClick={restart} title="Reiniciar" className="fb-wa__ibtn"><RotateCcw size={14} /></button>
-        <button onClick={onClose} title="Cerrar" className="fb-wa__ibtn"><X size={15} /></button>
+        <button
+          onClick={() => setInspect((v) => !v)}
+          title="Inspeccionar variables y herramientas"
+          className={`fb-wa__ibtn ${inspect ? "is-on" : ""}`}
+        >
+          <Braces size={14} />
+        </button>
+        <button onClick={restart} title="Reiniciar" className="fb-wa__ibtn">
+          <RotateCcw size={14} />
+        </button>
+        <button onClick={onClose} title="Cerrar" className="fb-wa__ibtn">
+          <X size={15} />
+        </button>
       </div>
 
       {/* Chat */}
       <div ref={scrollRef} className="fb-wa__chat">
         {items.map((m, idx) =>
           m.from === "note" ? (
-            <div key={idx} className="fb-wa__note">{m.text}</div>
+            <div key={idx} className="fb-wa__note">
+              {m.text}
+            </div>
           ) : (
-            <div key={idx} className={`fb-wa__bubble ${m.from === "user" ? "fb-wa__bubble--me" : "fb-wa__bubble--bot"}`}>
-              {m.media && (
-                m.media.type === "Video" ? (
+            <div
+              key={idx}
+              className={`fb-wa__bubble ${m.from === "user" ? "fb-wa__bubble--me" : "fb-wa__bubble--bot"}`}
+            >
+              {m.media &&
+                (m.media.type === "Video" ? (
                   <video src={m.media.url} controls className="fb-wa__media" />
                 ) : m.media.type === "Imagen" ? (
                   <img src={m.media.url} alt={m.media.caption || ""} className="fb-wa__media" />
                 ) : (
-                  <a href={m.media.url} target="_blank" rel="noreferrer" className="fb-wa__file">📎 {m.media.type}</a>
-                )
-              )}
+                  <a href={m.media.url} target="_blank" rel="noreferrer" className="fb-wa__file">
+                    📎 {m.media.type}
+                  </a>
+                ))}
               {m.text}
               {m.rows && m.rows.length > 0 && (
                 <div className="fb-wa__rows">
                   {m.rows.map((r) => (
-                    <div key={r.id} className="fb-wa__listrow">{r.title}</div>
+                    <div key={r.id} className="fb-wa__listrow">
+                      {r.title}
+                    </div>
                   ))}
                 </div>
               )}
             </div>
-          )
+          ),
         )}
         {loading && (
-          <div className="fb-wa__bubble fb-wa__bubble--bot fb-wa__typing"><span /><span /><span /></div>
+          <div className="fb-wa__bubble fb-wa__bubble--bot fb-wa__typing">
+            <span />
+            <span />
+            <span />
+          </div>
         )}
       </div>
 
@@ -234,7 +274,9 @@ export function BotTester({ bot, onClose, suggestions }: { bot: Bot; onClose: ()
             {toolsUsed.length > 0 ? (
               <div className="fb-wa__insp-tools">
                 {toolsUsed.map((t, i) => (
-                  <span key={i} className="fb-wa__insp-tool">{TOOL_LABELS[t] || t}</span>
+                  <span key={i} className="fb-wa__insp-tool">
+                    {TOOL_LABELS[t] || t}
+                  </span>
                 ))}
               </div>
             ) : (
@@ -243,8 +285,16 @@ export function BotTester({ bot, onClose, suggestions }: { bot: Bot; onClose: ()
           </div>
           {(stepLabel || aiTurns > 0) && (
             <div className="fb-wa__insp-meta">
-              {stepLabel && <span>Paso: <b>{stepLabel}</b></span>}
-              {aiTurns > 0 && <span>Turnos IA: <b>{aiTurns}</b></span>}
+              {stepLabel && (
+                <span>
+                  Paso: <b>{stepLabel}</b>
+                </span>
+              )}
+              {aiTurns > 0 && (
+                <span>
+                  Turnos IA: <b>{aiTurns}</b>
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -254,7 +304,12 @@ export function BotTester({ bot, onClose, suggestions }: { bot: Bot; onClose: ()
       {choices.length > 0 && !done && (
         <div className="fb-wa__chips">
           {choices.map((c) => (
-            <button key={c.id} onClick={() => choose(c.id, c.label)} disabled={loading} className="fb-wa__chip">
+            <button
+              key={c.id}
+              onClick={() => choose(c.id, c.label)}
+              disabled={loading}
+              className="fb-wa__chip"
+            >
               {c.label}
             </button>
           ))}
@@ -262,20 +317,34 @@ export function BotTester({ bot, onClose, suggestions }: { bot: Bot; onClose: ()
       )}
 
       {/* Suggested test prompts (agent playground) */}
-      {suggestions && suggestions.length > 0 && !done && awaiting !== "choice" && choices.length === 0 && (
-        <div className="fb-wa__suggest">
-          {suggestions.map((s) => (
-            <button key={s} onClick={() => sendQuick(s)} disabled={loading} className="fb-wa__suggest-chip" title="Enviar este mensaje de prueba">
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
+      {suggestions &&
+        suggestions.length > 0 &&
+        !done &&
+        awaiting !== "choice" &&
+        choices.length === 0 && (
+          <div className="fb-wa__suggest">
+            {suggestions.map((s) => (
+              <button
+                key={s}
+                onClick={() => sendQuick(s)}
+                disabled={loading}
+                className="fb-wa__suggest-chip"
+                title="Enviar este mensaje de prueba"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
 
       {/* Input bar */}
       <div className="fb-wa__inputbar">
         {done ? (
-          <button onClick={restart} className="btn btn--sm" style={{ width: "100%", justifyContent: "center", display: "flex", gap: 6 }}>
+          <button
+            onClick={restart}
+            className="btn btn--sm"
+            style={{ width: "100%", justifyContent: "center", display: "flex", gap: 6 }}
+          >
             <RotateCcw size={13} /> Conversación finalizada · reiniciar
           </button>
         ) : (
@@ -288,7 +357,12 @@ export function BotTester({ bot, onClose, suggestions }: { bot: Bot; onClose: ()
               disabled={awaiting === "choice" || loading}
               className="fb-wa__field"
             />
-            <button onClick={sendText} disabled={awaiting === "choice" || loading || !text.trim()} className="fb-wa__send" title="Enviar">
+            <button
+              onClick={sendText}
+              disabled={awaiting === "choice" || loading || !text.trim()}
+              className="fb-wa__send"
+              title="Enviar"
+            >
               <Send size={15} />
             </button>
           </>
