@@ -27,6 +27,11 @@ const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
  * read paths keep working with no migration.
  */
 const HISTORY_TABLE = process.env.WRAPUP_HISTORY_TABLE || "connectview-wrapup-history";
+// Pilar 7 — meta de conversiones: el wrap-up de cierre busca la fila de
+// campaña por connectContactId (GSI) e incrementa el conversionsCount de su campaña.
+const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
+const CAMPAIGN_CONTACTS_TABLE =
+  process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 let instanceId = INSTANCE_ID;
 // The contact flow we route the follow-up task to. Defaults to the same
@@ -35,6 +40,60 @@ const FOLLOWUP_FLOW_ID = process.env.FOLLOWUP_FLOW_ID || "";
 // The queue that owns follow-up tasks. Defaults to the agent's default
 // queue if not set — the frontend must pass it explicitly otherwise.
 const FOLLOWUP_QUEUE_ID = process.env.FOLLOWUP_QUEUE_ID || "";
+
+/**
+ * Pilar 7 — incrementa el `conversionsCount` de la campaña dueña de este contacto.
+ * Encuentra la fila de `connectview-campaign-contacts` por `connectContactId`
+ * (GSI `connectContactId-index`) y, si existe, suma 1 a `conversionsCount` de la
+ * campaña. **Idempotente por contacto:** marca la fila con `convertedCounted`
+ * vía un update condicional (`attribute_not_exists`) → re-guardar el wrap-up de
+ * cierre NO vuelve a contar. Si el contacto no es de campaña, no-op.
+ */
+async function incrementCampaignConversion(connectContactId: string): Promise<void> {
+  if (!connectContactId) return;
+  const q = await dynamo.send(
+    new QueryCommand({
+      TableName: CAMPAIGN_CONTACTS_TABLE,
+      IndexName: "connectContactId-index",
+      KeyConditionExpression: "connectContactId = :cid",
+      ExpressionAttributeValues: { ":cid": { S: connectContactId } },
+      Limit: 1,
+    }),
+  );
+  const row = q.Items?.[0];
+  const campaignId = row?.campaignId?.S;
+  const rowId = row?.rowId?.S;
+  if (!campaignId || !rowId) return; // no es contacto de campaña
+
+  // Guard idempotente: marca la fila como contada (solo la 1ª vez gana).
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: CAMPAIGN_CONTACTS_TABLE,
+        Key: { campaignId: { S: campaignId }, rowId: { S: rowId } },
+        UpdateExpression: "SET convertedCounted = :t",
+        ConditionExpression: "attribute_not_exists(convertedCounted)",
+        ExpressionAttributeValues: { ":t": { BOOL: true } },
+      }),
+    );
+  } catch (err) {
+    // Ya contado (carrera o re-guardado) → no incrementamos de nuevo.
+    if ((err as { name?: string })?.name === "ConditionalCheckFailedException") return;
+    throw err;
+  }
+
+  await dynamo.send(
+    new UpdateItemCommand({
+      TableName: CAMPAIGNS_TABLE,
+      Key: { campaignId: { S: campaignId } },
+      UpdateExpression: "ADD conversionsCount :one",
+      ExpressionAttributeValues: { ":one": { N: "1" } },
+    }),
+  );
+  console.log(
+    `[pilar7] conversionsCount +1 en campaña ${campaignId} (contacto ${connectContactId})`,
+  );
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
@@ -350,20 +409,30 @@ export const handler: Handler = async (event: any) => {
         /* nunca romper el guardado del wrap-up */
       }
 
-      // Pilar 3 Fase C — "no contactar tras conversión". Si la gestión se cerró
-      // con valoración "cierre" (lead ganado), registra el teléfono como
-      // convertido en el motor de supresión → el gate (voz + WhatsApp + email)
-      // no lo volverá a contactar. Gated por la regla suppressAfterConversion
-      // (opt-in) dentro de recordConversion. Best-effort, nunca rompe el save.
-      if (valoracion === "cierre" && customerPhone) {
+      // Conversión (valoración "cierre" = lead ganado) → dos efectos best-effort.
+      if (valoracion === "cierre") {
+        // Pilar 3 Fase C — "no contactar tras conversión": registra el teléfono
+        // como convertido en el motor de supresión → el gate (voz + WhatsApp +
+        // email) no lo vuelve a contactar. Gated por la regla
+        // suppressAfterConversion (opt-in) dentro de recordConversion.
+        if (customerPhone) {
+          try {
+            const tenantId = await resolveTenantId(event?.headers);
+            await recordConversion(dynamo, customerPhone, {
+              tenantId,
+              createdBy: agentUsername || "wrap-up",
+            });
+          } catch (err) {
+            console.warn("recordConversion failed (best-effort):", err);
+          }
+        }
+        // Pilar 7 — meta de conversiones: si este contacto pertenece a una
+        // campaña, incrementa su conversionsCount (idempotente por contacto) para
+        // que la meta goalType:"conversions" del dialer auto-complete la campaña.
         try {
-          const tenantId = await resolveTenantId(event?.headers);
-          await recordConversion(dynamo, customerPhone, {
-            tenantId,
-            createdBy: agentUsername || "wrap-up",
-          });
+          await incrementCampaignConversion(contactId);
         } catch (err) {
-          console.warn("recordConversion failed (best-effort):", err);
+          console.warn("conversionsCount bump failed (best-effort):", err);
         }
       }
 
