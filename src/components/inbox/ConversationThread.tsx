@@ -8,6 +8,7 @@ import {
   type ConvMessage,
 } from "@/hooks/useConversations";
 import { chipType, CH_LABEL } from "./channelMeta";
+import { CustomerContextBar } from "./CustomerContextBar";
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -223,6 +224,9 @@ export function ConversationThread({ conversationId }: { conversationId: string 
           </button>
         )}
       </div>
+
+      {/* Cliente 360 (Fase C) — vínculo a lead + contexto unificado */}
+      <CustomerContextBar conversation={conversation} />
 
       {/* Mensajes */}
       <div

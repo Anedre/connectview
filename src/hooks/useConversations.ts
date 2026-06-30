@@ -30,7 +30,10 @@ export interface Conversation {
   lastMessageAt: string;
   lastMessagePreview: string;
   assignedAgent?: string;
+  /** Identidad unificada (Fase C): lead vinculado + teléfono/email cacheados. */
   leadId?: string;
+  phone?: string;
+  email?: string;
   /** Solo `fb_comment` (Fase B): id del comentario + post + plataforma + si ya
    *  se pasó a privado (dmSent). */
   commentId?: string;
@@ -135,6 +138,21 @@ export function useConversationActions() {
     mutationFn: (conversationId: string) => post({ action: "close", conversationId }),
     onSuccess: (_d, conversationId) => invalidate(conversationId),
   });
+  // Identidad (Fase C): vincular la conversación a un lead / desvincular.
+  const link = useMutation({
+    mutationFn: (v: {
+      conversationId: string;
+      leadId: string;
+      phone?: string;
+      email?: string;
+      customerName?: string;
+    }) => post({ action: "link", ...v }),
+    onSuccess: (_d, v) => invalidate(v.conversationId),
+  });
+  const unlink = useMutation({
+    mutationFn: (conversationId: string) => post({ action: "unlink", conversationId }),
+    onSuccess: (_d, conversationId) => invalidate(conversationId),
+  });
 
-  return { reply, replyComment, commentToDm, markRead, close };
+  return { reply, replyComment, commentToDm, markRead, close, link, unlink };
 }

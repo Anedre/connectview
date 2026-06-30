@@ -12,6 +12,19 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { randomUUID } from "node:crypto";
+import { normalizePhone } from "./phone";
+
+/** Pistas de identidad en el texto de un DM (Fase C): teléfono / email que el
+ *  cliente escribe ("mi número es 999…", "escríbeme a x@y.com"). Se usan para
+ *  auto-vincular la conversación social a un lead/perfil por teléfono. */
+const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+const PHONE_RE = /(\+?\d[\d\s().-]{6,}\d)/;
+export function extractContact(text: string): { phone?: string; email?: string } {
+  const email = (text.match(EMAIL_RE)?.[0] || "").toLowerCase() || undefined;
+  const phoneRaw = text.match(PHONE_RE)?.[0];
+  const phone = phoneRaw ? normalizePhone(phoneRaw)?.e164 : undefined;
+  return { phone: phone || undefined, email };
+}
 
 const CONV_TABLE = process.env.CONVERSATIONS_TABLE || "connectview-conversations";
 
@@ -36,7 +49,12 @@ export interface Conversation {
   lastMessageAt: string;
   lastMessagePreview: string;
   assignedAgent?: string;
+  /** Identidad unificada (Fase C): lead vinculado + teléfono/email cacheados
+   *  (de WhatsApp, del texto del DM, o de un vínculo manual del agente). El
+   *  panel "Cliente 360" del hilo usa el teléfono para traer perfil + golpes. */
   leadId?: string;
+  phone?: string;
+  email?: string;
   /** Solo `fb_comment` (Fase B): id del ÚLTIMO comentario (para responder en
    *  público), id del post, y la plataforma (FB vs IG → endpoints distintos de
    *  la Graph). `dmSent` evita mandar dos veces el private-reply. */
@@ -121,6 +139,11 @@ export async function appendInbound(
   conv.lastMessagePreview = (m.text || "").slice(0, 120) || "[adjunto]";
   if (m.customerName) conv.customerName = m.customerName;
   if (m.tenantId) conv.tenantId = m.tenantId;
+  // Fase C: si el cliente escribió su teléfono/email en el DM, lo guardamos como
+  // pista de identidad para auto-vincular después (no pisa lo ya conocido).
+  const hint = extractContact(m.text || "");
+  if (hint.phone && !conv.phone) conv.phone = hint.phone;
+  if (hint.email && !conv.email) conv.email = hint.email;
   conv.status = "open";
   conv.updatedAt = now;
   await put(dynamo, conv);
@@ -196,7 +219,19 @@ export async function appendOutbound(
 export async function patchConversation(
   dynamo: DynamoDBClient,
   conversationId: string,
-  patch: Partial<Pick<Conversation, "unread" | "status" | "assignedAgent" | "dmSent">>,
+  patch: Partial<
+    Pick<
+      Conversation,
+      | "unread"
+      | "status"
+      | "assignedAgent"
+      | "dmSent"
+      | "leadId"
+      | "phone"
+      | "email"
+      | "customerName"
+    >
+  >,
 ): Promise<Conversation | null> {
   const conv = await getConversation(dynamo, conversationId);
   if (!conv) return null;
