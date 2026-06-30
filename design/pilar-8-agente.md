@@ -56,3 +56,14 @@
 - **Fase B (afinado):** budget de tools, citaciones de fuente, métricas de confianza/derivación, fallback determinístico por paso.
 
 > El motor ya existe → el Pilar 8 es ANCLAR (RAG) + CONFIGURAR (builder) + GOBERNAR (confianza/confirmar), no reescribir.
+
+## 4. Estado
+
+- **A1 — HECHO** (commit `eb96787`): `buildKnowledge()` (RAG en vivo catálogos/programas/FAQ → system prompt) + confianza→handoff + confirmar-sensibles; `botFlow` ai_agent += knowledge/guardrails/confidenceThreshold/confirmSensitive/ragPrograms; IAM `connectview-bot-rag-access`.
+- **A2 + A1-UI — HECHO y VERIFICADO EN VIVO** (commit `0f37fa6`):
+  - `manage-knowledge` (CRUD `connectview-knowledge-bases`) + `create-knowledge.mjs` (tabla + managed policy + Function URL) + `KnowledgeEditor` + tab "Base de conocimiento" en Configuración (KBs, FAQs q/a/tags, plantillas).
+  - `AiAgentTools` en el inspector (NodePreview): checkboxes de tools → `data.tools[]`, multiselect de catálogos (fetch) → `data.ragCatalogs[]`, select de FAQ (fetch) → `data.ragKbId`.
+  - **Fix:** `BotTester` usa `authedFetch` (antes anónimo → blockedDynamoClient → RAG vacío).
+  - **Verificación:** el agente cita el sentinel sembrado en la FAQ (`ADM-2026-ZX9`, Lic. Marisol Quiroga anexo 4471) y la fila del catálogo (Ing. de Sistemas · Virtual · S/1200). Grounding KB + catálogo confirmado contra el `botRuntime` con JWT real.
+  - **🔑 Gotcha:** `bot-runtime` es hand-managed → un bundle viejo de `_shared` deja a `resolveDynamo` sin resolver el data-plane del tenant (RAG vacío, silencioso). Regla: **re-deployá `bot-runtime` tras tocar `_shared/*`**.
+- **Fase B — pendiente:** budget de tools, citaciones de fuente (qué FAQ/fila usó), métricas de confianza/derivación, fallback determinístico por paso.
