@@ -142,3 +142,15 @@ Del Pilar 4/5: Meta App "Novasys del Perú" (`932893188309221`) + token **system
 **Verificado en vivo (Browser 1, 2026-06-19):** mandé un DM de Messenger con `+51953730189 / juan@example.com` en el texto → el webhook **extrajo** phone+email; al abrir la conversación el **auto-vínculo** matcheó el lead "Lead Prueba ARIA" (renombró la conv + barra Cliente 360 mostró `Lead Prueba ARIA · Facebook · +51953730189 · Ver/✕`); en el comentario (sin teléfono) la barra mostró "Sin vincular" + **el picker cargó los leads reales** (búsqueda por nombre/tel/empresa). Fase B revisada de paso (botones Público/Privado + nota).
 
 **Pendiente Fase C:** **WhatsApp meta-mode en la misma bandeja** (hoy WhatsApp entra por `whatsapp-meta-webhook`→bot-runtime, no al inbox — traerlo es la última pieza de la omnicanalidad) + GSI `byPhone` en `connectview-leads` (hoy el match es scan O(n)) + opcional: regla de automatización comentario→DM full-auto (opt-in).
+
+## 11. Pilar 6 CERRADO — WhatsApp en la misma bandeja ✅ (2026-06-30, commit `b7e9850`)
+
+La última pieza de la omnicanalidad: las conversaciones de WhatsApp (meta-mode) ahora viven en el inbox junto a IG/Messenger/comentarios.
+
+- `whatsapp-meta-webhook` **espeja** cada inbound a `connectview-conversations` (channel=`whatsapp`, **aditivo + best-effort**, dynamo legacy porque la tabla es pooled) **antes** del bot. **Handoff bot↔humano:** si `mirrored.assignedAgent && != "bot"` (un agente ya respondió desde la bandeja) → el bot se retira (return). `appendOutbound` ya setea `assignedAgent` → el handoff sale gratis. También espeja las respuestas del bot (`appendOutbound(..., "bot")`).
+- `_shared/conversations.ts`: `appendInbound` setea `conv.phone = normalizePhone(senderId).e164` para el canal `whatsapp` (el remitente ES el teléfono → auto-vínculo directo al lead).
+- `manage-conversations`: `reply` para `whatsapp` → envío libre por la **Cloud API** (`sendWhatsApp` mode meta, ventana 24h). `getTenantMeta` resuelve `waPhoneId` (configJson.whatsapp.metaPhoneNumberId); el page token solo se pide para IG/Messenger/comentarios.
+- **Sin doble-respuesta:** el tenant t_3176 NO tiene bot de WhatsApp (`botId=null`) → antes el inbound meta era un no-op total; ahora el inbox es el primer (y único) handler. El handoff protege a los tenants que SÍ tengan bot.
+- **Verificado en vivo (Browser 1, 2026-06-30):** inbound de WhatsApp simulado (phone_number_id 409805222211985, from 51953730189) → conversación `whatsapp#51953730189` con **chip verde** + **auto-vínculo** a "Lead Prueba ARIA" + barra Cliente 360. IAM: `connectview-campaign-lambda-role` ya tenía la policy de conversations.
+
+**🎉 PILAR 6 COMPLETO:** IG DM + Messenger + comentarios FB/IG + WhatsApp en una bandeja, con identidad unificada (Cliente 360) y golpes al ledger (Pilar 2). Commits `5093b1f` (B) · `8a79650` (C) · `b7e9850` (WhatsApp). **Opcionales que quedan:** GSI byPhone, IG comments app-level (App Secret/Dashboard), regla comentario→DM full-auto, prueba con usuario real.
