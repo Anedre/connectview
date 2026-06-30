@@ -41,12 +41,22 @@ interface ResponseStats {
   avgFirstResponseSec: number | null;
   inboundTracked: boolean;
 }
+// R18 — rendimiento por agente (de las conversaciones de WhatsApp del inbox).
+interface AgentAgg {
+  agent: string;
+  conversations: number;
+  replies: number;
+  respondedCount: number;
+  avgResponseSec: number | null;
+}
 interface Report {
   totals: Record<string, number>;
   templates: TemplateAgg[];
   rates: { readRate: number; failRate: number };
   byPhone?: PhoneAgg[];
   response?: ResponseStats;
+  byAgent?: AgentAgg[];
+  agentsTracked?: boolean;
 }
 
 /** Segundos → "2m 13s" / "1h 4m" / "—". */
@@ -364,6 +374,91 @@ export function HsmOutboundReport() {
               vive en Connect, así que la respuesta no se mide acá.
             </div>
           )}
+        </div>
+      )}
+
+      {/* R18 — rendimiento POR AGENTE (de las conversaciones del inbox omnicanal,
+          no por facultad). Solo aparece si hay conversaciones de WhatsApp atendidas
+          por un agente humano (los mensajes del bot no cuentan). */}
+      {data.byAgent && data.byAgent.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--text-2)",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              marginBottom: 8,
+            }}
+          >
+            Por agente · {data.byAgent.length}{" "}
+            {data.byAgent.length === 1 ? "ejecutivo" : "ejecutivos"}
+            <span
+              className="muted"
+              style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, marginLeft: 6 }}
+            >
+              · respuestas de WhatsApp del inbox (R18)
+            </span>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: 12.5, borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border-1)" }}>
+                  {["Agente", "Conversaciones", "Respuestas", "T. respuesta prom."].map((h, i) => (
+                    <th
+                      key={h}
+                      style={{
+                        textAlign: i === 0 ? "left" : "right",
+                        padding: "6px 10px",
+                        color: "var(--text-2)",
+                        fontWeight: 600,
+                        fontSize: 11,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.byAgent.map((a) => (
+                  <tr key={a.agent} style={{ borderBottom: "1px solid var(--border-1)" }}>
+                    <td style={{ padding: "7px 10px", fontWeight: 600 }}>{a.agent}</td>
+                    <td
+                      style={{
+                        padding: "7px 10px",
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {a.conversations}
+                    </td>
+                    <td
+                      style={{
+                        padding: "7px 10px",
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {a.replies}
+                    </td>
+                    <td
+                      style={{
+                        padding: "7px 10px",
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                        color: a.avgResponseSec != null ? "var(--accent-cyan)" : "var(--text-3)",
+                      }}
+                    >
+                      {fmtDur(a.avgResponseSec)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

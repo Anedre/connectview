@@ -36,11 +36,31 @@ interface Row {
 
 const phoneKey = (p?: string): string => (p ? normalizePhone(p)?.e164 || p : "");
 
-/** Por número: junta los timestamps de mensajes ENTRANTES de WhatsApp del inbox
- *  (connectview-conversations) → para detectar respuesta y medir 1ª respuesta.
- *  Best-effort: si la tabla no existe o no hay acceso, devuelve un mapa vacío. */
-async function inboundTimesByPhone(): Promise<Map<string, string[]>> {
-  const map = new Map<string, string[]>();
+/** Acumulador por agente (R18 — rendimiento por agente de WhatsApp). */
+interface AgentAcc {
+  agent: string;
+  conversations: number; // conversaciones distintas que atendió
+  replies: number; // mensajes salientes que envió
+  respSecs: number[]; // tiempos de respuesta (entrante → su 1er saliente)
+}
+
+/** UN solo scan de `connectview-conversations` (inbox omnicanal, Pilar 6) que
+ *  alimenta DOS reportes de WhatsApp:
+ *   - `inboundByPhone`: timestamps de mensajes ENTRANTES por número → respuesta +
+ *     1ª respuesta (R16/R17).
+ *   - `byAgent`: por agente, conversaciones atendidas + respuestas enviadas +
+ *     tiempo de respuesta (R18 — "reporte por agente, no por facultad").
+ *  Best-effort: si la tabla no existe o no hay acceso, devuelve mapas vacíos. */
+async function scanConversations(): Promise<{
+  inboundByPhone: Map<string, string[]>;
+  byAgent: Map<string, AgentAcc>;
+}> {
+  const inboundByPhone = new Map<string, string[]>();
+  const byAgent = new Map<string, AgentAcc>();
+  const acc = (a: string): AgentAcc => {
+    if (!byAgent.has(a)) byAgent.set(a, { agent: a, conversations: 0, replies: 0, respSecs: [] });
+    return byAgent.get(a)!;
+  };
   try {
     let lastKey: Record<string, unknown> | undefined;
     do {
@@ -52,23 +72,47 @@ async function inboundTimesByPhone(): Promise<Map<string, string[]>> {
           channel?: string;
           phone?: string;
           senderId?: string;
-          messages?: Array<{ direction?: string; ts?: string }>;
+          assignedAgent?: string;
+          messages?: Array<{ direction?: string; ts?: string; agent?: string }>;
         };
         if (c.channel && c.channel !== "whatsapp") continue;
         const key = phoneKey(c.phone || c.senderId);
-        if (!key) continue;
-        const ins = (c.messages || [])
-          .filter((m) => m.direction === "in" && m.ts)
-          .map((m) => m.ts as string);
-        if (ins.length) map.set(key, [...(map.get(key) || []), ...ins]);
+        const msgs = (c.messages || [])
+          .filter((m) => m.ts)
+          .sort((a, b) => (a.ts! < b.ts! ? -1 : 1));
+        // Inbound timestamps por número (R16/R17).
+        if (key) {
+          const ins = msgs.filter((m) => m.direction === "in").map((m) => m.ts as string);
+          if (ins.length) inboundByPhone.set(key, [...(inboundByPhone.get(key) || []), ...ins]);
+        }
+        // Por agente (R18): respuestas + conversaciones + tiempo de respuesta.
+        const agentsInConv = new Set<string>();
+        let pendingInTs: string | null = null;
+        for (const m of msgs) {
+          if (m.direction === "in") {
+            pendingInTs = m.ts as string;
+          } else if (m.direction === "out") {
+            const ag = m.agent || c.assignedAgent;
+            if (!ag) continue; // saliente del bot (sin agente) → no cuenta para R18
+            const a = acc(ag);
+            a.replies += 1;
+            agentsInConv.add(ag);
+            if (pendingInTs) {
+              const sec = Math.round((Date.parse(m.ts!) - Date.parse(pendingInTs)) / 1000);
+              if (sec >= 0 && sec <= 14 * 24 * 3600) a.respSecs.push(sec);
+              pendingInTs = null; // solo el 1er saliente tras un entrante cuenta
+            }
+          }
+        }
+        for (const ag of agentsInConv) acc(ag).conversations += 1;
       }
       lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
     } while (lastKey);
-    for (const [, arr] of map) arr.sort();
+    for (const [, arr] of inboundByPhone) arr.sort();
   } catch {
-    /* sin inbox / sin acceso → sin métricas de respuesta */
+    /* sin inbox / sin acceso → sin métricas de respuesta ni por-agente */
   }
-  return map;
+  return { inboundByPhone, byAgent };
 }
 
 const STATUSES = ["sent", "delivered", "read", "failed", "expired", "pending"] as const;
@@ -163,7 +207,8 @@ export const handler: Handler = async (event: any) => {
     const templates = [...byTemplate.values()].sort((a, b) => (b.sent || 0) - (a.sent || 0));
 
     // Pilar 9 Fase C — respuesta + 1ª respuesta: cruza el inbound de WhatsApp.
-    const inbound = await inboundTimesByPhone();
+    // R18 — el mismo scan agrega el rendimiento por agente.
+    const { inboundByPhone: inbound, byAgent } = await scanConversations();
     let respondedPhones = 0;
     const frtSecs: number[] = [];
     const phones = [...byPhone.values()].map((p) => {
@@ -207,6 +252,19 @@ export const handler: Handler = async (event: any) => {
     const readRate = deliveredFunnel > 0 ? Math.round((totals.read / deliveredFunnel) * 100) : 0;
     const failRate = totals.total > 0 ? Math.round((totals.failed / totals.total) * 100) : 0;
 
+    // R18 — rendimiento por agente (de las conversaciones de WhatsApp del inbox).
+    const agents = [...byAgent.values()]
+      .map((a) => ({
+        agent: a.agent,
+        conversations: a.conversations,
+        replies: a.replies,
+        respondedCount: a.respSecs.length,
+        avgResponseSec: a.respSecs.length
+          ? Math.round(a.respSecs.reduce((x, y) => x + y, 0) / a.respSecs.length)
+          : null,
+      }))
+      .sort((a, b) => b.conversations - a.conversations || b.replies - a.replies);
+
     return {
       statusCode: 200,
       headers: CORS,
@@ -216,6 +274,8 @@ export const handler: Handler = async (event: any) => {
         rates: { readRate, failRate },
         byPhone: byPhoneList,
         response,
+        byAgent: agents,
+        agentsTracked: agents.length > 0,
         generatedAt: new Date().toISOString(),
       }),
     };

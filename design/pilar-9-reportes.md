@@ -60,11 +60,33 @@ difirió de Pilar 1. El set final se define con Adriana (R20).
 
 ## Datos disponibles (inventario)
 
-| Reporte                          | Tabla/endpoint                                       | Estado         |
-| -------------------------------- | ---------------------------------------------------- | -------------- |
-| Atribución + embudo por programa | manage-leads ?report=attribution&programId (byStage) | ✅             |
-| Agente IA (conversaciones)       | get-bot-report ← connectview-ai-conversations        | ✅             |
-| HSM por plantilla (entrega)      | get-hsm-report ← connectview-hsm-sends               | ✅ (Pilar 4)   |
-| WhatsApp Cloud API (Meta)        | get-whatsapp-analytics                               | ✅ (Pilar 4 C) |
-| Rendimiento de agente (voz)      | AgentPerformanceReport (in-memory Contact Lens)      | ✅             |
-| HSM por número / 1ª respuesta    | (nuevo, Fase C)                                      | ⏳ gated       |
+| Reporte                           | Tabla/endpoint                                       | Estado         |
+| --------------------------------- | ---------------------------------------------------- | -------------- |
+| Atribución + embudo por programa  | manage-leads ?report=attribution&programId (byStage) | ✅             |
+| Agente IA (conversaciones)        | get-bot-report ← connectview-ai-conversations        | ✅             |
+| HSM por plantilla (entrega)       | get-hsm-report ← connectview-hsm-sends               | ✅ (Pilar 4)   |
+| WhatsApp Cloud API (Meta)         | get-whatsapp-analytics                               | ✅ (Pilar 4 C) |
+| Rendimiento de agente (voz)       | AgentPerformanceReport (in-memory Contact Lens)      | ✅             |
+| HSM por número / 1ª respuesta     | get-hsm-report ← conversations (Fase C, R16/R17)     | ✅             |
+| Rendimiento por agente WhatsApp   | get-hsm-report byAgent ← conversations (R18, LE4)    | ✅             |
+| Convención de nombre de plantilla | TemplateNameBuilder (R19, LE4)                       | ✅             |
+
+> **🎯 PILAR 9 · LE4 — HECHA y verificada en vivo (2026-06-30).** Cierra los dos
+> reportes opcionales de WhatsApp que faltaban.
+>
+> - **R18 (rendimiento por agente, no por facultad):** `get-hsm-report` reusa su
+>   único scan de `connectview-conversations` (`scanConversations`) para agregar,
+>   además del inbound por número (R16/R17), el **rendimiento por agente**:
+>   conversaciones de WhatsApp atendidas, respuestas enviadas y **tiempo de
+>   respuesta promedio** (entrante → su 1er saliente). Los salientes del bot (sin
+>   `agent`) no cuentan. UI: sección "Por agente" en `HsmOutboundReport`.
+>   **Verificado (Browser 1 + DDB):** conv de prueba (2 entrantes + 2 salientes de
+>   `le4-verify`, gaps 120s/60s) → `byAgent:[{conversations:1, replies:2,
+avgResponseSec:90}]` exacto; UI muestra "le4-verify · 1 · 2 · 1m 30s".
+>   Limpiado.
+> - **R19 (convención de nombre):** `TemplateNameBuilder` en
+>   `WhatsAppTemplatesManager` (solo al crear): compone **fecha + código de
+>   programa + base** (`20260630_adm_datos`) sanitizado para Meta (`a-z0-9_`) y lo
+>   aplica al campo Nombre. Opcional (se puede seguir escribiendo a mano).
+>   **Verificado (Browser 1):** el asistente compuso `20260630_adm_datos` y
+>   "Usar este nombre" llenó el campo.

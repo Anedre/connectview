@@ -590,6 +590,9 @@ export function WhatsAppTemplatesManager() {
                     </span>
                   </div>
                 )}
+                {/* R19 — convención de nombres (fecha + código de programa + base).
+                    Solo al crear: el nombre es inmutable en Meta una vez enviado. */}
+                {!editingId && <TemplateNameBuilder onApply={setName} />}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <label className="col" style={{ gap: 4 }}>
                     <span className="muted" style={{ fontSize: 10.5 }}>
@@ -1404,6 +1407,112 @@ export function WhatsAppTemplatesManager() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * R19 — asistente de la convención de nombres que usa Adriana:
+ * **fecha + código de programa + base** (p.ej. `20260630_adm_datos`). Compone un
+ * nombre válido para Meta (minúsculas, `a-z0-9_`) y lo aplica al campo Nombre.
+ * Es opcional: el admin puede seguir escribiendo el nombre a mano.
+ */
+function TemplateNameBuilder({ onApply }: { onApply: (name: string) => void }) {
+  const today = new Date();
+  const yyyymmdd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(
+    today.getDate(),
+  ).padStart(2, "0")}`;
+  const [open, setOpen] = useState(false);
+  const [fecha, setFecha] = useState(yyyymmdd);
+  const [codigo, setCodigo] = useState("");
+  const [base, setBase] = useState("datos");
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const composed = [fecha, codigo, base].map(norm).filter(Boolean).join("_").replace(/_+/g, "_");
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="btn btn--ghost btn--sm"
+        style={{ alignSelf: "flex-start", fontSize: 11.5 }}
+        onClick={() => setOpen(true)}
+      >
+        <Icon.Sparkles size={12} /> Asistente de nombre (fecha · programa · base)
+      </button>
+    );
+  }
+  const fld: React.CSSProperties = { ...inputStyle, padding: "6px 8px", fontSize: 12 };
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border-1)",
+        borderRadius: 8,
+        padding: 10,
+        background: "var(--bg-2)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <span
+          className="muted"
+          style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4 }}
+        >
+          Convención de nombre (R19)
+        </span>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={() => setOpen(false)}>
+          <Icon.Close size={12} />
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+        <label className="col" style={{ gap: 3 }}>
+          <span className="muted" style={{ fontSize: 10 }}>
+            Fecha (AAAAMMDD)
+          </span>
+          <input style={fld} value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        </label>
+        <label className="col" style={{ gap: 3 }}>
+          <span className="muted" style={{ fontSize: 10 }}>
+            Código de programa
+          </span>
+          <input
+            style={fld}
+            value={codigo}
+            onChange={(e) => setCodigo(e.target.value)}
+            placeholder="adm"
+          />
+        </label>
+        <label className="col" style={{ gap: 3 }}>
+          <span className="muted" style={{ fontSize: 10 }}>
+            Base
+          </span>
+          <select style={fld} value={base} onChange={(e) => setBase(e.target.value)}>
+            <option value="datos">datos</option>
+            <option value="actual">actual</option>
+            <option value="">(ninguna)</option>
+          </select>
+        </label>
+      </div>
+      <div
+        className="row"
+        style={{ justifyContent: "space-between", alignItems: "center", gap: 8 }}
+      >
+        <code style={{ fontSize: 12, color: "var(--accent-cyan)", wordBreak: "break-all" }}>
+          {composed || "—"}
+        </code>
+        <button
+          type="button"
+          className="btn btn--primary btn--sm"
+          disabled={!composed}
+          onClick={() => {
+            onApply(composed);
+            setOpen(false);
+          }}
+        >
+          Usar este nombre
+        </button>
+      </div>
     </div>
   );
 }
