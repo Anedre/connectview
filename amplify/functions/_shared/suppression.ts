@@ -41,8 +41,10 @@ const DAY_MS = 86_400_000;
 /** Canales sobre los que el motor decide. WhatsApp-first en v1 (R6 + activo frágil). */
 export type SuppressionChannel = "whatsapp" | "voice" | "email";
 
-/** Por qué un número está en la lista. Las tres son bloqueo DURO. */
-export type SuppressionStatus = "opted_out" | "quarantined" | "dnc";
+/** Por qué un número está en la lista. Todas son bloqueo DURO (channel-scoped).
+ *  "converted" = lead ganado: no recontactar (Fase C, gated por la regla
+ *  suppressAfterConversion; se escribe al cerrar la gestión). */
+export type SuppressionStatus = "opted_out" | "quarantined" | "dnc" | "converted";
 
 export interface SuppressionEntry {
   /** PK — dígitos normalizados (de _shared/phone.ts), clave natural cross-lead. */
@@ -53,7 +55,7 @@ export interface SuppressionEntry {
   /** Canales suprimidos: ["whatsapp"] | ["voice"] | ["all"] | combinación. */
   channels: string[];
   reason?: string;
-  source: "inbound_keyword" | "status_webhook" | "manual" | "import";
+  source: "inbound_keyword" | "status_webhook" | "manual" | "import" | "conversion";
   tenantId?: string;
   /** Lead ligado, si se pudo resolver (conveniencia para la UI). */
   leadId?: string;
@@ -116,7 +118,10 @@ const rulesCache = new Map<string, { rules: SuppressionRules; exp: number }>();
 const RULES_TTL_MS = 60_000;
 
 /** Lee la política del tenant (cacheada 60s). Default = anti-doble-envío 1 día. */
-export async function getRules(dynamo: DynamoDBClient, tenantId?: string): Promise<SuppressionRules> {
+export async function getRules(
+  dynamo: DynamoDBClient,
+  tenantId?: string,
+): Promise<SuppressionRules> {
   const key = tenantId || "_legacy";
   const now = Date.now();
   const hit = rulesCache.get(key);
@@ -124,7 +129,7 @@ export async function getRules(dynamo: DynamoDBClient, tenantId?: string): Promi
   let rules: SuppressionRules = { tenantId: key, ...DEFAULT_RULES };
   try {
     const r = await dynamo.send(
-      new GetItemCommand({ TableName: RULES_TABLE, Key: { tenantId: { S: key } } })
+      new GetItemCommand({ TableName: RULES_TABLE, Key: { tenantId: { S: key } } }),
     );
     if (r.Item) rules = unmarshall(r.Item) as SuppressionRules;
   } catch (err) {
@@ -139,7 +144,7 @@ export async function saveRules(
   dynamo: DynamoDBClient,
   tenantId: string,
   patch: Partial<SuppressionRules>,
-  actor?: string
+  actor?: string,
 ): Promise<SuppressionRules> {
   const key = tenantId || "_legacy";
   const prev = await getRules(dynamo, key);
@@ -151,7 +156,10 @@ export async function saveRules(
     updatedBy: actor || prev.updatedBy,
   };
   await dynamo.send(
-    new PutItemCommand({ TableName: RULES_TABLE, Item: marshall(rules, { removeUndefinedValues: true }) })
+    new PutItemCommand({
+      TableName: RULES_TABLE,
+      Item: marshall(rules, { removeUndefinedValues: true }),
+    }),
   );
   rulesCache.delete(key);
   return rules;
@@ -179,12 +187,18 @@ export const DEFAULT_STOP_KEYWORDS = [
 export const DEFAULT_OPTIN_KEYWORDS = ["ALTA", "SUSCRIBIR", "SUSCRIBIRME", "START", "REACTIVAR"];
 
 /** ¿El texto inbound es una palabra de baja? Match exacto o palabra completa. */
-export function matchesStopKeyword(text: string, keywords: string[] = DEFAULT_STOP_KEYWORDS): boolean {
+export function matchesStopKeyword(
+  text: string,
+  keywords: string[] = DEFAULT_STOP_KEYWORDS,
+): boolean {
   return matchesKeyword(text, keywords);
 }
 
 /** ¿El texto inbound es una palabra de re-alta? */
-export function matchesOptInKeyword(text: string, keywords: string[] = DEFAULT_OPTIN_KEYWORDS): boolean {
+export function matchesOptInKeyword(
+  text: string,
+  keywords: string[] = DEFAULT_OPTIN_KEYWORDS,
+): boolean {
   return matchesKeyword(text, keywords);
 }
 
@@ -215,13 +229,13 @@ function channelBlocked(entry: SuppressionEntry, channel: SuppressionChannel): b
 /** Lee la entrada de supresión de un número (O(1) GetItem). Fail-open: null si falla. */
 export async function getSuppression(
   dynamo: DynamoDBClient,
-  phone: string
+  phone: string,
 ): Promise<SuppressionEntry | null> {
   const key = keyOf(phone);
   if (!key) return null;
   try {
     const r = await dynamo.send(
-      new GetItemCommand({ TableName: SUPPRESSION_TABLE, Key: { phone: { S: key } } })
+      new GetItemCommand({ TableName: SUPPRESSION_TABLE, Key: { phone: { S: key } } }),
     );
     if (!r.Item) return null;
     const e = unmarshall(r.Item) as SuppressionEntry;
@@ -234,10 +248,16 @@ export async function getSuppression(
   }
 }
 
-/** Veredicto de bloqueo DURO (Fase A) a partir de una entrada de supresión. */
+/** Veredicto de bloqueo DURO a partir de una entrada de supresión. */
 function hardVerdict(entry: SuppressionEntry): SendVerdict {
   const blockedBy: BlockReason =
-    entry.status === "opted_out" ? "opt_out" : entry.status === "quarantined" ? "quarantine" : "dnc";
+    entry.status === "opted_out"
+      ? "opt_out"
+      : entry.status === "quarantined"
+        ? "quarantine"
+        : entry.status === "converted"
+          ? "converted"
+          : "dnc";
   return { allowed: false, blockedBy, detail: entry.reason };
 }
 
@@ -267,7 +287,7 @@ function outsideContactWindow(qh: QuietHours, now: Date): boolean {
 async function recentSendTimes(
   dynamo: DynamoDBClient,
   phoneDigits: string,
-  sinceISO: string
+  sinceISO: string,
 ): Promise<string[]> {
   const out: string[] = [];
   let ESK: Record<string, unknown> | undefined;
@@ -282,7 +302,7 @@ async function recentSendTimes(
           ProjectionExpression: "sentAt",
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ExclusiveStartKey: ESK as any,
-        })
+        }),
       );
       for (const it of r.Items || []) {
         const m = unmarshall(it);
@@ -305,7 +325,7 @@ async function applyPolicy(
   dynamo: DynamoDBClient,
   c: { phone: string; channel: SuppressionChannel; programId?: string; ignoreFrequency?: boolean },
   rules: SuppressionRules,
-  convertedDigits?: Set<string>
+  convertedDigits?: Set<string>,
 ): Promise<SendVerdict> {
   const now = new Date();
   const digits = normalizePhone(c.phone)?.digits;
@@ -313,7 +333,11 @@ async function applyPolicy(
   // Quiet hours / ventana de contacto (por canal o "all").
   const qh = (rules.quietHours || []).find((q) => q.channel === c.channel || q.channel === "all");
   if (qh && outsideContactWindow(qh, now)) {
-    return { allowed: false, blockedBy: "quiet_hours", detail: `fuera de ${qh.startHour}-${qh.endHour}h` };
+    return {
+      allowed: false,
+      blockedBy: "quiet_hours",
+      detail: `fuera de ${qh.startHour}-${qh.endHour}h`,
+    };
   }
 
   // No contactar convertidos (solo se evalúa si el caller pasó el set — preview batch).
@@ -334,14 +358,22 @@ async function applyPolicy(
       if (dedupDays > 0) {
         const dedupSince = now.getTime() - dedupDays * DAY_MS;
         if (times.some((t) => Date.parse(t) >= dedupSince)) {
-          return { allowed: false, blockedBy: "dedup_window", detail: `ya enviado en ${dedupDays}d` };
+          return {
+            allowed: false,
+            blockedBy: "dedup_window",
+            detail: `ya enviado en ${dedupDays}d`,
+          };
         }
       }
       if (cap && cap.max > 0) {
         const capSince = now.getTime() - cap.windowDays * DAY_MS;
         const n = times.filter((t) => Date.parse(t) >= capSince).length;
         if (n >= cap.max) {
-          return { allowed: false, blockedBy: "frequency", detail: `${n}/${cap.max} en ${cap.windowDays}d` };
+          return {
+            allowed: false,
+            blockedBy: "frequency",
+            detail: `${n}/${cap.max} en ${cap.windowDays}d`,
+          };
         }
       }
     }
@@ -363,7 +395,7 @@ export async function evaluateSend(
     programId?: string;
     tenantId?: string;
     ignoreFrequency?: boolean;
-  }
+  },
 ): Promise<SendVerdict> {
   const entry = await getSuppression(dynamo, c.phone);
   if (entry && channelBlocked(entry, c.channel)) return hardVerdict(entry);
@@ -394,13 +426,26 @@ export interface BatchSummary {
 export async function evaluateBatch(
   dynamo: DynamoDBClient,
   phones: string[],
-  opts: { channel: SuppressionChannel; tenantId?: string; programId?: string; convertedDigits?: Set<string> }
+  opts: {
+    channel: SuppressionChannel;
+    tenantId?: string;
+    programId?: string;
+    convertedDigits?: Set<string>;
+  },
 ): Promise<BatchSummary> {
   const rules = await getRules(dynamo, opts.tenantId);
   const summary: BatchSummary = {
     total: phones.length,
     willSend: 0,
-    excluded: { optOut: 0, quarantine: 0, dnc: 0, dedupWindow: 0, frequency: 0, quietHours: 0, converted: 0 },
+    excluded: {
+      optOut: 0,
+      quarantine: 0,
+      dnc: 0,
+      dedupWindow: 0,
+      frequency: 0,
+      quietHours: 0,
+      converted: 0,
+    },
   };
   let i = 0;
   const CONC = 8;
@@ -411,7 +456,12 @@ export async function evaluateBatch(
       const v =
         entry && channelBlocked(entry, opts.channel)
           ? hardVerdict(entry)
-          : await applyPolicy(dynamo, { phone, channel: opts.channel, programId: opts.programId }, rules, opts.convertedDigits);
+          : await applyPolicy(
+              dynamo,
+              { phone, channel: opts.channel, programId: opts.programId },
+              rules,
+              opts.convertedDigits,
+            );
       if (v.allowed) summary.willSend++;
       else {
         const b = v.blockedBy;
@@ -437,9 +487,16 @@ export async function evaluateBatch(
 export async function recordSuppression(
   dynamo: DynamoDBClient,
   phone: string,
-  e: { status: SuppressionStatus; channels?: string[]; reason?: string;
-       source?: SuppressionEntry["source"]; tenantId?: string; leadId?: string;
-       createdBy?: string; expiresAt?: string }
+  e: {
+    status: SuppressionStatus;
+    channels?: string[];
+    reason?: string;
+    source?: SuppressionEntry["source"];
+    tenantId?: string;
+    leadId?: string;
+    createdBy?: string;
+    expiresAt?: string;
+  },
 ): Promise<SuppressionEntry | null> {
   const key = keyOf(phone);
   if (!key) return null;
@@ -464,7 +521,7 @@ export async function recordSuppression(
       new PutItemCommand({
         TableName: SUPPRESSION_TABLE,
         Item: marshall(entry, { removeUndefinedValues: true }),
-      })
+      }),
     );
     return entry;
   } catch (err) {
@@ -477,8 +534,14 @@ export async function recordSuppression(
 export async function recordOptOut(
   dynamo: DynamoDBClient,
   phone: string,
-  opts: { channels?: string[]; reason?: string; source?: SuppressionEntry["source"];
-          tenantId?: string; leadId?: string; createdBy?: string } = {}
+  opts: {
+    channels?: string[];
+    reason?: string;
+    source?: SuppressionEntry["source"];
+    tenantId?: string;
+    leadId?: string;
+    createdBy?: string;
+  } = {},
 ): Promise<SuppressionEntry | null> {
   return recordSuppression(dynamo, phone, {
     status: "opted_out",
@@ -491,13 +554,40 @@ export async function recordOptOut(
   });
 }
 
+/**
+ * Pilar 3 Fase C — "no contactar tras conversión". Se llama al CERRAR una gestión
+ * (valoracion "cierre"). Escribe una entrada DURA `converted` channel-scoped a
+ * "all" para que el gate (voz + WhatsApp + email) la respete en TODO envío futuro.
+ *
+ * Gated por la regla del tenant `suppressAfterConversion` (opt-in): si está
+ * apagada → no-op (return null). Si el cliente quiere recontactar a un convertido,
+ * lo quita de la lista (re-alta manual, ya soportado). Idempotente.
+ */
+export async function recordConversion(
+  dynamo: DynamoDBClient,
+  phone: string,
+  opts: { tenantId?: string; leadId?: string; reason?: string; createdBy?: string } = {},
+): Promise<SuppressionEntry | null> {
+  const rules = await getRules(dynamo, opts.tenantId);
+  if (!rules.suppressAfterConversion) return null; // regla apagada → no suprimir
+  return recordSuppression(dynamo, phone, {
+    status: "converted",
+    channels: ["all"],
+    reason: opts.reason || "Convertido — no recontactar",
+    source: "conversion",
+    tenantId: opts.tenantId,
+    leadId: opts.leadId,
+    createdBy: opts.createdBy,
+  });
+}
+
 /** Quita un número de la lista (re-alta / corrección manual). */
 export async function removeSuppression(dynamo: DynamoDBClient, phone: string): Promise<boolean> {
   const key = keyOf(phone);
   if (!key) return false;
   try {
     await dynamo.send(
-      new DeleteItemCommand({ TableName: SUPPRESSION_TABLE, Key: { phone: { S: key } } })
+      new DeleteItemCommand({ TableName: SUPPRESSION_TABLE, Key: { phone: { S: key } } }),
     );
     return true;
   } catch (err) {
@@ -509,7 +599,7 @@ export async function removeSuppression(dynamo: DynamoDBClient, phone: string): 
 /** Lista la DNC (scan — la lista es chica). Orden: más reciente primero. */
 export async function listSuppression(
   dynamo: DynamoDBClient,
-  opts: { limit?: number } = {}
+  opts: { limit?: number } = {},
 ): Promise<SuppressionEntry[]> {
   const out: SuppressionEntry[] = [];
   const limit = opts.limit || 5000;
@@ -521,7 +611,7 @@ export async function listSuppression(
           TableName: SUPPRESSION_TABLE,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ExclusiveStartKey: ExclusiveStartKey as any,
-        })
+        }),
       );
       for (const it of r.Items || []) out.push(unmarshall(it) as SuppressionEntry);
       ExclusiveStartKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;

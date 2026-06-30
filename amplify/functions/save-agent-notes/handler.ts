@@ -7,13 +7,11 @@ import {
   QueryCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
-import {
-  ConnectClient,
-  StartTaskContactCommand,
-} from "@aws-sdk/client-connect";
+import { ConnectClient, StartTaskContactCommand } from "@aws-sdk/client-connect";
 import { resolveConnect } from "../_shared/tenantConnect";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import { fireAutomation } from "../_shared/automationHook";
+import { recordConversion } from "../_shared/suppression";
 
 // BYO Connect + Data Plane (#43+#46): module-active.
 const legacyConnect = new ConnectClient({ maxAttempts: 1 });
@@ -28,8 +26,7 @@ const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
  * (latest) state still lives on connectview-contacts so all the existing
  * read paths keep working with no migration.
  */
-const HISTORY_TABLE =
-  process.env.WRAPUP_HISTORY_TABLE || "connectview-wrapup-history";
+const HISTORY_TABLE = process.env.WRAPUP_HISTORY_TABLE || "connectview-wrapup-history";
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 let instanceId = INSTANCE_ID;
 // The contact flow we route the follow-up task to. Defaults to the same
@@ -67,7 +64,7 @@ export const handler: Handler = async (event: any) => {
           new GetItemCommand({
             TableName: TABLE_NAME,
             Key: { contactId: { S: contactId } },
-          })
+          }),
         ),
         // History is append-only — sort descending so the most recent
         // wrap-up is first. Cap at 50 to keep payload bounded; in
@@ -82,7 +79,7 @@ export const handler: Handler = async (event: any) => {
               },
               ScanIndexForward: false,
               Limit: 50,
-            })
+            }),
           )
           .catch((err) => {
             // History table might not exist yet on first read; treat as empty.
@@ -188,7 +185,7 @@ export const handler: Handler = async (event: any) => {
             ExpressionAttributeValues: marshall(vals, {
               removeUndefinedValues: true,
             }),
-          })
+          }),
         );
         // Fila de historial (best-effort), marcada auto:true para que la
         // auditoría distinga el resumen automático de un guardado manual.
@@ -205,9 +202,9 @@ export const handler: Handler = async (event: any) => {
                   channel,
                   auto: true,
                 },
-                { removeUndefinedValues: true }
+                { removeUndefinedValues: true },
               ),
-            })
+            }),
           );
         } catch (err) {
           console.warn("auto-summary history write failed:", err);
@@ -275,13 +272,13 @@ export const handler: Handler = async (event: any) => {
                   followup_disposition: subStageLabel || stageLabel || "",
                   followup_valoracion: valoracion || "",
                 },
-              })
+              }),
             );
             if (task.ContactId) followUpTaskIds.push(task.ContactId);
           } catch (err) {
             console.warn(
               "StartTaskContact failed for task24h — wrap-up still saved without task:",
-              err
+              err,
             );
           }
         }
@@ -294,7 +291,7 @@ export const handler: Handler = async (event: any) => {
         new PutItemCommand({
           TableName: TABLE_NAME,
           Item: marshall(item, { removeUndefinedValues: true }),
-        })
+        }),
       );
 
       // Append-only history row. Even if the current row was overwritten
@@ -317,16 +314,14 @@ export const handler: Handler = async (event: any) => {
       if (valoracion !== undefined) historyRow.valoracion = valoracion;
       if (channel !== undefined) historyRow.channel = channel;
       if (Array.isArray(tags)) historyRow.tags = tags;
-      if (followUps && typeof followUps === "object")
-        historyRow.followUps = followUps;
-      if (followUpTaskIds.length > 0)
-        historyRow.followUpTaskIds = followUpTaskIds;
+      if (followUps && typeof followUps === "object") historyRow.followUps = followUps;
+      if (followUpTaskIds.length > 0) historyRow.followUpTaskIds = followUpTaskIds;
       try {
         await dynamo.send(
           new PutItemCommand({
             TableName: HISTORY_TABLE,
             Item: marshall(historyRow, { removeUndefinedValues: true }),
-          })
+          }),
         );
       } catch (err) {
         // History write is best-effort — don't fail the save if the
@@ -353,6 +348,23 @@ export const handler: Handler = async (event: any) => {
         }
       } catch {
         /* nunca romper el guardado del wrap-up */
+      }
+
+      // Pilar 3 Fase C — "no contactar tras conversión". Si la gestión se cerró
+      // con valoración "cierre" (lead ganado), registra el teléfono como
+      // convertido en el motor de supresión → el gate (voz + WhatsApp + email)
+      // no lo volverá a contactar. Gated por la regla suppressAfterConversion
+      // (opt-in) dentro de recordConversion. Best-effort, nunca rompe el save.
+      if (valoracion === "cierre" && customerPhone) {
+        try {
+          const tenantId = await resolveTenantId(event?.headers);
+          await recordConversion(dynamo, customerPhone, {
+            tenantId,
+            createdBy: agentUsername || "wrap-up",
+          });
+        } catch (err) {
+          console.warn("recordConversion failed (best-effort):", err);
+        }
       }
 
       return {

@@ -11,10 +11,10 @@ import { authedFetch } from "@/lib/authedFetch";
 export interface SuppressionEntry {
   phone: string; // dígitos normalizados (PK)
   e164?: string;
-  status: "opted_out" | "quarantined" | "dnc";
+  status: "opted_out" | "quarantined" | "dnc" | "converted";
   channels: string[]; // ["whatsapp"] | ["all"] | …
   reason?: string;
-  source: "inbound_keyword" | "status_webhook" | "manual" | "import";
+  source: "inbound_keyword" | "status_webhook" | "manual" | "import" | "conversion";
   tenantId?: string;
   leadId?: string;
   createdAt: string;
@@ -62,7 +62,7 @@ export interface BatchSummary {
  *  Standalone (no hook) para que el wizard de campañas lo llame directo. */
 export async function previewSuppression(
   phones: string[],
-  opts: { channel?: string; programId?: string } = {}
+  opts: { channel?: string; programId?: string } = {},
 ): Promise<BatchSummary | null> {
   const url = getApiEndpoints()?.manageSuppression;
   if (!url || phones.length === 0) return null;
@@ -114,7 +114,13 @@ export function useSuppression() {
   }, [load]);
 
   const add = useCallback(
-    async (input: { phone: string; channels?: string[]; reason?: string; status?: SuppressionEntry["status"]; actor?: string }) => {
+    async (input: {
+      phone: string;
+      channels?: string[];
+      reason?: string;
+      status?: SuppressionEntry["status"];
+      actor?: string;
+    }) => {
       const url = getApiEndpoints()?.manageSuppression;
       if (!url) return false;
       const r = await authedFetch(url, {
@@ -127,7 +133,7 @@ export function useSuppression() {
       await load();
       return true;
     },
-    [load]
+    [load],
   );
 
   const remove = useCallback(
@@ -144,26 +150,23 @@ export function useSuppression() {
       await load();
       return true;
     },
-    [load]
+    [load],
   );
 
   /** Guarda la política (reglas). Devuelve las reglas guardadas. */
-  const saveRules = useCallback(
-    async (patch: Partial<SuppressionRules>, actor?: string) => {
-      const url = getApiEndpoints()?.manageSuppression;
-      if (!url) return null;
-      const r = await authedFetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "saveRules", rules: patch, actor }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
-      setRules(j.rules || null);
-      return j.rules as SuppressionRules;
-    },
-    []
-  );
+  const saveRules = useCallback(async (patch: Partial<SuppressionRules>, actor?: string) => {
+    const url = getApiEndpoints()?.manageSuppression;
+    if (!url) return null;
+    const r = await authedFetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "saveRules", rules: patch, actor }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+    setRules(j.rules || null);
+    return j.rules as SuppressionRules;
+  }, []);
 
   return { entries, rules, loading, error, reload: load, add, remove, saveRules };
 }

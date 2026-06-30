@@ -21,6 +21,11 @@ export interface UpdateCampaignInput {
   retryNoAnswerMinutes?: number;
   retryMaxAttempts?: number;
   maxContactsPerAgent?: number;
+  // Pilar 7 · orquestación (update-campaign ya los persiste).
+  priority?: number;
+  weight?: number;
+  goalType?: "none" | "contacts" | "conversions";
+  goalTarget?: number;
 }
 
 export type RelaunchScope = "all" | "failed" | "specific";

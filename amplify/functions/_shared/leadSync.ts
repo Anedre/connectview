@@ -458,6 +458,55 @@ async function findContactByPhoneEmail(clauses: string[]): Promise<string | null
  * `voxLeadId` = el leadId de Vox (External Id). Sin él, cae al match por
  * teléfono/email (comportamiento previo, pero ya con teléfono normalizado).
  */
+/**
+ * Pilar 3 Fase C — propaga una baja/alta a Salesforce: setea `DoNotCall` en el
+ * Lead que matchee (por External Id si la org lo tiene, si no por teléfono).
+ * STOP → DoNotCall=true; ALTA (re-alta) → DoNotCall=false, simétrico. Best-effort:
+ * si SF no está conectado, el campo no existe o no hay match → no-op silencioso.
+ * El caller debe haber llamado `setActiveTenant(tenantId)` antes (token + org).
+ */
+export async function pushDoNotCallToSalesforce(
+  phone: string,
+  doNotCall: boolean,
+  opts: { voxLeadId?: string } = {},
+): Promise<{ updated: boolean; sfId?: string }> {
+  const raw = (phone || "").trim();
+  if (!raw) return { updated: false };
+  try {
+    let sfId: string | undefined;
+    // 1. Match determinístico por External Id (si la org tiene el campo VoxLeadId__c).
+    if (opts.voxLeadId && (await leadExtIdAvailable())) {
+      try {
+        const byExt = await soql(
+          `SELECT Id FROM Lead WHERE ${SF_VOX_EXTID_FIELD} = '${soqlEscape(opts.voxLeadId)}' LIMIT 1`,
+        );
+        sfId = byExt[0]?.Id as string | undefined;
+      } catch {
+        /* campo ausente / cache viejo → caemos al match por teléfono */
+      }
+    }
+    // 2. Fallback: teléfono (E.164 + dígitos pelados, ambos almacenamientos SF).
+    if (!sfId) {
+      const clauses = phoneEmailClauses(normalizePhone(raw)?.e164 || raw, "");
+      if (clauses.length) {
+        const found = await soql(
+          `SELECT Id FROM Lead WHERE ${clauses.join(" OR ")} ORDER BY LastModifiedDate DESC LIMIT 1`,
+        );
+        sfId = found[0]?.Id as string | undefined;
+      }
+    }
+    if (!sfId) return { updated: false };
+    await updateSObject("Lead", sfId, { DoNotCall: doNotCall });
+    return { updated: true, sfId };
+  } catch (err) {
+    console.warn(
+      "pushDoNotCallToSalesforce falló (best-effort):",
+      err instanceof Error ? err.message : err,
+    );
+    return { updated: false };
+  }
+}
+
 export async function pushLeadToSalesforce(
   lead: LeadInput,
   extra: SfPushExtra = {},

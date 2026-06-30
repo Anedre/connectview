@@ -13,6 +13,7 @@ import {
   appendLeadHistory,
   getLeadByPhone,
   propagateLead,
+  pushDoNotCallToSalesforce,
   setActiveDynamo,
   setActiveProfiles,
 } from "../_shared/leadSync";
@@ -308,6 +309,16 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
       }
     } catch (e) {
       console.error("opt-out/in record falló:", e);
+    }
+    // Pilar 3 Fase C — propagar la baja/alta a Salesforce (DoNotCall). El tenant
+    // BYO usa su propia org → activamos su contexto SF antes del push. Best-effort:
+    // si SF no está conectado o no hay match, no-op. STOP→true, ALTA→false.
+    try {
+      setActiveTenant(t.tenantId);
+      const r = await pushDoNotCallToSalesforce(phoneE164, isStop, { voxLeadId: leadId });
+      if (r.updated) console.log(`SF DoNotCall=${isStop} en Lead ${r.sfId} (${phoneE164})`);
+    } catch (e) {
+      console.warn("SF DoNotCall push falló (best-effort):", e);
     }
     const confirmText = isStop
       ? "Listo ✅ No volverás a recibir mensajes de WhatsApp de nuestra parte. Si fue un error, respondé *ALTA* para reactivar."

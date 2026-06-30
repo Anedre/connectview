@@ -13,6 +13,7 @@ import {
   ListUsersCommand,
 } from "@aws-sdk/client-connect";
 import { getTenantConnect } from "../_shared/tenantConnect";
+import { evaluateSend } from "../_shared/suppression";
 
 // BYO Data Plane (#46): DDB module-active igual que Connect. Se resetea por
 // campaña usando getTenantConnect(campaign.tenantId).dynamo. Lambda procesa
@@ -537,7 +538,7 @@ async function markWhatsAppSent(c: CampaignContact, messageId: string): Promise<
 /** Pilar 3: contacto suprimido por el motor (opt-out/DNC/dedup/frecuencia/horario).
  *  Estado TERMINAL "suppressed" — NO es fallo y NO se reintenta. Cuenta como
  *  "resuelto" (doneCount) para que la campaña drene y complete. */
-async function markWhatsAppSuppressed(c: CampaignContact, reason?: string): Promise<void> {
+async function markSuppressed(c: CampaignContact, reason?: string): Promise<void> {
   const now = new Date().toISOString();
   await dynamo.send(
     new UpdateItemCommand({
@@ -564,6 +565,35 @@ async function markWhatsAppSuppressed(c: CampaignContact, reason?: string): Prom
     .catch(() => {
       /* counter drift is OK */
     });
+}
+
+/**
+ * Pilar 3 Fase C — gate de supresión para VOZ. Antes de marcar y llamar, consulta
+ * el motor: opt-out/DNC/cuarentena (duros, channel-scoped a "voice"), horario
+ * silencioso de voz, y "no contactar tras conversión". Si el contacto está
+ * suprimido lo deja en estado TERMINAL "suppressed" (drena la campaña, NO se
+ * reintenta) y devuelve true para que el caller lo salte.
+ *
+ * FAIL-OPEN: si el motor falla (DDB caído, etc.) NO bloqueamos la marcación —
+ * un error de infraestructura no debe paralizar la campaña. Mismo criterio que
+ * el gate de WhatsApp (evaluateSend ya es fail-open internamente; este try/catch
+ * cubre además un throw inesperado).
+ */
+async function voiceSuppressed(campaign: Campaign, contact: CampaignContact): Promise<boolean> {
+  try {
+    const v = await evaluateSend(dynamo, {
+      phone: contact.phone,
+      channel: "voice",
+      tenantId: campaign.tenantId,
+    });
+    if (!v.allowed) {
+      await markSuppressed(contact, v.blockedBy);
+      return true;
+    }
+  } catch (err) {
+    console.warn(`[dialer] voice suppression check failed (fail-open) for ${contact.phone}:`, err);
+  }
+  return false;
 }
 
 /**
@@ -657,7 +687,7 @@ async function processCampaignWhatsApp(campaign: Campaign): Promise<void> {
     } else if (res.suppressed) {
       // Pilar 3: el número está suprimido (opt-out/DNC/dedup/frecuencia/horario)
       // → estado TERMINAL "suppressed", no es un fallo y NO se reintenta.
-      await markWhatsAppSuppressed(contact, res.reason);
+      await markSuppressed(contact, res.reason);
     } else {
       await markAsFailed(contact, "Envío de template de WhatsApp falló");
     }
@@ -1036,6 +1066,9 @@ async function processCampaignWithBuckets(
     const next = bucket.shift()!;
     const claimed = await markAsDialing(next);
     if (!claimed) continue;
+    // Pilar 3 Fase C: gate de supresión de voz (opt-out/DNC/cuarentena/horario
+    // silencioso/no-tras-conversión). Suprimido → terminal, sin marcar.
+    if (await voiceSuppressed(campaign, next)) continue;
     const connectContactId = await startOutbound(campaign, next);
     if (!connectContactId) {
       await markAsFailed(next, "StartOutboundVoiceContact returned null");
@@ -1093,6 +1126,8 @@ async function processCampaignLegacy(campaign: Campaign, slotOverride?: number):
   for (const contact of candidates) {
     const claimed = await markAsDialing(contact);
     if (!claimed) continue;
+    // Pilar 3 Fase C: gate de supresión de voz antes de marcar.
+    if (await voiceSuppressed(campaign, contact)) continue;
     const connectContactId = await startOutbound(campaign, contact);
     if (!connectContactId) {
       await markAsFailed(contact, "StartOutboundVoiceContact returned null");
