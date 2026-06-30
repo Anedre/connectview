@@ -243,6 +243,14 @@ export async function updateSObject(
   }
 }
 
+/** Delete an sObject by id (DELETE). */
+export async function deleteSObject(sobject: string, id: string): Promise<void> {
+  const res = await sfFetch("DELETE", `sobjects/${sobject}/${id}`);
+  if (!res.ok) {
+    throw new Error(`Delete ${sobject}/${id} failed: ${JSON.stringify(res.body).slice(0, 300)}`);
+  }
+}
+
 /** Escape a value for safe inclusion in a SOQL string literal. */
 export function soqlEscape(v: string): string {
   return v.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
