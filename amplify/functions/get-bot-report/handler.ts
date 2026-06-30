@@ -10,9 +10,9 @@ import { resolveDynamo } from "../_shared/tenantConnect";
  * qué deriva (motivo), confianza promedio, fuentes más citadas y herramientas más
  * usadas. Es un diferenciador frente a Chattigo (que no tiene agente conversacional).
  *
- * BYO Data Plane: resuelve la tabla del tenant (mismo connectview-bots donde el
- * runtime escribe los conv#). Authorization Bearer idToken obligatorio (sin token
- * → blockedDynamoClient → vacío).
+ * BYO Data Plane: resuelve la tabla del tenant (connectview-ai-conversations, donde
+ * el runtime escribe los conv# — OJO: no es connectview-bots). Authorization Bearer
+ * idToken obligatorio (sin token → blockedDynamoClient → vacío).
  *
  * GET ?days=30 → { report }
  */
