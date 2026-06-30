@@ -55,10 +55,17 @@ elegir **a qué campo** del Lead del cliente va cada dato.
   (Bonus: con un valor de 16 chars, SF rechazó por `STRING_TOO_LONG` en SICCode\_\_c
   → confirma que escribe en ESE campo y respeta su validación.)
 
+## LE1 — mapeo UNIVERSAL (commit `d19b239`)
+
+El mapeo ya no es solo del wrap-up: `pushLeadToSalesforce` **auto-carga** el
+`fieldMapping` del tenant desde `connectview-connections` (vía
+`salesforceClient.getActiveTenantId()`, cacheado 5 min). Aplica a TODOS los callers
+de `propagateLead` (tablero, webhooks Meta/WhatsApp, web-form, automatización) —
+los 7 ya llaman `setActiveTenant`. Verificado E2E con el auto-load (sin setter
+manual): email→SICCode\_\_c cayó en el custom. Se quitó el `setActiveSfMapping` manual.
+
 ## Pendientes opcionales (Adriana / v2)
 
-- Wirear el mapeo también en `manage-leads` (board-save) y demás callers de
-  `propagateLead` (hoy solo `salesforce-sync` lo carga; el resto usa defaults).
 - Campos extra mapeables (montoEstimado → currency, attributes.\* → custom).
 - Validación pre-flight de tipos/picklists en la UI; backfill con el mapeo nuevo.
 
