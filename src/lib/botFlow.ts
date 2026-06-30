@@ -132,7 +132,7 @@ export interface ListRow {
 /** Reply buttons branch the flow; URL/phone buttons are terminal actions. */
 export function replyButtons(buttons: unknown): ButtonDef[] {
   return (Array.isArray(buttons) ? (buttons as ButtonDef[]) : []).filter(
-    (b) => !b.type || b.type === "reply"
+    (b) => !b.type || b.type === "reply",
   );
 }
 
@@ -170,12 +170,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         key: "trigger",
         label: "Se dispara cuando",
         type: "select",
-        options: [
-          "Mensaje entrante (WhatsApp)",
-          "Nuevo lead",
-          "Palabra clave",
-          "Manual / prueba",
-        ],
+        options: ["Mensaje entrante (WhatsApp)", "Nuevo lead", "Palabra clave", "Manual / prueba"],
       },
     ],
     outlets: () => [{ id: "out" }],
@@ -260,7 +255,12 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         ? rows.map((r) => ({ id: `r:${r.id}`, label: r.title || "Opción" }))
         : [{ id: "out" }];
     },
-    defaultData: () => ({ header: "", body: "", buttonLabel: "Ver opciones", rows: [] as ListRow[] }),
+    defaultData: () => ({
+      header: "",
+      body: "",
+      buttonLabel: "Ver opciones",
+      rows: [] as ListRow[],
+    }),
     summary: (d) => str(d.body, str(d.header, "Lista de opciones")),
   },
 
@@ -332,9 +332,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     ],
     defaultData: () => ({ variable: "", op: "equals", value: "" }),
     summary: (d) =>
-      `${str(d.variable, "var")} ${OP_LABEL[str(d.op, "equals")] || ""} ${str(
-        d.value
-      )}`.trim(),
+      `${str(d.variable, "var")} ${OP_LABEL[str(d.op, "equals")] || ""} ${str(d.value)}`.trim(),
   },
 
   template: {
@@ -376,7 +374,14 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "clock",
     blurb: "Pausa antes del siguiente paso",
     fields: [
-      { key: "amount", label: "Cantidad", type: "number", placeholder: "30", slider: { min: 1, max: 60 }, help: "Cuánto espera el bot antes de seguir al próximo paso." },
+      {
+        key: "amount",
+        label: "Cantidad",
+        type: "number",
+        placeholder: "30",
+        slider: { min: 1, max: 60 },
+        help: "Cuánto espera el bot antes de seguir al próximo paso.",
+      },
       {
         key: "unit",
         label: "Unidad",
@@ -386,8 +391,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     ],
     outlets: () => [{ id: "out" }],
     defaultData: () => ({ amount: 30, unit: "minutes" }),
-    summary: (d) =>
-      `Esperar ${str(String(d.amount), "0")} ${UNIT_LABEL[str(d.unit, "minutes")]}`,
+    summary: (d) => `Esperar ${str(String(d.amount), "0")} ${UNIT_LABEL[str(d.unit, "minutes")]}`,
   },
 
   set_field: {
@@ -481,7 +485,13 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         variable: "insert",
         help: "Aviso solo para tu equipo (no lo ve el cliente). Podés insertar variables.",
       },
-      { key: "to", label: "Para (usuario)", type: "text", placeholder: "supervisor", help: "Opcional: a quién avisar." },
+      {
+        key: "to",
+        label: "Para (usuario)",
+        type: "text",
+        placeholder: "supervisor",
+        help: "Opcional: a quién avisar.",
+      },
     ],
     outlets: () => [{ id: "out" }],
     defaultData: () => ({ text: "", to: "" }),
@@ -496,7 +506,13 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "webhook",
     blurb: "Llama a un servicio externo (HTTP)",
     fields: [
-      { key: "method", label: "Método", type: "select", options: ["POST", "GET"], help: "POST para enviar datos, GET para consultarlos." },
+      {
+        key: "method",
+        label: "Método",
+        type: "select",
+        options: ["POST", "GET"],
+        help: "POST para enviar datos, GET para consultarlos.",
+      },
       {
         key: "url",
         label: "URL",
@@ -566,7 +582,52 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         placeholder: "el cliente lo pida o se frustre",
         help: "Si pasa esto, la IA pasa la conversación a un agente (rama «Derivar»).",
       },
-      { key: "maxTurns", label: "Máx. de turnos", type: "number", placeholder: "6", slider: { min: 1, max: 12 }, help: "Tope de idas y vueltas antes de cerrar o derivar." },
+      {
+        key: "maxTurns",
+        label: "Máx. de turnos",
+        type: "number",
+        placeholder: "6",
+        slider: { min: 1, max: 12 },
+        help: "Tope de idas y vueltas antes de cerrar o derivar.",
+      },
+      // Pilar 8 — agente híbrido: conocimiento, guardrails, confianza, confirmación.
+      {
+        key: "knowledge",
+        label: "Conocimiento (texto fijo)",
+        type: "textarea",
+        placeholder:
+          "Datos que la IA puede usar para responder (precios, requisitos…). No inventa fuera de esto.",
+        help: "Base de conocimiento estática. Se suma a las fuentes RAG (catálogos/programas/FAQ) de abajo.",
+      },
+      {
+        key: "guardrails",
+        label: "Restricciones (qué NO hacer)",
+        type: "textarea",
+        placeholder: "No prometer descuentos. No dar datos de otros alumnos.",
+        help: "Límites duros que la IA nunca cruza.",
+      },
+      {
+        key: "confidenceThreshold",
+        label: "Confianza mínima (deriva si baja)",
+        type: "number",
+        placeholder: "70",
+        slider: { min: 0, max: 100 },
+        help: "Si la IA no está al menos así de segura, deriva a un humano. 0 = nunca por confianza.",
+      },
+      {
+        key: "confirmSensitive",
+        label: "¿Confirmar acciones sensibles?",
+        type: "select",
+        options: ["Sí (recomendado)", "No"],
+        help: "Si está en Sí, la IA confirma con el cliente antes de enviar WhatsApp / agendar / crear lead.",
+      },
+      {
+        key: "ragPrograms",
+        label: "Anclar en Programas activos",
+        type: "select",
+        options: ["No", "Sí"],
+        help: "Si está en Sí, la IA conoce los programas activos (Pilar 1) para responder.",
+      },
     ],
     outlets: () => [
       { id: "resolved", label: "Resuelto" },
@@ -578,6 +639,9 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
       instructions: "",
       handoffWhen: "",
       maxTurns: 6,
+      confidenceThreshold: 70,
+      confirmSensitive: "Sí (recomendado)",
+      ragPrograms: "No",
     }),
     summary: (d) => {
       const m = str(d.model, "IA").replace(" (Bedrock)", "");
@@ -620,9 +684,28 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "image",
     blurb: "Manda una foto, video, documento o audio",
     fields: [
-      { key: "mediaType", label: "Tipo", type: "select", options: ["Imagen", "Video", "Documento", "Audio"], help: "Qué clase de archivo se envía." },
-      { key: "url", label: "URL del archivo", type: "text", placeholder: "https://…/foto.jpg", variable: "insert", help: "Link público al archivo. Podés usar una variable." },
-      { key: "caption", label: "Texto (opcional)", type: "textarea", placeholder: "Mirá esto 👇", variable: "insert" },
+      {
+        key: "mediaType",
+        label: "Tipo",
+        type: "select",
+        options: ["Imagen", "Video", "Documento", "Audio"],
+        help: "Qué clase de archivo se envía.",
+      },
+      {
+        key: "url",
+        label: "URL del archivo",
+        type: "text",
+        placeholder: "https://…/foto.jpg",
+        variable: "insert",
+        help: "Link público al archivo. Podés usar una variable.",
+      },
+      {
+        key: "caption",
+        label: "Texto (opcional)",
+        type: "textarea",
+        placeholder: "Mirá esto 👇",
+        variable: "insert",
+      },
     ],
     outlets: () => [{ id: "out" }],
     defaultData: () => ({ mediaType: "Imagen", url: "", caption: "" }),
@@ -637,22 +720,51 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "hours",
     blurb: "Ramifica según si estás abierto o cerrado",
     fields: [
-      { key: "daysPreset", label: "Días", type: "select", options: ["Lunes a viernes", "Lunes a sábado", "Todos los días"] },
-      { key: "from", label: "Desde", type: "text", placeholder: "09:00", help: "Hora de apertura (HH:MM, 24h)." },
-      { key: "to", label: "Hasta", type: "text", placeholder: "18:00", help: "Hora de cierre (HH:MM, 24h)." },
+      {
+        key: "daysPreset",
+        label: "Días",
+        type: "select",
+        options: ["Lunes a viernes", "Lunes a sábado", "Todos los días"],
+      },
+      {
+        key: "from",
+        label: "Desde",
+        type: "text",
+        placeholder: "09:00",
+        help: "Hora de apertura (HH:MM, 24h).",
+      },
+      {
+        key: "to",
+        label: "Hasta",
+        type: "text",
+        placeholder: "18:00",
+        help: "Hora de cierre (HH:MM, 24h).",
+      },
       {
         key: "timezone",
         label: "Zona horaria",
         type: "select",
-        options: ["America/Lima", "America/Bogota", "America/Mexico_City", "America/Argentina/Buenos_Aires", "America/Santiago"],
+        options: [
+          "America/Lima",
+          "America/Bogota",
+          "America/Mexico_City",
+          "America/Argentina/Buenos_Aires",
+          "America/Santiago",
+        ],
       },
     ],
     outlets: () => [
       { id: "open", label: "Abierto" },
       { id: "closed", label: "Cerrado" },
     ],
-    defaultData: () => ({ daysPreset: "Lunes a viernes", from: "09:00", to: "18:00", timezone: "America/Lima" }),
-    summary: (d) => `${str(d.daysPreset, "Lun a Vie")} · ${str(d.from, "09:00")}–${str(d.to, "18:00")}`,
+    defaultData: () => ({
+      daysPreset: "Lunes a viernes",
+      from: "09:00",
+      to: "18:00",
+      timezone: "America/Lima",
+    }),
+    summary: (d) =>
+      `${str(d.daysPreset, "Lun a Vie")} · ${str(d.from, "09:00")}–${str(d.to, "18:00")}`,
   },
 
   appointment: {
@@ -663,16 +775,41 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "appointment",
     blurb: "Reserva una cita en el calendario",
     fields: [
-      { key: "title", label: "Asunto", type: "text", placeholder: "Asesoría de admisión", variable: "insert" },
-      { key: "phone", label: "Teléfono del cliente", type: "text", placeholder: "{{telefono}}", variable: "insert", help: "Usá una variable capturada antes (p. ej. {{telefono}})." },
-      { key: "whenISO", label: "Fecha y hora", type: "text", placeholder: "{{fecha}}", variable: "insert", help: "Fecha/hora ISO 8601 o una variable con esa info." },
+      {
+        key: "title",
+        label: "Asunto",
+        type: "text",
+        placeholder: "Asesoría de admisión",
+        variable: "insert",
+      },
+      {
+        key: "phone",
+        label: "Teléfono del cliente",
+        type: "text",
+        placeholder: "{{telefono}}",
+        variable: "insert",
+        help: "Usá una variable capturada antes (p. ej. {{telefono}}).",
+      },
+      {
+        key: "whenISO",
+        label: "Fecha y hora",
+        type: "text",
+        placeholder: "{{fecha}}",
+        variable: "insert",
+        help: "Fecha/hora ISO 8601 o una variable con esa info.",
+      },
       { key: "durationMin", label: "Duración (min)", type: "number", placeholder: "30" },
     ],
     outlets: () => [
       { id: "booked", label: "Agendada" },
       { id: "failed", label: "No se pudo" },
     ],
-    defaultData: () => ({ title: "", phone: "{{telefono}}", whenISO: "{{fecha}}", durationMin: 30 }),
+    defaultData: () => ({
+      title: "",
+      phone: "{{telefono}}",
+      whenISO: "{{fecha}}",
+      durationMin: 30,
+    }),
     summary: (d) => (str(d.title) ? `Agenda: ${str(d.title)}` : "Agendar una cita"),
   },
 
@@ -684,9 +821,20 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "card",
     blurb: "Envía un enlace de pago al cliente",
     fields: [
-      { key: "concept", label: "Concepto", type: "text", placeholder: "Matrícula 2026", variable: "insert" },
+      {
+        key: "concept",
+        label: "Concepto",
+        type: "text",
+        placeholder: "Matrícula 2026",
+        variable: "insert",
+      },
       { key: "amount", label: "Monto", type: "text", placeholder: "150.00", variable: "insert" },
-      { key: "currency", label: "Moneda", type: "select", options: ["PEN", "USD", "MXN", "COP", "ARS", "CLP"] },
+      {
+        key: "currency",
+        label: "Moneda",
+        type: "select",
+        options: ["PEN", "USD", "MXN", "COP", "ARS", "CLP"],
+      },
       {
         key: "url",
         label: "Link de pago",
@@ -709,7 +857,13 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "split",
     blurb: "Divide el tráfico al azar para probar variantes",
     fields: [
-      { key: "percentA", label: "% que va por A", type: "number", placeholder: "50", help: "El resto va por la rama B. Útil para A/B testing." },
+      {
+        key: "percentA",
+        label: "% que va por A",
+        type: "number",
+        placeholder: "50",
+        help: "El resto va por la rama B. Útil para A/B testing.",
+      },
     ],
     outlets: () => [
       { id: "a", label: "A" },
@@ -727,7 +881,14 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     icon: "tag",
     blurb: "Agrega o quita una etiqueta al contacto",
     fields: [
-      { key: "tag", label: "Etiqueta", type: "text", placeholder: "VIP", variable: "insert", suggestions: ["VIP", "Caliente", "Frío", "Seguimiento", "Cliente", "No molestar"] },
+      {
+        key: "tag",
+        label: "Etiqueta",
+        type: "text",
+        placeholder: "VIP",
+        variable: "insert",
+        suggestions: ["VIP", "Caliente", "Frío", "Seguimiento", "Cliente", "No molestar"],
+      },
       { key: "action", label: "Acción", type: "select", options: ["Agregar", "Quitar"] },
     ],
     outlets: () => [{ id: "out" }],
@@ -771,7 +932,8 @@ export function validateBot(bot: Bot): BotIssue[] {
   const issues: BotIssue[] = [];
   const starts = bot.nodes.filter((n) => n.kind === "start");
   if (starts.length === 0) issues.push({ message: "Falta un paso de Inicio." });
-  if (starts.length > 1) issues.push({ message: "Hay más de un paso de Inicio.", nodeId: starts[1].id });
+  if (starts.length > 1)
+    issues.push({ message: "Hay más de un paso de Inicio.", nodeId: starts[1].id });
 
   const targets = new Set(bot.edges.map((e) => e.target));
   const sources = new Set(bot.edges.map((e) => e.source));
@@ -783,7 +945,10 @@ export function validateBot(bot: Bot): BotIssue[] {
   for (const n of bot.nodes) {
     const hasOutlets = NODE_KINDS[n.kind].outlets(n.data).length > 0;
     if (hasOutlets && n.kind !== "stop" && !sources.has(n.id)) {
-      issues.push({ message: `«${NODE_KINDS[n.kind].label}» no lleva a ningún lado.`, nodeId: n.id });
+      issues.push({
+        message: `«${NODE_KINDS[n.kind].label}» no lleva a ningún lado.`,
+        nodeId: n.id,
+      });
     }
   }
   return issues;
@@ -797,7 +962,12 @@ export function defaultBot(): Bot {
     status: "draft",
     trigger: "Mensaje entrante (WhatsApp)",
     nodes: [
-      { id: "start", kind: "start", position: { x: 240, y: 0 }, data: { trigger: "Mensaje entrante (WhatsApp)" } },
+      {
+        id: "start",
+        kind: "start",
+        position: { x: 240, y: 0 },
+        data: { trigger: "Mensaje entrante (WhatsApp)" },
+      },
       {
         id: "msg1",
         kind: "message",
@@ -815,7 +985,11 @@ export function defaultBot(): Bot {
         id: "q1",
         kind: "question",
         position: { x: -120, y: 470 },
-        data: { prompt: "¡Genial! ¿Qué carrera de pregrado te interesa?", saveAs: "carrera", validate: "ninguna" },
+        data: {
+          prompt: "¡Genial! ¿Qué carrera de pregrado te interesa?",
+          saveAs: "carrera",
+          validate: "ninguna",
+        },
       },
       {
         id: "tpl1",
@@ -828,7 +1002,10 @@ export function defaultBot(): Bot {
         id: "msgpos",
         kind: "message",
         position: { x: 240, y: 470 },
-        data: { text: "Tenemos maestrías y diplomados. Te paso el catálogo y un asesor te contactará.", buttons: [] },
+        data: {
+          text: "Tenemos maestrías y diplomados. Te paso el catálogo y un asesor te contactará.",
+          buttons: [],
+        },
       },
       { id: "stoppos", kind: "stop", position: { x: 240, y: 690 }, data: {} },
       {
@@ -952,7 +1129,11 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#22B8D9",
     category: "comercial",
     channels: ["whatsapp"],
-    preview: { bubble: "¡Hola! 👋 Soy el asistente. ¿En qué te puedo ayudar?", reply: "Pregrado", emoji: "👋" },
+    preview: {
+      bubble: "¡Hola! 👋 Soy el asistente. ¿En qué te puedo ayudar?",
+      reply: "Pregrado",
+      emoji: "👋",
+    },
     build: () => defaultBot(),
   },
   {
@@ -963,7 +1144,11 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#8B7EE8",
     category: "leads",
     channels: ["whatsapp", "instagram"],
-    preview: { bubble: "Para ayudarte mejor, ¿cuál es tu nombre completo?", reply: "María 😊", emoji: "📝" },
+    preview: {
+      bubble: "Para ayudarte mejor, ¿cuál es tu nombre completo?",
+      reply: "María 😊",
+      emoji: "📝",
+    },
     build: () => ({
       botId: "",
       name: "Calificación de lead",
@@ -971,10 +1156,43 @@ export const BOT_TEMPLATES: BotTemplate[] = [
       trigger: "Mensaje entrante (WhatsApp)",
       nodes: [
         blankStart(),
-        { id: "q1", kind: "question", position: { x: 240, y: 120 }, data: { prompt: "¡Hola! Para ayudarte mejor, ¿cuál es tu nombre completo?", saveAs: "nombre", validate: "ninguna" } },
-        { id: "q2", kind: "question", position: { x: 240, y: 300 }, data: { prompt: "Gracias {{nombre}}. ¿Qué programa te interesa?", saveAs: "interes", validate: "ninguna" } },
-        { id: "set1", kind: "set_field", position: { x: 240, y: 480 }, data: { field: "etapa", value: "Interesado" } },
-        { id: "hand1", kind: "handoff", position: { x: 240, y: 620 }, data: { queue: "Admisión", priority: "alta", assignTo: "", note: "Lead calificado por el bot: {{nombre}} — interés: {{interes}}" } },
+        {
+          id: "q1",
+          kind: "question",
+          position: { x: 240, y: 120 },
+          data: {
+            prompt: "¡Hola! Para ayudarte mejor, ¿cuál es tu nombre completo?",
+            saveAs: "nombre",
+            validate: "ninguna",
+          },
+        },
+        {
+          id: "q2",
+          kind: "question",
+          position: { x: 240, y: 300 },
+          data: {
+            prompt: "Gracias {{nombre}}. ¿Qué programa te interesa?",
+            saveAs: "interes",
+            validate: "ninguna",
+          },
+        },
+        {
+          id: "set1",
+          kind: "set_field",
+          position: { x: 240, y: 480 },
+          data: { field: "etapa", value: "Interesado" },
+        },
+        {
+          id: "hand1",
+          kind: "handoff",
+          position: { x: 240, y: 620 },
+          data: {
+            queue: "Admisión",
+            priority: "alta",
+            assignTo: "",
+            note: "Lead calificado por el bot: {{nombre}} — interés: {{interes}}",
+          },
+        },
         { id: "stop1", kind: "stop", position: { x: 240, y: 800 }, data: {} },
       ],
       edges: [
@@ -994,7 +1212,11 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#17A2B8",
     category: "trabajo",
     channels: ["whatsapp", "webchat"],
-    preview: { bubble: "Elegí un tema y te respondo al instante:", reply: "Pagos y becas", emoji: "💡" },
+    preview: {
+      bubble: "Elegí un tema y te respondo al instante:",
+      reply: "Pagos y becas",
+      emoji: "💡",
+    },
     build: () => ({
       botId: "",
       name: "Preguntas frecuentes",
@@ -1017,9 +1239,32 @@ export const BOT_TEMPLATES: BotTemplate[] = [
             ],
           },
         },
-        { id: "mp", kind: "message", position: { x: -80, y: 380 }, data: { text: "Tenemos planes de pago y becas por mérito. Te envío el detalle. 💸", buttons: [] } },
-        { id: "mh", kind: "message", position: { x: 240, y: 380 }, data: { text: "Hay turnos mañana y noche, presencial y virtual. 📅", buttons: [] } },
-        { id: "ha", kind: "handoff", position: { x: 560, y: 380 }, data: { queue: "Admisión", priority: "normal", assignTo: "", note: "Pidió asesor desde FAQ." } },
+        {
+          id: "mp",
+          kind: "message",
+          position: { x: -80, y: 380 },
+          data: {
+            text: "Tenemos planes de pago y becas por mérito. Te envío el detalle. 💸",
+            buttons: [],
+          },
+        },
+        {
+          id: "mh",
+          kind: "message",
+          position: { x: 240, y: 380 },
+          data: { text: "Hay turnos mañana y noche, presencial y virtual. 📅", buttons: [] },
+        },
+        {
+          id: "ha",
+          kind: "handoff",
+          position: { x: 560, y: 380 },
+          data: {
+            queue: "Admisión",
+            priority: "normal",
+            assignTo: "",
+            note: "Pidió asesor desde FAQ.",
+          },
+        },
         { id: "s1", kind: "stop", position: { x: -80, y: 560 }, data: {} },
         { id: "s2", kind: "stop", position: { x: 240, y: 560 }, data: {} },
         { id: "s3", kind: "stop", position: { x: 560, y: 560 }, data: {} },
@@ -1043,7 +1288,11 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#9B6DFF",
     category: "comercial",
     channels: ["whatsapp", "instagram", "messenger"],
-    preview: { bubble: "Soy tu asesor con IA, disponible 24/7 🤖", reply: "¿Cuánto cuesta?", emoji: "🤖" },
+    preview: {
+      bubble: "Soy tu asesor con IA, disponible 24/7 🤖",
+      reply: "¿Cuánto cuesta?",
+      emoji: "🤖",
+    },
     build: () => ({
       botId: "",
       name: "Agente IA · admisión",
@@ -1063,7 +1312,17 @@ export const BOT_TEMPLATES: BotTemplate[] = [
             maxTurns: 6,
           },
         },
-        { id: "hand1", kind: "handoff", position: { x: 480, y: 360 }, data: { queue: "Admisión", priority: "alta", assignTo: "", note: "Derivado por el Agente IA." } },
+        {
+          id: "hand1",
+          kind: "handoff",
+          position: { x: 480, y: 360 },
+          data: {
+            queue: "Admisión",
+            priority: "alta",
+            assignTo: "",
+            note: "Derivado por el Agente IA.",
+          },
+        },
         { id: "stopOk", kind: "stop", position: { x: 60, y: 360 }, data: {} },
         { id: "stopH", kind: "stop", position: { x: 480, y: 540 }, data: {} },
       ],
@@ -1083,23 +1342,58 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#E0A23B",
     category: "cultivar",
     channels: ["whatsapp"],
-    preview: { bubble: "¿Seguís interesado? Estoy para ayudarte 😊", reply: "Sí, cuéntame", emoji: "🔔" },
+    preview: {
+      bubble: "¿Seguís interesado? Estoy para ayudarte 😊",
+      reply: "Sí, cuéntame",
+      emoji: "🔔",
+    },
     build: () => ({
       botId: "",
       name: "Reactivación de lead",
       status: "draft",
       trigger: "Lead sin actividad",
       nodes: [
-        { id: "start", kind: "start", position: { x: 260, y: 0 }, data: { trigger: "Lead sin actividad" } },
-        { id: "tpl1", kind: "template", position: { x: 240, y: 130 }, data: { templateName: "udep_reactivacion", language: "es", variables: ["nombre"] } },
-        { id: "wait1", kind: "delay", position: { x: 240, y: 300 }, data: { amount: 2, unit: "days" } },
+        {
+          id: "start",
+          kind: "start",
+          position: { x: 260, y: 0 },
+          data: { trigger: "Lead sin actividad" },
+        },
+        {
+          id: "tpl1",
+          kind: "template",
+          position: { x: 240, y: 130 },
+          data: { templateName: "udep_reactivacion", language: "es", variables: ["nombre"] },
+        },
+        {
+          id: "wait1",
+          kind: "delay",
+          position: { x: 240, y: 300 },
+          data: { amount: 2, unit: "days" },
+        },
         {
           id: "msg1",
           kind: "message",
           position: { x: 220, y: 440 },
-          data: { text: "¿Seguís interesado? Estoy para ayudarte 😊", buttons: [{ id: "si", label: "Sí, cuéntame", type: "reply" }, { id: "no", label: "Ahora no", type: "reply" }] },
+          data: {
+            text: "¿Seguís interesado? Estoy para ayudarte 😊",
+            buttons: [
+              { id: "si", label: "Sí, cuéntame", type: "reply" },
+              { id: "no", label: "Ahora no", type: "reply" },
+            ],
+          },
         },
-        { id: "hand1", kind: "handoff", position: { x: -40, y: 660 }, data: { queue: "Admisión", priority: "normal", assignTo: "", note: "Reactivado: quiere info." } },
+        {
+          id: "hand1",
+          kind: "handoff",
+          position: { x: -40, y: 660 },
+          data: {
+            queue: "Admisión",
+            priority: "normal",
+            assignTo: "",
+            note: "Reactivado: quiere info.",
+          },
+        },
         { id: "s1", kind: "stop", position: { x: -40, y: 840 }, data: {} },
         { id: "s2", kind: "stop", position: { x: 460, y: 660 }, data: {} },
       ],
@@ -1121,7 +1415,11 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#E0A23B",
     category: "leads",
     channels: ["whatsapp"],
-    preview: { bubble: "¡Hola! 👋 ¿Querés agendar una cita con nosotros?", reply: "Sí, agendar ✅", emoji: "📅" },
+    preview: {
+      bubble: "¡Hola! 👋 ¿Querés agendar una cita con nosotros?",
+      reply: "Sí, agendar ✅",
+      emoji: "📅",
+    },
     build: () => ({
       botId: "",
       name: "Reserva de citas",
@@ -1129,9 +1427,39 @@ export const BOT_TEMPLATES: BotTemplate[] = [
       trigger: "Mensaje entrante (WhatsApp)",
       nodes: [
         blankStart(),
-        { id: "m1", kind: "message", position: { x: 240, y: 120 }, data: { text: "¡Hola! 👋 ¿Querés agendar una cita con nosotros?", buttons: [{ id: "si", label: "Sí, agendar", type: "reply" }, { id: "no", label: "Ahora no", type: "reply" }] } },
-        { id: "q1", kind: "question", position: { x: -40, y: 360 }, data: { prompt: "¿Qué día y horario te queda mejor?", saveAs: "horario", validate: "ninguna" } },
-        { id: "h1", kind: "handoff", position: { x: -40, y: 560 }, data: { queue: "Agenda", priority: "normal", assignTo: "", note: "Quiere cita: {{horario}}" } },
+        {
+          id: "m1",
+          kind: "message",
+          position: { x: 240, y: 120 },
+          data: {
+            text: "¡Hola! 👋 ¿Querés agendar una cita con nosotros?",
+            buttons: [
+              { id: "si", label: "Sí, agendar", type: "reply" },
+              { id: "no", label: "Ahora no", type: "reply" },
+            ],
+          },
+        },
+        {
+          id: "q1",
+          kind: "question",
+          position: { x: -40, y: 360 },
+          data: {
+            prompt: "¿Qué día y horario te queda mejor?",
+            saveAs: "horario",
+            validate: "ninguna",
+          },
+        },
+        {
+          id: "h1",
+          kind: "handoff",
+          position: { x: -40, y: 560 },
+          data: {
+            queue: "Agenda",
+            priority: "normal",
+            assignTo: "",
+            note: "Quiere cita: {{horario}}",
+          },
+        },
         { id: "s1", kind: "stop", position: { x: -40, y: 740 }, data: {} },
         { id: "s2", kind: "stop", position: { x: 480, y: 360 }, data: {} },
       ],
@@ -1160,10 +1488,38 @@ export const BOT_TEMPLATES: BotTemplate[] = [
       trigger: "Mensaje entrante (WhatsApp)",
       nodes: [
         blankStart(),
-        { id: "m1", kind: "message", position: { x: 240, y: 120 }, data: { text: "¡Te llamamos! 📞 Dejanos tu número y un asesor se comunica con vos.", buttons: [] } },
-        { id: "q1", kind: "question", position: { x: 240, y: 300 }, data: { prompt: "¿A qué número te llamamos?", saveAs: "telefono", validate: "teléfono" } },
-        { id: "set1", kind: "set_field", position: { x: 240, y: 480 }, data: { field: "telefono", value: "{{telefono}}" } },
-        { id: "h1", kind: "handoff", position: { x: 240, y: 620 }, data: { queue: "Ventas", priority: "alta", assignTo: "", note: "Pidió llamada al {{telefono}}" } },
+        {
+          id: "m1",
+          kind: "message",
+          position: { x: 240, y: 120 },
+          data: {
+            text: "¡Te llamamos! 📞 Dejanos tu número y un asesor se comunica con vos.",
+            buttons: [],
+          },
+        },
+        {
+          id: "q1",
+          kind: "question",
+          position: { x: 240, y: 300 },
+          data: { prompt: "¿A qué número te llamamos?", saveAs: "telefono", validate: "teléfono" },
+        },
+        {
+          id: "set1",
+          kind: "set_field",
+          position: { x: 240, y: 480 },
+          data: { field: "telefono", value: "{{telefono}}" },
+        },
+        {
+          id: "h1",
+          kind: "handoff",
+          position: { x: 240, y: 620 },
+          data: {
+            queue: "Ventas",
+            priority: "alta",
+            assignTo: "",
+            note: "Pidió llamada al {{telefono}}",
+          },
+        },
         { id: "s1", kind: "stop", position: { x: 240, y: 800 }, data: {} },
       ],
       edges: [
@@ -1183,7 +1539,11 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#8B7EE8",
     category: "trabajo",
     channels: ["whatsapp"],
-    preview: { bubble: "Del 1 al 10, ¿qué tan probable es que nos recomiendes? 🌟", reply: "9 🌟", emoji: "⭐" },
+    preview: {
+      bubble: "Del 1 al 10, ¿qué tan probable es que nos recomiendes? 🌟",
+      reply: "9 🌟",
+      emoji: "⭐",
+    },
     build: () => ({
       botId: "",
       name: "Encuesta NPS",
@@ -1191,10 +1551,38 @@ export const BOT_TEMPLATES: BotTemplate[] = [
       trigger: "Mensaje entrante (WhatsApp)",
       nodes: [
         blankStart(),
-        { id: "q1", kind: "question", position: { x: 240, y: 120 }, data: { prompt: "Del 1 al 10, ¿qué tan probable es que nos recomiendes? 🌟", saveAs: "nps", validate: "número" } },
-        { id: "c1", kind: "condition", position: { x: 240, y: 320 }, data: { variable: "nps", op: "gt", value: "8" } },
-        { id: "mok", kind: "message", position: { x: -40, y: 520 }, data: { text: "¡Gracias! 🙌 Nos alegra que tengas una buena experiencia.", buttons: [] } },
-        { id: "mlow", kind: "question", position: { x: 480, y: 520 }, data: { prompt: "Gracias por tu honestidad. ¿Qué podríamos mejorar?", saveAs: "feedback", validate: "ninguna" } },
+        {
+          id: "q1",
+          kind: "question",
+          position: { x: 240, y: 120 },
+          data: {
+            prompt: "Del 1 al 10, ¿qué tan probable es que nos recomiendes? 🌟",
+            saveAs: "nps",
+            validate: "número",
+          },
+        },
+        {
+          id: "c1",
+          kind: "condition",
+          position: { x: 240, y: 320 },
+          data: { variable: "nps", op: "gt", value: "8" },
+        },
+        {
+          id: "mok",
+          kind: "message",
+          position: { x: -40, y: 520 },
+          data: { text: "¡Gracias! 🙌 Nos alegra que tengas una buena experiencia.", buttons: [] },
+        },
+        {
+          id: "mlow",
+          kind: "question",
+          position: { x: 480, y: 520 },
+          data: {
+            prompt: "Gracias por tu honestidad. ¿Qué podríamos mejorar?",
+            saveAs: "feedback",
+            validate: "ninguna",
+          },
+        },
         { id: "s1", kind: "stop", position: { x: -40, y: 700 }, data: {} },
         { id: "s2", kind: "stop", position: { x: 480, y: 720 }, data: {} },
       ],
@@ -1216,16 +1604,43 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#EC4899",
     category: "cultivar",
     channels: ["instagram"],
-    preview: { bubble: "¡Gracias por seguirnos! 🎁 Tu código: DESC20", reply: "¡Genial!", emoji: "🎁" },
+    preview: {
+      bubble: "¡Gracias por seguirnos! 🎁 Tu código: DESC20",
+      reply: "¡Genial!",
+      emoji: "🎁",
+    },
     build: () => ({
       botId: "",
       name: "Código de descuento",
       status: "draft",
       trigger: "Palabra clave",
       nodes: [
-        { id: "start", kind: "start", position: { x: 260, y: 0 }, data: { trigger: "Palabra clave" } },
-        { id: "m1", kind: "message", position: { x: 240, y: 130 }, data: { text: "¡Gracias por seguirnos! 🎁 Acá tenés tu código: DESC20 — 20% off en tu primera compra.", buttons: [{ id: "comprar", label: "Quiero comprar", type: "reply" }] } },
-        { id: "h1", kind: "handoff", position: { x: 240, y: 360 }, data: { queue: "Ventas", priority: "normal", assignTo: "", note: "Usó el código DESC20." } },
+        {
+          id: "start",
+          kind: "start",
+          position: { x: 260, y: 0 },
+          data: { trigger: "Palabra clave" },
+        },
+        {
+          id: "m1",
+          kind: "message",
+          position: { x: 240, y: 130 },
+          data: {
+            text: "¡Gracias por seguirnos! 🎁 Acá tenés tu código: DESC20 — 20% off en tu primera compra.",
+            buttons: [{ id: "comprar", label: "Quiero comprar", type: "reply" }],
+          },
+        },
+        {
+          id: "h1",
+          kind: "handoff",
+          position: { x: 240, y: 360 },
+          data: {
+            queue: "Ventas",
+            priority: "normal",
+            assignTo: "",
+            note: "Usó el código DESC20.",
+          },
+        },
         { id: "s1", kind: "stop", position: { x: 240, y: 560 }, data: {} },
       ],
       edges: [
@@ -1243,17 +1658,52 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#F59E0B",
     category: "cultivar",
     channels: ["whatsapp"],
-    preview: { bubble: "¿Olvidaste algo en tu carrito? 🛒 Lo guardé para vos.", reply: "Ver carrito", emoji: "🛒" },
+    preview: {
+      bubble: "¿Olvidaste algo en tu carrito? 🛒 Lo guardé para vos.",
+      reply: "Ver carrito",
+      emoji: "🛒",
+    },
     build: () => ({
       botId: "",
       name: "Carrito abandonado",
       status: "draft",
       trigger: "Lead sin actividad",
       nodes: [
-        { id: "start", kind: "start", position: { x: 260, y: 0 }, data: { trigger: "Lead sin actividad" } },
-        { id: "wait1", kind: "delay", position: { x: 240, y: 130 }, data: { amount: 1, unit: "hours" } },
-        { id: "m1", kind: "message", position: { x: 220, y: 280 }, data: { text: "¿Olvidaste algo en tu carrito? 🛒 Lo guardé para vos.", buttons: [{ id: "ver", label: "Ver mi carrito", type: "reply" }, { id: "no", label: "No, gracias", type: "reply" }] } },
-        { id: "h1", kind: "handoff", position: { x: -40, y: 520 }, data: { queue: "Ventas", priority: "alta", assignTo: "", note: "Quiere retomar su carrito." } },
+        {
+          id: "start",
+          kind: "start",
+          position: { x: 260, y: 0 },
+          data: { trigger: "Lead sin actividad" },
+        },
+        {
+          id: "wait1",
+          kind: "delay",
+          position: { x: 240, y: 130 },
+          data: { amount: 1, unit: "hours" },
+        },
+        {
+          id: "m1",
+          kind: "message",
+          position: { x: 220, y: 280 },
+          data: {
+            text: "¿Olvidaste algo en tu carrito? 🛒 Lo guardé para vos.",
+            buttons: [
+              { id: "ver", label: "Ver mi carrito", type: "reply" },
+              { id: "no", label: "No, gracias", type: "reply" },
+            ],
+          },
+        },
+        {
+          id: "h1",
+          kind: "handoff",
+          position: { x: -40, y: 520 },
+          data: {
+            queue: "Ventas",
+            priority: "alta",
+            assignTo: "",
+            note: "Quiere retomar su carrito.",
+          },
+        },
         { id: "s1", kind: "stop", position: { x: -40, y: 700 }, data: {} },
         { id: "s2", kind: "stop", position: { x: 480, y: 520 }, data: {} },
       ],
@@ -1281,9 +1731,27 @@ export const BOT_TEMPLATES: BotTemplate[] = [
       status: "draft",
       trigger: "Palabra clave",
       nodes: [
-        { id: "start", kind: "start", position: { x: 260, y: 0 }, data: { trigger: "Palabra clave" } },
-        { id: "m1", kind: "message", position: { x: 240, y: 140 }, data: { text: "¡Ya estás participando en el sorteo! 🎉 Anunciamos al ganador el viernes. 🍀", buttons: [] } },
-        { id: "set1", kind: "set_field", position: { x: 240, y: 320 }, data: { field: "etapa", value: "Participante sorteo" } },
+        {
+          id: "start",
+          kind: "start",
+          position: { x: 260, y: 0 },
+          data: { trigger: "Palabra clave" },
+        },
+        {
+          id: "m1",
+          kind: "message",
+          position: { x: 240, y: 140 },
+          data: {
+            text: "¡Ya estás participando en el sorteo! 🎉 Anunciamos al ganador el viernes. 🍀",
+            buttons: [],
+          },
+        },
+        {
+          id: "set1",
+          kind: "set_field",
+          position: { x: 240, y: 320 },
+          data: { field: "etapa", value: "Participante sorteo" },
+        },
         { id: "s1", kind: "stop", position: { x: 240, y: 480 }, data: {} },
       ],
       edges: [
@@ -1301,7 +1769,11 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#EC4899",
     category: "comercial",
     channels: ["instagram"],
-    preview: { bubble: "¡Gracias por seguirnos! 💜 ¿Te muestro lo nuevo?", reply: "¡Sí!", emoji: "💜" },
+    preview: {
+      bubble: "¡Gracias por seguirnos! 💜 ¿Te muestro lo nuevo?",
+      reply: "¡Sí!",
+      emoji: "💜",
+    },
     build: () => ({
       botId: "",
       name: "Bienvenida Instagram",
@@ -1309,8 +1781,27 @@ export const BOT_TEMPLATES: BotTemplate[] = [
       trigger: "Mensaje entrante (WhatsApp)",
       nodes: [
         blankStart(),
-        { id: "m1", kind: "message", position: { x: 240, y: 130 }, data: { text: "¡Gracias por seguirnos! 💜 ¿Querés que te muestre las novedades?", buttons: [{ id: "si", label: "Sí, mostrame", type: "reply" }, { id: "no", label: "Ahora no", type: "reply" }] } },
-        { id: "m2", kind: "message", position: { x: -40, y: 360 }, data: { text: "¡Genial! Acá tenés lo último. 🛍️ Cualquier duda, escribime.", buttons: [] } },
+        {
+          id: "m1",
+          kind: "message",
+          position: { x: 240, y: 130 },
+          data: {
+            text: "¡Gracias por seguirnos! 💜 ¿Querés que te muestre las novedades?",
+            buttons: [
+              { id: "si", label: "Sí, mostrame", type: "reply" },
+              { id: "no", label: "Ahora no", type: "reply" },
+            ],
+          },
+        },
+        {
+          id: "m2",
+          kind: "message",
+          position: { x: -40, y: 360 },
+          data: {
+            text: "¡Genial! Acá tenés lo último. 🛍️ Cualquier duda, escribime.",
+            buttons: [],
+          },
+        },
         { id: "s1", kind: "stop", position: { x: -40, y: 540 }, data: {} },
         { id: "s2", kind: "stop", position: { x: 480, y: 360 }, data: {} },
       ],
@@ -1330,7 +1821,11 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#22C55E",
     category: "trabajo",
     channels: ["whatsapp"],
-    preview: { bubble: "¿Nos dejarías una reseña? ⭐ ¡Nos ayuda un montón!", reply: "¡Claro!", emoji: "🌟" },
+    preview: {
+      bubble: "¿Nos dejarías una reseña? ⭐ ¡Nos ayuda un montón!",
+      reply: "¡Claro!",
+      emoji: "🌟",
+    },
     build: () => ({
       botId: "",
       name: "Pedir reseña",
@@ -1338,8 +1833,27 @@ export const BOT_TEMPLATES: BotTemplate[] = [
       trigger: "Mensaje entrante (WhatsApp)",
       nodes: [
         blankStart(),
-        { id: "m1", kind: "message", position: { x: 240, y: 130 }, data: { text: "¿Cómo fue tu experiencia? ⭐ ¿Nos dejarías una reseña?", buttons: [{ id: "si", label: "Sí, con gusto", type: "reply" }, { id: "no", label: "No ahora", type: "reply" }] } },
-        { id: "m2", kind: "message", position: { x: -40, y: 360 }, data: { text: "¡Gracias! 🙌 Podés dejarla acá: https://g.page/r/tu-negocio", buttons: [] } },
+        {
+          id: "m1",
+          kind: "message",
+          position: { x: 240, y: 130 },
+          data: {
+            text: "¿Cómo fue tu experiencia? ⭐ ¿Nos dejarías una reseña?",
+            buttons: [
+              { id: "si", label: "Sí, con gusto", type: "reply" },
+              { id: "no", label: "No ahora", type: "reply" },
+            ],
+          },
+        },
+        {
+          id: "m2",
+          kind: "message",
+          position: { x: -40, y: 360 },
+          data: {
+            text: "¡Gracias! 🙌 Podés dejarla acá: https://g.page/r/tu-negocio",
+            buttons: [],
+          },
+        },
         { id: "s1", kind: "stop", position: { x: -40, y: 540 }, data: {} },
         { id: "s2", kind: "stop", position: { x: 480, y: 360 }, data: {} },
       ],
@@ -1359,7 +1873,11 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#3B82F6",
     category: "comercial",
     channels: ["whatsapp"],
-    preview: { bubble: "Mirá nuestro catálogo 🛍️ Elegí una categoría:", reply: "Ofertas", emoji: "🛍️" },
+    preview: {
+      bubble: "Mirá nuestro catálogo 🛍️ Elegí una categoría:",
+      reply: "Ofertas",
+      emoji: "🛍️",
+    },
     build: () => ({
       botId: "",
       name: "Catálogo de productos",
@@ -1367,10 +1885,44 @@ export const BOT_TEMPLATES: BotTemplate[] = [
       trigger: "Mensaje entrante (WhatsApp)",
       nodes: [
         blankStart(),
-        { id: "list1", kind: "list", position: { x: 220, y: 130 }, data: { header: "Nuestro catálogo", body: "Elegí una categoría para ver los productos:", buttonLabel: "Ver categorías", rows: [{ id: "ofertas", title: "Ofertas", description: "Lo más vendido en descuento" }, { id: "nuevos", title: "Novedades" }, { id: "asesor", title: "Hablar con un asesor" }] } },
-        { id: "m1", kind: "message", position: { x: -80, y: 400 }, data: { text: "¡Mirá nuestras ofertas! 🔥 Te paso el link.", buttons: [] } },
-        { id: "m2", kind: "message", position: { x: 240, y: 400 }, data: { text: "Estas son las novedades de la semana. ✨", buttons: [] } },
-        { id: "h1", kind: "handoff", position: { x: 560, y: 400 }, data: { queue: "Ventas", priority: "normal", assignTo: "", note: "Pidió asesor desde el catálogo." } },
+        {
+          id: "list1",
+          kind: "list",
+          position: { x: 220, y: 130 },
+          data: {
+            header: "Nuestro catálogo",
+            body: "Elegí una categoría para ver los productos:",
+            buttonLabel: "Ver categorías",
+            rows: [
+              { id: "ofertas", title: "Ofertas", description: "Lo más vendido en descuento" },
+              { id: "nuevos", title: "Novedades" },
+              { id: "asesor", title: "Hablar con un asesor" },
+            ],
+          },
+        },
+        {
+          id: "m1",
+          kind: "message",
+          position: { x: -80, y: 400 },
+          data: { text: "¡Mirá nuestras ofertas! 🔥 Te paso el link.", buttons: [] },
+        },
+        {
+          id: "m2",
+          kind: "message",
+          position: { x: 240, y: 400 },
+          data: { text: "Estas son las novedades de la semana. ✨", buttons: [] },
+        },
+        {
+          id: "h1",
+          kind: "handoff",
+          position: { x: 560, y: 400 },
+          data: {
+            queue: "Ventas",
+            priority: "normal",
+            assignTo: "",
+            note: "Pidió asesor desde el catálogo.",
+          },
+        },
         { id: "s1", kind: "stop", position: { x: -80, y: 580 }, data: {} },
         { id: "s2", kind: "stop", position: { x: 240, y: 580 }, data: {} },
         { id: "s3", kind: "stop", position: { x: 560, y: 580 }, data: {} },
@@ -1402,10 +1954,44 @@ export const BOT_TEMPLATES: BotTemplate[] = [
       trigger: "Mensaje entrante (WhatsApp)",
       nodes: [
         blankStart(),
-        { id: "list1", kind: "list", position: { x: 220, y: 130 }, data: { header: "¿Cómo te ayudamos?", body: "Elegí el tipo de consulta:", buttonLabel: "Ver opciones", rows: [{ id: "tecnico", title: "Soporte técnico" }, { id: "facturacion", title: "Facturación" }, { id: "otro", title: "Otra consulta" }] } },
-        { id: "h1", kind: "handoff", position: { x: -40, y: 400 }, data: { queue: "Soporte", priority: "alta", assignTo: "", note: "Soporte técnico." } },
-        { id: "h2", kind: "handoff", position: { x: 240, y: 400 }, data: { queue: "Facturación", priority: "normal", assignTo: "", note: "Consulta de facturación." } },
-        { id: "h3", kind: "handoff", position: { x: 520, y: 400 }, data: { queue: "Soporte", priority: "normal", assignTo: "", note: "Otra consulta." } },
+        {
+          id: "list1",
+          kind: "list",
+          position: { x: 220, y: 130 },
+          data: {
+            header: "¿Cómo te ayudamos?",
+            body: "Elegí el tipo de consulta:",
+            buttonLabel: "Ver opciones",
+            rows: [
+              { id: "tecnico", title: "Soporte técnico" },
+              { id: "facturacion", title: "Facturación" },
+              { id: "otro", title: "Otra consulta" },
+            ],
+          },
+        },
+        {
+          id: "h1",
+          kind: "handoff",
+          position: { x: -40, y: 400 },
+          data: { queue: "Soporte", priority: "alta", assignTo: "", note: "Soporte técnico." },
+        },
+        {
+          id: "h2",
+          kind: "handoff",
+          position: { x: 240, y: 400 },
+          data: {
+            queue: "Facturación",
+            priority: "normal",
+            assignTo: "",
+            note: "Consulta de facturación.",
+          },
+        },
+        {
+          id: "h3",
+          kind: "handoff",
+          position: { x: 520, y: 400 },
+          data: { queue: "Soporte", priority: "normal", assignTo: "", note: "Otra consulta." },
+        },
         { id: "s1", kind: "stop", position: { x: -40, y: 580 }, data: {} },
         { id: "s2", kind: "stop", position: { x: 240, y: 580 }, data: {} },
         { id: "s3", kind: "stop", position: { x: 520, y: 580 }, data: {} },
