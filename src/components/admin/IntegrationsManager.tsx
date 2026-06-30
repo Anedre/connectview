@@ -1,6 +1,14 @@
 import { useState, type ReactNode, type CSSProperties } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCircle2, Send, Lock, Palette, ClipboardList, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Send,
+  Lock,
+  Palette,
+  ClipboardList,
+  Trash2,
+} from "lucide-react";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
 import { getApiEndpoints } from "@/lib/api";
@@ -26,8 +34,16 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 
 // Regiones donde Amazon Connect está disponible.
 const CONNECT_REGIONS = [
-  "us-east-1", "us-west-2", "af-south-1", "ap-northeast-1", "ap-northeast-2",
-  "ap-southeast-1", "ap-southeast-2", "ca-central-1", "eu-central-1", "eu-west-2",
+  "us-east-1",
+  "us-west-2",
+  "af-south-1",
+  "ap-northeast-1",
+  "ap-northeast-2",
+  "ap-southeast-1",
+  "ap-southeast-2",
+  "ca-central-1",
+  "eu-central-1",
+  "eu-west-2",
 ];
 
 type Tone = "ok" | "warn" | "error" | "idle";
@@ -43,9 +59,16 @@ function StatusBadge({ tone, label }: { tone: Tone; label: string }) {
   return (
     <span
       style={{
-        display: "inline-flex", alignItems: "center", gap: 6, height: 22,
-        padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
-        color, background: `color-mix(in srgb, ${color} 14%, transparent)`,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        height: 22,
+        padding: "0 10px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 700,
+        color,
+        background: `color-mix(in srgb, ${color} 14%, transparent)`,
         border: `1px solid color-mix(in srgb, ${color} 35%, transparent)`,
       }}
     >
@@ -71,13 +94,20 @@ function newExternalId(): string {
   }
   throw new Error(
     "No hay generador criptográfico seguro disponible (¿contexto no-HTTPS?). " +
-      "Abrí la app sobre HTTPS para generar el ExternalId de forma segura."
+      "Abrí la app sobre HTTPS para generar el ExternalId de forma segura.",
   );
 }
 
 /** Tarjeta genérica de conexión con header + estado + cuerpo expandible. */
 function ConnCard({
-  icon, title, desc, tone, statusLabel, open, onToggle, children,
+  icon,
+  title,
+  desc,
+  tone,
+  statusLabel,
+  open,
+  onToggle,
+  children,
 }: {
   icon: ReactNode;
   title: string;
@@ -92,7 +122,18 @@ function ConnCard({
     <Card>
       <CardBody>
         <div className="row" style={{ gap: 14, alignItems: "flex-start" }}>
-          <span style={{ flex: "0 0 auto", display: "grid", placeItems: "center", width: 44, height: 44, borderRadius: 12, background: "var(--bg-2)", border: "1px solid var(--border-1)" }}>
+          <span
+            style={{
+              flex: "0 0 auto",
+              display: "grid",
+              placeItems: "center",
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: "var(--bg-2)",
+              border: "1px solid var(--border-1)",
+            }}
+          >
             {icon}
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -100,13 +141,25 @@ function ConnCard({
               <span style={{ fontWeight: 700, fontSize: 15 }}>{title}</span>
               <StatusBadge tone={tone} label={statusLabel} />
             </div>
-            <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>{desc}</div>
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
+              {desc}
+            </div>
           </div>
           <button className="btn btn--sm" onClick={onToggle}>
-            {open ? <>Cerrar</> : <><Icon.Settings size={13} /> Configurar</>}
+            {open ? (
+              <>Cerrar</>
+            ) : (
+              <>
+                <Icon.Settings size={13} /> Configurar
+              </>
+            )}
           </button>
         </div>
-        {open && <div style={{ marginTop: 16, borderTop: "1px solid var(--border-1)", paddingTop: 16 }}>{children}</div>}
+        {open && (
+          <div style={{ marginTop: 16, borderTop: "1px solid var(--border-1)", paddingTop: 16 }}>
+            {children}
+          </div>
+        )}
       </CardBody>
     </Card>
   );
@@ -115,24 +168,48 @@ function ConnCard({
 function StepLabel({ n, children }: { n: number; children: ReactNode }) {
   return (
     <div className="row" style={{ gap: 8, marginBottom: 8 }}>
-      <span style={{ flex: "0 0 auto", display: "grid", placeItems: "center", width: 20, height: 20, borderRadius: 999, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)", fontSize: 11, fontWeight: 800 }}>{n}</span>
+      <span
+        style={{
+          flex: "0 0 auto",
+          display: "grid",
+          placeItems: "center",
+          width: 20,
+          height: 20,
+          borderRadius: 999,
+          background: "var(--accent-cyan-soft)",
+          color: "var(--accent-cyan)",
+          fontSize: 11,
+          fontWeight: 800,
+        }}
+      >
+        {n}
+      </span>
       <span style={{ fontWeight: 600, fontSize: 13 }}>{children}</span>
     </div>
   );
 }
 
 const inputStyle: CSSProperties = {
-  width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid var(--border-1)",
-  borderRadius: 6, background: "var(--bg-1)", color: "var(--text-1)",
+  width: "100%",
+  padding: "8px 10px",
+  fontSize: 13,
+  border: "1px solid var(--border-1)",
+  borderRadius: 6,
+  background: "var(--bg-1)",
+  color: "var(--text-1)",
 };
 const labelStyle: CSSProperties = {
-  fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 600,
+  fontSize: 11,
+  color: "var(--text-3)",
+  textTransform: "uppercase",
+  letterSpacing: 0.4,
+  fontWeight: 600,
 };
 
 function copy(text: string, what: string) {
   navigator.clipboard?.writeText(text).then(
     () => toast.success(`${what} copiado`),
-    () => toast.error("No se pudo copiar")
+    () => toast.error("No se pudo copiar"),
   );
 }
 
@@ -147,7 +224,13 @@ import { ConnectSetupWizard } from "./ConnectSetupWizard";
 const connectCfnTemplate = connectAccessCfnTemplate;
 
 /* ── Amazon Connect (BYO + rol cross-account) ───────────────────────── */
-function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; update: (patch: Partial<ConnectionsConfig>) => void }) {
+function AmazonConnectCard({
+  config,
+  update,
+}: {
+  config: ConnectionsConfig;
+  update: (patch: Partial<ConnectionsConfig>) => void;
+}) {
   const c = config.connect || {};
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ConnectConn>(() => ({
@@ -163,12 +246,28 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
   const appOrigin = typeof window !== "undefined" ? window.location.origin : "";
 
   const tone: Tone = !c.instanceUrl ? "idle" : !c.roleArn ? "warn" : !c.verifiedAt ? "warn" : "ok";
-  const statusLabel = !c.instanceUrl ? "No conectado" : !c.roleArn ? "Incompleto" : !c.verifiedAt ? "Sin verificar" : "Conectado";
+  const statusLabel = !c.instanceUrl
+    ? "No conectado"
+    : !c.roleArn
+      ? "Incompleto"
+      : !c.verifiedAt
+        ? "Sin verificar"
+        : "Conectado";
 
   const set = (patch: Partial<ConnectConn>) => setDraft((d) => ({ ...d, ...patch }));
   const onSave = () => {
-    if (!draft.instanceUrl?.trim()) { toast.error("Falta la URL de tu instancia de Connect"); return; }
-    update({ connect: { ...draft, instanceUrl: draft.instanceUrl.trim(), roleArn: draft.roleArn?.trim(), verifiedAt: undefined } });
+    if (!draft.instanceUrl?.trim()) {
+      toast.error("Falta la URL de tu instancia de Connect");
+      return;
+    }
+    update({
+      connect: {
+        ...draft,
+        instanceUrl: draft.instanceUrl.trim(),
+        roleArn: draft.roleArn?.trim(),
+        verifiedAt: undefined,
+      },
+    });
     toast.success("Conexión de Amazon Connect guardada");
   };
   const onVerify = async () => {
@@ -176,12 +275,21 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
       toast.message("La verificación real estará disponible al desplegar el backend.");
       return;
     }
-    if (!draft.roleArn?.trim()) { toast.error("Pegá primero el ARN del rol"); return; }
+    if (!draft.roleArn?.trim()) {
+      toast.error("Pegá primero el ARN del rol");
+      return;
+    }
     setVerifying(true);
     try {
       const r = await fetch(ep.verifyConnectConnection, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roleArn: draft.roleArn.trim(), externalId: draft.externalId, instanceArn: draft.instanceArn, region: draft.region }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roleArn: draft.roleArn.trim(),
+          externalId: draft.externalId,
+          instanceArn: draft.instanceArn,
+          region: draft.region,
+        }),
       });
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "No se pudo verificar");
@@ -204,11 +312,15 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
       toast.message("Backend de verificación pendiente de despliegue.");
       return;
     }
-    if (!draft.roleArn?.trim()) { toast.error("Pegá primero el ARN del rol (paso 3)"); return; }
+    if (!draft.roleArn?.trim()) {
+      toast.error("Pegá primero el ARN del rol (paso 3)");
+      return;
+    }
     setVerifyingDp(true);
     try {
       const r = await fetch(ep.verifyConnectConnection, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roleArn: draft.roleArn.trim(),
           externalId: draft.externalId,
@@ -219,9 +331,10 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
       });
       const j = await r.json();
       if (!r.ok || !j.ok) {
-        const missing = Array.isArray(j.missingTables) && j.missingTables.length
-          ? ` Tablas faltantes: ${j.missingTables.slice(0, 5).join(", ")}${j.missingTables.length > 5 ? "…" : ""}`
-          : "";
+        const missing =
+          Array.isArray(j.missingTables) && j.missingTables.length
+            ? ` Tablas faltantes: ${j.missingTables.slice(0, 5).join(", ")}${j.missingTables.length > 5 ? "…" : ""}`
+            : "";
         throw new Error((j.error || "No se pudo verificar el data plane") + missing);
       }
       const dataPlaneVerifiedAt = new Date().toISOString();
@@ -243,17 +356,23 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
       toast.message("Backend de provisión pendiente de despliegue.");
       return;
     }
-    if (!c.verifiedAt) { toast.error("Verificá la conexión a Connect primero (paso anterior)."); return; }
+    if (!c.verifiedAt) {
+      toast.error("Verificá la conexión a Connect primero (paso anterior).");
+      return;
+    }
     setProvisioning(true);
     try {
       const r = await authedFetch(ep.provisionContactFlows, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dryRun: false }),
       });
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "No se pudieron provisionar los flows");
       const n = Object.keys(j.flows || {}).length;
-      toast.success(`${n} contact flows de ARIA listos en tu instancia (cola: ${j.resolvedQueue?.name || "—"}).`);
+      toast.success(
+        `${n} contact flows de ARIA listos en tu instancia (cola: ${j.resolvedQueue?.name || "—"}).`,
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falló la provisión de flows");
     } finally {
@@ -266,12 +385,18 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
       icon={<Icon.Headset size={20} style={{ color: "#FF9900" }} />}
       title="Amazon Connect"
       desc="Tu contact center: el Agent Desktop usará tu CCP, y las métricas, campañas y grabaciones leen de tu instancia."
-      tone={tone} statusLabel={statusLabel} open={open} onToggle={() => setOpen((o) => !o)}
+      tone={tone}
+      statusLabel={statusLabel}
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
     >
       {wizardOpen && (
         <ConnectSetupWizard
           initial={draft}
-          onSave={(next) => { update({ connect: { ...next } }); setDraft((d) => ({ ...d, ...next })); }}
+          onSave={(next) => {
+            update({ connect: { ...next } });
+            setDraft((d) => ({ ...d, ...next }));
+          }}
           onClose={() => setWizardOpen(false)}
         />
       )}
@@ -279,45 +404,84 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
         {/* Asistente guiado (recomendado para no-técnicos) */}
         <div
           style={{
-            display: "flex", gap: 14, alignItems: "center", justifyContent: "space-between",
-            padding: "14px 16px", borderRadius: 10,
+            display: "flex",
+            gap: 14,
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "14px 16px",
+            borderRadius: 10,
             background: "linear-gradient(135deg, var(--accent-amber-soft), transparent)",
             border: "1px solid color-mix(in srgb, var(--accent-amber) 30%, transparent)",
           }}
         >
           <div>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>¿Primera vez? Usá el asistente guiado</div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>
+              ¿Primera vez? Usá el asistente guiado
+            </div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
               Te lleva paso a paso, con un clic para crear el rol en tu cuenta AWS. ~3 minutos.
             </div>
           </div>
-          <button className="btn btn--primary" onClick={() => setWizardOpen(true)} style={{ flex: "0 0 auto" }}>
+          <button
+            className="btn btn--primary"
+            onClick={() => setWizardOpen(true)}
+            style={{ flex: "0 0 auto" }}
+          >
             <Icon.Sparkles size={14} /> Abrir asistente
           </button>
         </div>
 
-        <div style={{ fontSize: 11.5, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 600 }}>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--text-3)",
+            textTransform: "uppercase",
+            letterSpacing: 0.4,
+            fontWeight: 600,
+          }}
+        >
           O configurá manualmente
         </div>
 
         {/* Paso 1 */}
         <div>
           <StepLabel n={1}>URL y región de tu instancia</StepLabel>
-          <div className="camp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 10 }}>
+          <div
+            className="camp-2col"
+            style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 10 }}
+          >
             <label>
               <span style={labelStyle}>URL de la instancia</span>
-              <input style={inputStyle} placeholder="https://tu-empresa.my.connect.aws" value={draft.instanceUrl || ""} onChange={(e) => set({ instanceUrl: e.target.value })} />
+              <input
+                style={inputStyle}
+                placeholder="https://tu-empresa.my.connect.aws"
+                value={draft.instanceUrl || ""}
+                onChange={(e) => set({ instanceUrl: e.target.value })}
+              />
             </label>
             <label>
               <span style={labelStyle}>Región</span>
-              <select style={inputStyle} value={draft.region || "us-east-1"} onChange={(e) => set({ region: e.target.value })}>
-                {CONNECT_REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              <select
+                style={inputStyle}
+                value={draft.region || "us-east-1"}
+                onChange={(e) => set({ region: e.target.value })}
+              >
+                {CONNECT_REGIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
           <label style={{ display: "block", marginTop: 10 }}>
             <span style={labelStyle}>ARN de la instancia (opcional, recomendado)</span>
-            <input style={inputStyle} placeholder="arn:aws:connect:us-east-1:123456789012:instance/…" value={draft.instanceArn || ""} onChange={(e) => set({ instanceArn: e.target.value })} />
+            <input
+              style={inputStyle}
+              placeholder="arn:aws:connect:us-east-1:123456789012:instance/…"
+              value={draft.instanceArn || ""}
+              onChange={(e) => set({ instanceArn: e.target.value })}
+            />
           </label>
         </div>
 
@@ -325,11 +489,27 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
         <div>
           <StepLabel n={2}>Permitir que ARIA embeba tu CCP</StepLabel>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-            En tu consola de Connect → <b>Configuración de la aplicación → Orígenes aprobados</b>, agregá este dominio:
+            En tu consola de Connect → <b>Configuración de la aplicación → Orígenes aprobados</b>,
+            agregá este dominio:
           </div>
           <div className="row" style={{ gap: 8, marginTop: 6 }}>
-            <code style={{ flex: 1, padding: "7px 10px", background: "var(--bg-2)", borderRadius: 6, fontSize: 12, border: "1px solid var(--border-1)", overflow: "hidden", textOverflow: "ellipsis" }}>{appOrigin}</code>
-            <button className="btn btn--sm" onClick={() => copy(appOrigin, "Dominio")}><Icon.Copy size={12} /> Copiar</button>
+            <code
+              style={{
+                flex: 1,
+                padding: "7px 10px",
+                background: "var(--bg-2)",
+                borderRadius: 6,
+                fontSize: 12,
+                border: "1px solid var(--border-1)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {appOrigin}
+            </code>
+            <button className="btn btn--sm" onClick={() => copy(appOrigin, "Dominio")}>
+              <Icon.Copy size={12} /> Copiar
+            </button>
           </div>
         </div>
 
@@ -337,10 +517,20 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
         <div>
           <StepLabel n={3}>Dar acceso seguro (rol cross-account)</StepLabel>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-            Creá un rol IAM en TU cuenta AWS que ARIA pueda asumir (no creamos nada en tu cuenta, solo lo asumimos). Desplegá esta plantilla CloudFormation y pegá el <b>RoleArn</b> de salida.
+            Creá un rol IAM en TU cuenta AWS que ARIA pueda asumir (no creamos nada en tu cuenta,
+            solo lo asumimos). Desplegá esta plantilla CloudFormation y pegá el <b>RoleArn</b> de
+            salida.
           </div>
           <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            <button className="btn btn--sm" onClick={() => copy(connectCfnTemplate(draft.externalId || "", draft.instanceArn || ""), "Plantilla CloudFormation")}>
+            <button
+              className="btn btn--sm"
+              onClick={() =>
+                copy(
+                  connectCfnTemplate(draft.externalId || "", draft.instanceArn || ""),
+                  "Plantilla CloudFormation",
+                )
+              }
+            >
               <Icon.Copy size={12} /> Copiar plantilla CloudFormation
             </button>
             <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>
@@ -348,12 +538,33 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
             </span>
           </div>
           <details style={{ marginTop: 8 }}>
-            <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--accent-cyan)" }}>Ver plantilla</summary>
-            <pre style={{ marginTop: 8, padding: 12, background: "var(--bg-2)", border: "1px solid var(--border-1)", borderRadius: 8, fontSize: 10.5, overflow: "auto", maxHeight: 220, lineHeight: 1.4 }}>{connectCfnTemplate(draft.externalId || "", draft.instanceArn || "")}</pre>
+            <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--accent-cyan)" }}>
+              Ver plantilla
+            </summary>
+            <pre
+              style={{
+                marginTop: 8,
+                padding: 12,
+                background: "var(--bg-2)",
+                border: "1px solid var(--border-1)",
+                borderRadius: 8,
+                fontSize: 10.5,
+                overflow: "auto",
+                maxHeight: 220,
+                lineHeight: 1.4,
+              }}
+            >
+              {connectCfnTemplate(draft.externalId || "", draft.instanceArn || "")}
+            </pre>
           </details>
           <label style={{ display: "block", marginTop: 10 }}>
             <span style={labelStyle}>ARN del rol creado</span>
-            <input style={inputStyle} placeholder="arn:aws:iam::123456789012:role/VoxCrmConnectAccess" value={draft.roleArn || ""} onChange={(e) => set({ roleArn: e.target.value })} />
+            <input
+              style={inputStyle}
+              placeholder="arn:aws:iam::123456789012:role/VoxCrmConnectAccess"
+              value={draft.roleArn || ""}
+              onChange={(e) => set({ roleArn: e.target.value })}
+            />
           </label>
           {/* Advanced: override del Customer Profiles domain name. Default es
               `amazon-connect-<alias>` derivado del instanceUrl — solo se
@@ -379,12 +590,16 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
           <StepLabel n={4}>Tus datos en tu cuenta (requerido)</StepLabel>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
             ARIA <b>no guarda datos de empresas en su cuenta</b>. Tus leads, campañas, contactos,
-            tipificaciones y audit viven en TU cuenta AWS. Desplegá esta plantilla: crea las 14 tablas
-            DynamoDB en TU cuenta y extiende el rol existente con permisos de lectura/escritura sobre
-            ellas. <b>Es un paso necesario: sin esto, ARIA no tiene dónde guardar tus datos.</b>
+            tipificaciones y audit viven en TU cuenta AWS. Desplegá esta plantilla: crea las 14
+            tablas DynamoDB en TU cuenta y extiende el rol existente con permisos de
+            lectura/escritura sobre ellas.{" "}
+            <b>Es un paso necesario: sin esto, ARIA no tiene dónde guardar tus datos.</b>
           </div>
           <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            <button className="btn btn--sm" onClick={() => copy(dataPlaneCfnTemplate(), "Plantilla Data Plane")}>
+            <button
+              className="btn btn--sm"
+              onClick={() => copy(dataPlaneCfnTemplate(), "Plantilla Data Plane")}
+            >
               <Icon.Copy size={12} /> Copiar plantilla Data Plane
             </button>
             <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>
@@ -392,8 +607,24 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
             </span>
           </div>
           <details style={{ marginTop: 8 }}>
-            <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--accent-cyan)" }}>Ver plantilla Data Plane</summary>
-            <pre style={{ marginTop: 8, padding: 12, background: "var(--bg-2)", border: "1px solid var(--border-1)", borderRadius: 8, fontSize: 10.5, overflow: "auto", maxHeight: 220, lineHeight: 1.4 }}>{dataPlaneCfnTemplate()}</pre>
+            <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--accent-cyan)" }}>
+              Ver plantilla Data Plane
+            </summary>
+            <pre
+              style={{
+                marginTop: 8,
+                padding: 12,
+                background: "var(--bg-2)",
+                border: "1px solid var(--border-1)",
+                borderRadius: 8,
+                fontSize: 10.5,
+                overflow: "auto",
+                maxHeight: 220,
+                lineHeight: 1.4,
+              }}
+            >
+              {dataPlaneCfnTemplate()}
+            </pre>
           </details>
 
           {/* Toggle de activación + verificación. CRÍTICO: sin tildar esto, Vox sigue escribiendo
@@ -402,24 +633,30 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
           <label
             className="row"
             style={{
-              gap: 10, marginTop: 14, padding: "10px 12px", borderRadius: 8,
+              gap: 10,
+              marginTop: 14,
+              padding: "10px 12px",
+              borderRadius: 8,
               background: draft.dataPlaneEnabled ? "var(--accent-green-soft)" : "var(--bg-2)",
               border: `1px solid ${draft.dataPlaneEnabled ? "var(--accent-green)" : "var(--border-1)"}`,
-              cursor: "pointer", alignItems: "flex-start",
+              cursor: "pointer",
+              alignItems: "flex-start",
             }}
           >
             <input
               type="checkbox"
               checked={!!draft.dataPlaneEnabled}
-              onChange={(e) => set({ dataPlaneEnabled: e.target.checked, dataPlaneVerifiedAt: undefined })}
+              onChange={(e) =>
+                set({ dataPlaneEnabled: e.target.checked, dataPlaneVerifiedAt: undefined })
+              }
               style={{ marginTop: 2 }}
             />
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 13 }}>Activar BYO Data Plane</div>
               <div className="muted" style={{ fontSize: 12, marginTop: 2, lineHeight: 1.5 }}>
-                Tildá esto SOLO después de haber aplicado el CFN del paso 4 en tu cuenta.
-                A partir de ese momento ARIA lee/escribe en TU DynamoDB; si las tablas no existen
-                las llamadas van a fallar.
+                Tildá esto SOLO después de haber aplicado el CFN del paso 4 en tu cuenta. A partir
+                de ese momento ARIA lee/escribe en TU DynamoDB; si las tablas no existen las
+                llamadas van a fallar.
               </div>
             </div>
           </label>
@@ -430,7 +667,13 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
                 onClick={onVerifyDataPlane}
                 disabled={verifyingDp || !draft.roleArn}
               >
-                {verifyingDp ? "Verificando tablas…" : <><Icon.Check size={12} /> Verificar tablas</>}
+                {verifyingDp ? (
+                  "Verificando tablas…"
+                ) : (
+                  <>
+                    <Icon.Check size={12} /> Verificar tablas
+                  </>
+                )}
               </button>
               {c.dataPlaneVerifiedAt && (
                 <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>
@@ -443,16 +686,39 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
 
         {/* Acciones */}
         <div className="row" style={{ gap: 8 }}>
-          <button className="btn btn--primary" onClick={onSave}>Guardar</button>
+          <button className="btn btn--primary" onClick={onSave}>
+            Guardar
+          </button>
           <button className="btn" onClick={onVerify} disabled={verifying || !draft.roleArn}>
-            {verifying ? "Verificando…" : <><Icon.Check size={13} /> Verificar conexión</>}
+            {verifying ? (
+              "Verificando…"
+            ) : (
+              <>
+                <Icon.Check size={13} /> Verificar conexión
+              </>
+            )}
           </button>
           {c.verifiedAt && (
-            <button className="btn" onClick={onProvisionFlows} disabled={provisioning} title="Crea los contact flows de ARIA (entrante, saliente, despedida) en tu instancia de Connect.">
-              {provisioning ? "Provisionando…" : <><Icon.Lightning size={13} /> Provisionar flows</>}
+            <button
+              className="btn"
+              onClick={onProvisionFlows}
+              disabled={provisioning}
+              title="Crea los contact flows de ARIA (entrante, saliente, despedida) en tu instancia de Connect."
+            >
+              {provisioning ? (
+                "Provisionando…"
+              ) : (
+                <>
+                  <Icon.Lightning size={13} /> Provisionar flows
+                </>
+              )}
             </button>
           )}
-          {c.verifiedAt && <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>Verificada {new Date(c.verifiedAt).toLocaleString("es-PE")}</span>}
+          {c.verifiedAt && (
+            <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>
+              Verificada {new Date(c.verifiedAt).toLocaleString("es-PE")}
+            </span>
+          )}
         </div>
 
         {/* Panel de diagnóstico: auto-corre los health-checks contra el Connect
@@ -464,7 +730,199 @@ function AmazonConnectCard({ config, update }: { config: ConnectionsConfig; upda
 }
 
 /* ── Salesforce (OAuth web) ─────────────────────────────────────────── */
-function SalesforceCard({ config, update }: { config: ConnectionsConfig; update: (patch: Partial<ConnectionsConfig>) => void }) {
+/** Pilar 10 — campos de ARIA mapeables al Lead de Salesforce + su default. */
+const ARIA_SF_FIELDS: { key: string; label: string; def: string; hint: string }[] = [
+  { key: "firstName", label: "Nombre", def: "FirstName", hint: "Nombre del lead" },
+  { key: "phone", label: "Teléfono", def: "Phone", hint: "Teléfono normalizado (E.164)" },
+  { key: "email", label: "Email", def: "Email", hint: "Correo del lead" },
+  { key: "company", label: "Empresa", def: "Company", hint: "Empresa (requerida por SF al crear)" },
+  {
+    key: "status",
+    label: "Etapa → Status",
+    def: "Status",
+    hint: "Etapa del embudo (vía salesforceValue)",
+  },
+  { key: "source", label: "Origen", def: "LeadSource", hint: "Canal/fuente del lead" },
+];
+
+interface SfDescField {
+  name: string;
+  label: string;
+  type: string;
+  custom: boolean;
+}
+
+/** Mapeo schema-aware (Pilar 10): descubre los campos reales del Lead de la org
+ *  del tenant y deja al admin elegir a qué campo escribe cada dato de ARIA. */
+function SfFieldMapper({
+  config,
+  update,
+}: {
+  config: ConnectionsConfig;
+  update: (patch: Partial<ConnectionsConfig>) => void;
+}) {
+  const ep = getApiEndpoints();
+  const sf = config.salesforce || {};
+  const stored = (sf.fieldMapping || {}) as Record<string, string>;
+  const [fields, setFields] = useState<SfDescField[]>([]);
+  const [mapping, setMapping] = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    for (const f of ARIA_SF_FIELDS) m[f.key] = stored[f.key] ?? f.def;
+    return m;
+  });
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [discovered, setDiscovered] = useState(false);
+
+  const discover = async () => {
+    if (!ep?.salesforceSync) {
+      toast.message("El backend de Salesforce se habilita al desplegar.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const r = await authedFetch(`${ep.salesforceSync}?mode=describe`);
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || "No se pudo leer el esquema");
+      setFields(Array.isArray(j.fields) ? j.fields : []);
+      setDiscovered(true);
+      toast.success(`${(j.fields || []).length} campos descubiertos en tu org`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo descubrir el esquema");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const save = async () => {
+    if (!ep?.manageConnections) return;
+    setSaving(true);
+    try {
+      const nextSf = { ...sf, fieldMapping: mapping };
+      // POST el config COMPLETO (manage-connections reemplaza el configJson) con
+      // el mapeo dentro de salesforce → no pisa la conexión/instanceUrl.
+      const r = await authedFetch(ep.manageConnections, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: { ...config, salesforce: nextSf } }),
+      });
+      if (!r.ok) throw new Error((await r.json())?.error || "No se pudo guardar");
+      update({ salesforce: nextSf });
+      toast.success("Mapeo guardado — el próximo sync escribe estos campos");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo guardar el mapeo");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const standard = fields.filter((f) => !f.custom);
+  const custom = fields.filter((f) => f.custom);
+
+  return (
+    <div style={{ borderTop: "1px solid var(--border-1)", paddingTop: 14 }}>
+      <div
+        className="row"
+        style={{ justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+      >
+        <div style={{ fontWeight: 600, fontSize: 13 }}>Mapeo de campos a Salesforce</div>
+        <button className="btn btn--sm" onClick={discover} disabled={loading}>
+          {loading ? (
+            "Descubriendo…"
+          ) : (
+            <>
+              <Icon.Sparkles size={12} />{" "}
+              {discovered ? "Volver a descubrir" : "Descubrir campos de mi org"}
+            </>
+          )}
+        </button>
+      </div>
+      <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, margin: "8px 0 12px" }}>
+        ARIA <b>no crea campos</b> en tu Salesforce: vos elegís a qué campo de tu Lead se escribe
+        cada dato. Descubrí tu esquema y mapeá. «No escribir» deja ese dato sin sincronizar.
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {ARIA_SF_FIELDS.map((f) => (
+          <div
+            key={f.key}
+            className="row"
+            style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}
+          >
+            <div style={{ width: 150, minWidth: 150 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>{f.label}</div>
+              <div className="muted" style={{ fontSize: 10.5 }}>
+                {f.hint}
+              </div>
+            </div>
+            <span style={{ color: "var(--text-3)" }}>→</span>
+            <select
+              value={mapping[f.key] ?? ""}
+              onChange={(e) => setMapping((m) => ({ ...m, [f.key]: e.target.value }))}
+              disabled={!discovered}
+              style={{
+                flex: 1,
+                minWidth: 180,
+                padding: "7px 9px",
+                borderRadius: 7,
+                border: "1px solid var(--border-1)",
+                background: "var(--bg-1)",
+                color: "var(--text-1)",
+                fontSize: 12.5,
+              }}
+            >
+              <option value="">— No escribir —</option>
+              {!discovered && mapping[f.key] && (
+                <option value={mapping[f.key]}>{mapping[f.key]} (actual)</option>
+              )}
+              {standard.length > 0 && (
+                <optgroup label="Estándar">
+                  {standard.map((sfF) => (
+                    <option key={sfF.name} value={sfF.name}>
+                      {sfF.label} · {sfF.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {custom.length > 0 && (
+                <optgroup label="Personalizados">
+                  {custom.map((sfF) => (
+                    <option key={sfF.name} value={sfF.name}>
+                      ✦ {sfF.label} · {sfF.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+        ))}
+      </div>
+
+      <div className="row" style={{ gap: 8, marginTop: 12, alignItems: "center" }}>
+        <button
+          className="btn btn--primary btn--sm"
+          onClick={save}
+          disabled={saving || !discovered}
+        >
+          <Icon.Check size={12} /> {saving ? "Guardando…" : "Guardar mapeo"}
+        </button>
+        {!discovered && (
+          <span className="muted" style={{ fontSize: 11 }}>
+            Descubrí tu esquema primero para editar el mapeo.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SalesforceCard({
+  config,
+  update,
+}: {
+  config: ConnectionsConfig;
+  update: (patch: Partial<ConnectionsConfig>) => void;
+}) {
   const sf = config.salesforce || {};
   const [open, setOpen] = useState(false);
   const [env, setEnv] = useState<"production" | "sandbox">(sf.environment || "production");
@@ -485,14 +943,18 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
       toast.message("Disponible al desplegar el backend de integraciones.");
       return;
     }
-    if (sf.inboundTokenSet && !(await confirm({
-      title: "¿Rotar el token de entrada?",
-      description:
-        "Rotar el token invalida el anterior: el Flow de Salesforce dejará de " +
-        "sincronizar hasta que pegues el token nuevo en su header.",
-      destructive: true,
-      confirmLabel: "Rotar token",
-    }))) return;
+    if (
+      sf.inboundTokenSet &&
+      !(await confirm({
+        title: "¿Rotar el token de entrada?",
+        description:
+          "Rotar el token invalida el anterior: el Flow de Salesforce dejará de " +
+          "sincronizar hasta que pegues el token nuevo en su header.",
+        destructive: true,
+        confirmLabel: "Rotar token",
+      }))
+    )
+      return;
     setGenningToken(true);
     try {
       const r = await authedFetch(ep.manageConnections, {
@@ -521,7 +983,10 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
     try {
       const r = await authedFetch(`${ep.salesforceOAuthStart}?environment=${env}`);
       const j = await r.json();
-      if (j.authUrl) { window.location.assign(j.authUrl); return; }
+      if (j.authUrl) {
+        window.location.assign(j.authUrl);
+        return;
+      }
       toast.error("No se obtuvo la URL de autorización");
     } catch {
       toast.error("No se pudo iniciar OAuth con Salesforce");
@@ -536,9 +1001,14 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
         await authedFetch(ep.manageConnections, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ disconnectSalesforce: true, config: { ...config, salesforce: { connected: false } } }),
+          body: JSON.stringify({
+            disconnectSalesforce: true,
+            config: { ...config, salesforce: { connected: false } },
+          }),
         });
-      } catch { /* el flag local ya cambió; reintenta en el próximo focus */ }
+      } catch {
+        /* el flag local ya cambió; reintenta en el próximo focus */
+      }
     }
     toast.success("Salesforce desconectado");
   };
@@ -548,26 +1018,53 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
       icon={<Icon.Cloud size={20} style={{ color: "#00A1E0" }} />}
       title="Salesforce"
       desc="Sincroniza leads, actividad e historial en ambos sentidos. Conexión con un clic vía OAuth (sin certificados)."
-      tone={tone} statusLabel={statusLabel} open={open} onToggle={() => setOpen((o) => !o)}
+      tone={tone}
+      statusLabel={statusLabel}
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {sf.connected ? (
           <>
             <div className="muted" style={{ fontSize: 12.5 }}>
               Conectado a <b>{sf.instanceUrl || "tu org de Salesforce"}</b>
-              {sf.connectedAt ? ` · desde ${new Date(sf.connectedAt).toLocaleDateString("es-PE")}` : ""}.
+              {sf.connectedAt
+                ? ` · desde ${new Date(sf.connectedAt).toLocaleDateString("es-PE")}`
+                : ""}
+              .
             </div>
             <div className="row" style={{ gap: 8 }}>
-              <button className="btn btn--danger btn--sm" onClick={onDisconnect}><Icon.Close size={13} /> Desconectar</button>
+              <button className="btn btn--danger btn--sm" onClick={onDisconnect}>
+                <Icon.Close size={13} /> Desconectar
+              </button>
             </div>
           </>
         ) : (
           <>
             <div>
               <StepLabel n={1}>Elegí el entorno</StepLabel>
-              <div className="row" style={{ gap: 0, border: "1px solid var(--border-2)", borderRadius: 6, overflow: "hidden", width: "fit-content" }}>
+              <div
+                className="row"
+                style={{
+                  gap: 0,
+                  border: "1px solid var(--border-2)",
+                  borderRadius: 6,
+                  overflow: "hidden",
+                  width: "fit-content",
+                }}
+              >
                 {(["production", "sandbox"] as const).map((e) => (
-                  <button key={e} onClick={() => setEnv(e)} style={{ padding: "6px 14px", fontSize: 12.5, fontWeight: 600, background: env === e ? "var(--bg-3)" : "transparent", color: env === e ? "var(--text-1)" : "var(--text-3)" }}>
+                  <button
+                    key={e}
+                    onClick={() => setEnv(e)}
+                    style={{
+                      padding: "6px 14px",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      background: env === e ? "var(--bg-3)" : "transparent",
+                      color: env === e ? "var(--text-1)" : "var(--text-3)",
+                    }}
+                  >
                     {e === "production" ? "Producción" : "Sandbox"}
                   </button>
                 ))}
@@ -576,7 +1073,8 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
             <div>
               <StepLabel n={2}>Autorizá a ARIA</StepLabel>
               <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
-                Te lleva al login de Salesforce, das consentimiento y volvés. Guardamos el token de forma segura (Secrets Manager) — nunca en tu navegador.
+                Te lleva al login de Salesforce, das consentimiento y volvés. Guardamos el token de
+                forma segura (Secrets Manager) — nunca en tu navegador.
               </div>
               <button className="btn btn--primary btn--sm" onClick={onConnect}>
                 <Icon.Cloud size={13} /> Conectar con Salesforce
@@ -585,38 +1083,82 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
           </>
         )}
 
+        {/* Pilar 10 — mapeo schema-aware de campos (solo cuando hay conexión). */}
+        {sf.connected && <SfFieldMapper config={config} update={update} />}
+
         {/* Webhook de entrada (SF → ARIA): token per-tenant para el header
             x-vox-token del Flow de Salesforce. Reemplaza el secret global. */}
         <div style={{ borderTop: "1px solid var(--border-1)", paddingTop: 14 }}>
-          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Webhook de entrada (SF → ARIA)</div>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
+            Webhook de entrada (SF → ARIA)
+          </div>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
-            Para que tu Flow de Salesforce sincronice leads hacia ARIA, generá un
-            token propio y pegalo en el Custom Header <code style={{ fontSize: 11.5 }}>x-vox-token</code> de
-            la Named Credential del Flow. Es exclusivo de tu organización: nadie
-            más puede escribir en tus datos con él.
+            Para que tu Flow de Salesforce sincronice leads hacia ARIA, generá un token propio y
+            pegalo en el Custom Header <code style={{ fontSize: 11.5 }}>x-vox-token</code> de la
+            Named Credential del Flow. Es exclusivo de tu organización: nadie más puede escribir en
+            tus datos con él.
           </div>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn--sm" onClick={onGenerateInboundToken} disabled={genningToken}>
-              {genningToken
-                ? "Generando…"
-                : sf.inboundTokenSet
-                  ? <><Icon.Settings size={12} /> Rotar token</>
-                  : <><Icon.Sparkles size={12} /> Generar token</>}
+            <button
+              className="btn btn--sm"
+              onClick={onGenerateInboundToken}
+              disabled={genningToken}
+            >
+              {genningToken ? (
+                "Generando…"
+              ) : sf.inboundTokenSet ? (
+                <>
+                  <Icon.Settings size={12} /> Rotar token
+                </>
+              ) : (
+                <>
+                  <Icon.Sparkles size={12} /> Generar token
+                </>
+              )}
             </button>
             {sf.inboundTokenSet && !inboundToken && (
               <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>
-                Token activo{sf.inboundTokenRotatedAt ? ` · generado ${new Date(sf.inboundTokenRotatedAt).toLocaleDateString("es-PE")}` : ""}
+                Token activo
+                {sf.inboundTokenRotatedAt
+                  ? ` · generado ${new Date(sf.inboundTokenRotatedAt).toLocaleDateString("es-PE")}`
+                  : ""}
               </span>
             )}
           </div>
           {inboundToken && (
             <div style={{ marginTop: 10 }}>
               <div className="row" style={{ gap: 8 }}>
-                <code style={{ flex: 1, padding: "7px 10px", background: "var(--bg-2)", borderRadius: 6, fontSize: 12, border: "1px solid var(--border-1)", overflow: "auto", whiteSpace: "nowrap" }}>{inboundToken}</code>
-                <button className="btn btn--sm" onClick={() => copy(inboundToken, "Token")}><Icon.Copy size={12} /> Copiar</button>
+                <code
+                  style={{
+                    flex: 1,
+                    padding: "7px 10px",
+                    background: "var(--bg-2)",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    border: "1px solid var(--border-1)",
+                    overflow: "auto",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {inboundToken}
+                </code>
+                <button className="btn btn--sm" onClick={() => copy(inboundToken, "Token")}>
+                  <Icon.Copy size={12} /> Copiar
+                </button>
               </div>
-              <div className="muted" style={{ fontSize: 11, marginTop: 6, color: "var(--accent-amber)", display: "flex", alignItems: "center", gap: 5 }}>
-                <AlertTriangle size={12} style={{ flexShrink: 0 }} /> Copialo ahora: por seguridad no se vuelve a mostrar. Si lo perdés, rotá uno nuevo.
+              <div
+                className="muted"
+                style={{
+                  fontSize: 11,
+                  marginTop: 6,
+                  color: "var(--accent-amber)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+              >
+                <AlertTriangle size={12} style={{ flexShrink: 0 }} /> Copialo ahora: por seguridad
+                no se vuelve a mostrar. Si lo perdés, rotá uno nuevo.
               </div>
             </div>
           )}
@@ -634,7 +1176,9 @@ function SalesforceCard({ config, update }: { config: ConnectionsConfig; update:
  *  • "meta" — número de Meta aparte (Cloud API + token): SOLO plantillas/bots.
  */
 function WhatsAppCard({
-  config, update, awsNumbers,
+  config,
+  update,
+  awsNumbers,
 }: {
   config: ConnectionsConfig;
   update: (patch: Partial<ConnectionsConfig>) => void;
@@ -643,12 +1187,14 @@ function WhatsAppCard({
   const wa = config.whatsapp || {};
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"aws" | "meta">(
-    wa.mode || (awsNumbers.length > 0 ? "aws" : "meta")
+    wa.mode || (awsNumbers.length > 0 ? "aws" : "meta"),
   );
   const [selectedAws, setSelectedAws] = useState(
-    wa.metaPhoneNumberId || awsNumbers[0]?.metaPhoneNumberId || ""
+    wa.metaPhoneNumberId || awsNumbers[0]?.metaPhoneNumberId || "",
   );
-  const [phoneNumberId, setPhoneNumberId] = useState(wa.mode !== "aws" ? wa.phoneNumberId || "" : "");
+  const [phoneNumberId, setPhoneNumberId] = useState(
+    wa.mode !== "aws" ? wa.phoneNumberId || "" : "",
+  );
   const [wabaId, setWabaId] = useState(wa.mode !== "aws" ? wa.wabaId || "" : "");
   const [token, setToken] = useState("");
   const ep = getApiEndpoints();
@@ -657,17 +1203,28 @@ function WhatsAppCard({
   const connected = isAws ? !!wa.phoneNumberId : !!(wa.phoneNumberId && wa.tokenSet);
   const tone: Tone = connected ? "ok" : wa.phoneNumberId ? "warn" : "idle";
   const statusLabel = connected
-    ? isAws ? "Conectado · Connect" : "Conectado · Meta"
-    : wa.phoneNumberId ? "Falta token" : "No conectado";
+    ? isAws
+      ? "Conectado · Connect"
+      : "Conectado · Meta"
+    : wa.phoneNumberId
+      ? "Falta token"
+      : "No conectado";
 
   const persist = async (next: WhatsAppConn, secret?: string): Promise<boolean> => {
     if (ep?.manageConnections) {
       try {
         await authedFetch(ep.manageConnections, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ whatsappSecret: secret || undefined, config: { ...config, whatsapp: next } }),
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            whatsappSecret: secret || undefined,
+            config: { ...config, whatsapp: next },
+          }),
         });
-      } catch { toast.error("No se pudo guardar"); return false; }
+      } catch {
+        toast.error("No se pudo guardar");
+        return false;
+      }
     }
     update({ whatsapp: next });
     return true;
@@ -675,7 +1232,10 @@ function WhatsAppCard({
 
   const onSaveAws = async () => {
     const num = awsNumbers.find((n) => n.metaPhoneNumberId === selectedAws);
-    if (!num) { toast.error("Elegí un número de la lista"); return; }
+    if (!num) {
+      toast.error("Elegí un número de la lista");
+      return;
+    }
     // Modo AWS: SIN token — AWS End User Messaging maneja la auth de la WABA.
     const ok = await persist({
       mode: "aws",
@@ -689,15 +1249,24 @@ function WhatsAppCard({
   };
 
   const onSaveMeta = async () => {
-    if (!phoneNumberId.trim()) { toast.error("Falta el Phone Number ID"); return; }
-    const ok = await persist({
-      mode: "meta",
-      phoneNumberId: phoneNumberId.trim(),
-      wabaId: wabaId.trim() || undefined,
-      tokenSet: !!token || wa.tokenSet,
-      connectedAt: new Date().toISOString(),
-    }, token || undefined);
-    if (ok) { setToken(""); toast.success("WhatsApp (número de Meta) guardado"); }
+    if (!phoneNumberId.trim()) {
+      toast.error("Falta el Phone Number ID");
+      return;
+    }
+    const ok = await persist(
+      {
+        mode: "meta",
+        phoneNumberId: phoneNumberId.trim(),
+        wabaId: wabaId.trim() || undefined,
+        tokenSet: !!token || wa.tokenSet,
+        connectedAt: new Date().toISOString(),
+      },
+      token || undefined,
+    );
+    if (ok) {
+      setToken("");
+      toast.success("WhatsApp (número de Meta) guardado");
+    }
   };
 
   return (
@@ -705,29 +1274,93 @@ function WhatsAppCard({
       icon={<Icon.WhatsApp size={20} style={{ color: "#25D366" }} />}
       title="WhatsApp"
       desc="Conectá el número que ya está vinculado a tu Amazon Connect, o usá un número de Meta aparte."
-      tone={tone} statusLabel={statusLabel} open={open} onToggle={() => setOpen((o) => !o)}
+      tone={tone}
+      statusLabel={statusLabel}
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {/* La observación: la diferencia entre los dos tipos de número */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)", background: "color-mix(in srgb, var(--accent-green) 8%, transparent)" }}>
-            <div style={{ fontWeight: 700, fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}><CheckCircle2 size={14} style={{ flexShrink: 0, color: "var(--accent-green)" }} /> Número de Connect (AWS)</div>
+          <div
+            style={{
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)",
+              background: "color-mix(in srgb, var(--accent-green) 8%, transparent)",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 12.5,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <CheckCircle2 size={14} style={{ flexShrink: 0, color: "var(--accent-green)" }} />{" "}
+              Número de Connect (AWS)
+            </div>
             <div className="muted" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.5 }}>
-              Lo atiende un <b>agente</b> en el desktop: entra como contacto, con colas, routing y Contact Lens. Entrante + saliente. Sin token.
+              Lo atiende un <b>agente</b> en el desktop: entra como contacto, con colas, routing y
+              Contact Lens. Entrante + saliente. Sin token.
             </div>
           </div>
-          <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-1)", background: "var(--bg-2)" }}>
-            <div style={{ fontWeight: 700, fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}><Send size={13} style={{ flexShrink: 0 }} /> Número de Meta aparte</div>
+          <div
+            style={{
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid var(--border-1)",
+              background: "var(--bg-2)",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 12.5,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Send size={13} style={{ flexShrink: 0 }} /> Número de Meta aparte
+            </div>
             <div className="muted" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.5 }}>
-              Envía <b>plantillas</b> (campañas) por Cloud API de Meta. Bots entrantes por webhook <i>(en construcción)</i>. <b>No</b> tiene agente en vivo de Connect.
+              Envía <b>plantillas</b> (campañas) por Cloud API de Meta. Bots entrantes por webhook{" "}
+              <i>(en construcción)</i>. <b>No</b> tiene agente en vivo de Connect.
             </div>
           </div>
         </div>
 
         {/* Selector de modo */}
-        <div className="row" style={{ gap: 0, border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden", width: "fit-content" }}>
-          {([["aws", "Número de Connect"], ["meta", "Número de Meta aparte"]] as const).map(([m, label]) => (
-            <button key={m} onClick={() => setMode(m)} style={{ padding: "7px 14px", fontSize: 12.5, fontWeight: 600, background: mode === m ? "var(--bg-3)" : "transparent", color: mode === m ? "var(--text-1)" : "var(--text-3)" }}>
+        <div
+          className="row"
+          style={{
+            gap: 0,
+            border: "1px solid var(--border-2)",
+            borderRadius: 8,
+            overflow: "hidden",
+            width: "fit-content",
+          }}
+        >
+          {(
+            [
+              ["aws", "Número de Connect"],
+              ["meta", "Número de Meta aparte"],
+            ] as const
+          ).map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              style={{
+                padding: "7px 14px",
+                fontSize: 12.5,
+                fontWeight: 600,
+                background: mode === m ? "var(--bg-3)" : "transparent",
+                color: mode === m ? "var(--text-1)" : "var(--text-3)",
+              }}
+            >
               {label}
             </button>
           ))}
@@ -740,44 +1373,113 @@ function WhatsAppCard({
                 {awsNumbers.map((n) => {
                   const sel = selectedAws === n.metaPhoneNumberId;
                   return (
-                    <label key={n.metaPhoneNumberId || n.phoneNumberArn} className="row" style={{ gap: 10, padding: "10px 12px", borderRadius: 8, cursor: "pointer", alignItems: "center", background: sel ? "var(--accent-green-soft)" : "var(--bg-2)", border: `1px solid ${sel ? "var(--accent-green)" : "var(--border-1)"}` }}>
-                      <input type="radio" name="wa-aws-number" checked={sel} onChange={() => setSelectedAws(n.metaPhoneNumberId || "")} />
+                    <label
+                      key={n.metaPhoneNumberId || n.phoneNumberArn}
+                      className="row"
+                      style={{
+                        gap: 10,
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        cursor: "pointer",
+                        alignItems: "center",
+                        background: sel ? "var(--accent-green-soft)" : "var(--bg-2)",
+                        border: `1px solid ${sel ? "var(--accent-green)" : "var(--border-1)"}`,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="wa-aws-number"
+                        checked={sel}
+                        onChange={() => setSelectedAws(n.metaPhoneNumberId || "")}
+                      />
                       <Icon.WhatsApp size={16} style={{ color: "#25D366" }} />
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13 }}>{n.displayPhoneNumber} · {n.displayName}</div>
-                        <div className="muted" style={{ fontSize: 11 }}>WABA {n.wabaName || n.wabaId}{n.qualityRating ? ` · calidad ${n.qualityRating}` : ""}</div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>
+                          {n.displayPhoneNumber} · {n.displayName}
+                        </div>
+                        <div className="muted" style={{ fontSize: 11 }}>
+                          WABA {n.wabaName || n.wabaId}
+                          {n.qualityRating ? ` · calidad ${n.qualityRating}` : ""}
+                        </div>
                       </div>
                     </label>
                   );
                 })}
               </div>
-              <div className="row"><button className="btn btn--primary btn--sm" onClick={onSaveAws}>Usar este número</button></div>
+              <div className="row">
+                <button className="btn btn--primary btn--sm" onClick={onSaveAws}>
+                  Usar este número
+                </button>
+              </div>
             </>
           ) : (
             <div className="muted" style={{ fontSize: 12.5, padding: "8px 0", lineHeight: 1.6 }}>
-              No detectamos números vinculados a tu Amazon Connect. Vinculá uno en <b>AWS End User Messaging → WhatsApp</b> (queda atado a tu instancia), o usá un número de Meta aparte en la otra pestaña.
+              No detectamos números vinculados a tu Amazon Connect. Vinculá uno en{" "}
+              <b>AWS End User Messaging → WhatsApp</b> (queda atado a tu instancia), o usá un número
+              de Meta aparte en la otra pestaña.
             </div>
           )
         ) : (
           <>
-            <div className="camp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div
+              className="camp-2col"
+              style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}
+            >
               <label>
                 <span style={labelStyle}>Phone Number ID</span>
-                <input style={inputStyle} autoComplete="off" name="wa-phone-number-id" placeholder="1029384756…" value={phoneNumberId} onChange={(e) => setPhoneNumberId(e.target.value)} />
+                <input
+                  style={inputStyle}
+                  autoComplete="off"
+                  name="wa-phone-number-id"
+                  placeholder="1029384756…"
+                  value={phoneNumberId}
+                  onChange={(e) => setPhoneNumberId(e.target.value)}
+                />
               </label>
               <label>
                 <span style={labelStyle}>WABA ID (opcional)</span>
-                <input style={inputStyle} autoComplete="off" name="wa-waba-id" placeholder="ID de la cuenta de WhatsApp Business" value={wabaId} onChange={(e) => setWabaId(e.target.value)} />
+                <input
+                  style={inputStyle}
+                  autoComplete="off"
+                  name="wa-waba-id"
+                  placeholder="ID de la cuenta de WhatsApp Business"
+                  value={wabaId}
+                  onChange={(e) => setWabaId(e.target.value)}
+                />
               </label>
             </div>
             <label>
-              <span style={labelStyle}>Token de acceso {wa.tokenSet ? "(ya guardado — dejá vacío para mantenerlo)" : ""}</span>
-              <input style={inputStyle} type="password" autoComplete="new-password" name="wa-access-token" placeholder={wa.tokenSet ? "••••••••••••" : "Token permanente de Meta"} value={token} onChange={(e) => setToken(e.target.value)} />
-              <span className="muted" style={{ fontSize: 10.5, marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}>
-                <Lock size={11} style={{ flexShrink: 0 }} /> El token se guarda cifrado en el backend (Secrets Manager), nunca en tu navegador.
+              <span style={labelStyle}>
+                Token de acceso {wa.tokenSet ? "(ya guardado — dejá vacío para mantenerlo)" : ""}
+              </span>
+              <input
+                style={inputStyle}
+                type="password"
+                autoComplete="new-password"
+                name="wa-access-token"
+                placeholder={wa.tokenSet ? "••••••••••••" : "Token permanente de Meta"}
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+              />
+              <span
+                className="muted"
+                style={{
+                  fontSize: 10.5,
+                  marginTop: 3,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+              >
+                <Lock size={11} style={{ flexShrink: 0 }} /> El token se guarda cifrado en el
+                backend (Secrets Manager), nunca en tu navegador.
               </span>
             </label>
-            <div className="row"><button className="btn btn--primary btn--sm" onClick={onSaveMeta}>Guardar</button></div>
+            <div className="row">
+              <button className="btn btn--primary btn--sm" onClick={onSaveMeta}>
+                Guardar
+              </button>
+            </div>
           </>
         )}
 
@@ -824,7 +1526,10 @@ function WaFlowsEditor({
         screen: nScreen.trim() || undefined,
       },
     ]);
-    setNId(""); setNName(""); setNCta(""); setNScreen("");
+    setNId("");
+    setNName("");
+    setNCta("");
+    setNScreen("");
   };
 
   return (
@@ -834,14 +1539,24 @@ function WaFlowsEditor({
       </div>
       <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, marginBottom: 10 }}>
         Formularios multi-pantalla DENTRO del chat. Diseñalos y publicalos en{" "}
-        <b>Meta Business Manager → WhatsApp Manager → Flows</b> y pegá acá su{" "}
-        <b>flow_id</b>. El agente los envía desde el chat; la respuesta crea/actualiza
-        el lead y dispara Automatizaciones ("Formulario completado").
+        <b>Meta Business Manager → WhatsApp Manager → Flows</b> y pegá acá su <b>flow_id</b>. El
+        agente los envía desde el chat; la respuesta crea/actualiza el lead y dispara
+        Automatizaciones ("Formulario completado").
       </div>
       {flows.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
           {flows.map((f, i) => (
-            <div key={f.id + i} className="row" style={{ gap: 10, padding: "8px 10px", background: "var(--bg-2)", borderRadius: 8, alignItems: "center" }}>
+            <div
+              key={f.id + i}
+              className="row"
+              style={{
+                gap: 10,
+                padding: "8px 10px",
+                background: "var(--bg-2)",
+                borderRadius: 8,
+                alignItems: "center",
+              }}
+            >
               <ClipboardList size={14} style={{ flexShrink: 0, color: "var(--accent-pink)" }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600 }}>{f.name}</div>
@@ -862,22 +1577,49 @@ function WaFlowsEditor({
           ))}
         </div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 0.7fr 0.7fr auto", gap: 8, alignItems: "end" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.2fr 1fr 0.7fr 0.7fr auto",
+          gap: 8,
+          alignItems: "end",
+        }}
+      >
         <label>
           <span style={labelStyle}>flow_id</span>
-          <input style={inputStyle} placeholder="1234567890…" value={nId} onChange={(e) => setNId(e.target.value)} />
+          <input
+            style={inputStyle}
+            placeholder="1234567890…"
+            value={nId}
+            onChange={(e) => setNId(e.target.value)}
+          />
         </label>
         <label>
           <span style={labelStyle}>Nombre</span>
-          <input style={inputStyle} placeholder="Solicitud de info" value={nName} onChange={(e) => setNName(e.target.value)} />
+          <input
+            style={inputStyle}
+            placeholder="Solicitud de info"
+            value={nName}
+            onChange={(e) => setNName(e.target.value)}
+          />
         </label>
         <label>
           <span style={labelStyle}>Botón (opc.)</span>
-          <input style={inputStyle} placeholder="Completar" value={nCta} onChange={(e) => setNCta(e.target.value)} />
+          <input
+            style={inputStyle}
+            placeholder="Completar"
+            value={nCta}
+            onChange={(e) => setNCta(e.target.value)}
+          />
         </label>
         <label>
           <span style={labelStyle}>Pantalla (opc.)</span>
-          <input style={inputStyle} placeholder="INICIO" value={nScreen} onChange={(e) => setNScreen(e.target.value)} />
+          <input
+            style={inputStyle}
+            placeholder="INICIO"
+            value={nScreen}
+            onChange={(e) => setNScreen(e.target.value)}
+          />
         </label>
         <button className="btn btn--sm" onClick={add} style={{ height: 34 }}>
           Agregar
@@ -891,7 +1633,13 @@ function WaFlowsEditor({
    De-Novasys-ificación (#2): la despedida de chat/WhatsApp ya no está
    hardcodeada con texto de UDEP en el código; vive en la config del tenant y
    se edita acá. Vacío → el producto usa un default genérico sin marca. */
-function MessagingCard({ config, update }: { config: ConnectionsConfig; update: (patch: Partial<ConnectionsConfig>) => void }) {
+function MessagingCard({
+  config,
+  update,
+}: {
+  config: ConnectionsConfig;
+  update: (patch: Partial<ConnectionsConfig>) => void;
+}) {
   const msg = config.messaging || {};
   const brand = config.branding || {};
   const [open, setOpen] = useState(false);
@@ -914,7 +1662,9 @@ function MessagingCard({ config, update }: { config: ConnectionsConfig; update: 
       title="Marca y mensajes"
       desc="Personalizá el nombre de producto que ven tus agentes (white-label) y los textos automáticos que reciben tus clientes. Vacío = valores por defecto de ARIA."
       tone={tone}
-      statusLabel={brand.productName?.trim() || msg.chatFarewell?.trim() ? "Personalizado" : "Por defecto"}
+      statusLabel={
+        brand.productName?.trim() || msg.chatFarewell?.trim() ? "Personalizado" : "Por defecto"
+      }
       open={open}
       onToggle={() => setOpen((o) => !o)}
     >
@@ -928,23 +1678,33 @@ function MessagingCard({ config, update }: { config: ConnectionsConfig; update: 
             onChange={(e) => setProductName(e.target.value)}
           />
           <span className="muted" style={{ fontSize: 10.5, marginTop: 3, display: "block" }}>
-            Se muestra en la barra lateral y el título de la pestaña (white-label). El login sigue con la marca de plataforma.
+            Se muestra en la barra lateral y el título de la pestaña (white-label). El login sigue
+            con la marca de plataforma.
           </span>
         </label>
         <label>
           <span style={labelStyle}>Despedida de chat / WhatsApp</span>
           <textarea
-            style={{ ...inputStyle, minHeight: 120, resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 }}
+            style={{
+              ...inputStyle,
+              minHeight: 120,
+              resize: "vertical",
+              fontFamily: "inherit",
+              lineHeight: 1.5,
+            }}
             placeholder="👋 ¡Gracias por escribirnos! Esperamos haberte ayudado…"
             value={farewell}
             onChange={(e) => setFarewell(e.target.value)}
           />
           <span className="muted" style={{ fontSize: 10.5, marginTop: 3, display: "block" }}>
-            Se envía al cliente cuando el agente cierra el chat. Soporta saltos de línea y *negrita* de WhatsApp.
+            Se envía al cliente cuando el agente cierra el chat. Soporta saltos de línea y *negrita*
+            de WhatsApp.
           </span>
         </label>
         <div className="row">
-          <button className="btn btn--primary btn--sm" onClick={onSave} disabled={!dirty}>Guardar</button>
+          <button className="btn btn--primary btn--sm" onClick={onSave} disabled={!dirty}>
+            Guardar
+          </button>
         </div>
       </div>
     </ConnCard>
@@ -978,14 +1738,19 @@ export function IntegrationsManager() {
         <div
           className="row"
           style={{
-            gap: 10, padding: "10px 14px", borderRadius: 12,
+            gap: 10,
+            padding: "10px 14px",
+            borderRadius: 12,
             border: "1px solid color-mix(in srgb, var(--accent-amber) 35%, transparent)",
             background: "color-mix(in srgb, var(--accent-amber) 10%, transparent)",
           }}
         >
           <Icon.Lightning size={16} style={{ color: "var(--accent-amber)", flexShrink: 0 }} />
           <span className="muted" style={{ fontSize: 12 }}>
-            Vista previa de Integraciones. La config se guarda localmente por ahora; el <b>guardado seguro de secretos</b> (Secrets Manager), la <b>verificación real</b> y la <b>conexión por organización</b> llegan con el backend multi-tenant (Cognito + connections).
+            Vista previa de Integraciones. La config se guarda localmente por ahora; el{" "}
+            <b>guardado seguro de secretos</b> (Secrets Manager), la <b>verificación real</b> y la{" "}
+            <b>conexión por organización</b> llegan con el backend multi-tenant (Cognito +
+            connections).
           </span>
         </div>
       )}

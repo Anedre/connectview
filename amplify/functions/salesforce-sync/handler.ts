@@ -4,6 +4,7 @@ import {
   soqlEscape,
   getToken,
   setActiveTenant,
+  describeSObject,
 } from "../_shared/salesforceClient";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import {
@@ -14,11 +15,35 @@ import {
   getLeadHistoryByPhone,
   setActiveDynamo,
   setActiveProfiles,
+  setActiveSfMapping,
+  type SfFieldMapping,
 } from "../_shared/leadSync";
 import { sfPhoneCandidates } from "../_shared/phone";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
+
+const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
+
+/** Pilar 10 — lee el mapeo de campos ARIA→SF del tenant desde connectview-connections
+ *  (config.salesforce.fieldMapping). Best-effort: sin config → null (defaults). */
+async function loadSfMapping(
+  client: DynamoDBClient,
+  tenantId: string,
+): Promise<SfFieldMapping | null> {
+  if (!tenantId) return null;
+  try {
+    const r = await client.send(
+      new GetItemCommand({ TableName: CONNECTIONS_TABLE, Key: { tenantId: { S: tenantId } } }),
+    );
+    const json = r.Item?.configJson?.S;
+    if (!json) return null;
+    const cfg = JSON.parse(json) as { salesforce?: { fieldMapping?: SfFieldMapping } };
+    return cfg?.salesforce?.fieldMapping || null;
+  } catch {
+    return null;
+  }
+}
 
 // BYO Data Plane (#46): leadSync escribe a DynamoDB. Si el tenant lo activó,
 // las escrituras van a SU tabla (`connectview-leads` en su cuenta).
@@ -26,8 +51,7 @@ const legacyDynamo = new DynamoDBClient({});
 // CP legacy (Novasys) — solo para el tenant fundador; resolveCustomerProfiles
 // bloquea a un tenant real sin CP (jamás escribe el perfil en Novasys).
 const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 2 });
-const LEGACY_PROFILES_DOMAIN =
-  process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+const LEGACY_PROFILES_DOMAIN = process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
 
 /**
  * salesforce-sync — Vox → Salesforce (outbound). Lo llama el agent desktop
@@ -75,7 +99,11 @@ export const handler: Handler = async (event: any) => {
   // pegan a SU Salesforce. Si el tenant no conectó SF, salesforceClient cae
   // al JWT bearer legacy (single-tenant Novasys) — el comportamiento actual
   // queda intacto para los Lambdas y para el path de transición.
-  setActiveTenant(await resolveTenantId(event?.headers));
+  const tenantId = await resolveTenantId(event?.headers);
+  setActiveTenant(tenantId);
+  // Pilar 10 — mapeo de campos ARIA→SF del tenant (si lo configuró en
+  // Configuración → Integraciones). Aplica a todo el push de este request.
+  setActiveSfMapping(await loadSfMapping(legacyDynamo, tenantId));
   // BYO Data Plane (#46): DynamoDB del tenant para leadSync (propagateLead,
   // appendLeadHistory, …). Fallback a Vox pooled si no aplicó el template.
   {
@@ -83,7 +111,11 @@ export const handler: Handler = async (event: any) => {
     setActiveDynamo(r.tenantScoped ? r.dynamo : null);
     // Customer Profiles del tenant para el upsert del Cliente 360° en
     // propagateLead. Fail-closed: tenant real sin CP → bloqueado, NUNCA Novasys.
-    const cp = await resolveCustomerProfiles(event?.headers, legacyProfiles, LEGACY_PROFILES_DOMAIN);
+    const cp = await resolveCustomerProfiles(
+      event?.headers,
+      legacyProfiles,
+      LEGACY_PROFILES_DOMAIN,
+    );
     setActiveProfiles(cp.client, cp.domainName);
   }
   let body: SyncBody;
@@ -102,13 +134,47 @@ export const handler: Handler = async (event: any) => {
       return {
         statusCode: 200,
         headers: CORS,
-        body: JSON.stringify({ ok: true, mode: "ping", instanceUrl: tok.instanceUrl, org: rows[0] ?? null }),
+        body: JSON.stringify({
+          ok: true,
+          mode: "ping",
+          instanceUrl: tok.instanceUrl,
+          org: rows[0] ?? null,
+        }),
       };
     } catch (err) {
       return {
         statusCode: 502,
         headers: CORS,
-        body: JSON.stringify({ ok: false, mode: "ping", error: err instanceof Error ? err.message : String(err) }),
+        body: JSON.stringify({
+          ok: false,
+          mode: "ping",
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      };
+    }
+  }
+
+  // ── DESCRIBE mode (Pilar 10): campos escribibles del Lead de la org del
+  //    tenant → alimenta la UI de mapeo schema-aware. Solo lectura.
+  //    GET ?mode=describe[&sobject=Lead]. ─────────────────────────────────────
+  if (event?.queryStringParameters?.mode === "describe" || body.mode === "describe") {
+    const sobject = (event?.queryStringParameters?.sobject || "Lead").replace(/[^A-Za-z0-9_]/g, "");
+    try {
+      const fields = await describeSObject(sobject || "Lead");
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({ ok: true, mode: "describe", sobject: sobject || "Lead", fields }),
+      };
+    } catch (err) {
+      return {
+        statusCode: 502,
+        headers: CORS,
+        body: JSON.stringify({
+          ok: false,
+          mode: "describe",
+          error: err instanceof Error ? err.message : String(err),
+        }),
       };
     }
   }
@@ -121,7 +187,11 @@ export const handler: Handler = async (event: any) => {
     const phoneQ = (body.customerPhone || body.phone || qs.phone || "").trim();
     const sfId = (body.sfLeadId || qs.sfLeadId || "").trim();
     if (!phoneQ && !sfId) {
-      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: "need phone or sfLeadId" }) };
+      return {
+        statusCode: 400,
+        headers: CORS,
+        body: JSON.stringify({ error: "need phone or sfLeadId" }),
+      };
     }
     try {
       const voxHistory = phoneQ ? await getLeadHistoryByPhone(phoneQ) : [];
@@ -137,17 +207,21 @@ export const handler: Handler = async (event: any) => {
         ? `Id = '${soqlEscape(sfId)}'`
         : phoneClause || `Phone = '${soqlEscape(phoneQ)}'`;
       const leads = await soql(
-        `SELECT Id, Name, FirstName, LastName, Phone, MobilePhone, Email, Company, Status, LeadSource, Title, Industry, Rating, Website, IsConverted, CreatedDate, LastModifiedDate FROM Lead WHERE ${where} ORDER BY LastModifiedDate DESC LIMIT 1`
+        `SELECT Id, Name, FirstName, LastName, Phone, MobilePhone, Email, Company, Status, LeadSource, Title, Industry, Rating, Website, IsConverted, CreatedDate, LastModifiedDate FROM Lead WHERE ${where} ORDER BY LastModifiedDate DESC LIMIT 1`,
       );
       if (!leads.length) {
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({ found: false, voxHistory }) };
+        return {
+          statusCode: 200,
+          headers: CORS,
+          body: JSON.stringify({ found: false, voxHistory }),
+        };
       }
       const lead = leads[0];
       const hist = voxHistory.length
         ? voxHistory
         : await getLeadHistoryByPhone(String(lead.Phone || lead.MobilePhone || ""));
       const activities = await soql(
-        `SELECT Id, Subject, Description, Status, ActivityDate, CreatedDate, TaskSubtype FROM Task WHERE WhoId = '${soqlEscape(String(lead.Id))}' ORDER BY CreatedDate DESC LIMIT 25`
+        `SELECT Id, Subject, Description, Status, ActivityDate, CreatedDate, TaskSubtype FROM Task WHERE WhoId = '${soqlEscape(String(lead.Id))}' ORDER BY CreatedDate DESC LIMIT 25`,
       );
       const tok = await getToken();
       const lightningUrl = tok.instanceUrl.replace(".my.salesforce.com", ".lightning.force.com");
@@ -161,7 +235,11 @@ export const handler: Handler = async (event: any) => {
       // Tenant real sin SF conectado → no es un error de lectura, es "no
       // configurado". El panel SF del detalle de lead lo muestra como vacío.
       if (msg.startsWith("SF_NOT_CONNECTED")) {
-        return { statusCode: 200, headers: CORS, body: JSON.stringify({ found: false, sfNotConnected: true }) };
+        return {
+          statusCode: 200,
+          headers: CORS,
+          body: JSON.stringify({ found: false, sfNotConnected: true }),
+        };
       }
       return {
         statusCode: 502,
@@ -191,7 +269,7 @@ export const handler: Handler = async (event: any) => {
     if (body.untyped) {
       const result = await propagateLead(
         { phone, email, name: body.customerName, company: body.company, source: "Llamada" },
-        { origin: "vox", pushToSf: false }
+        { origin: "vox", pushToSf: false },
       );
       if (result.leadId) {
         const s = typeof body.durationSeconds === "number" ? body.durationSeconds : 0;
@@ -206,7 +284,11 @@ export const handler: Handler = async (event: any) => {
           agent: body.agentUsername,
         });
       }
-      return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, untyped: true, ...result }) };
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({ ok: true, untyped: true, ...result }),
+      };
     }
 
     // El Task de SF documenta la gestión: canal + stage › substage + notas/resumen.
@@ -236,7 +318,10 @@ export const handler: Handler = async (event: any) => {
         stageId,
         source: "Vox Wrap-up",
       },
-      { origin: "vox", sfExtra: { taskSubject: subject, taskDescription, taskSubtype: ch.subtype } }
+      {
+        origin: "vox",
+        sfExtra: { taskSubject: subject, taskDescription, taskSubtype: ch.subtype },
+      },
     );
 
     // Registrar el evento en el historial del lead de Vox (contacto + tipificación).
@@ -263,7 +348,10 @@ export const handler: Handler = async (event: any) => {
     return {
       statusCode: 500,
       headers: CORS,
-      body: JSON.stringify({ error: "sync failed", message: err instanceof Error ? err.message : String(err) }),
+      body: JSON.stringify({
+        error: "sync failed",
+        message: err instanceof Error ? err.message : String(err),
+      }),
     };
   }
 };

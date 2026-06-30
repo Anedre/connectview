@@ -13,11 +13,11 @@ import { useRefetchOnFocus } from "./useRefetchOnFocus";
  * sólo guarda config NO sensible + flags ("tokenSet", "connected").
  */
 export interface ConnectConn {
-  instanceUrl?: string;   // https://empresa.my.connect.aws
-  region?: string;        // us-east-1, …
+  instanceUrl?: string; // https://empresa.my.connect.aws
+  region?: string; // us-east-1, …
   instanceArn?: string;
-  roleArn?: string;       // rol cross-account que asumimos (no es secreto)
-  externalId?: string;    // anti-confused-deputy
+  roleArn?: string; // rol cross-account que asumimos (no es secreto)
+  externalId?: string; // anti-confused-deputy
   verifiedAt?: string;
   /** BYO Data Plane (#46) — el cliente activa esto DESPUÉS de aplicar el
    *  CFN del paso 4. Cuando está en true, los Lambdas escriben en SU
@@ -47,6 +47,9 @@ export interface SalesforceConn {
    *  El plaintext se muestra UNA vez al generarlo (para pegarlo en el Flow). */
   inboundTokenSet?: boolean;
   inboundTokenRotatedAt?: string;
+  /** Pilar 10 — mapeo schema-aware: campo de ARIA → campo del Lead de la org del
+   *  cliente. Default = estándar; "" = no escribir ese campo (R24). */
+  fieldMapping?: Record<string, string>;
 }
 /** Un WhatsApp Flow (formulario nativo de Meta, #10) registrado por el tenant.
  *  El Flow se diseña/publica en Meta Business Manager; acá vive solo su
@@ -64,7 +67,7 @@ export interface WaFlowDef {
 export interface WhatsAppConn {
   phoneNumberId?: string;
   wabaId?: string;
-  tokenSet?: boolean;     // flag — el token vive en Secrets Manager
+  tokenSet?: boolean; // flag — el token vive en Secrets Manager
   connectedAt?: string;
   /** "aws" = número nativo de Connect (AWS End User Messaging) · "meta" =
    *  número de Meta aparte (Cloud API, solo plantillas/bots). */
@@ -176,7 +179,8 @@ export function useConnections() {
       const r = await authedFetch(endpoint);
       const j = await r.json();
       if (j?.config) setConfig(j.config as ConnectionsConfig);
-      if (Array.isArray(j?.whatsappNumbers)) setWhatsappNumbers(j.whatsappNumbers as WhatsAppNumber[]);
+      if (Array.isArray(j?.whatsappNumbers))
+        setWhatsappNumbers(j.whatsappNumbers as WhatsAppNumber[]);
     } catch {
       /* mantenemos el cache local */
     } finally {
@@ -185,7 +189,9 @@ export function useConnections() {
   }, [ep?.manageConnections]);
 
   // Carga inicial.
-  useEffect(() => { void refetch(); }, [refetch]);
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
 
   // Re-sincroniza al volver el foco a la pestaña: si la conexión se editó por
   // fuera (CLI, wizard en otra ventana), el badge "Configurá Connect" se
@@ -195,7 +201,11 @@ export function useConnections() {
   const save = useCallback(
     async (next: ConnectionsConfig) => {
       setConfig(next);
-      try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
       const endpoint = ep?.manageConnections;
       if (!endpoint) return;
       setSaving(true);
@@ -211,7 +221,7 @@ export function useConnections() {
         setSaving(false);
       }
     },
-    [ep?.manageConnections]
+    [ep?.manageConnections],
   );
 
   return { config, save, loading, saving, hasBackend, refetch, whatsappNumbers };

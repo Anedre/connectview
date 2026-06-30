@@ -43,8 +43,7 @@ export function setActiveDynamo(client: DynamoDBClient | null): void {
 // (resolveCustomerProfiles / getTenantConnect) y llama setActiveProfiles ANTES
 // de propagar → el perfil del lead cae en el dominio del CLIENTE, o se saltea
 // (domainName "") si el tenant real no tiene CP. NUNCA Novasys para un tenant real.
-const LEGACY_PROFILES_DOMAIN =
-  process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+const LEGACY_PROFILES_DOMAIN = process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
 const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 2 });
 let activeProfiles: CustomerProfilesClient = legacyProfiles;
 let activeProfilesDomain: string = LEGACY_PROFILES_DOMAIN;
@@ -53,7 +52,7 @@ let activeProfilesDomain: string = LEGACY_PROFILES_DOMAIN;
  *  CP) = fail-closed: el upsert del Cliente 360° se saltea. */
 export function setActiveProfiles(
   client: CustomerProfilesClient | null,
-  domain: string | null
+  domain: string | null,
 ): void {
   if (client) {
     activeProfiles = client;
@@ -63,6 +62,34 @@ export function setActiveProfiles(
     activeProfilesDomain = LEGACY_PROFILES_DOMAIN;
   }
 }
+// ── Pilar 10 — mapeo de campos ARIA→Salesforce (schema-aware) ────────────────
+// El cliente indica QUÉ campos de SU org se actualizan (R24: ARIA no crea campos).
+// Default = los campos estándar que ARIA ya escribía; el admin lo sobreescribe
+// por tenant (Configuración → Integraciones). Target "" = NO escribir ese campo.
+// LastName queda fijo (requerido por SF para crear el Lead).
+export type SfMappableField = "firstName" | "phone" | "email" | "company" | "status" | "source";
+export type SfFieldMapping = Partial<Record<SfMappableField, string>>;
+const DEFAULT_SF_FIELD_MAP: Record<SfMappableField, string> = {
+  firstName: "FirstName",
+  phone: "Phone",
+  email: "Email",
+  company: "Company",
+  status: "Status",
+  source: "LeadSource",
+};
+let activeSfMapping: SfFieldMapping | null = null;
+/** Set the per-tenant ARIA→SF field mapping. Pasar null/{} = defaults estándar.
+ *  Lo llaman los handlers (salesforce-sync, manage-leads) tras leer la config. */
+export function setActiveSfMapping(m: SfFieldMapping | null | undefined): void {
+  activeSfMapping = m && Object.keys(m).length ? m : null;
+}
+/** Target SF de un campo ARIA con el override del tenant. "" / "-" = skip. */
+function sfTarget(field: SfMappableField): string {
+  const v = activeSfMapping?.[field];
+  const t = (v === undefined ? DEFAULT_SF_FIELD_MAP[field] : v).trim();
+  return t === "-" ? "" : t;
+}
+
 const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
 const LEAD_PROGRAMS_TABLE = process.env.LEAD_PROGRAMS_TABLE || "connectview-lead-programs";
 const PROGRAMS_TABLE = process.env.PROGRAMS_TABLE || "connectview-programs";
@@ -124,7 +151,13 @@ function splitName(full?: string): { firstName?: string; lastName: string } {
 // ───────────────────────── Taxonomía: stage ⇄ SF Status ─────────────────────
 // El salesforceValue por stage lo configura el usuario en Tipificación y vive
 // en connectview-taxonomies. Lo cacheamos en el Lambda caliente.
-interface TaxStage { id: string; label?: string; valoracion?: string; salesforceValue?: string; subStages?: TaxStage[] }
+interface TaxStage {
+  id: string;
+  label?: string;
+  valoracion?: string;
+  salesforceValue?: string;
+  subStages?: TaxStage[];
+}
 let taxCache: { stages: TaxStage[]; at: number } | null = null;
 const TAX_TTL_MS = 5 * 60 * 1000;
 
@@ -144,8 +177,14 @@ const EXTID_TTL_MS = 5 * 60 * 1000;
 let programsByCodeCache: { map: Map<string, string>; at: number } | null = null;
 const PROGRAMS_TTL_MS = 5 * 60 * 1000;
 const PROGRAM_CODE_KEYS = [
-  "utm_campaign", "programa", "program", "program_code", "programcode",
-  "programa_codigo", "codigo_programa", "codigoprograma",
+  "utm_campaign",
+  "programa",
+  "program",
+  "program_code",
+  "programcode",
+  "programa_codigo",
+  "codigo_programa",
+  "codigoprograma",
 ];
 
 /** Invalida el cache de taxonomía. OBLIGATORIO al cambiar de tenant dentro de
@@ -164,7 +203,9 @@ async function loadDefaultStages(): Promise<TaxStage[]> {
   if (taxCache && Date.now() - taxCache.at < TAX_TTL_MS) return taxCache.stages;
   try {
     const res = await dynamo.send(new ScanCommand({ TableName: TAXONOMIES_TABLE }));
-    const taxos = (res.Items || []).map((it) => unmarshall(it) as { isDefault?: boolean; stages?: TaxStage[] });
+    const taxos = (res.Items || []).map(
+      (it) => unmarshall(it) as { isDefault?: boolean; stages?: TaxStage[] },
+    );
     const def = taxos.find((t) => t.isDefault) || taxos[0];
     const stages = def?.stages || [];
     taxCache = { stages, at: Date.now() };
@@ -210,8 +251,7 @@ export function channelToSf(channel?: string): { subtype: string; label: string;
     return { subtype: "Email", label: "Correo", emoji: "✉️" };
   if (c.includes("whatsapp") || c === "wa")
     return { subtype: "Task", label: "WhatsApp", emoji: "💬" };
-  if (c.includes("chat"))
-    return { subtype: "Task", label: "Chat", emoji: "💬" };
+  if (c.includes("chat")) return { subtype: "Task", label: "Chat", emoji: "💬" };
   return { subtype: "Task", label: "Gestión", emoji: "📝" };
 }
 
@@ -272,7 +312,7 @@ async function leadExtIdAvailable(): Promise<boolean> {
 async function sfWriteLead(
   mode: "create" | "update",
   fields: Record<string, unknown>,
-  id?: string
+  id?: string,
 ): Promise<string> {
   const write = async (f: Record<string, unknown>): Promise<string> => {
     if (mode === "create") return await insertSObject("Lead", f);
@@ -290,12 +330,14 @@ async function sfWriteLead(
       try {
         return await write(rest);
       } catch (err2) {
-        if (mode === "update" && isConvertedLeadError(err2)) throw new ConvertedLeadError(id as string, err2);
+        if (mode === "update" && isConvertedLeadError(err2))
+          throw new ConvertedLeadError(id as string, err2);
         throw err2;
       }
     }
     // Lead ya convertido → señal tipada para que el caller redirija al Contact.
-    if (mode === "update" && isConvertedLeadError(err)) throw new ConvertedLeadError(id as string, err);
+    if (mode === "update" && isConvertedLeadError(err))
+      throw new ConvertedLeadError(id as string, err);
     throw err;
   }
 }
@@ -322,7 +364,9 @@ function toLeadMatch(row?: Record<string, unknown>): LeadMatch | null {
  *  resto del match en vez de pegarle un update condenado al fracaso. */
 async function fetchLeadById(id: string): Promise<LeadMatch | null> {
   try {
-    const rows = await soql(`SELECT ${LEAD_MATCH_COLS} FROM Lead WHERE Id = '${soqlEscape(id)}' LIMIT 1`);
+    const rows = await soql(
+      `SELECT ${LEAD_MATCH_COLS} FROM Lead WHERE Id = '${soqlEscape(id)}' LIMIT 1`,
+    );
     return toLeadMatch(rows[0]);
   } catch (err) {
     // Id malformado (p.ej. se guardó un id que no es de Lead) → no-match.
@@ -353,7 +397,7 @@ async function findContactByPhoneEmail(clauses: string[]): Promise<string | null
   if (clauses.length === 0) return null;
   try {
     const rows = await soql(
-      `SELECT Id FROM Contact WHERE ${clauses.join(" OR ")} ORDER BY LastModifiedDate DESC LIMIT 1`
+      `SELECT Id FROM Contact WHERE ${clauses.join(" OR ")} ORDER BY LastModifiedDate DESC LIMIT 1`,
     );
     return rows.length > 0 ? (rows[0].Id as string) : null;
   } catch (err) {
@@ -388,7 +432,7 @@ async function findContactByPhoneEmail(clauses: string[]): Promise<string | null
 export async function pushLeadToSalesforce(
   lead: LeadInput,
   extra: SfPushExtra = {},
-  voxLeadId?: string
+  voxLeadId?: string,
 ): Promise<{
   leadId: string;
   kind: "lead" | "contact";
@@ -414,7 +458,7 @@ export async function pushLeadToSalesforce(
   if (!match && extIdOk) {
     try {
       const byExt = await soql(
-        `SELECT ${LEAD_MATCH_COLS} FROM Lead WHERE ${SF_VOX_EXTID_FIELD} = '${soqlEscape(voxLeadId as string)}' LIMIT 1`
+        `SELECT ${LEAD_MATCH_COLS} FROM Lead WHERE ${SF_VOX_EXTID_FIELD} = '${soqlEscape(voxLeadId as string)}' LIMIT 1`,
       );
       match = toLeadMatch(byExt[0]);
     } catch (err) {
@@ -426,7 +470,7 @@ export async function pushLeadToSalesforce(
   const clauses = phoneEmailClauses(phone, email);
   if (!match && clauses.length > 0) {
     const found = await soql(
-      `SELECT ${LEAD_MATCH_COLS} FROM Lead WHERE ${clauses.join(" OR ")} ORDER BY LastModifiedDate DESC LIMIT 1`
+      `SELECT ${LEAD_MATCH_COLS} FROM Lead WHERE ${clauses.join(" OR ")} ORDER BY LastModifiedDate DESC LIMIT 1`,
     );
     match = toLeadMatch(found[0]);
   }
@@ -439,14 +483,20 @@ export async function pushLeadToSalesforce(
 
   const { firstName, lastName } = splitName(lead.name);
   const fields: Record<string, unknown> = {};
-  if (firstName) fields.FirstName = firstName;
+  // Pilar 10 — escribe cada campo en su target SF mapeado (default = estándar);
+  // target "" = el admin lo deshabilitó (R24: el cliente elige qué se actualiza).
+  const put = (field: SfMappableField, val: unknown) => {
+    const t = sfTarget(field);
+    if (t && val != null && val !== "") fields[t] = val;
+  };
+  put("firstName", firstName);
   // Guardamos el teléfono normalizado (E.164) → mejora el match exacto futuro.
-  if (phone) fields.Phone = normalizePhone(phone)?.e164 || phone;
-  if (email) fields.Email = email;
-  if (status) fields.Status = status;
+  put("phone", phone ? normalizePhone(phone)?.e164 || phone : "");
+  put("email", email);
+  put("status", status);
   // Estampar el External Id (update y create) vincula el Lead de SF con el de
   // Vox → todo sync posterior matchea por ahí (determinístico). `sfWriteLead`
-  // lo quita y reintenta si la org aún no tiene el campo.
+  // lo quita y reintenta si la org aún no tiene el campo. NO es remapeable.
   if (extIdOk) fields[SF_VOX_EXTID_FIELD] = voxLeadId;
 
   // Resolver el registro destino + dónde se ancla la gestión (Task).
@@ -486,13 +536,17 @@ export async function pushLeadToSalesforce(
     action = "skipped";
     taskWhoId = contactId;
   } else {
-    // Nada matcheó → crear Lead nuevo.
+    // Nada matcheó → crear Lead nuevo. LastName es REQUERIDO por SF → fijo.
     fields.LastName = lastName;
-    fields.Company = (lead.company || "").trim() || "Lead sin empresa";
+    const company = (lead.company || "").trim() || "Lead sin empresa";
+    put("company", company);
+    // Company es requerido por SF para crear un Lead → garantizamos que esté,
+    // aun si el admin remapeó "company" a un campo custom.
+    if (!("Company" in fields)) fields.Company = company;
     // Origen real (web/Instagram/Facebook…) como LeadSource; las fuentes internas
     // de Vox ("Vox Wrap-up", "Vox Leads"…) quedan como "Vox" para no disparar el
     // trigger de SF (anti-eco). El valor round-trip evita churn en el inbound.
-    fields.LeadSource = lead.source && !/^vox/i.test(lead.source) ? lead.source : "Vox";
+    put("source", lead.source && !/^vox/i.test(lead.source) ? lead.source : "Vox");
     leadId = await sfWriteLead("create", fields);
     kind = "lead";
     action = "created";
@@ -530,7 +584,7 @@ async function scanAll(): Promise<Lead[]> {
   let lastKey: Record<string, unknown> | undefined;
   do {
     const res = await dynamo.send(
-      new ScanCommand({ TableName: LEADS_TABLE, ExclusiveStartKey: lastKey as never })
+      new ScanCommand({ TableName: LEADS_TABLE, ExclusiveStartKey: lastKey as never }),
     );
     for (const it of res.Items || []) out.push(unmarshall(it) as Lead);
     lastKey = res.LastEvaluatedKey;
@@ -543,7 +597,7 @@ async function scanAll(): Promise<Lead[]> {
  * respecto a lo existente, devuelve changed=false (anti-churn / corta loops).
  */
 export async function upsertVoxLead(
-  lead: LeadInput
+  lead: LeadInput,
 ): Promise<{ lead: Lead; isNew: boolean; changed: boolean }> {
   const phone = (lead.phone || "").trim();
   if (!phone) throw new Error("upsertVoxLead: phone required");
@@ -579,7 +633,15 @@ export async function upsertVoxLead(
 
   // ¿Cambió algo material? (ignora updatedAt). Si no, no escribimos.
   const sig = (l?: Partial<Lead>) =>
-    JSON.stringify([l?.name, l?.email, l?.company, l?.stageId, l?.source, l?.sfLeadId, l?.attributes]);
+    JSON.stringify([
+      l?.name,
+      l?.email,
+      l?.company,
+      l?.stageId,
+      l?.source,
+      l?.sfLeadId,
+      l?.attributes,
+    ]);
   const changed = isNew || sig(merged) !== sig(existing || undefined);
   if (!changed) return { lead: existing as Lead, isNew: false, changed: false };
 
@@ -587,7 +649,7 @@ export async function upsertVoxLead(
     new PutItemCommand({
       TableName: LEADS_TABLE,
       Item: marshall(merged, { removeUndefinedValues: true }),
-    })
+    }),
   );
   return { lead: merged, isNew, changed: true };
 }
@@ -603,7 +665,7 @@ export async function upsertLeadProgramMembership(
   leadId: string,
   programId: string,
   stageId?: string,
-  source?: string
+  source?: string,
 ): Promise<void> {
   if (!leadId || !programId) return;
   const now = new Date().toISOString();
@@ -628,7 +690,7 @@ export async function upsertLeadProgramMembership(
         UpdateExpression: "SET " + sets.join(", "),
         ...(Object.keys(names).length ? { ExpressionAttributeNames: names } : {}),
         ExpressionAttributeValues: vals as never,
-      })
+      }),
     );
   } catch (err) {
     console.warn("upsertLeadProgramMembership failed", err);
@@ -650,7 +712,7 @@ async function loadProgramsByCode(): Promise<Map<string, string>> {
           ProjectionExpression: "programId, #c, #s",
           ExpressionAttributeNames: { "#c": "code", "#s": "status" }, // "code"/"status" reservados
           ExclusiveStartKey: lastKey as never,
-        })
+        }),
       );
       for (const it of res.Items || []) {
         const p = unmarshall(it) as { programId?: string; code?: string; status?: string };
@@ -674,7 +736,7 @@ async function loadProgramsByCode(): Promise<Map<string, string>> {
  * auto-taggean a la membership N:N sin pasar el programId explícito.
  */
 export async function resolveProgramIdFromAttributes(
-  attributes?: Record<string, string>
+  attributes?: Record<string, string>,
 ): Promise<string | undefined> {
   if (!attributes) return undefined;
   let code: string | undefined;
@@ -716,8 +778,14 @@ export interface BulkLeadContact {
  */
 export async function bulkUpsertVoxLeads(
   contacts: BulkLeadContact[],
-  opts: { source?: string; deadlineMs?: number; programId?: string } = {}
-): Promise<{ attempted: number; created: number; updated: number; skipped: number; dropped: number }> {
+  opts: { source?: string; deadlineMs?: number; programId?: string } = {},
+): Promise<{
+  attempted: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  dropped: number;
+}> {
   const summary = { attempted: 0, created: 0, updated: 0, skipped: 0, dropped: 0 };
   const deadline = Date.now() + Math.max(1000, opts.deadlineMs ?? 20_000);
   const source = opts.source || "Vox Campaña";
@@ -778,7 +846,12 @@ export async function bulkUpsertVoxLeads(
       }
       const it = items[cursor++];
       await dynamo
-        .send(new PutItemCommand({ TableName: LEADS_TABLE, Item: marshall(it, { removeUndefinedValues: true }) }))
+        .send(
+          new PutItemCommand({
+            TableName: LEADS_TABLE,
+            Item: marshall(it, { removeUndefinedValues: true }),
+          }),
+        )
         .catch(() => {});
       // Auto-tag al programa (Pilar 1): programId de la campaña, o resuelto por
       // utm_campaign / columna "programa" del CSV (R26).
@@ -801,7 +874,7 @@ async function setSfLeadId(leadId: string, sfLeadId: string): Promise<void> {
         Key: { leadId: { S: leadId } },
         UpdateExpression: "SET sfLeadId = :s",
         ExpressionAttributeValues: { ":s": { S: sfLeadId } },
-      })
+      }),
     );
   } catch (err) {
     console.warn("setSfLeadId failed:", err);
@@ -821,7 +894,7 @@ async function upsertProfile(lead: LeadInput): Promise<void> {
     // saltea si domainName ""). NUNCA en el dominio de Novasys para un tenant real.
     await upsertProfileFromCsvContact(
       { phone, customerName: lead.name, attributes },
-      { profiles: activeProfiles, domainName: activeProfilesDomain }
+      { profiles: activeProfiles, domainName: activeProfilesDomain },
     );
   } catch (err) {
     console.warn("upsertProfile failed:", err);
@@ -845,7 +918,7 @@ export interface PropagateResult {
  */
 export async function propagateLead(
   lead: LeadInput,
-  opts: { origin?: "vox" | "salesforce"; pushToSf?: boolean; sfExtra?: SfPushExtra } = {}
+  opts: { origin?: "vox" | "salesforce"; pushToSf?: boolean; sfExtra?: SfPushExtra } = {},
 ): Promise<PropagateResult> {
   const origin = opts.origin || "vox";
   const pushToSf = opts.pushToSf ?? origin !== "salesforce";
@@ -866,7 +939,7 @@ export async function propagateLead(
         r.lead.leadId,
         programId,
         lead.stageId ?? r.lead.stageId,
-        lead.source
+        lead.source,
       );
     }
   }
@@ -881,7 +954,7 @@ export async function propagateLead(
       const sf = await pushLeadToSalesforce(
         { ...lead, sfLeadId: lead.sfLeadId ?? stored?.sfLeadId },
         opts.sfExtra,
-        stored?.leadId // External Id (VoxLeadId__c) → dedup determinístico en SF
+        stored?.leadId, // External Id (VoxLeadId__c) → dedup determinístico en SF
       );
       result.sf = sf ? { leadId: sf.leadId, action: sf.action, taskId: sf.taskId } : null;
       // Guardar el sfLeadId recién creado para futuros updates idempotentes. SOLO
@@ -904,8 +977,15 @@ export async function propagateLead(
 export interface LeadHistoryEvent {
   ts: string;
   type:
-    | "gestion" | "interaccion" | "stage_change" | "update" | "note"
-    | "whatsapp_out" | "whatsapp_in" | "email_out" | "call"; // tipos de toque (Pilar 2)
+    | "gestion"
+    | "interaccion"
+    | "stage_change"
+    | "update"
+    | "note"
+    | "whatsapp_out"
+    | "whatsapp_in"
+    | "email_out"
+    | "call"; // tipos de toque (Pilar 2)
   channel?: string; // "Llamada" | "Correo" | "WhatsApp" | …
   /** Dirección del toque (Pilar 2). */
   direction?: "out" | "in";
@@ -940,13 +1020,14 @@ export async function appendLeadHistory(leadId: string, ev: LeadHistoryEvent): P
         TableName: LEADS_TABLE,
         Key: { leadId: { S: leadId } },
         // También bumpea updatedAt → el lead sube en "Contacto reciente" con cada evento.
-        UpdateExpression: "SET history = list_append(if_not_exists(history, :empty), :new), updatedAt = :now",
+        UpdateExpression:
+          "SET history = list_append(if_not_exists(history, :empty), :new), updatedAt = :now",
         ExpressionAttributeValues: {
           ":empty": { L: [] },
           ":new": { L: [{ M: marshall(ev, { removeUndefinedValues: true }) }] },
           ":now": { S: ev.ts || new Date().toISOString() },
         },
-      })
+      }),
     );
   } catch (err) {
     console.warn("appendLeadHistory failed", err);
@@ -976,7 +1057,12 @@ export async function stageIdToLabel(stageId?: string): Promise<string | undefin
 
 // ───────────────────────── Golpes / atribución (Pilar 2) ────────────────────
 const GOLPE_TYPES = new Set([
-  "gestion", "interaccion", "whatsapp_out", "whatsapp_in", "email_out", "call",
+  "gestion",
+  "interaccion",
+  "whatsapp_out",
+  "whatsapp_in",
+  "email_out",
+  "call",
 ]);
 
 /** ¿El evento del historial cuenta como "golpe" (toque real con el lead)?
@@ -1000,7 +1086,7 @@ export interface GolpesSummary {
  *  días al cierre. Es la base de "cuántos golpes por conversión" (R4). */
 export async function summarizeGolpes(
   history: LeadHistoryEvent[] | undefined,
-  currentStageId?: string
+  currentStageId?: string,
 ): Promise<GolpesSummary> {
   const all = Array.isArray(history) ? history : [];
   const golpes = all.filter(isGolpe);
@@ -1033,10 +1119,18 @@ export async function summarizeGolpes(
     if (firstTouchAt && cutoff) {
       daysToClose = Math.max(
         0,
-        Math.round((new Date(cutoff).getTime() - new Date(firstTouchAt).getTime()) / 86_400_000)
+        Math.round((new Date(cutoff).getTime() - new Date(firstTouchAt).getTime()) / 86_400_000),
       );
     }
   }
 
-  return { total: golpes.length, byChannel, firstTouchAt, lastTouchAt, converted, touchesToClose, daysToClose };
+  return {
+    total: golpes.length,
+    byChannel,
+    firstTouchAt,
+    lastTouchAt,
+    converted,
+    touchesToClose,
+    daysToClose,
+  };
 }

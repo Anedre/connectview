@@ -1,7 +1,4 @@
-import {
-  SecretsManagerClient,
-  GetSecretValueCommand,
-} from "@aws-sdk/client-secrets-manager";
+import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import { createSign } from "node:crypto";
 import { getTenantSfToken, clearTenantTokenCache } from "./tenantSalesforce";
 import { isLegacyTenant } from "./cognitoAuth";
@@ -73,7 +70,7 @@ const MASTER_SF_TENANT_IDS = new Set(
   (process.env.MASTER_SF_TENANT_IDS || "")
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean)
+    .filter(Boolean),
 );
 
 export function setActiveTenant(tenantId: string | null): void {
@@ -82,22 +79,17 @@ export function setActiveTenant(tenantId: string | null): void {
   //  - los tenants en MASTER_SF_TENANT_IDS (el fundador como tenant real `t_…`).
   // Un tenant REAL fuera de esa lista se mantiene → su token OAuth web; si no
   // conectó SF, getToken BLOQUEA (no cae al SF de Novasys = sin leak cross-tenant).
-  const usesMasterSf =
-    !tenantId || isLegacyTenant(tenantId) || MASTER_SF_TENANT_IDS.has(tenantId);
+  const usesMasterSf = !tenantId || isLegacyTenant(tenantId) || MASTER_SF_TENANT_IDS.has(tenantId);
   activeTenantId = usesMasterSf ? null : tenantId;
 }
 
 async function loadCreds(): Promise<SfCreds> {
   if (cachedCreds) return cachedCreds;
-  const res = await secrets.send(
-    new GetSecretValueCommand({ SecretId: SECRET_NAME })
-  );
+  const res = await secrets.send(new GetSecretValueCommand({ SecretId: SECRET_NAME }));
   if (!res.SecretString) throw new Error("Salesforce secret is empty");
   const parsed = JSON.parse(res.SecretString);
   if (!parsed.consumerKey || !parsed.username || !parsed.privateKey) {
-    throw new Error(
-      "Salesforce secret must have consumerKey, username, privateKey"
-    );
+    throw new Error("Salesforce secret must have consumerKey, username, privateKey");
   }
   cachedCreds = {
     consumerKey: parsed.consumerKey,
@@ -118,12 +110,10 @@ function buildAssertion(creds: SfCreds): string {
       sub: creds.username,
       aud: creds.audience,
       exp: Math.floor(Date.now() / 1000) + 180, // 3 min
-    })
+    }),
   );
   const signingInput = `${header}.${claims}`;
-  const signature = createSign("RSA-SHA256")
-    .update(signingInput)
-    .sign(creds.privateKey);
+  const signature = createSign("RSA-SHA256").update(signingInput).sign(creds.privateKey);
   return `${signingInput}.${b64url(signature)}`;
 }
 
@@ -192,16 +182,9 @@ interface SfResponse {
 }
 
 /** Low-level REST call against the org. Path is relative to /services/data/<ver>/. */
-export async function sfFetch(
-  method: string,
-  path: string,
-  body?: unknown
-): Promise<SfResponse> {
+export async function sfFetch(method: string, path: string, body?: unknown): Promise<SfResponse> {
   let tok = await getToken();
-  const url = `${tok.instanceUrl}/services/data/${API_VERSION}/${path.replace(
-    /^\//,
-    ""
-  )}`;
+  const url = `${tok.instanceUrl}/services/data/${API_VERSION}/${path.replace(/^\//, "")}`;
   const doCall = async (t: TokenState) =>
     fetch(url.replace(tok.instanceUrl, t.instanceUrl), {
       method,
@@ -239,13 +222,11 @@ export async function soql(query: string): Promise<Record<string, unknown>[]> {
 /** Insert an sObject. Returns the new record id. */
 export async function insertSObject(
   sobject: string,
-  fields: Record<string, unknown>
+  fields: Record<string, unknown>,
 ): Promise<string> {
   const res = await sfFetch("POST", `sobjects/${sobject}`, fields);
   if (!res.ok) {
-    throw new Error(
-      `Insert ${sobject} failed: ${JSON.stringify(res.body).slice(0, 300)}`
-    );
+    throw new Error(`Insert ${sobject} failed: ${JSON.stringify(res.body).slice(0, 300)}`);
   }
   return (res.body as { id: string }).id;
 }
@@ -254,17 +235,62 @@ export async function insertSObject(
 export async function updateSObject(
   sobject: string,
   id: string,
-  fields: Record<string, unknown>
+  fields: Record<string, unknown>,
 ): Promise<void> {
   const res = await sfFetch("PATCH", `sobjects/${sobject}/${id}`, fields);
   if (!res.ok) {
-    throw new Error(
-      `Update ${sobject}/${id} failed: ${JSON.stringify(res.body).slice(0, 300)}`
-    );
+    throw new Error(`Update ${sobject}/${id} failed: ${JSON.stringify(res.body).slice(0, 300)}`);
   }
 }
 
 /** Escape a value for safe inclusion in a SOQL string literal. */
 export function soqlEscape(v: string): string {
   return v.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+/** Pilar 10 — un campo escribible del sObject (para el mapeo schema-aware). */
+export interface SfDescribeField {
+  name: string;
+  label: string;
+  type: string;
+  custom: boolean;
+  createable: boolean;
+  updateable: boolean;
+  nillable: boolean;
+  /** Valores de picklist (si type === "picklist"). */
+  picklistValues?: { label: string; value: string }[];
+}
+
+/**
+ * Describe un sObject de la org del tenant → campos ESCRIBIBLES (createable o
+ * updateable), para que el admin mapee los campos de ARIA a los suyos. Read-only.
+ * No incluye campos de solo lectura (Id, system, formula).
+ */
+export async function describeSObject(sobject = "Lead"): Promise<SfDescribeField[]> {
+  const res = await sfFetch("GET", `sobjects/${sobject}/describe/`);
+  if (!res.ok) {
+    throw new Error(`Describe ${sobject} failed: ${JSON.stringify(res.body).slice(0, 300)}`);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fields = (res.body as { fields?: any[] }).fields || [];
+  return fields
+    .filter((f) => f && (f.createable || f.updateable))
+    .map((f) => ({
+      name: String(f.name),
+      label: String(f.label || f.name),
+      type: String(f.type || "string"),
+      custom: !!f.custom,
+      createable: !!f.createable,
+      updateable: !!f.updateable,
+      nillable: !!f.nillable,
+      picklistValues: Array.isArray(f.picklistValues)
+        ? f.picklistValues
+            .filter((p: { active?: boolean }) => p && p.active !== false)
+            .map((p: { label?: string; value?: string }) => ({
+              label: String(p.label || p.value),
+              value: String(p.value),
+            }))
+        : undefined,
+    }))
+    .sort((a, b) => Number(b.custom) - Number(a.custom) || a.label.localeCompare(b.label));
 }
