@@ -15,35 +15,11 @@ import {
   getLeadHistoryByPhone,
   setActiveDynamo,
   setActiveProfiles,
-  setActiveSfMapping,
-  type SfFieldMapping,
 } from "../_shared/leadSync";
 import { sfPhoneCandidates } from "../_shared/phone";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
-import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
-
-const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
-
-/** Pilar 10 — lee el mapeo de campos ARIA→SF del tenant desde connectview-connections
- *  (config.salesforce.fieldMapping). Best-effort: sin config → null (defaults). */
-async function loadSfMapping(
-  client: DynamoDBClient,
-  tenantId: string,
-): Promise<SfFieldMapping | null> {
-  if (!tenantId) return null;
-  try {
-    const r = await client.send(
-      new GetItemCommand({ TableName: CONNECTIONS_TABLE, Key: { tenantId: { S: tenantId } } }),
-    );
-    const json = r.Item?.configJson?.S;
-    if (!json) return null;
-    const cfg = JSON.parse(json) as { salesforce?: { fieldMapping?: SfFieldMapping } };
-    return cfg?.salesforce?.fieldMapping || null;
-  } catch {
-    return null;
-  }
-}
 
 // BYO Data Plane (#46): leadSync escribe a DynamoDB. Si el tenant lo activó,
 // las escrituras van a SU tabla (`connectview-leads` en su cuenta).
@@ -101,9 +77,9 @@ export const handler: Handler = async (event: any) => {
   // queda intacto para los Lambdas y para el path de transición.
   const tenantId = await resolveTenantId(event?.headers);
   setActiveTenant(tenantId);
-  // Pilar 10 — mapeo de campos ARIA→SF del tenant (si lo configuró en
-  // Configuración → Integraciones). Aplica a todo el push de este request.
-  setActiveSfMapping(await loadSfMapping(legacyDynamo, tenantId));
+  // Pilar 10 — el mapeo de campos ARIA→SF se auto-carga dentro de leadSync
+  // (pushLeadToSalesforce) desde connectview-connections, así que NO hay que
+  // cablearlo acá: aplica a este path y a todos los callers de propagateLead.
   // BYO Data Plane (#46): DynamoDB del tenant para leadSync (propagateLead,
   // appendLeadHistory, …). Fallback a Vox pooled si no aplicó el template.
   {

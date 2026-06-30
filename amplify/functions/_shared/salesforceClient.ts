@@ -81,6 +81,15 @@ export function setActiveTenant(tenantId: string | null): void {
   // conectó SF, getToken BLOQUEA (no cae al SF de Novasys = sin leak cross-tenant).
   const usesMasterSf = !tenantId || isLegacyTenant(tenantId) || MASTER_SF_TENANT_IDS.has(tenantId);
   activeTenantId = usesMasterSf ? null : tenantId;
+  rawTenantId = tenantId || "";
+}
+
+// El tenantId CRUDO del JWT (sin el null-a-master de activeTenantId). Pilar 10:
+// el mapeo de campos vive en connectview-connections[tenantId] aunque el tenant
+// use el SF master → leadSync lo necesita para auto-cargar el fieldMapping.
+let rawTenantId = "";
+export function getActiveTenantId(): string {
+  return rawTenantId;
 }
 
 async function loadCreds(): Promise<SfCreds> {

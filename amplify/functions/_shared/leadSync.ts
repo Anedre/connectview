@@ -16,11 +16,18 @@ import {
   PutItemCommand,
   UpdateItemCommand,
   ScanCommand,
+  GetItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { randomUUID } from "node:crypto";
-import { soql, soqlEscape, insertSObject, updateSObject } from "./salesforceClient";
+import {
+  soql,
+  soqlEscape,
+  insertSObject,
+  updateSObject,
+  getActiveTenantId,
+} from "./salesforceClient";
 import { upsertProfileFromCsvContact } from "./upsertCustomerProfileFromCsv";
 import { normalizePhone, samePhone, sfPhoneCandidates } from "./phone";
 
@@ -77,15 +84,37 @@ const DEFAULT_SF_FIELD_MAP: Record<SfMappableField, string> = {
   status: "Status",
   source: "LeadSource",
 };
-let activeSfMapping: SfFieldMapping | null = null;
-/** Set the per-tenant ARIA→SF field mapping. Pasar null/{} = defaults estándar.
- *  Lo llaman los handlers (salesforce-sync, manage-leads) tras leer la config. */
-export function setActiveSfMapping(m: SfFieldMapping | null | undefined): void {
-  activeSfMapping = m && Object.keys(m).length ? m : null;
+// Auto-carga del mapeo del tenant desde connectview-connections (control-plane,
+// cuenta de Vox), cacheado por tenant (TTL 5 min, como la taxonomía). Así TODO
+// caller de propagateLead (wrap-up, tablero, webhooks, campañas) respeta el
+// mapeo, no solo uno. Best-effort: sin config / sin acceso → null (defaults).
+const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
+const sfMapCache = new Map<string, { m: SfFieldMapping | null; at: number }>();
+const SFMAP_TTL_MS = 5 * 60 * 1000;
+async function loadActiveSfMapping(): Promise<SfFieldMapping | null> {
+  const tid = getActiveTenantId();
+  if (!tid) return null;
+  const hit = sfMapCache.get(tid);
+  if (hit && Date.now() - hit.at < SFMAP_TTL_MS) return hit.m;
+  let m: SfFieldMapping | null = null;
+  try {
+    const r = await legacyDynamo.send(
+      new GetItemCommand({ TableName: CONNECTIONS_TABLE, Key: { tenantId: { S: tid } } }),
+    );
+    const json = r.Item?.configJson?.S;
+    if (json) {
+      const cfg = JSON.parse(json) as { salesforce?: { fieldMapping?: SfFieldMapping } };
+      m = cfg?.salesforce?.fieldMapping || null;
+    }
+  } catch {
+    /* sin config / sin acceso → defaults */
+  }
+  sfMapCache.set(tid, { m, at: Date.now() });
+  return m;
 }
 /** Target SF de un campo ARIA con el override del tenant. "" / "-" = skip. */
-function sfTarget(field: SfMappableField): string {
-  const v = activeSfMapping?.[field];
+function sfTargetWith(mapping: SfFieldMapping | null, field: SfMappableField): string {
+  const v = mapping?.[field];
   const t = (v === undefined ? DEFAULT_SF_FIELD_MAP[field] : v).trim();
   return t === "-" ? "" : t;
 }
@@ -482,11 +511,14 @@ export async function pushLeadToSalesforce(
   }
 
   const { firstName, lastName } = splitName(lead.name);
+  // Pilar 10 — mapeo del tenant (auto-cargado de connectview-connections). Aplica
+  // a CUALQUIER origen del lead, no solo al wrap-up.
+  const reqMapping = await loadActiveSfMapping();
   const fields: Record<string, unknown> = {};
-  // Pilar 10 — escribe cada campo en su target SF mapeado (default = estándar);
-  // target "" = el admin lo deshabilitó (R24: el cliente elige qué se actualiza).
+  // Escribe cada campo en su target SF mapeado (default = estándar); target ""
+  // = el admin lo deshabilitó (R24: el cliente elige qué se actualiza).
   const put = (field: SfMappableField, val: unknown) => {
-    const t = sfTarget(field);
+    const t = sfTargetWith(reqMapping, field);
     if (t && val != null && val !== "") fields[t] = val;
   };
   put("firstName", firstName);
