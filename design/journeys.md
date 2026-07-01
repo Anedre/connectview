@@ -24,7 +24,7 @@
 
 - **`connectview-journeys`** (PK=tenantId, SK=journeyId) — la DEFINICIÓN:
   `{ name, status: draft|active|paused, entry: {trigger|segmentId|manual}, reenroll: bool,
- nodes: JourneyNode[], edges: JourneyEdge[], goal?: {segmentId|stageId}, stats… }`.
+nodes: JourneyNode[], edges: JourneyEdge[], goal?: {segmentId|stageId}, stats… }`.
   - `JourneyNode` = `{ id, kind, params }`. Kinds: **send** (channel: whatsapp|email + template),
     **wait** (`{days}` ó `{untilRule}`), **branch** (`{rules, match}` → yes/no edges),
     **action** (moveStage | task | webhook | enqueueDialer), **exit**.
@@ -75,8 +75,25 @@
   `useJourneys` + página `/journeys` (lista + KPIs + activar/pausar) + nav "Journeys". CRUD via
   `manage-leads` (folded — sin backend nuevo). Verificado E2E en Browser 1: crear→guardar→listar
   →reabrir round-trip exacto (posiciones + params + ramas Sí/No persisten).
-- **3C — entrada + observabilidad + plantillas:** enrolamiento por segmento/score/manual +
-  panel de embudo del journey + timeline por-lead + journeys semilla. **(M)**
+- **3C — entrada + observabilidad + plantillas: ✅ HECHO (A+B+C+D).**
+  - **3C-A auto-enroll:** el `journey-runner` inscribe en cada tick los leads que matchean la
+    entrada de cada journey activo — por **segmento** (evalúa el predicado sobre los leads) o por
+    trigger **`new_lead`** (marca de agua `lastEnrollAt`, no inscribe histórico). Cap 200/journey,
+    idempotente. La inscripción manual ya venía de 3A.
+  - **3C-B send REAL:** el efecto `send` ahora envía de verdad — **WhatsApp** por
+    `send-whatsapp-template` (mismo transporte que actSendTemplate; el sender ya aplica el gate de
+    supresión + ruta BYO) y **email** por SES (SESv2, gate channel-scoped). Sin IAM nueva.
+  - **3C-C observabilidad:** `manage-leads ?journeyStats=<id>` (Query por journeyId) → embudo por
+    nodo + estado + timeline; `?journeys=1` agrega inscritos por journey. El builder pinta el
+    conteo en cada nodo + un panel de Actividad (activos/completados + timeline) + chips en la lista.
+  - **3C-D plantillas:** "Nuevo journey" abre un picker con 4 semillas (En blanco / Bienvenida /
+    Nutrición drip / Reactivación por score).
+  - **Verificado E2E (tenant real):** lead+segmento+journey → tick auto-enrolla (enrolled=1) y
+    avanza; email = `send:email:sent:<MessageId SES real>`, WhatsApp hello_world =
+    `send:whatsapp:sent` (Meta aceptó a +51953730189); observabilidad muestra el embudo (1 en Fin) +
+    timeline; picker abre el builder con el flujo de la plantilla. Datos de prueba limpiados.
+  - **Sigue (post-Fase 3):** multi-tenant del runner con assume-role (hoy pooled); `new_lead`
+    inline speed-to-lead (hoy hasta 5 min); email tracking pixel = Fase 4.
 
 ## Decisiones a confirmar (antes de 3A)
 
