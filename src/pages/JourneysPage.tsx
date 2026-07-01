@@ -28,36 +28,161 @@ const ACCENTS = [
   "#8b5cf6",
 ];
 const rid = () => Math.random().toString(36).slice(2, 9);
+type N = Journey["nodes"][number];
+type E = Journey["edges"][number];
 
-/** Semilla de un journey nuevo: Entrada → Enviar → Esperar → Fin (editable). */
-function newJourney(): Journey {
-  const e = rid(),
-    s = rid(),
-    w = rid(),
-    x = rid();
+/** Arma un Journey borrador (journeyId lo asigna el backend al guardar). */
+function mk(name: string, nodes: N[], edges: E[]): Journey {
   return {
     journeyId: "",
-    name: "Nuevo journey",
+    name,
     status: "draft",
     entry: { manual: true },
     reenroll: false,
-    nodes: [
-      { id: e, kind: "entry" },
-      { id: s, kind: "send", params: { channel: "whatsapp", templateName: "" } },
-      { id: w, kind: "wait", params: { days: 3 } },
-      { id: x, kind: "exit" },
-    ],
-    edges: [
-      { from: e, to: s },
-      { from: s, to: w },
-      { from: w, to: x },
-    ],
+    nodes,
+    edges,
   };
 }
+
+/**
+ * Plantillas semilla (Fase 3 · 3C-D) — el no-técnico arranca de un patrón probado
+ * en vez del lienzo en blanco. Cada `build()` genera ids frescos.
+ */
+interface JourneyTemplate {
+  key: string;
+  name: string;
+  desc: string;
+  accent: string;
+  build: () => Journey;
+}
+const TEMPLATES: JourneyTemplate[] = [
+  {
+    key: "blank",
+    name: "En blanco",
+    desc: "Entrada → Fin. Armá el recorrido desde cero, paso por paso.",
+    accent: "#64748b",
+    build: () => {
+      const e = rid(),
+        x = rid();
+      return mk(
+        "Nuevo journey",
+        [
+          { id: e, kind: "entry" },
+          { id: x, kind: "exit" },
+        ],
+        [{ from: e, to: x }],
+      );
+    },
+  },
+  {
+    key: "welcome",
+    name: "Bienvenida",
+    desc: "Saludo por WhatsApp al entrar, espera 1 día y refuerza por email.",
+    accent: "#2563eb",
+    build: () => {
+      const e = rid(),
+        s1 = rid(),
+        w = rid(),
+        s2 = rid(),
+        x = rid();
+      return mk(
+        "Bienvenida",
+        [
+          { id: e, kind: "entry" },
+          { id: s1, kind: "send", params: { channel: "whatsapp", templateName: "" } },
+          { id: w, kind: "wait", params: { days: 1 } },
+          {
+            id: s2,
+            kind: "send",
+            params: { channel: "email", subject: "¿Seguimos conversando?", body: "" },
+          },
+          { id: x, kind: "exit" },
+        ],
+        [
+          { from: e, to: s1 },
+          { from: s1, to: w },
+          { from: w, to: s2 },
+          { from: s2, to: x },
+        ],
+      );
+    },
+  },
+  {
+    key: "nurture",
+    name: "Nutrición (drip)",
+    desc: "Tres toques espaciados (WhatsApp → email → WhatsApp) para madurar el interés.",
+    accent: "#16a34a",
+    build: () => {
+      const e = rid(),
+        s1 = rid(),
+        w1 = rid(),
+        s2 = rid(),
+        w2 = rid(),
+        s3 = rid(),
+        x = rid();
+      return mk(
+        "Nutrición",
+        [
+          { id: e, kind: "entry" },
+          { id: s1, kind: "send", params: { channel: "whatsapp", templateName: "" } },
+          { id: w1, kind: "wait", params: { days: 3 } },
+          {
+            id: s2,
+            kind: "send",
+            params: { channel: "email", subject: "Más información", body: "" },
+          },
+          { id: w2, kind: "wait", params: { days: 4 } },
+          { id: s3, kind: "send", params: { channel: "whatsapp", templateName: "" } },
+          { id: x, kind: "exit" },
+        ],
+        [
+          { from: e, to: s1 },
+          { from: s1, to: w1 },
+          { from: w1, to: s2 },
+          { from: s2, to: w2 },
+          { from: w2, to: s3 },
+          { from: s3, to: x },
+        ],
+      );
+    },
+  },
+  {
+    key: "reengage",
+    name: "Reactivación por score",
+    desc: "Ramifica por score: a los calientes (≥50) les manda; al resto los deja salir.",
+    accent: "#7c3aed",
+    build: () => {
+      const e = rid(),
+        b = rid(),
+        s = rid(),
+        x = rid();
+      return mk(
+        "Reactivación por score",
+        [
+          { id: e, kind: "entry" },
+          {
+            id: b,
+            kind: "branch",
+            params: { rules: [{ field: "score", op: "gte", value: "50" }], match: "all" },
+          },
+          { id: s, kind: "send", params: { channel: "whatsapp", templateName: "" } },
+          { id: x, kind: "exit" },
+        ],
+        [
+          { from: e, to: b },
+          { from: b, to: s, on: "yes" },
+          { from: b, to: x, on: "no" },
+          { from: s, to: x },
+        ],
+      );
+    },
+  },
+];
 
 export function JourneysPage() {
   const { journeys, loading, reload, save, remove } = useJourneys();
   const [current, setCurrent] = useState<Journey | null>(null);
+  const [picking, setPicking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "draft" | "paused">("all");
@@ -145,6 +270,62 @@ export function JourneysPage() {
     );
   }
 
+  // ── Template picker (Fase 3 · 3C-D) ──
+  if (picking) {
+    return (
+      <div className="view">
+        <PageHeader
+          crumb="Automatización · Journeys"
+          title="Elegí una plantilla"
+          sub="Arrancá de un patrón probado o desde cero. Después editás todo en el lienzo."
+          actions={
+            <button className="btn" onClick={() => setPicking(false)}>
+              ← Volver
+            </button>
+          }
+        />
+        <div className="bots-grid">
+          {TEMPLATES.map((t) => (
+            <div
+              key={t.key}
+              className="bot-card"
+              style={{ "--bot-accent": t.accent } as React.CSSProperties}
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                setPicking(false);
+                setCurrent(t.build());
+              }}
+            >
+              <div className="bot-card__top">
+                <span className="bot-card__icon">
+                  <Icon.Workflow size={17} />
+                </span>
+              </div>
+              <div className="bot-card__name">{t.name}</div>
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 12.5,
+                  color: "var(--text-3)",
+                  lineHeight: 1.5,
+                  minHeight: 54,
+                }}
+              >
+                {t.desc}
+              </div>
+              <div className="bot-card__foot">
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--bot-accent)" }}>
+                  Usar esta plantilla →
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   // ── List view ──
   return (
     <div className="view">
@@ -159,7 +340,7 @@ export function JourneysPage() {
             <button className="btn" onClick={reload} disabled={loading}>
               <Icon.Refresh size={14} /> Actualizar
             </button>
-            <button className="btn btn--primary" onClick={() => setCurrent(newJourney())}>
+            <button className="btn btn--primary" onClick={() => setPicking(true)}>
               <Icon.Plus size={14} /> Nuevo journey
             </button>
           </>
@@ -185,7 +366,7 @@ export function JourneysPage() {
           <button
             className="btn btn--primary"
             style={{ marginTop: 16 }}
-            onClick={() => setCurrent(newJourney())}
+            onClick={() => setPicking(true)}
           >
             <Icon.Plus size={14} /> Crear el primero
           </button>
