@@ -30,6 +30,7 @@ import {
 } from "./salesforceClient";
 import { upsertProfileFromCsvContact } from "./upsertCustomerProfileFromCsv";
 import { normalizePhone, samePhone, sfPhoneCandidates } from "./phone";
+import { computeScore, computeGrade, getScoringRules } from "./scoring";
 
 // BYO Data Plane (#46): por defecto usamos un client con creds de Vox (escribe
 // en las tablas pooled). Cuando un Lambda llama `setActiveDynamo(tenantClient)`
@@ -165,6 +166,13 @@ interface Lead {
   sfLeadId?: string;
   attributes?: Record<string, string>;
   history?: LeadHistoryEvent[];
+  montoEstimado?: number;
+  // Fase 2 — scoring (comportamiento) + grading (fit demográfico). Se recomputan
+  // en cada golpe dentro de appendLeadHistory (recomputeLeadScore).
+  score?: number;
+  grade?: string;
+  scoreInputs?: Record<string, number>;
+  scoreComputedAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -1112,7 +1120,64 @@ export async function appendLeadHistory(leadId: string, ev: LeadHistoryEvent): P
     );
   } catch (err) {
     console.warn("appendLeadHistory failed", err);
+    return; // si no se pudo anexar el evento, no recomputamos sobre datos viejos
   }
+  // Fase 2 — recompute de score/grade. appendLeadHistory es el ÚNICO embudo por
+  // el que pasan todos los golpes de todas las fuentes → es el punto natural para
+  // mantener el score fresco. Solo ante un golpe real o un cambio de etapa (no
+  // ante note/update). Best-effort: si falla, el evento ya quedó guardado.
+  if (isGolpe(ev) || ev.type === "stage_change") {
+    await recomputeLeadScore(leadId).catch((err) =>
+      console.warn("recomputeLeadScore failed (best-effort):", err),
+    );
+  }
+}
+
+/**
+ * Fase 2 · F2.1+F2.2 — recomputa `score` (comportamiento) + `grade` (fit) del
+ * lead y los persiste. Lee el lead fresco (incluye el golpe recién anexado),
+ * resume los golpes (ledger Pilar 2) y aplica las reglas del tenant (default si
+ * no hay). NO dispara eventos (derivado → evita loops). El dialer luego prioriza
+ * por `score` (F2.4). El trigger `lead_score_changed` para journeys llega en Fase 3.
+ */
+async function recomputeLeadScore(leadId: string): Promise<void> {
+  const got = await dynamo.send(
+    new GetItemCommand({ TableName: LEADS_TABLE, Key: { leadId: { S: leadId } } }),
+  );
+  if (!got.Item) return;
+  const lead = unmarshall(got.Item) as Lead;
+  const summary = await summarizeGolpes(lead.history as LeadHistoryEvent[], lead.stageId);
+  const rules = await getScoringRules(dynamo, getActiveTenantId());
+  const { score, inputs } = computeScore(
+    {
+      golpesTotal: summary.total,
+      converted: summary.converted,
+      lastTouchAt: summary.lastTouchAt,
+      source: lead.source,
+    },
+    rules,
+  );
+  const grade = computeGrade(
+    {
+      source: lead.source,
+      hasEmail: !!lead.email,
+      hasCompany: !!lead.company,
+      hasValue: !!(lead.montoEstimado && lead.montoEstimado > 0),
+      attributes: lead.attributes,
+    },
+    rules,
+  );
+  await dynamo.send(
+    new UpdateItemCommand({
+      TableName: LEADS_TABLE,
+      Key: { leadId: { S: leadId } },
+      UpdateExpression: "SET score = :s, grade = :g, scoreInputs = :i, scoreComputedAt = :t",
+      ExpressionAttributeValues: marshall(
+        { ":s": score, ":g": grade, ":i": inputs, ":t": new Date().toISOString() },
+        { removeUndefinedValues: true },
+      ),
+    }),
+  );
 }
 
 /** Busca un lead por teléfono (tolerante a formato). null si no existe. */

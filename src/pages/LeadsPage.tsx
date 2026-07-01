@@ -47,6 +47,10 @@ export interface Lead {
   attributes?: Record<string, string>;
   /** # de golpes (toques: llamadas + WhatsApp + email + gestiones) — manage-leads (Pilar 2). */
   golpesCount?: number;
+  /** Fase 2 — score de comportamiento 0-100 (qué tan caliente). */
+  score?: number;
+  /** Fase 2 — grado de fit demográfico A-F (qué tan ideal). */
+  grade?: string;
 }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -71,9 +75,22 @@ const SOURCE_LABEL: Record<string, string> = {
  * que lucen bien tanto en tema claro como oscuro. Cicla si hay >14 etapas.
  */
 const STAGE_PALETTE = [
-  "#38BDF8", "#6366F1", "#A855F7", "#EC4899", "#F59E0B", "#F97316", "#10B981",
-  "#14B8A6", "#84CC16", "#EAB308", "#EF4444", "#F43F5E", "#06B6D4", "#8B5CF6",
+  "#38BDF8",
+  "#6366F1",
+  "#A855F7",
+  "#EC4899",
+  "#F59E0B",
+  "#F97316",
+  "#10B981",
+  "#14B8A6",
+  "#84CC16",
+  "#EAB308",
+  "#EF4444",
+  "#F43F5E",
+  "#06B6D4",
+  "#8B5CF6",
 ];
+// eslint-disable-next-line react-refresh/only-export-components -- helper compartido (color por etapa), no un componente
 export function stageColor(index: number): string {
   const n = STAGE_PALETTE.length;
   return STAGE_PALETTE[((index % n) + n) % n];
@@ -151,7 +168,7 @@ export function LeadCard({
       canDrag: canManage,
       collect: (m) => ({ isDragging: m.isDragging() }),
     }),
-    [lead.leadId, lead.stageId, canManage]
+    [lead.leadId, lead.stageId, canManage],
   );
   const age = ageInfo(lead.updatedAt);
   const stop = (e: React.MouseEvent) => e.stopPropagation();
@@ -172,17 +189,15 @@ export function LeadCard({
       style={{
         position: "relative",
         background: selected ? "var(--accent-cyan-soft)" : "var(--bg-1)",
-        border: selected
-          ? "1px solid var(--accent-cyan)"
-          : "1px solid var(--border-1)",
+        border: selected ? "1px solid var(--accent-cyan)" : "1px solid var(--border-1)",
         borderLeft: `3px solid ${color}`,
         borderRadius: 11,
         padding: "14px",
         boxShadow: selected
           ? "0 4px 16px -6px color-mix(in srgb, var(--accent-cyan) 40%, transparent)"
           : hover
-          ? "0 4px 14px -6px rgba(0,0,0,0.25)"
-          : "0 1px 2px rgba(0,0,0,0.05)",
+            ? "0 4px 14px -6px rgba(0,0,0,0.25)"
+            : "0 1px 2px rgba(0,0,0,0.05)",
         opacity: isDragging ? 0.4 : 1,
         cursor: canManage ? "grab" : "pointer",
         transition: "box-shadow .15s, transform .15s, background .15s, border-color .15s",
@@ -222,16 +237,40 @@ export function LeadCard({
       )}
       {/* Título (nombre) + fecha — estilo Kommo: el nombre manda arriba, la
           fecha de última actividad a la derecha. */}
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div
+        className="row"
+        style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}
+      >
+        <div
+          style={{
+            fontWeight: 700,
+            fontSize: 13.5,
+            lineHeight: 1.3,
+            minWidth: 0,
+            flex: 1,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {lead.name || lead.phone}
         </div>
         {age.label && (
           <span
-            style={{ fontSize: 10.5, fontWeight: 600, color: age.stale ? "var(--accent-red)" : "var(--text-3)", flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              color: age.stale ? "var(--accent-red)" : "var(--text-3)",
+              flex: "0 0 auto",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+              whiteSpace: "nowrap",
+            }}
             title={age.stale ? "Lead estancado (>7 días sin cambios)" : "Última actualización"}
           >
-            {age.stale && <AlertTriangle size={10} style={{ flexShrink: 0 }} />}{age.label}
+            {age.stale && <AlertTriangle size={10} style={{ flexShrink: 0 }} />}
+            {age.label}
           </span>
         )}
       </div>
@@ -240,19 +279,43 @@ export function LeadCard({
       <div className="row" style={{ gap: 10, marginTop: 11, alignItems: "center" }}>
         <span
           style={{
-            flex: "0 0 auto", width: 32, height: 32, borderRadius: "50%",
-            display: "grid", placeItems: "center", fontSize: 11.5, fontWeight: 700,
-            background: `${color}22`, color,
+            flex: "0 0 auto",
+            width: 32,
+            height: 32,
+            borderRadius: "50%",
+            display: "grid",
+            placeItems: "center",
+            fontSize: 11.5,
+            fontWeight: 700,
+            background: `${color}22`,
+            color,
           }}
         >
           {initialsOf(lead.name || lead.phone)}
         </span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 12, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--text-2)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {lead.company || lead.phone}
           </div>
           {lead.company && lead.phone && (
-            <div className="muted" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>
+            <div
+              className="muted"
+              style={{
+                fontSize: 11,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                marginTop: 1,
+              }}
+            >
               {lead.phone}
             </div>
           )}
@@ -274,9 +337,16 @@ export function LeadCard({
           <span
             title="Lead nativo de ARIA (no vino de Salesforce)"
             style={{
-              display: "inline-flex", alignItems: "center", gap: 4, height: 19,
-              padding: "0 9px", borderRadius: 999, fontSize: 10, fontWeight: 700,
-              background: "var(--accent-violet-soft)", color: "var(--accent-violet)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              height: 19,
+              padding: "0 9px",
+              borderRadius: 999,
+              fontSize: 10,
+              fontWeight: 700,
+              background: "var(--accent-violet-soft)",
+              color: "var(--accent-violet)",
               border: "1px solid color-mix(in srgb, var(--accent-violet) 30%, transparent)",
             }}
           >
@@ -292,18 +362,78 @@ export function LeadCard({
           <span
             className="chip"
             title={`${lead.golpesCount} golpe(s): llamadas + WhatsApp + email + gestiones`}
-            style={{ height: 19, fontSize: 10, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }}
+            style={{
+              height: 19,
+              fontSize: 10,
+              background: "var(--accent-cyan-soft)",
+              color: "var(--accent-cyan)",
+            }}
           >
             🎯 {lead.golpesCount} golpe{lead.golpesCount === 1 ? "" : "s"}
+          </span>
+        ) : null}
+        {/* Fase 2 — score (comportamiento) + grado (fit). Color por temperatura. */}
+        {typeof lead.score === "number" ? (
+          <span
+            className="chip"
+            title={`Score ${lead.score}/100 (comportamiento) · Grado ${lead.grade || "—"} (fit demográfico)`}
+            style={{
+              height: 19,
+              fontSize: 10,
+              fontWeight: 700,
+              background:
+                lead.score >= 70
+                  ? "var(--accent-green-soft)"
+                  : lead.score >= 40
+                    ? "var(--accent-amber-soft)"
+                    : "var(--accent-red-soft)",
+              color:
+                lead.score >= 70
+                  ? "var(--accent-green)"
+                  : lead.score >= 40
+                    ? "var(--accent-amber)"
+                    : "var(--accent-red)",
+            }}
+          >
+            {lead.score >= 70 ? "🔥" : lead.score >= 40 ? "🌡️" : "❄️"} {lead.score}
+            {lead.grade ? ` · ${lead.grade}` : ""}
           </span>
         ) : null}
       </div>
 
       {/* Footer: valor estimado — separado y prominente (deal value). */}
       {lead.montoEstimado ? (
-        <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 10, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Valor</span>
-          <span style={{ fontSize: 14, fontWeight: 800, color: "var(--accent-green)", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(lead.montoEstimado)}</span>
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 10,
+            borderTop: "1px solid var(--border-1)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              color: "var(--text-3)",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
+            Valor
+          </span>
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              color: "var(--accent-green)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {fmtMoney(lead.montoEstimado)}
+          </span>
         </div>
       ) : null}
 
@@ -400,11 +530,14 @@ export function StageColumn({
       },
       collect: (m) => ({ isOver: m.isOver() && m.canDrop() }),
     }),
-    [stageId, canManage, onDropLead]
+    [stageId, canManage, onDropLead],
   );
 
   const submitQuick = async () => {
-    if (!qa.phone.trim()) { toast.error("El teléfono es obligatorio"); return; }
+    if (!qa.phone.trim()) {
+      toast.error("El teléfono es obligatorio");
+      return;
+    }
     await onQuickCreate(stageId, qa.name.trim(), qa.phone.trim());
     setQa({ name: "", phone: "" });
     setAdding(false);
@@ -414,66 +547,154 @@ export function StageColumn({
     <div
       ref={dropRef as unknown as React.Ref<HTMLDivElement>}
       style={{
-        minWidth: 280, maxWidth: 304, flex: "0 0 auto",
+        minWidth: 280,
+        maxWidth: 304,
+        flex: "0 0 auto",
         background: isOver ? `${color}10` : "var(--bg-2)",
         border: `1px solid ${isOver ? color : "var(--border-1)"}`,
-        borderRadius: 12, overflow: "hidden",
-        display: "flex", flexDirection: "column",
+        borderRadius: 12,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
         transition: "background .15s, border-color .15s",
       }}
     >
       <div style={{ height: 3, background: color }} />
-      <div style={{ padding: "13px 14px 12px", background: `linear-gradient(180deg, ${color}14, transparent)`, borderBottom: "1px solid var(--border-1)" }}>
+      <div
+        style={{
+          padding: "13px 14px 12px",
+          background: `linear-gradient(180deg, ${color}14, transparent)`,
+          borderBottom: "1px solid var(--border-1)",
+        }}
+      >
         <div className="row" style={{ justifyContent: "space-between" }}>
-          <span style={{ fontWeight: 700, fontSize: 12.5, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-1)" }}>{label}</span>
+          <span
+            style={{
+              fontWeight: 700,
+              fontSize: 12.5,
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+              color: "var(--text-1)",
+            }}
+          >
+            {label}
+          </span>
           <div className="row" style={{ gap: 6 }}>
             {conversionPct != null && (
-              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-3)" }} title="Conversión desde la etapa anterior (acotada a 100%)">
+              <span
+                style={{ fontSize: 10, fontWeight: 700, color: "var(--text-3)" }}
+                title="Conversión desde la etapa anterior (acotada a 100%)"
+              >
                 {Math.min(conversionPct, 100)}%↓
               </span>
             )}
-            <span style={{ fontSize: 11, fontWeight: 700, color, background: `${color}1f`, borderRadius: 999, padding: "2px 8px" }}>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color,
+                background: `${color}1f`,
+                borderRadius: 999,
+                padding: "2px 8px",
+              }}
+            >
               {items.length}
             </span>
             {canManage && (
               <button
                 onClick={() => setAdding((a) => !a)}
                 title="Agregar lead aquí"
-                style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", color, background: `${color}1f` }}
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 6,
+                  display: "grid",
+                  placeItems: "center",
+                  color,
+                  background: `${color}1f`,
+                }}
               >
                 <Icon.Plus size={12} />
               </button>
             )}
           </div>
         </div>
-        <div style={{ fontSize: 11.5, marginTop: 5, fontVariantNumeric: "tabular-nums", color: "var(--text-2)", fontWeight: 600 }}>
+        <div
+          style={{
+            fontSize: 11.5,
+            marginTop: 5,
+            fontVariantNumeric: "tabular-nums",
+            color: "var(--text-2)",
+            fontWeight: 600,
+          }}
+        >
           {items.length} {items.length === 1 ? "lead" : "leads"}
-          {totalValue > 0 ? <span style={{ color: "var(--text-1)", fontWeight: 700 }}>{` · ${fmtMoney(totalValue)}`}</span> : null}
-          {weightedValue > 0 ? <span className="muted" style={{ fontWeight: 500 }}>{` · pond. ${fmtMoney(weightedValue)}`}</span> : null}
+          {totalValue > 0 ? (
+            <span
+              style={{ color: "var(--text-1)", fontWeight: 700 }}
+            >{` · ${fmtMoney(totalValue)}`}</span>
+          ) : null}
+          {weightedValue > 0 ? (
+            <span
+              className="muted"
+              style={{ fontWeight: 500 }}
+            >{` · pond. ${fmtMoney(weightedValue)}`}</span>
+          ) : null}
         </div>
       </div>
 
       {adding && (
-        <div style={{ padding: 8, borderBottom: "1px solid var(--border-1)", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div
+          style={{
+            padding: 8,
+            borderBottom: "1px solid var(--border-1)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
           <input
-            autoFocus value={qa.name} onChange={(e) => setQa((s) => ({ ...s, name: e.target.value }))}
+            autoFocus
+            value={qa.name}
+            onChange={(e) => setQa((s) => ({ ...s, name: e.target.value }))}
             placeholder="Nombre"
-            style={{ padding: "6px 8px", fontSize: 12, border: "1px solid var(--border-1)", borderRadius: 6, background: "var(--bg-1)", color: "var(--text-1)" }}
+            style={{
+              padding: "6px 8px",
+              fontSize: 12,
+              border: "1px solid var(--border-1)",
+              borderRadius: 6,
+              background: "var(--bg-1)",
+              color: "var(--text-1)",
+            }}
           />
           <input
-            value={qa.phone} onChange={(e) => setQa((s) => ({ ...s, phone: e.target.value }))}
+            value={qa.phone}
+            onChange={(e) => setQa((s) => ({ ...s, phone: e.target.value }))}
             onKeyDown={(e) => e.key === "Enter" && submitQuick()}
             placeholder="Teléfono *"
-            style={{ padding: "6px 8px", fontSize: 12, border: "1px solid var(--border-1)", borderRadius: 6, background: "var(--bg-1)", color: "var(--text-1)" }}
+            style={{
+              padding: "6px 8px",
+              fontSize: 12,
+              border: "1px solid var(--border-1)",
+              borderRadius: 6,
+              background: "var(--bg-1)",
+              color: "var(--text-1)",
+            }}
           />
           <div className="row" style={{ gap: 6 }}>
-            <button className="btn btn--primary btn--sm" style={{ flex: 1 }} onClick={submitQuick}>Crear</button>
-            <button className="btn btn--ghost btn--sm" onClick={() => setAdding(false)}>Cancelar</button>
+            <button className="btn btn--primary btn--sm" style={{ flex: 1 }} onClick={submitQuick}>
+              Crear
+            </button>
+            <button className="btn btn--ghost btn--sm" onClick={() => setAdding(false)}>
+              Cancelar
+            </button>
           </div>
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 11, minHeight: 60, padding: 10 }}>
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: 11, minHeight: 60, padding: 10 }}
+      >
         {items.map((l) => (
           <LeadCard
             key={l.leadId}
@@ -489,7 +710,16 @@ export function StageColumn({
           />
         ))}
         {items.length === 0 && !adding && (
-          <div className="muted" style={{ fontSize: 11, textAlign: "center", padding: "18px 0", border: "1px dashed var(--border-1)", borderRadius: 8 }}>
+          <div
+            className="muted"
+            style={{
+              fontSize: 11,
+              textAlign: "center",
+              padding: "18px 0",
+              border: "1px dashed var(--border-1)",
+              borderRadius: 8,
+            }}
+          >
             {isOver ? "Soltar aquí" : "Sin leads"}
           </div>
         )}
@@ -541,20 +771,29 @@ interface TimelineItem {
 }
 
 const ORIGIN_STYLES: { match: string[]; label: string; bg: string }[] = [
-  { match: ["instagram", "ig "], label: "Instagram", bg: "linear-gradient(135deg,#f58529,#dd2a7b,#8134af)" },
+  {
+    match: ["instagram", "ig "],
+    label: "Instagram",
+    bg: "linear-gradient(135deg,#f58529,#dd2a7b,#8134af)",
+  },
   { match: ["facebook", "fb ", "meta"], label: "Facebook", bg: "#1877f2" },
   { match: ["whatsapp", "wa "], label: "WhatsApp", bg: "#25d366" },
   { match: ["google", "adwords", "sem"], label: "Google", bg: "#4285f4" },
   { match: ["tiktok"], label: "TikTok", bg: "#111" },
   { match: ["linkedin"], label: "LinkedIn", bg: "#0a66c2" },
-  { match: ["web", "website", "pagina", "página", "landing", "formulario", "form"], label: "Web", bg: "#0a6bb5" },
+  {
+    match: ["web", "website", "pagina", "página", "landing", "formulario", "form"],
+    label: "Web",
+    bg: "#0a6bb5",
+  },
   { match: ["referral", "referido", "recomend"], label: "Referido", bg: "#d98324" },
   { match: ["phone", "llamada", "inbound", "telefon"], label: "Teléfono", bg: "#0aa5b5" },
   { match: ["vox"], label: "ARIA", bg: "#7c5cff" },
 ];
 function originBadge(src?: string): { label: string; bg: string } {
   const k = (src || "").toLowerCase();
-  for (const o of ORIGIN_STYLES) if (o.match.some((m) => k.includes(m.trim()))) return { label: o.label, bg: o.bg };
+  for (const o of ORIGIN_STYLES)
+    if (o.match.some((m) => k.includes(m.trim()))) return { label: o.label, bg: o.bg };
   return { label: src || "Sin origen", bg: "var(--text-3)" };
 }
 function activityIcon(subtype?: string) {
@@ -565,8 +804,10 @@ function activityIcon(subtype?: string) {
 }
 function channelIcon(channel?: string) {
   const c = (channel || "").toLowerCase();
-  if (c.includes("llam") || c.includes("call") || c.includes("voice")) return <Icon.Phone size={12} />;
-  if (c.includes("correo") || c.includes("email") || c.includes("mail")) return <Icon.Mail size={12} />;
+  if (c.includes("llam") || c.includes("call") || c.includes("voice"))
+    return <Icon.Phone size={12} />;
+  if (c.includes("correo") || c.includes("email") || c.includes("mail"))
+    return <Icon.Mail size={12} />;
   if (c.includes("whatsapp")) return <Icon.WhatsApp size={12} />;
   if (c.includes("chat")) return <Icon.Chat size={12} />;
   if (c.includes("salesforce")) return <Icon.Cloud size={12} />;
@@ -585,15 +826,24 @@ function buildTimeline(voxHistory: VoxHistoryEvent[], activities: SfActivity[]):
       title = `${ev.channel || "Gestión"}${ev.stageLabel ? ` · ${ev.stageLabel}` : ""}${ev.subStageLabel ? ` › ${ev.subStageLabel}` : ""}`;
     } else if (ev.type === "stage_change") {
       icon = ev.channel === "Salesforce" ? <Icon.Cloud size={12} /> : <Icon.Tag size={12} />;
-      title = ev.channel === "Salesforce"
-        ? `Actualizado desde Salesforce${ev.stageLabel ? ` · ${ev.stageLabel}` : ""}`
-        : `Etapa → ${ev.stageLabel || ev.stageId || "?"}`;
+      title =
+        ev.channel === "Salesforce"
+          ? `Actualizado desde Salesforce${ev.stageLabel ? ` · ${ev.stageLabel}` : ""}`
+          : `Etapa → ${ev.stageLabel || ev.stageId || "?"}`;
     } else {
       icon = <Icon.Note size={12} />;
       title = ev.type === "update" ? "Datos actualizados" : ev.summary || "Evento";
     }
     const meta = [ev.valoracion, ev.agent].filter(Boolean).join(" · ");
-    items.push({ key: `v${i}`, ts: ev.ts || "", icon, title, detail: ev.summary || ev.notes, meta: meta || undefined, src: "vox" });
+    items.push({
+      key: `v${i}`,
+      ts: ev.ts || "",
+      icon,
+      title,
+      detail: ev.summary || ev.notes,
+      meta: meta || undefined,
+      src: "vox",
+    });
   });
   activities.forEach((a) => {
     if (a.Id && seen.has(a.Id)) return; // ya representado por un evento de Vox
@@ -613,8 +863,8 @@ function buildTimeline(voxHistory: VoxHistoryEvent[], activities: SfActivity[]):
 
 function SalesforcePanel({ lead }: { lead: Lead }) {
   const [data, setData] = useState<SfLeadData | null>(null);
-  const [state, setState] = useState<"loading" | "ok" | "none" | "err">(
-    () => (getApiEndpoints()?.salesforceSync ? "loading" : "none")
+  const [state, setState] = useState<"loading" | "ok" | "none" | "err">(() =>
+    getApiEndpoints()?.salesforceSync ? "loading" : "none",
   );
 
   useEffect(() => {
@@ -641,25 +891,70 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
   }, [lead.sfLeadId, lead.phone]);
 
   const card: React.CSSProperties = {
-    marginTop: 16, border: "1px solid var(--border-1)", borderRadius: 12,
-    overflow: "hidden", background: "var(--bg-2)",
+    marginTop: 16,
+    border: "1px solid var(--border-1)",
+    borderRadius: 12,
+    overflow: "hidden",
+    background: "var(--bg-2)",
   };
   const head = (
-    <div className="row" style={{ gap: 8, padding: "9px 12px", background: "linear-gradient(135deg,#00a1e0,#0a6bb5)", color: "#fff" }}>
+    <div
+      className="row"
+      style={{
+        gap: 8,
+        padding: "9px 12px",
+        background: "linear-gradient(135deg,#00a1e0,#0a6bb5)",
+        color: "#fff",
+      }}
+    >
       <Icon.Cloud size={14} strokeWidth={2.4} />
       <span style={{ fontWeight: 700, fontSize: 12.5, flex: 1 }}>Historial de contacto</span>
       {state === "ok" && data?.found && data?.lightningUrl && data?.lead?.Id ? (
-        <a href={`${data.lightningUrl}/lightning/r/Lead/${String(data.lead.Id)}/view`} target="_blank" rel="noreferrer"
-           style={{ color: "#fff", fontSize: 11, fontWeight: 600, textDecoration: "underline", opacity: 0.95 }}>
+        <a
+          href={`${data.lightningUrl}/lightning/r/Lead/${String(data.lead.Id)}/view`}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            color: "#fff",
+            fontSize: 11,
+            fontWeight: 600,
+            textDecoration: "underline",
+            opacity: 0.95,
+          }}
+        >
           Abrir en Salesforce ↗
         </a>
       ) : null}
     </div>
   );
 
-  if (state === "loading") return <div style={card}>{head}<div className="muted" style={{ padding: 12, fontSize: 12 }}>Cargando historial…</div></div>;
-  if (state === "none") return <div style={card}>{head}<div className="muted" style={{ padding: 12, fontSize: 12 }}>Sin actividad ni datos de Salesforce todavía.</div></div>;
-  if (state === "err" || !data) return <div style={card}>{head}<div className="muted" style={{ padding: 12, fontSize: 12 }}>No se pudo cargar el historial.</div></div>;
+  if (state === "loading")
+    return (
+      <div style={card}>
+        {head}
+        <div className="muted" style={{ padding: 12, fontSize: 12 }}>
+          Cargando historial…
+        </div>
+      </div>
+    );
+  if (state === "none")
+    return (
+      <div style={card}>
+        {head}
+        <div className="muted" style={{ padding: 12, fontSize: 12 }}>
+          Sin actividad ni datos de Salesforce todavía.
+        </div>
+      </div>
+    );
+  if (state === "err" || !data)
+    return (
+      <div style={card}>
+        {head}
+        <div className="muted" style={{ padding: 12, fontSize: 12 }}>
+          No se pudo cargar el historial.
+        </div>
+      </div>
+    );
 
   const L = data.lead || {};
   const origin = data.found ? originBadge(L.LeadSource ? String(L.LeadSource) : undefined) : null;
@@ -679,8 +974,29 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         {origin && (
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 600, alignSelf: "center" }}>Origen:</span>
-            <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 9px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: origin.bg, color: "#fff" }}>
+            <span
+              style={{
+                fontSize: 10.5,
+                color: "var(--text-3)",
+                fontWeight: 600,
+                alignSelf: "center",
+              }}
+            >
+              Origen:
+            </span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                height: 20,
+                padding: "0 9px",
+                borderRadius: 999,
+                fontSize: 10.5,
+                fontWeight: 700,
+                background: origin.bg,
+                color: "#fff",
+              }}
+            >
               {origin.label}
             </span>
           </div>
@@ -689,7 +1005,16 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
             {fields.map(([k, v]) => (
               <div key={k} className="row" style={{ gap: 10, alignItems: "baseline" }}>
-                <span style={{ color: "var(--text-3)", fontWeight: 600, minWidth: 64, flex: "0 0 auto" }}>{k}</span>
+                <span
+                  style={{
+                    color: "var(--text-3)",
+                    fontWeight: 600,
+                    minWidth: 64,
+                    flex: "0 0 auto",
+                  }}
+                >
+                  {k}
+                </span>
                 <span style={{ color: "var(--text-1)", wordBreak: "break-word" }}>{v}</span>
               </div>
             ))}
@@ -701,19 +1026,55 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
             Línea de tiempo {timeline.length > 0 ? `(${timeline.length})` : ""}
           </div>
           {timeline.length === 0 ? (
-            <div className="muted" style={{ fontSize: 11.5 }}>Sin eventos registrados.</div>
+            <div className="muted" style={{ fontSize: 11.5 }}>
+              Sin eventos registrados.
+            </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               {timeline.map((it) => (
-                <div key={it.key} className="row" style={{ gap: 8, alignItems: "flex-start", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--border-1)", borderRadius: 8 }}>
-                  <span style={{ flex: "0 0 auto", width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", background: it.src === "sf" ? "rgba(0,161,224,0.14)" : "var(--accent-violet-soft)", color: it.src === "sf" ? "#00a1e0" : "var(--accent-violet)", marginTop: 1 }}>
+                <div
+                  key={it.key}
+                  className="row"
+                  style={{
+                    gap: 8,
+                    alignItems: "flex-start",
+                    padding: "7px 9px",
+                    background: "var(--bg-1)",
+                    border: "1px solid var(--border-1)",
+                    borderRadius: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      flex: "0 0 auto",
+                      width: 22,
+                      height: 22,
+                      borderRadius: 6,
+                      display: "grid",
+                      placeItems: "center",
+                      background:
+                        it.src === "sf" ? "rgba(0,161,224,0.14)" : "var(--accent-violet-soft)",
+                      color: it.src === "sf" ? "#00a1e0" : "var(--accent-violet)",
+                      marginTop: 1,
+                    }}
+                  >
                     {it.icon}
                   </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)" }}>{it.title}</div>
-                    {it.detail ? <div className="muted" style={{ fontSize: 11, whiteSpace: "pre-wrap", marginTop: 2 }}>{it.detail}</div> : null}
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)" }}>
+                      {it.title}
+                    </div>
+                    {it.detail ? (
+                      <div
+                        className="muted"
+                        style={{ fontSize: 11, whiteSpace: "pre-wrap", marginTop: 2 }}
+                      >
+                        {it.detail}
+                      </div>
+                    ) : null}
                     <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>
-                      {[it.meta, (it.ts || "").slice(0, 10)].filter(Boolean).join(" · ")}{it.src === "sf" ? " · SF" : ""}
+                      {[it.meta, (it.ts || "").slice(0, 10)].filter(Boolean).join(" · ")}
+                      {it.src === "sf" ? " · SF" : ""}
                     </div>
                   </div>
                 </div>
@@ -749,8 +1110,11 @@ function LeadDetailModal({
   onWhatsApp: (phone: string, name?: string) => void;
 }) {
   const [f, setF] = useState({
-    name: lead.name || "", phone: lead.phone || "", email: lead.email || "",
-    company: lead.company || "", monto: lead.montoEstimado ? String(lead.montoEstimado) : "",
+    name: lead.name || "",
+    phone: lead.phone || "",
+    email: lead.email || "",
+    company: lead.company || "",
+    monto: lead.montoEstimado ? String(lead.montoEstimado) : "",
   });
   const [saving, setSaving] = useState(false);
   const [stageId, setStageId] = useState(lead.stageId || stages[0]?.id || "");
@@ -772,8 +1136,10 @@ function LeadDetailModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          leadId: lead.leadId, phone: f.phone.trim(),
-          name: f.name.trim() || undefined, email: f.email.trim() || undefined,
+          leadId: lead.leadId,
+          phone: f.phone.trim(),
+          name: f.name.trim() || undefined,
+          email: f.email.trim() || undefined,
           company: f.company.trim() || undefined,
           montoEstimado: f.monto.trim() ? Number(f.monto) || undefined : undefined,
         }),
@@ -781,7 +1147,15 @@ function LeadDetailModal({
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error);
       toast.success("Lead actualizado");
-      onSaved({ ...lead, name: f.name, phone: f.phone, email: f.email, company: f.company, montoEstimado: f.monto ? Number(f.monto) : undefined, updatedAt: new Date().toISOString() });
+      onSaved({
+        ...lead,
+        name: f.name,
+        phone: f.phone,
+        email: f.email,
+        company: f.company,
+        montoEstimado: f.monto ? Number(f.monto) : undefined,
+        updatedAt: new Date().toISOString(),
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo guardar");
     } finally {
@@ -792,9 +1166,18 @@ function LeadDetailModal({
   const del = async () => {
     const ep = getApiEndpoints();
     if (!ep?.manageLeads) return;
-    if (!(await confirm({ title: `¿Eliminar el lead "${lead.name || lead.phone}"?`, destructive: true, confirmLabel: "Eliminar" }))) return;
+    if (
+      !(await confirm({
+        title: `¿Eliminar el lead "${lead.name || lead.phone}"?`,
+        destructive: true,
+        confirmLabel: "Eliminar",
+      }))
+    )
+      return;
     try {
-      await authedFetch(`${ep.manageLeads}?leadId=${encodeURIComponent(lead.leadId)}`, { method: "DELETE" });
+      await authedFetch(`${ep.manageLeads}?leadId=${encodeURIComponent(lead.leadId)}`, {
+        method: "DELETE",
+      });
       toast.success("Lead eliminado");
       onDeleted(lead.leadId);
     } catch {
@@ -819,7 +1202,7 @@ function LeadDetailModal({
       if (!r.ok) throw new Error(d?.error || "No se pudo enviar");
       if (d.pushed) {
         toast.success(
-          d.action === "created" ? "Lead creado en Salesforce" : "Lead actualizado en Salesforce"
+          d.action === "created" ? "Lead creado en Salesforce" : "Lead actualizado en Salesforce",
         );
       } else {
         toast.error(d.error || "No se pudo enviar a Salesforce");
@@ -840,16 +1223,32 @@ function LeadDetailModal({
       const r = await authedFetch(`${ep.manageLeads}?phone=${encodeURIComponent(lead.phone)}`);
       const d = await r.json();
       const hist = (d.leads?.[0]?.history || []) as Array<Record<string, unknown>>;
-      const head = ["fecha", "tipo", "canal", "direccion", "etapa", "valoracion", "resumen", "agente"];
+      const head = [
+        "fecha",
+        "tipo",
+        "canal",
+        "direccion",
+        "etapa",
+        "valoracion",
+        "resumen",
+        "agente",
+      ];
       const rows = [
         head,
         ...hist.map((h) => [
-          String(h.ts || ""), String(h.type || ""), String(h.channel || ""), String(h.direction || ""),
-          String(h.stageLabel || h.stageId || ""), String(h.valoracion || ""),
-          String(h.summary || h.notes || "").replace(/[\r\n]+/g, " "), String(h.agent || ""),
+          String(h.ts || ""),
+          String(h.type || ""),
+          String(h.channel || ""),
+          String(h.direction || ""),
+          String(h.stageLabel || h.stageId || ""),
+          String(h.valoracion || ""),
+          String(h.summary || h.notes || "").replace(/[\r\n]+/g, " "),
+          String(h.agent || ""),
         ]),
       ];
-      const csv = rows.map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const csv = rows
+        .map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+        .join("\n");
       const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -857,7 +1256,10 @@ function LeadDetailModal({
       a.download = `journey-${(lead.name || lead.phone).replace(/[^\w-]+/g, "_")}.csv`;
       document.body.appendChild(a);
       a.click();
-      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        a.remove();
+      }, 2000);
       toast.success(`Journey exportado (${hist.length} eventos)`);
     } catch {
       toast.error("No se pudo exportar el journey");
@@ -866,11 +1268,32 @@ function LeadDetailModal({
 
   const field = (key: keyof typeof f, label: string, type = "text") => (
     <label style={{ display: "block" }}>
-      <span style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 600 }}>{label}</span>
+      <span
+        style={{
+          fontSize: 11,
+          color: "var(--text-3)",
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </span>
       <input
-        type={type} value={f[key]} disabled={!canManage}
+        type={type}
+        value={f[key]}
+        disabled={!canManage}
         onChange={(e) => setF((s) => ({ ...s, [key]: e.target.value }))}
-        style={{ width: "100%", marginTop: 4, padding: "8px 10px", fontSize: 13, border: "1px solid var(--border-1)", borderRadius: 6, background: "var(--bg-2)", color: "var(--text-1)" }}
+        style={{
+          width: "100%",
+          marginTop: 4,
+          padding: "8px 10px",
+          fontSize: 13,
+          border: "1px solid var(--border-1)",
+          borderRadius: 6,
+          background: "var(--bg-2)",
+          color: "var(--text-1)",
+        }}
       />
     </label>
   );
@@ -878,33 +1301,80 @@ function LeadDetailModal({
   return (
     <div
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "grid", placeItems: "center", padding: 20, backdropFilter: "blur(2px)" }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 60,
+        background: "rgba(0,0,0,0.5)",
+        display: "grid",
+        placeItems: "center",
+        padding: 20,
+        backdropFilter: "blur(2px)",
+      }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(520px, 100%)", maxHeight: "90vh", overflowY: "auto",
-          background: "var(--bg-1)", border: "1px solid var(--border-2)",
-          borderRadius: 16, boxShadow: "var(--shadow-pop)", padding: 22,
+          width: "min(520px, 100%)",
+          maxHeight: "90vh",
+          overflowY: "auto",
+          background: "var(--bg-1)",
+          border: "1px solid var(--border-2)",
+          borderRadius: 16,
+          boxShadow: "var(--shadow-pop)",
+          padding: 22,
         }}
       >
         {/* Hero: avatar + name + quick actions */}
         <div className="row" style={{ gap: 12, marginBottom: 18 }}>
-          <span style={{ flex: "0 0 auto", width: 44, height: 44, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 15, fontWeight: 700, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }}>
+          <span
+            style={{
+              flex: "0 0 auto",
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              fontSize: 15,
+              fontWeight: 700,
+              background: "var(--accent-cyan-soft)",
+              color: "var(--accent-cyan)",
+            }}
+          >
             {initialsOf(lead.name || lead.phone)}
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700 }}>{lead.name || lead.phone}</div>
-            <div className="muted" style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div
+              className="muted"
+              style={{
+                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
               <span>{lead.company || "Sin empresa"}</span>
               {typeof lead.golpesCount === "number" && lead.golpesCount > 0 && (
-                <span className="chip" style={{ height: 18, fontSize: 10, background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }} title="Golpes: llamadas + WhatsApp + email + gestiones">
+                <span
+                  className="chip"
+                  style={{
+                    height: 18,
+                    fontSize: 10,
+                    background: "var(--accent-cyan-soft)",
+                    color: "var(--accent-cyan)",
+                  }}
+                  title="Golpes: llamadas + WhatsApp + email + gestiones"
+                >
                   🎯 {lead.golpesCount} golpe{lead.golpesCount === 1 ? "" : "s"}
                 </span>
               )}
             </div>
           </div>
-          <button className="btn btn--ghost btn--sm" onClick={onClose}><Icon.Close size={15} /></button>
+          <button className="btn btn--ghost btn--sm" onClick={onClose}>
+            <Icon.Close size={15} />
+          </button>
         </div>
 
         {/* Quick actions row — voice + WhatsApp go through Amazon
@@ -914,11 +1384,7 @@ function LeadDetailModal({
             flow yet). */}
         <div className="row" style={{ gap: 8, marginBottom: 18 }}>
           {lead.phone && (
-            <button
-              type="button"
-              className="btn btn--sm"
-              onClick={() => onCall(lead.phone)}
-            >
+            <button type="button" className="btn btn--sm" onClick={() => onCall(lead.phone)}>
               <Icon.Phone size={13} /> Llamar
             </button>
           )}
@@ -942,14 +1408,31 @@ function LeadDetailModal({
             vista Tabla, donde no hay drag & drop). */}
         {stages.length > 0 && (
           <label style={{ display: "block", marginBottom: 16 }}>
-            <span style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 600 }}>
+            <span
+              style={{
+                fontSize: 11,
+                color: "var(--text-3)",
+                textTransform: "uppercase",
+                letterSpacing: 0.4,
+                fontWeight: 600,
+              }}
+            >
               Etapa
             </span>
             <select
               value={stageId}
               disabled={!canManage}
               onChange={(e) => changeStage(e.target.value)}
-              style={{ width: "100%", marginTop: 4, padding: "8px 10px", fontSize: 13, border: "1px solid var(--border-1)", borderRadius: 6, background: "var(--bg-2)", color: "var(--text-1)" }}
+              style={{
+                width: "100%",
+                marginTop: 4,
+                padding: "8px 10px",
+                fontSize: 13,
+                border: "1px solid var(--border-1)",
+                borderRadius: 6,
+                background: "var(--bg-2)",
+                color: "var(--text-1)",
+              }}
             >
               {stages.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -965,14 +1448,20 @@ function LeadDetailModal({
           {field("phone", "Teléfono")}
           {field("email", "Email", "email")}
           {field("company", "Empresa")}
-          <div style={{ gridColumn: "1 / -1" }}>{field("monto", "Valor estimado (S/)", "number")}</div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            {field("monto", "Valor estimado (S/)", "number")}
+          </div>
         </div>
 
         {/* Enviar a Salesforce a demanda — red de seguridad por si el sync
             automático no ocurrió (ej. lead de campaña sin contactar). Crea/
             actualiza el Lead en SF y registra la actividad. */}
         <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginBottom: 10 }}>
-          <button className="btn btn--sm" onClick={exportJourney} title="Descargar el journey (golpes) de este lead en CSV">
+          <button
+            className="btn btn--sm"
+            onClick={exportJourney}
+            title="Descargar el journey (golpes) de este lead en CSV"
+          >
             ⬇ Exportar journey
           </button>
           {canManage && (
@@ -982,7 +1471,16 @@ function LeadDetailModal({
               disabled={sfPushing}
               title="Crear o actualizar este lead en Salesforce y registrar la actividad"
             >
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#00A1E0", display: "inline-block", marginRight: 6 }} />
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: "#00A1E0",
+                  display: "inline-block",
+                  marginRight: 6,
+                }}
+              />
               {sfPushing ? "Enviando…" : "Enviar a Salesforce"}
             </button>
           )}
@@ -993,10 +1491,17 @@ function LeadDetailModal({
 
         {canManage && (
           <div className="row" style={{ gap: 8 }}>
-            <button className="btn btn--primary" onClick={save} disabled={saving} style={{ flex: 1 }}>
+            <button
+              className="btn btn--primary"
+              onClick={save}
+              disabled={saving}
+              style={{ flex: 1 }}
+            >
               {saving ? "Guardando…" : "Guardar cambios"}
             </button>
-            <button className="btn btn--danger" onClick={del} title="Eliminar lead"><Icon.Trash size={14} /></button>
+            <button className="btn btn--danger" onClick={del} title="Eliminar lead">
+              <Icon.Trash size={14} />
+            </button>
           </div>
         )}
       </div>
@@ -1062,10 +1567,11 @@ export function LeadsPage() {
   const [syncedFilter, setSyncedFilter] = useState<"all" | "sf" | "local">("all");
   /** Created-at period filter. "custom" → the user types ISO dates in
    *  the popover; the rest are sliding windows from "now". */
-  const [periodFilter, setPeriodFilter] = useState<
-    "all" | "today" | "7d" | "30d" | "90d"
-  >("all");
-  const [sort, setSort] = useState<{ key: "created" | "updated" | "value" | "name"; dir: "asc" | "desc" }>({
+  const [periodFilter, setPeriodFilter] = useState<"all" | "today" | "7d" | "30d" | "90d">("all");
+  const [sort, setSort] = useState<{
+    key: "created" | "updated" | "value" | "name";
+    dir: "asc" | "desc";
+  }>({
     key: "created",
     dir: "desc",
   });
@@ -1086,7 +1592,10 @@ export function LeadsPage() {
       setDragging(false);
       // El click que cierra el arrastre llega justo después; reseteamos el flag en
       // el siguiente tick para suprimir ese click pero no el próximo legítimo.
-      if (didDragRef.current) setTimeout(() => { didDragRef.current = false; }, 0);
+      if (didDragRef.current)
+        setTimeout(() => {
+          didDragRef.current = false;
+        }, 0);
     };
     window.addEventListener("mouseup", up);
     return () => window.removeEventListener("mouseup", up);
@@ -1098,10 +1607,15 @@ export function LeadsPage() {
 
   const load = async () => {
     const ep = getApiEndpoints();
-    if (!ep?.manageLeads) { setLoading(false); return; }
+    if (!ep?.manageLeads) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const url = scoped ? `${ep.manageLeads}?programId=${encodeURIComponent(activeProgramId)}` : ep.manageLeads;
+      const url = scoped
+        ? `${ep.manageLeads}?programId=${encodeURIComponent(activeProgramId)}`
+        : ep.manageLeads;
       const r = await authedFetch(url);
       const d = await r.json();
       setLeads(Array.isArray(d.leads) ? d.leads : []);
@@ -1111,7 +1625,9 @@ export function LeadsPage() {
   };
 
   // Re-carga al cambiar el programa activo (switcher global del top-bar).
-  useEffect(() => { load(); }, [activeProgramId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    load();
+  }, [activeProgramId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const firstStage = tree[0]?.id;
 
@@ -1129,26 +1645,37 @@ export function LeadsPage() {
 
   /** Apply ALL the active filters to a lead. Single source of truth so
    *  the board and table views never disagree on what's visible. */
-  const passesFilters = useCallback((l: Lead, needle: string): boolean => {
-    if (needle && !`${l.name || ""} ${l.phone || ""} ${l.company || ""} ${l.email || ""}`.toLowerCase().includes(needle)) return false;
-    if (sourceFilter !== "all" && l.source !== sourceFilter) return false;
-    if (agentFilter !== "all" && (l.assignedAgent || "") !== agentFilter) return false;
-    const hasValue = !!(l.montoEstimado && l.montoEstimado > 0);
-    if (valueFilter === "with" && !hasValue) return false;
-    if (valueFilter === "without" && hasValue) return false;
-    if (staleOnly && !ageInfo(l.updatedAt).stale) return false;
-    if (syncedFilter === "sf" && !l.sfLeadId) return false;
-    if (syncedFilter === "local" && l.sfLeadId) return false;
-    if (periodFilter !== "all") {
-      const created = l.createdAt ? new Date(l.createdAt).getTime() : 0;
-      if (!created) return false;
-      const windowMs = (
-        { today: 24, "7d": 24 * 7, "30d": 24 * 30, "90d": 24 * 90 } as const
-      )[periodFilter] * 60 * 60 * 1000;
-      if (Date.now() - created > windowMs) return false;
-    }
-    return true;
-  }, [sourceFilter, agentFilter, valueFilter, staleOnly, syncedFilter, periodFilter]);
+  const passesFilters = useCallback(
+    (l: Lead, needle: string): boolean => {
+      if (
+        needle &&
+        !`${l.name || ""} ${l.phone || ""} ${l.company || ""} ${l.email || ""}`
+          .toLowerCase()
+          .includes(needle)
+      )
+        return false;
+      if (sourceFilter !== "all" && l.source !== sourceFilter) return false;
+      if (agentFilter !== "all" && (l.assignedAgent || "") !== agentFilter) return false;
+      const hasValue = !!(l.montoEstimado && l.montoEstimado > 0);
+      if (valueFilter === "with" && !hasValue) return false;
+      if (valueFilter === "without" && hasValue) return false;
+      if (staleOnly && !ageInfo(l.updatedAt).stale) return false;
+      if (syncedFilter === "sf" && !l.sfLeadId) return false;
+      if (syncedFilter === "local" && l.sfLeadId) return false;
+      if (periodFilter !== "all") {
+        const created = l.createdAt ? new Date(l.createdAt).getTime() : 0;
+        if (!created) return false;
+        const windowMs =
+          ({ today: 24, "7d": 24 * 7, "30d": 24 * 30, "90d": 24 * 90 } as const)[periodFilter] *
+          60 *
+          60 *
+          1000;
+        if (Date.now() - created > windowMs) return false;
+      }
+      return true;
+    },
+    [sourceFilter, agentFilter, valueFilter, staleOnly, syncedFilter, periodFilter],
+  );
 
   const byStage = useMemo(() => {
     const map = new Map<string, Lead[]>();
@@ -1162,7 +1689,8 @@ export function LeadsPage() {
     // Sort each column: highest deal value first, then most-recently updated.
     for (const list of map.values()) {
       list.sort((a, b) => {
-        const va = a.montoEstimado || 0, vb = b.montoEstimado || 0;
+        const va = a.montoEstimado || 0,
+          vb = b.montoEstimado || 0;
         if (vb !== va) return vb - va;
         return (b.updatedAt || "").localeCompare(a.updatedAt || "");
       });
@@ -1190,7 +1718,8 @@ export function LeadsPage() {
     const dir = sort.dir === "asc" ? 1 : -1;
     list.sort((a, b) => {
       if (sort.key === "value") return ((a.montoEstimado || 0) - (b.montoEstimado || 0)) * dir;
-      if (sort.key === "name") return (a.name || a.phone || "").localeCompare(b.name || b.phone || "") * dir;
+      if (sort.key === "name")
+        return (a.name || a.phone || "").localeCompare(b.name || b.phone || "") * dir;
       const ka = sort.key === "updated" ? a.updatedAt || "" : a.createdAt || a.updatedAt || "";
       const kb = sort.key === "updated" ? b.updatedAt || "" : b.createdAt || b.updatedAt || "";
       return ka.localeCompare(kb) * dir;
@@ -1199,12 +1728,17 @@ export function LeadsPage() {
   }, [leads, q, stageFilter, sort, firstStage, passesFilters]);
 
   const { shownCount, totalValue, weightedTotal } = useMemo(() => {
-    let count = 0, value = 0, weighted = 0;
+    let count = 0,
+      value = 0,
+      weighted = 0;
     tree.forEach((s, i) => {
       const list = byStage.get(s.id) || [];
       const prob = stageProbability(s.valoracion, i, tree.length);
       count += list.length;
-      for (const l of list) { value += l.montoEstimado || 0; weighted += (l.montoEstimado || 0) * prob; }
+      for (const l of list) {
+        value += l.montoEstimado || 0;
+        weighted += (l.montoEstimado || 0) * prob;
+      }
     });
     return { shownCount: count, totalValue: value, weightedTotal: weighted };
   }, [byStage, tree]);
@@ -1222,17 +1756,27 @@ export function LeadsPage() {
           value: items.reduce((a, l) => a + (l.montoEstimado || 0), 0),
         };
       }),
-    [tree, byStage]
+    [tree, byStage],
   );
 
   const move = async (leadId: string, stageId: string) => {
     const ep = getApiEndpoints();
     if (!ep?.manageLeads) return;
-    setLeads((cur) => cur.map((l) => (l.leadId === leadId ? { ...l, stageId, updatedAt: new Date().toISOString() } : l)));
+    setLeads((cur) =>
+      cur.map((l) =>
+        l.leadId === leadId ? { ...l, stageId, updatedAt: new Date().toISOString() } : l,
+      ),
+    );
     try {
       await authedFetch(ep.manageLeads, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "move", leadId, stageId, programId: scoped ? activeProgramId : undefined }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "move",
+          leadId,
+          stageId,
+          programId: scoped ? activeProgramId : undefined,
+        }),
       });
     } catch {
       toast.error("No se pudo mover el lead");
@@ -1249,7 +1793,8 @@ export function LeadsPage() {
     const prog = programs.find((p) => p.programId === programId);
     try {
       const r = await authedFetch(ep.manageLeads, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "assignProgram", programId, leadIds: ids }),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error);
@@ -1267,8 +1812,15 @@ export function LeadsPage() {
     if (!ep?.manageLeads) return;
     try {
       const r = await authedFetch(ep.manageLeads, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, name: name || undefined, stageId, source: "manual", programId: scoped ? activeProgramId : undefined }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone,
+          name: name || undefined,
+          stageId,
+          source: "manual",
+          programId: scoped ? activeProgramId : undefined,
+        }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error);
@@ -1282,15 +1834,22 @@ export function LeadsPage() {
   const createLead = async () => {
     const ep = getApiEndpoints();
     if (!ep?.manageLeads) return;
-    if (!form.phone.trim()) { toast.error("El teléfono es obligatorio"); return; }
+    if (!form.phone.trim()) {
+      toast.error("El teléfono es obligatorio");
+      return;
+    }
     try {
       const r = await authedFetch(ep.manageLeads, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: form.phone.trim(), name: form.name.trim() || undefined,
-          email: form.email.trim() || undefined, company: form.company.trim() || undefined,
+          phone: form.phone.trim(),
+          name: form.name.trim() || undefined,
+          email: form.email.trim() || undefined,
+          company: form.company.trim() || undefined,
           montoEstimado: form.monto.trim() ? Number(form.monto) || undefined : undefined,
-          stageId: firstStage, source: "manual",
+          stageId: firstStage,
+          source: "manual",
           programId: scoped ? activeProgramId : undefined,
         }),
       });
@@ -1310,11 +1869,13 @@ export function LeadsPage() {
     setSelectedIds((prev) => {
       if (value === prev.has(id)) return prev;
       const n = new Set(prev);
-      if (value) n.add(id); else n.delete(id);
+      if (value) n.add(id);
+      else n.delete(id);
       return n;
     });
   const clearSelection = () => setSelectedIds(new Set());
-  const allFilteredSelected = tableLeads.length > 0 && tableLeads.every((l) => selectedIds.has(l.leadId));
+  const allFilteredSelected =
+    tableLeads.length > 0 && tableLeads.every((l) => selectedIds.has(l.leadId));
   const someFilteredSelected = tableLeads.some((l) => selectedIds.has(l.leadId));
   const toggleSelectAll = () =>
     setSelectedIds(allFilteredSelected ? new Set() : new Set(tableLeads.map((l) => l.leadId)));
@@ -1322,7 +1883,8 @@ export function LeadsPage() {
   // Toda la lógica vive en mousedown (toggle · shift=rango · inicio de arrastre).
   // El click sólo frena la propagación para no abrir el detalle del lead.
   const onCheckboxMouseDown = (e: React.MouseEvent, index: number) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     if (e.button !== 0) return; // sólo botón izquierdo
     didDragRef.current = false;
     const id = tableLeads[index].leadId;
@@ -1345,7 +1907,9 @@ export function LeadsPage() {
     setRowSelected(id, value);
     lastIndexRef.current = index;
   };
-  const onCheckboxClick = (e: React.MouseEvent) => { e.stopPropagation(); };
+  const onCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
   const onRowMouseEnter = (index: number) => {
     const drag = dragSelectRef.current;
     if (!drag) return;
@@ -1353,19 +1917,32 @@ export function LeadsPage() {
     setRowSelected(tableLeads[index].leadId, drag.value);
   };
   const onRowClick = (l: Lead) => {
-    if (didDragRef.current) { didDragRef.current = false; return; } // fue arrastre, no abrir
+    if (didDragRef.current) {
+      didDragRef.current = false;
+      return;
+    } // fue arrastre, no abrir
     setSelected(l);
   };
 
   const launchCampaign = () => {
     const chosen = leads.filter((l) => selectedIds.has(l.leadId) && l.phone);
-    if (chosen.length === 0) { toast.error("Selecciona al menos un lead con teléfono"); return; }
+    if (chosen.length === 0) {
+      toast.error("Selecciona al menos un lead con teléfono");
+      return;
+    }
     navigate("/campaigns/nueva", {
       state: {
         presetLeads: chosen.map((l) => ({
-          leadId: l.leadId, phone: l.phone, name: l.name, email: l.email, company: l.company,
-          stageId: l.stageId, source: l.source, montoEstimado: l.montoEstimado,
-          createdAt: l.createdAt, updatedAt: l.updatedAt,
+          leadId: l.leadId,
+          phone: l.phone,
+          name: l.name,
+          email: l.email,
+          company: l.company,
+          stageId: l.stageId,
+          source: l.source,
+          montoEstimado: l.montoEstimado,
+          createdAt: l.createdAt,
+          updatedAt: l.updatedAt,
         })),
       },
     });
@@ -1378,22 +1955,46 @@ export function LeadsPage() {
         title="Embudo de leads"
         filterPill={sourceFilter === "all" ? "Todos" : SOURCE_LABEL[sourceFilter] || sourceFilter}
         count={`${shownCount} leads${totalValue > 0 ? ` · ${fmtMoney(totalValue)}` : ""}`}
-        sub={weightedTotal > 0 ? `Pipeline ponderado ${fmtMoney(weightedTotal)} · arrastra las tarjetas entre etapas` : "Arrastra las tarjetas entre etapas · columnas = tu taxonomía"}
+        sub={
+          weightedTotal > 0
+            ? `Pipeline ponderado ${fmtMoney(weightedTotal)} · arrastra las tarjetas entre etapas`
+            : "Arrastra las tarjetas entre etapas · columnas = tu taxonomía"
+        }
         search={{ value: q, onChange: setQ, placeholder: "Buscar lead…" }}
         actions={
           <>
-            <div className="row" style={{ gap: 0, border: "1px solid var(--border-2)", borderRadius: 6, overflow: "hidden" }}>
+            <div
+              className="row"
+              style={{
+                gap: 0,
+                border: "1px solid var(--border-2)",
+                borderRadius: 6,
+                overflow: "hidden",
+              }}
+            >
               <button
                 onClick={() => setView("board")}
                 title="Vista de tablero"
-                style={{ padding: "6px 11px", fontSize: 12.5, fontWeight: 600, background: view === "board" ? "var(--bg-3)" : "transparent", color: view === "board" ? "var(--text-1)" : "var(--text-3)" }}
+                style={{
+                  padding: "6px 11px",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  background: view === "board" ? "var(--bg-3)" : "transparent",
+                  color: view === "board" ? "var(--text-1)" : "var(--text-3)",
+                }}
               >
                 Tablero
               </button>
               <button
                 onClick={() => setView("table")}
                 title="Vista de tabla (data cruda)"
-                style={{ padding: "6px 11px", fontSize: 12.5, fontWeight: 600, background: view === "table" ? "var(--bg-3)" : "transparent", color: view === "table" ? "var(--text-1)" : "var(--text-3)" }}
+                style={{
+                  padding: "6px 11px",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  background: view === "table" ? "var(--bg-3)" : "transparent",
+                  color: view === "table" ? "var(--text-1)" : "var(--text-3)",
+                }}
               >
                 Tabla
               </button>
@@ -1445,19 +2046,44 @@ export function LeadsPage() {
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
             {(["name", "phone", "email", "company"] as const).map((fld) => (
               <input
-                key={fld} value={form[fld]}
+                key={fld}
+                value={form[fld]}
                 onChange={(e) => setForm((s) => ({ ...s, [fld]: e.target.value }))}
-                placeholder={{ name: "Nombre", phone: "Teléfono *", email: "Email", company: "Empresa" }[fld]}
-                style={{ flex: 1, minWidth: 150, padding: "8px 10px", border: "1px solid var(--border-1)", borderRadius: 6, background: "var(--bg-1)", color: "var(--text-1)", fontSize: 13 }}
+                placeholder={
+                  { name: "Nombre", phone: "Teléfono *", email: "Email", company: "Empresa" }[fld]
+                }
+                style={{
+                  flex: 1,
+                  minWidth: 150,
+                  padding: "8px 10px",
+                  border: "1px solid var(--border-1)",
+                  borderRadius: 6,
+                  background: "var(--bg-1)",
+                  color: "var(--text-1)",
+                  fontSize: 13,
+                }}
               />
             ))}
             <input
-              type="number" min="0" value={form.monto}
+              type="number"
+              min="0"
+              value={form.monto}
               onChange={(e) => setForm((s) => ({ ...s, monto: e.target.value }))}
               placeholder="Valor S/"
-              style={{ flex: 1, minWidth: 110, padding: "8px 10px", border: "1px solid var(--border-1)", borderRadius: 6, background: "var(--bg-1)", color: "var(--text-1)", fontSize: 13 }}
+              style={{
+                flex: 1,
+                minWidth: 110,
+                padding: "8px 10px",
+                border: "1px solid var(--border-1)",
+                borderRadius: 6,
+                background: "var(--bg-1)",
+                color: "var(--text-1)",
+                fontSize: 13,
+              }}
             />
-            <button className="btn btn--primary" onClick={createLead}>Crear</button>
+            <button className="btn btn--primary" onClick={createLead}>
+              Crear
+            </button>
           </div>
         </div>
       )}
@@ -1470,20 +2096,40 @@ export function LeadsPage() {
       {selectedIds.size > 0 && (
         <div
           style={{
-            position: "sticky", top: 8, zIndex: 20, marginBottom: 12,
-            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
-            padding: "10px 14px", borderRadius: 12,
+            position: "sticky",
+            top: 8,
+            zIndex: 20,
+            marginBottom: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            padding: "10px 14px",
+            borderRadius: 12,
             border: "1px solid var(--accent-cyan)",
             background: "linear-gradient(135deg, var(--accent-cyan-soft), var(--bg-2))",
             boxShadow: "0 6px 20px -10px rgba(0,0,0,0.4)",
           }}
         >
-          <span style={{ display: "grid", placeItems: "center", width: 26, height: 26, borderRadius: 8, background: "var(--accent-cyan)", color: "#0B0F1A", fontWeight: 800, fontSize: 12 }}>
+          <span
+            style={{
+              display: "grid",
+              placeItems: "center",
+              width: 26,
+              height: 26,
+              borderRadius: 8,
+              background: "var(--accent-cyan)",
+              color: "#0B0F1A",
+              fontWeight: 800,
+              fontSize: 12,
+            }}
+          >
             {selectedIds.size}
           </span>
           <div style={{ flex: 1, minWidth: 160 }}>
             <div style={{ fontWeight: 700, fontSize: 13 }}>
-              {selectedIds.size} lead{selectedIds.size === 1 ? "" : "s"} seleccionado{selectedIds.size === 1 ? "" : "s"}
+              {selectedIds.size} lead{selectedIds.size === 1 ? "" : "s"} seleccionado
+              {selectedIds.size === 1 ? "" : "s"}
             </div>
             <div className="muted" style={{ fontSize: 11 }}>
               Lanza una campaña de voz o WhatsApp con esta audiencia, o ajusta la selección.
@@ -1493,7 +2139,11 @@ export function LeadsPage() {
             <Icon.Close size={13} /> Limpiar
           </button>
           {!allFilteredSelected && (
-            <button className="btn btn--sm" onClick={toggleSelectAll} title="Seleccionar todos los leads filtrados">
+            <button
+              className="btn btn--sm"
+              onClick={toggleSelectAll}
+              title="Seleccionar todos los leads filtrados"
+            >
               <Icon.Check size={13} /> Todos ({tableLeads.length})
             </button>
           )}
@@ -1501,13 +2151,19 @@ export function LeadsPage() {
             <select
               className="btn btn--sm"
               value=""
-              onChange={(e) => { if (e.target.value) assignSelectedToProgram(e.target.value); }}
+              onChange={(e) => {
+                if (e.target.value) assignSelectedToProgram(e.target.value);
+              }}
               title="Asignar los seleccionados a un programa"
             >
               <option value="">Asignar a programa…</option>
-              {programs.filter((p) => p.status !== "archivado").map((p) => (
-                <option key={p.programId} value={p.programId}>{p.name}</option>
-              ))}
+              {programs
+                .filter((p) => p.status !== "archivado")
+                .map((p) => (
+                  <option key={p.programId} value={p.programId}>
+                    {p.name}
+                  </option>
+                ))}
             </select>
           )}
           {canManage && (
@@ -1536,10 +2192,23 @@ export function LeadsPage() {
           className="card"
           style={{ padding: "56px 24px", textAlign: "center", color: "var(--text-3)" }}
         >
-          <div style={{ width: 48, height: 48, margin: "0 auto 14px", borderRadius: 14, display: "grid", placeItems: "center", background: "var(--accent-cyan-soft)", color: "var(--accent-cyan)" }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              margin: "0 auto 14px",
+              borderRadius: 14,
+              display: "grid",
+              placeItems: "center",
+              background: "var(--accent-cyan-soft)",
+              color: "var(--accent-cyan)",
+            }}
+          >
             <Icon.Users size={24} />
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-1)" }}>Aún no tienes leads</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-1)" }}>
+            Aún no tienes leads
+          </div>
           <div style={{ fontSize: 13, marginTop: 4, marginBottom: 16 }}>
             Crea tu primer lead o espera a que lleguen desde formularios web, campañas o llamadas.
           </div>
@@ -1550,106 +2219,158 @@ export function LeadsPage() {
           )}
         </div>
       ) : view === "board" ? (
-      <>
-      <PipelineSummary
-        stages={pipelineStages}
-        totalLeads={shownCount}
-        totalValue={totalValue}
-        weightedValue={weightedTotal}
-      />
-      <DndProvider backend={HTML5Backend}>
-        <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12, alignItems: "flex-start" }}>
-          {loading && leads.length === 0
-            ? Array.from({ length: 5 }).map((_, ci) => (
-                <div key={ci} style={{ minWidth: 256, maxWidth: 288, flex: "0 0 auto", background: "var(--bg-2)", border: "1px solid var(--border-1)", borderRadius: 12, overflow: "hidden" }}>
-                  <div style={{ height: 3, background: "var(--border-2)" }} />
-                  <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-1)" }}>
-                    <div className="lead-skel" style={{ width: "60%", height: 12 }} />
-                    <div className="lead-skel" style={{ width: "40%", height: 9, marginTop: 6 }} />
-                  </div>
-                  <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 7 }}>
-                    {Array.from({ length: ci % 3 === 0 ? 2 : 1 }).map((__, k) => (
-                      <div key={k} className="lead-skel" style={{ height: 64, borderRadius: 9 }} />
-                    ))}
-                  </div>
-                </div>
-              ))
-            : tree.map((stage, i) => {
-            const items = byStage.get(stage.id) || [];
-            const color = stageColor(i);
-            const colValue = items.reduce((a, l) => a + (l.montoEstimado || 0), 0);
-            const prob = stageProbability(stage.valoracion, i, tree.length);
-            const weighted = colValue * prob;
-            // Conversion vs previous stage (by lead count).
-            const prevCount = i > 0 ? (byStage.get(tree[i - 1].id) || []).length : null;
-            const conv = prevCount && prevCount > 0 ? Math.round((items.length / prevCount) * 100) : null;
-            return (
-              <StageColumn
-                key={stage.id}
-                stageId={stage.id}
-                label={stage.label}
-                color={color}
-                items={items}
-                totalValue={colValue}
-                weightedValue={weighted}
-                conversionPct={conv}
-                canManage={canManage}
-                onDropLead={move}
-                onOpenLead={setSelected}
-                onQuickCreate={quickCreate}
-                onCall={dialLead}
-                onWhatsApp={openWhatsApp}
-                selectedIds={selectedIds}
-                onToggleLead={(leadId) => {
-                  setSelectedIds((cur) => {
-                    const next = new Set(cur);
-                    if (next.has(leadId)) next.delete(leadId);
-                    else next.add(leadId);
-                    return next;
-                  });
-                }}
-              />
-            );
-          })}
-        </div>
-      </DndProvider>
-      </>
+        <>
+          <PipelineSummary
+            stages={pipelineStages}
+            totalLeads={shownCount}
+            totalValue={totalValue}
+            weightedValue={weightedTotal}
+          />
+          <DndProvider backend={HTML5Backend}>
+            <div
+              style={{
+                display: "flex",
+                gap: 14,
+                overflowX: "auto",
+                paddingBottom: 12,
+                alignItems: "flex-start",
+              }}
+            >
+              {loading && leads.length === 0
+                ? Array.from({ length: 5 }).map((_, ci) => (
+                    <div
+                      key={ci}
+                      style={{
+                        minWidth: 256,
+                        maxWidth: 288,
+                        flex: "0 0 auto",
+                        background: "var(--bg-2)",
+                        border: "1px solid var(--border-1)",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div style={{ height: 3, background: "var(--border-2)" }} />
+                      <div
+                        style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-1)" }}
+                      >
+                        <div className="lead-skel" style={{ width: "60%", height: 12 }} />
+                        <div
+                          className="lead-skel"
+                          style={{ width: "40%", height: 9, marginTop: 6 }}
+                        />
+                      </div>
+                      <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 7 }}>
+                        {Array.from({ length: ci % 3 === 0 ? 2 : 1 }).map((__, k) => (
+                          <div
+                            key={k}
+                            className="lead-skel"
+                            style={{ height: 64, borderRadius: 9 }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                : tree.map((stage, i) => {
+                    const items = byStage.get(stage.id) || [];
+                    const color = stageColor(i);
+                    const colValue = items.reduce((a, l) => a + (l.montoEstimado || 0), 0);
+                    const prob = stageProbability(stage.valoracion, i, tree.length);
+                    const weighted = colValue * prob;
+                    // Conversion vs previous stage (by lead count).
+                    const prevCount = i > 0 ? (byStage.get(tree[i - 1].id) || []).length : null;
+                    const conv =
+                      prevCount && prevCount > 0
+                        ? Math.round((items.length / prevCount) * 100)
+                        : null;
+                    return (
+                      <StageColumn
+                        key={stage.id}
+                        stageId={stage.id}
+                        label={stage.label}
+                        color={color}
+                        items={items}
+                        totalValue={colValue}
+                        weightedValue={weighted}
+                        conversionPct={conv}
+                        canManage={canManage}
+                        onDropLead={move}
+                        onOpenLead={setSelected}
+                        onQuickCreate={quickCreate}
+                        onCall={dialLead}
+                        onWhatsApp={openWhatsApp}
+                        selectedIds={selectedIds}
+                        onToggleLead={(leadId) => {
+                          setSelectedIds((cur) => {
+                            const next = new Set(cur);
+                            if (next.has(leadId)) next.delete(leadId);
+                            else next.add(leadId);
+                            return next;
+                          });
+                        }}
+                      />
+                    );
+                  })}
+            </div>
+          </DndProvider>
+        </>
       ) : (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
               <thead>
-                <tr style={{ background: "var(--bg-2)", borderBottom: "1px solid var(--border-1)" }}>
+                <tr
+                  style={{ background: "var(--bg-2)", borderBottom: "1px solid var(--border-1)" }}
+                >
                   <th style={{ padding: "10px 8px 10px 12px", width: 34 }}>
                     <input
                       type="checkbox"
                       aria-label="Seleccionar todos"
                       style={{ cursor: "pointer", accentColor: "var(--accent-cyan)" }}
                       checked={allFilteredSelected}
-                      ref={(el) => { if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected; }}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected;
+                      }}
                       onChange={toggleSelectAll}
                     />
                   </th>
-                  {([
-                    ["Contacto", "name", "left"],
-                    ["Empresa", null, "left"],
-                    ["Etapa", null, "left"],
-                    ["Fuente", null, "left"],
-                    ["Valor", "value", "right"],
-                    ["Actualizado", "updated", "right"],
-                    ["Creado", "created", "right"],
-                  ] as const).map(([label, key, align]) => (
+                  {(
+                    [
+                      ["Contacto", "name", "left"],
+                      ["Empresa", null, "left"],
+                      ["Etapa", null, "left"],
+                      ["Fuente", null, "left"],
+                      ["Valor", "value", "right"],
+                      ["Actualizado", "updated", "right"],
+                      ["Creado", "created", "right"],
+                    ] as const
+                  ).map(([label, key, align]) => (
                     <th
                       key={label}
-                      onClick={key ? () => setSort((s) => ({ key, dir: s.key === key && s.dir === "desc" ? "asc" : "desc" })) : undefined}
+                      onClick={
+                        key
+                          ? () =>
+                              setSort((s) => ({
+                                key,
+                                dir: s.key === key && s.dir === "desc" ? "asc" : "desc",
+                              }))
+                          : undefined
+                      }
                       style={{
-                        padding: "10px 12px", textAlign: align,
-                        fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.5,
-                        color: "var(--text-3)", fontWeight: 700, whiteSpace: "nowrap",
-                        cursor: key ? "pointer" : "default", userSelect: "none",
+                        padding: "10px 12px",
+                        textAlign: align,
+                        fontSize: 10.5,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        color: "var(--text-3)",
+                        fontWeight: 700,
+                        whiteSpace: "nowrap",
+                        cursor: key ? "pointer" : "default",
+                        userSelect: "none",
                       }}
                     >
-                      {label}{key && sort.key === key ? (sort.dir === "desc" ? " ↓" : " ↑") : ""}
+                      {label}
+                      {key && sort.key === key ? (sort.dir === "desc" ? " ↓" : " ↑") : ""}
                     </th>
                   ))}
                 </tr>
@@ -1682,30 +2403,115 @@ export function LeadsPage() {
                           checked={checked}
                           readOnly
                           tabIndex={-1}
-                          style={{ cursor: "pointer", accentColor: "var(--accent-cyan)", pointerEvents: "none" }}
+                          style={{
+                            cursor: "pointer",
+                            accentColor: "var(--accent-cyan)",
+                            pointerEvents: "none",
+                          }}
                         />
                       </td>
                       <td style={{ padding: "9px 12px" }}>
                         <div className="row" style={{ gap: 9 }}>
-                          <span style={{ flex: "0 0 auto", width: 28, height: 28, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 10.5, fontWeight: 700, background: `${sm.color}22`, color: sm.color }}>
+                          <span
+                            style={{
+                              flex: "0 0 auto",
+                              width: 28,
+                              height: 28,
+                              borderRadius: "50%",
+                              display: "grid",
+                              placeItems: "center",
+                              fontSize: 10.5,
+                              fontWeight: 700,
+                              background: `${sm.color}22`,
+                              color: sm.color,
+                            }}
+                          >
                             {initialsOf(l.name || l.phone)}
                           </span>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{l.name || "—"}</div>
-                            <div className="muted" style={{ fontSize: 11 }}>{l.phone}</div>
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                maxWidth: 220,
+                              }}
+                            >
+                              {l.name || "—"}
+                            </div>
+                            <div className="muted" style={{ fontSize: 11 }}>
+                              {l.phone}
+                            </div>
                           </div>
                         </div>
                       </td>
-                      <td style={{ padding: "9px 12px", color: "var(--text-2)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.company || "—"}</td>
-                      <td style={{ padding: "9px 12px" }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: sm.color, background: `${sm.color}1f`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>{sm.label}</span>
+                      <td
+                        style={{
+                          padding: "9px 12px",
+                          color: "var(--text-2)",
+                          maxWidth: 180,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {l.company || "—"}
                       </td>
                       <td style={{ padding: "9px 12px" }}>
-                        {l.source ? <span className="chip" style={{ height: 18, fontSize: 10 }}>{SOURCE_LABEL[l.source] || l.source}</span> : <span className="muted">—</span>}
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: sm.color,
+                            background: `${sm.color}1f`,
+                            borderRadius: 999,
+                            padding: "2px 9px",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {sm.label}
+                        </span>
                       </td>
-                      <td style={{ padding: "9px 12px", textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(l.montoEstimado)}</td>
-                      <td style={{ padding: "9px 12px", textAlign: "right", color: "var(--text-3)", whiteSpace: "nowrap" }}>{ageInfo(l.updatedAt).label || "—"}</td>
-                      <td style={{ padding: "9px 12px", textAlign: "right", color: created.stale ? "var(--accent-red)" : "var(--text-3)", whiteSpace: "nowrap" }}>{created.label || "—"}</td>
+                      <td style={{ padding: "9px 12px" }}>
+                        {l.source ? (
+                          <span className="chip" style={{ height: 18, fontSize: 10 }}>
+                            {SOURCE_LABEL[l.source] || l.source}
+                          </span>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td
+                        style={{
+                          padding: "9px 12px",
+                          textAlign: "right",
+                          fontWeight: 700,
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {fmtMoney(l.montoEstimado)}
+                      </td>
+                      <td
+                        style={{
+                          padding: "9px 12px",
+                          textAlign: "right",
+                          color: "var(--text-3)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {ageInfo(l.updatedAt).label || "—"}
+                      </td>
+                      <td
+                        style={{
+                          padding: "9px 12px",
+                          textAlign: "right",
+                          color: created.stale ? "var(--accent-red)" : "var(--text-3)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {created.label || "—"}
+                      </td>
                     </tr>
                   );
                 })}
@@ -1717,8 +2523,24 @@ export function LeadsPage() {
               Ningún lead coincide con los filtros.
             </div>
           ) : (
-            <div className="muted" style={{ padding: "8px 12px", fontSize: 11, borderTop: "1px solid var(--border-1)", background: "var(--bg-2)" }}>
-              {tableLeads.length} leads · orden: {sort.key === "created" ? "creación" : sort.key === "updated" ? "actualización" : sort.key === "value" ? "valor" : "nombre"} {sort.dir === "desc" ? "↓" : "↑"}
+            <div
+              className="muted"
+              style={{
+                padding: "8px 12px",
+                fontSize: 11,
+                borderTop: "1px solid var(--border-1)",
+                background: "var(--bg-2)",
+              }}
+            >
+              {tableLeads.length} leads · orden:{" "}
+              {sort.key === "created"
+                ? "creación"
+                : sort.key === "updated"
+                  ? "actualización"
+                  : sort.key === "value"
+                    ? "valor"
+                    : "nombre"}{" "}
+              {sort.dir === "desc" ? "↓" : "↑"}
             </div>
           )}
         </div>
@@ -1730,8 +2552,14 @@ export function LeadsPage() {
           canManage={canManage}
           stages={tree}
           onClose={() => setSelected(null)}
-          onSaved={(l) => { setLeads((cur) => cur.map((x) => (x.leadId === l.leadId ? l : x))); setSelected(null); }}
-          onDeleted={(id) => { setLeads((cur) => cur.filter((x) => x.leadId !== id)); setSelected(null); }}
+          onSaved={(l) => {
+            setLeads((cur) => cur.map((x) => (x.leadId === l.leadId ? l : x)));
+            setSelected(null);
+          }}
+          onDeleted={(id) => {
+            setLeads((cur) => cur.filter((x) => x.leadId !== id));
+            setSelected(null);
+          }}
           onMove={move}
           onCall={dialLead}
           onWhatsApp={openWhatsApp}
@@ -1803,10 +2631,25 @@ const SYNCED_LABEL: Record<LeadFilterBarProps["syncedFilter"], string> = {
 
 function LeadFilterBar(props: LeadFilterBarProps) {
   const {
-    view, sourceFilter, stageFilter, agentFilter, valueFilter, periodFilter,
-    syncedFilter, staleOnly, setSourceFilter, setStageFilter, setAgentFilter,
-    setValueFilter, setPeriodFilter, setSyncedFilter, setStaleOnly,
-    sources, stages, agents, leads,
+    view,
+    sourceFilter,
+    stageFilter,
+    agentFilter,
+    valueFilter,
+    periodFilter,
+    syncedFilter,
+    staleOnly,
+    setSourceFilter,
+    setStageFilter,
+    setAgentFilter,
+    setValueFilter,
+    setPeriodFilter,
+    setSyncedFilter,
+    setStaleOnly,
+    sources,
+    stages,
+    agents,
+    leads,
   } = props;
 
   const [open, setOpen] = useState<string | null>(null);
@@ -1842,8 +2685,10 @@ function LeadFilterBar(props: LeadFilterBarProps) {
 
   const periodCount = (k: LeadFilterBarProps["periodFilter"]) => {
     if (k === "all") return leads.length;
-    const ms = ({ today: 24, "7d": 24 * 7, "30d": 24 * 30, "90d": 24 * 90 } as const)[k] * 3600 * 1000;
-    return leads.filter((l) => l.createdAt && Date.now() - new Date(l.createdAt).getTime() <= ms).length;
+    const ms =
+      ({ today: 24, "7d": 24 * 7, "30d": 24 * 30, "90d": 24 * 90 } as const)[k] * 3600 * 1000;
+    return leads.filter((l) => l.createdAt && Date.now() - new Date(l.createdAt).getTime() <= ms)
+      .length;
   };
 
   // Track whether any filter is active so we know to show "Limpiar".
@@ -1867,7 +2712,7 @@ function LeadFilterBar(props: LeadFilterBarProps) {
   };
 
   const chipColor = (_active: boolean, c: string) =>
-    ({ ["--lc" as string]: c } as React.CSSProperties);
+    ({ ["--lc" as string]: c }) as React.CSSProperties;
 
   return (
     <div ref={barRef} className="lead-filters">
@@ -1880,7 +2725,13 @@ function LeadFilterBar(props: LeadFilterBarProps) {
           onClick={() => setOpen(open === "period" ? null : "period")}
         >
           <Icon.Calendar />
-          {periodFilter === "all" ? "Periodo" : <>Periodo · <b>{PERIOD_LABEL[periodFilter]}</b></>}
+          {periodFilter === "all" ? (
+            "Periodo"
+          ) : (
+            <>
+              Periodo · <b>{PERIOD_LABEL[periodFilter]}</b>
+            </>
+          )}
           <span className="lead-fchip-caret">▾</span>
         </button>
         {open === "period" && (
@@ -1890,7 +2741,10 @@ function LeadFilterBar(props: LeadFilterBarProps) {
                 key={k}
                 type="button"
                 className={`lead-fpop__item ${periodFilter === k ? "lead-fpop__item--active" : ""}`}
-                onClick={() => { setPeriodFilter(k); setOpen(null); }}
+                onClick={() => {
+                  setPeriodFilter(k);
+                  setOpen(null);
+                }}
               >
                 {PERIOD_LABEL[k]}
                 <span className="lead-fpop__item-count">{periodCount(k)}</span>
@@ -1910,9 +2764,13 @@ function LeadFilterBar(props: LeadFilterBarProps) {
             onClick={() => setOpen(open === "source" ? null : "source")}
           >
             <Icon.Megaphone />
-            {sourceFilter === "all"
-              ? "Fuente"
-              : <>Fuente · <b>{SOURCE_LABEL[sourceFilter] || sourceFilter}</b></>}
+            {sourceFilter === "all" ? (
+              "Fuente"
+            ) : (
+              <>
+                Fuente · <b>{SOURCE_LABEL[sourceFilter] || sourceFilter}</b>
+              </>
+            )}
             <span className="lead-fchip-caret">▾</span>
           </button>
           {open === "source" && (
@@ -1920,7 +2778,10 @@ function LeadFilterBar(props: LeadFilterBarProps) {
               <button
                 type="button"
                 className={`lead-fpop__item ${sourceFilter === "all" ? "lead-fpop__item--active" : ""}`}
-                onClick={() => { setSourceFilter("all"); setOpen(null); }}
+                onClick={() => {
+                  setSourceFilter("all");
+                  setOpen(null);
+                }}
               >
                 Todas
                 <span className="lead-fpop__item-count">{leads.length}</span>
@@ -1930,7 +2791,10 @@ function LeadFilterBar(props: LeadFilterBarProps) {
                   key={s}
                   type="button"
                   className={`lead-fpop__item ${sourceFilter === s ? "lead-fpop__item--active" : ""}`}
-                  onClick={() => { setSourceFilter(s); setOpen(null); }}
+                  onClick={() => {
+                    setSourceFilter(s);
+                    setOpen(null);
+                  }}
                 >
                   {SOURCE_LABEL[s] || s}
                   <span className="lead-fpop__item-count">{sourceCounts.get(s) || 0}</span>
@@ -1951,9 +2815,13 @@ function LeadFilterBar(props: LeadFilterBarProps) {
             onClick={() => setOpen(open === "stage" ? null : "stage")}
           >
             <Icon.Workflow />
-            {stageFilter === "all"
-              ? "Etapa"
-              : <>Etapa · <b>{stages.find((s) => s.id === stageFilter)?.label || stageFilter}</b></>}
+            {stageFilter === "all" ? (
+              "Etapa"
+            ) : (
+              <>
+                Etapa · <b>{stages.find((s) => s.id === stageFilter)?.label || stageFilter}</b>
+              </>
+            )}
             <span className="lead-fchip-caret">▾</span>
           </button>
           {open === "stage" && (
@@ -1961,7 +2829,10 @@ function LeadFilterBar(props: LeadFilterBarProps) {
               <button
                 type="button"
                 className={`lead-fpop__item ${stageFilter === "all" ? "lead-fpop__item--active" : ""}`}
-                onClick={() => { setStageFilter("all"); setOpen(null); }}
+                onClick={() => {
+                  setStageFilter("all");
+                  setOpen(null);
+                }}
               >
                 Todas
                 <span className="lead-fpop__item-count">{leads.length}</span>
@@ -1971,7 +2842,10 @@ function LeadFilterBar(props: LeadFilterBarProps) {
                   key={s.id}
                   type="button"
                   className={`lead-fpop__item ${stageFilter === s.id ? "lead-fpop__item--active" : ""}`}
-                  onClick={() => { setStageFilter(s.id); setOpen(null); }}
+                  onClick={() => {
+                    setStageFilter(s.id);
+                    setOpen(null);
+                  }}
                 >
                   {s.label}
                   <span className="lead-fpop__item-count">{stageCounts.get(s.id) || 0}</span>
@@ -1992,7 +2866,13 @@ function LeadFilterBar(props: LeadFilterBarProps) {
             onClick={() => setOpen(open === "agent" ? null : "agent")}
           >
             <Icon.User />
-            {agentFilter === "all" ? "Agente" : <>Agente · <b>{agentFilter}</b></>}
+            {agentFilter === "all" ? (
+              "Agente"
+            ) : (
+              <>
+                Agente · <b>{agentFilter}</b>
+              </>
+            )}
             <span className="lead-fchip-caret">▾</span>
           </button>
           {open === "agent" && (
@@ -2000,7 +2880,10 @@ function LeadFilterBar(props: LeadFilterBarProps) {
               <button
                 type="button"
                 className={`lead-fpop__item ${agentFilter === "all" ? "lead-fpop__item--active" : ""}`}
-                onClick={() => { setAgentFilter("all"); setOpen(null); }}
+                onClick={() => {
+                  setAgentFilter("all");
+                  setOpen(null);
+                }}
               >
                 Todos
                 <span className="lead-fpop__item-count">{leads.length}</span>
@@ -2010,7 +2893,10 @@ function LeadFilterBar(props: LeadFilterBarProps) {
                   key={a}
                   type="button"
                   className={`lead-fpop__item ${agentFilter === a ? "lead-fpop__item--active" : ""}`}
-                  onClick={() => { setAgentFilter(a); setOpen(null); }}
+                  onClick={() => {
+                    setAgentFilter(a);
+                    setOpen(null);
+                  }}
                 >
                   {a}
                   <span className="lead-fpop__item-count">{agentCounts.get(a) || 0}</span>
@@ -2030,7 +2916,13 @@ function LeadFilterBar(props: LeadFilterBarProps) {
           onClick={() => setOpen(open === "value" ? null : "value")}
         >
           <Icon.Chart />
-          {valueFilter === "all" ? "Valor" : <>Valor · <b>{VALUE_LABEL[valueFilter]}</b></>}
+          {valueFilter === "all" ? (
+            "Valor"
+          ) : (
+            <>
+              Valor · <b>{VALUE_LABEL[valueFilter]}</b>
+            </>
+          )}
           <span className="lead-fchip-caret">▾</span>
         </button>
         {open === "value" && (
@@ -2040,7 +2932,10 @@ function LeadFilterBar(props: LeadFilterBarProps) {
                 key={k}
                 type="button"
                 className={`lead-fpop__item ${valueFilter === k ? "lead-fpop__item--active" : ""}`}
-                onClick={() => { setValueFilter(k); setOpen(null); }}
+                onClick={() => {
+                  setValueFilter(k);
+                  setOpen(null);
+                }}
               >
                 {VALUE_LABEL[k]}
               </button>
@@ -2058,7 +2953,13 @@ function LeadFilterBar(props: LeadFilterBarProps) {
           onClick={() => setOpen(open === "synced" ? null : "synced")}
         >
           <Icon.Cloud />
-          {syncedFilter === "all" ? "Salesforce" : <>SF · <b>{SYNCED_LABEL[syncedFilter]}</b></>}
+          {syncedFilter === "all" ? (
+            "Salesforce"
+          ) : (
+            <>
+              SF · <b>{SYNCED_LABEL[syncedFilter]}</b>
+            </>
+          )}
           <span className="lead-fchip-caret">▾</span>
         </button>
         {open === "synced" && (
@@ -2068,7 +2969,10 @@ function LeadFilterBar(props: LeadFilterBarProps) {
                 key={k}
                 type="button"
                 className={`lead-fpop__item ${syncedFilter === k ? "lead-fpop__item--active" : ""}`}
-                onClick={() => { setSyncedFilter(k); setOpen(null); }}
+                onClick={() => {
+                  setSyncedFilter(k);
+                  setOpen(null);
+                }}
               >
                 {SYNCED_LABEL[k]}
               </button>
