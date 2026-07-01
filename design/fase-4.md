@@ -79,14 +79,19 @@ El FlowBuilder (Pilar 8) ya tiene nodo `list`; falta nodo `carousel`.
   inbox (`manage-conversations` acción `sendListInteractive`) + cablear el nodo `list` del bot-runtime
   al envío real. La elección vuelve como `interactive.list_reply` al whatsapp-meta-webhook.
 
-**F4.2b — CAROUSEL template (REQUIERE aprobación Meta):**
+**F4.2b — CAROUSEL template — ✅ BACKEND HECHO + TESTEADO:**
 
-- `waTemplateComponents.ts`: aceptar `cards:[{headerHandle?, headerFormat?, bodyText, footerText?, buttons}]`
-  → componente `{type:"CAROUSEL", cards:[…]}` (validar: card con body; no mezclar con HEADER/BODY raíz).
-- `create/update/list-whatsapp-template`: pasar/extraer `cards`. Media de header ya la sube
-  `upload-whatsapp-template-media` (→ `headerHandle`).
-- UI del composer de templates: editor de cards. Campaña/dialer: sin cambios (mandan template genérico).
-- **Gotcha:** el template queda PENDING hasta que Meta aprueba (48-72h) → la UI avisa "en revisión".
+- `waTemplateComponents.ts`: `CarouselCardIn` + `cards` en `BuildInput`; construye
+  `{type:"CAROUSEL", cards:[{components:[HEADER(IMAGE), BODY, BUTTONS]}]}`. `buildButtons`/`countVars`
+  extraídos y reusados por-tarjeta. Valida 2-10 tarjetas + body por tarjeta; **salta el header raíz**
+  (los headers van por-tarjeta). 3 tests (`shared-wa-carousel.test.ts`) fijan la estructura Meta exacta.
+- `create-whatsapp-template` acepta `cards`; `list-whatsapp-templates` extrae `cards` (body/header/
+  botones por tarjeta). Los 3 Lambdas (create/update/list) re-desplegados. El sender/dialer no cambian
+  (mandan el template genérico ya aprobado).
+- **Sigue (para el envío real):** el UI composer con editor de tarjetas + picker de imagen (usa
+  `upload-whatsapp-template-media` → `headerHandle`), y **mandar el template a aprobación de Meta**
+  (queda PENDING 48-72h). El builder ya produce el payload correcto (probado); falta la UI + subir las
+  imágenes de sample.
 
 ---
 

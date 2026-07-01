@@ -5,7 +5,11 @@ import {
   ListLinkedWhatsAppBusinessAccountsCommand,
 } from "@aws-sdk/client-socialmessaging";
 import { resolveWhatsAppWaba } from "../_shared/tenantConnect";
-import { buildTemplateComponents, type ButtonIn } from "../_shared/waTemplateComponents";
+import {
+  buildTemplateComponents,
+  type ButtonIn,
+  type CarouselCardIn,
+} from "../_shared/waTemplateComponents";
 
 /**
  * create-whatsapp-template — crea una plantilla en la WABA del TENANT y la envía
@@ -40,11 +44,15 @@ export const handler: Handler = async (event: any) => {
 
   const name = String(body.name || "").trim();
   const language = String(body.language || "es").trim();
-  const category = String(body.category || "UTILITY").trim().toUpperCase();
+  const category = String(body.category || "UTILITY")
+    .trim()
+    .toUpperCase();
 
   // El nombre es obligatorio y con el formato que exige Meta.
   if (!/^[a-z0-9_]+$/.test(name)) {
-    return resp(400, { error: "El nombre debe ser minúsculas, números y guiones bajos (ej. confirmacion_cita)." });
+    return resp(400, {
+      error: "El nombre debe ser minúsculas, números y guiones bajos (ej. confirmacion_cita).",
+    });
   }
 
   // Validar + construir los components (incl. rama AUTHENTICATION) en un solo lugar.
@@ -56,10 +64,14 @@ export const handler: Handler = async (event: any) => {
     headerHandle: body.headerHandle ? String(body.headerHandle) : "",
     footerText: body.footerText ? String(body.footerText) : "",
     buttons: Array.isArray(body.buttons) ? (body.buttons as ButtonIn[]) : [],
-    variableExamples: Array.isArray(body.variableExamples) ? (body.variableExamples as unknown[]).map(String) : [],
+    variableExamples: Array.isArray(body.variableExamples)
+      ? (body.variableExamples as unknown[]).map(String)
+      : [],
     addSecurityRecommendation: !!body.addSecurityRecommendation,
     codeExpirationMinutes: Number(body.codeExpirationMinutes || 0),
     otpButtonText: body.otpButtonText ? String(body.otpButtonText) : "",
+    // Fase 4 · F4.2b — carousel (2-10 tarjetas).
+    cards: Array.isArray(body.cards) ? (body.cards as CarouselCardIn[]) : [],
   });
   if (!built.ok) return resp(400, { error: built.error });
 
@@ -67,11 +79,12 @@ export const handler: Handler = async (event: any) => {
   const { client, wabaId: WABA_ID } = await resolveWhatsAppWaba(
     event?.headers,
     legacyClient,
-    LEGACY_WABA_ID
+    LEGACY_WABA_ID,
   );
   if (!WABA_ID) {
     return resp(400, {
-      error: "WhatsApp no está configurado para esta organización. Cargá tu WABA en Configuración → Integraciones.",
+      error:
+        "WhatsApp no está configurado para esta organización. Cargá tu WABA en Configuración → Integraciones.",
     });
   }
   // El WABA guardado puede ser el ID crudo de Meta; la API de AWS espera el ID
@@ -82,7 +95,7 @@ export const handler: Handler = async (event: any) => {
       const linked = await client.send(new ListLinkedWhatsAppBusinessAccountsCommand({}));
       const match = (linked.linkedAccounts || []).find(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (a: any) => a.wabaId === WABA_ID || a.id === WABA_ID
+        (a: any) => a.wabaId === WABA_ID || a.id === WABA_ID,
       );
       if (match?.id) wabaForApi = match.id;
       else if (match?.arn) wabaForApi = match.arn;
@@ -98,7 +111,7 @@ export const handler: Handler = async (event: any) => {
       new CreateWhatsAppMessageTemplateCommand({
         id: wabaForApi,
         templateDefinition: new TextEncoder().encode(JSON.stringify(definition)),
-      })
+      }),
     );
     return resp(200, {
       ok: true,

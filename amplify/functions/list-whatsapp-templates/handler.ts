@@ -48,6 +48,8 @@ interface TemplateBrief {
   headerFormat?: string;
   footerText?: string;
   buttons?: TemplateButton[];
+  /** Fase 4 · F4.2b — tarjetas del carousel (si es un template CAROUSEL). */
+  cards?: { bodyText?: string; headerFormat?: string; buttons?: TemplateButton[] }[];
 }
 
 function extractBody(definition: unknown): {
@@ -57,6 +59,7 @@ function extractBody(definition: unknown): {
   headerFormat?: string;
   footerText?: string;
   buttons?: TemplateButton[];
+  cards?: { bodyText?: string; headerFormat?: string; buttons?: TemplateButton[] }[];
 } {
   if (!definition || typeof definition !== "object") {
     return { variableCount: 0 };
@@ -67,6 +70,19 @@ function extractBody(definition: unknown): {
   let headerFormat: string | undefined;
   let footerText: string | undefined;
   let buttons: TemplateButton[] | undefined;
+  let cards: { bodyText?: string; headerFormat?: string; buttons?: TemplateButton[] }[] | undefined;
+  const parseButtons = (arr: unknown): TemplateButton[] =>
+    (Array.isArray(arr) ? (arr as Array<Record<string, unknown>>) : []).map((b) => ({
+      type: String(b.type || ""),
+      text: String(b.text || ""),
+      url: typeof b.url === "string" ? b.url : undefined,
+      phoneNumber:
+        typeof b.phone_number === "string"
+          ? b.phone_number
+          : typeof b.phoneNumber === "string"
+            ? b.phoneNumber
+            : undefined,
+    }));
   for (const c of def.components || []) {
     const t = String(c.type || "").toUpperCase();
     const txt = typeof c.text === "string" ? c.text : undefined;
@@ -76,18 +92,21 @@ function extractBody(definition: unknown): {
       headerFormat = typeof c.format === "string" ? c.format : undefined;
     }
     if (t === "FOOTER") footerText = txt;
-    if (t === "BUTTONS" && Array.isArray(c.buttons)) {
-      buttons = (c.buttons as Array<Record<string, unknown>>).map((b) => ({
-        type: String(b.type || ""),
-        text: String(b.text || ""),
-        url: typeof b.url === "string" ? b.url : undefined,
-        phoneNumber:
-          typeof b.phone_number === "string"
-            ? b.phone_number
-            : typeof b.phoneNumber === "string"
-            ? b.phoneNumber
-            : undefined,
-      }));
+    if (t === "BUTTONS" && Array.isArray(c.buttons)) buttons = parseButtons(c.buttons);
+    // Fase 4 · F4.2b — carousel: extraer body/header/botones de cada tarjeta.
+    if (t === "CAROUSEL" && Array.isArray(c.cards)) {
+      cards = (c.cards as Array<{ components?: Array<Record<string, unknown>> }>).map((card) => {
+        let cb: string | undefined;
+        let cf: string | undefined;
+        let cbtn: TemplateButton[] | undefined;
+        for (const cc of card.components || []) {
+          const ct = String(cc.type || "").toUpperCase();
+          if (ct === "BODY") cb = typeof cc.text === "string" ? cc.text : undefined;
+          if (ct === "HEADER") cf = typeof cc.format === "string" ? cc.format : undefined;
+          if (ct === "BUTTONS") cbtn = parseButtons(cc.buttons);
+        }
+        return { bodyText: cb, headerFormat: cf, buttons: cbtn };
+      });
     }
   }
   // Count {{N}} placeholders in the body — that's how many CSV cols
@@ -95,10 +114,10 @@ function extractBody(definition: unknown): {
   const variableCount = bodyText
     ? Array.from(bodyText.matchAll(/\{\{\s*(\d+)\s*\}\}/g)).reduce(
         (max, m) => Math.max(max, Number(m[1] || 0)),
-        0
+        0,
       )
     : 0;
-  return { bodyText, variableCount, headerText, headerFormat, footerText, buttons };
+  return { bodyText, variableCount, headerText, headerFormat, footerText, buttons, cards };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -116,7 +135,7 @@ export const handler: Handler = async (event: any) => {
   const { client, wabaId: WABA_ID } = await resolveWhatsAppWaba(
     event?.headers,
     legacyClient,
-    LEGACY_WABA_ID
+    LEGACY_WABA_ID,
   );
   if (!WABA_ID) {
     // Tenant real sin WABA cargada → no mostramos plantillas ajenas.
@@ -137,12 +156,10 @@ export const handler: Handler = async (event: any) => {
   let wabaForApi = WABA_ID;
   if (!/^waba-/.test(WABA_ID) && !/^arn:/.test(WABA_ID)) {
     try {
-      const linked = await client.send(
-        new ListLinkedWhatsAppBusinessAccountsCommand({})
-      );
+      const linked = await client.send(new ListLinkedWhatsAppBusinessAccountsCommand({}));
       const match = (linked.linkedAccounts || []).find(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (a: any) => a.wabaId === WABA_ID || a.id === WABA_ID
+        (a: any) => a.wabaId === WABA_ID || a.id === WABA_ID,
       );
       if (match?.id) wabaForApi = match.id;
       else if (match?.arn) wabaForApi = match.arn;
@@ -152,9 +169,7 @@ export const handler: Handler = async (event: any) => {
   }
 
   try {
-    const res = await client.send(
-      new ListWhatsAppMessageTemplatesCommand({ id: wabaForApi })
-    );
+    const res = await client.send(new ListWhatsAppMessageTemplatesCommand({ id: wabaForApi }));
 
     // For each template, fetch full definition so we get body + vars.
     // The list response only returns the metadata, not the components.
@@ -167,7 +182,7 @@ export const handler: Handler = async (event: any) => {
           new GetWhatsAppMessageTemplateCommand({
             id: wabaForApi,
             metaTemplateId: t.metaTemplateId,
-          })
+          }),
         );
         // The Lambda runtime gives us templateDefinition as Uint8Array;
         // decode it to JSON for the body / variable inspection.

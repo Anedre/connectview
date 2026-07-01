@@ -42,6 +42,19 @@ export interface BuildInput {
   addSecurityRecommendation?: boolean;
   codeExpirationMinutes?: number;
   otpButtonText?: string;
+  /** Fase 4 · F4.2b — tarjetas de carousel (2-10, misma estructura). */
+  cards?: CarouselCardIn[];
+}
+
+/** Una tarjeta del carousel: header multimedia + body + botones (Fase 4 · F4.2b). */
+export interface CarouselCardIn {
+  /** sample de imagen/video que da upload-whatsapp-template-media. */
+  headerHandle?: string;
+  /** IMAGE (default) · VIDEO. */
+  headerFormat?: string;
+  bodyText?: string;
+  bodyExamples?: string[];
+  buttons?: ButtonIn[];
 }
 
 const MEDIA_FORMATS = ["IMAGE", "VIDEO", "DOCUMENT"];
@@ -50,6 +63,43 @@ const MEDIA_FORMATS = ["IMAGE", "VIDEO", "DOCUMENT"];
 export type BuildResult = { ok: true; components: any[] } | { ok: false; error: string };
 
 const HAS_VAR = /\{\{\s*\d+\s*\}\}/;
+
+/** Cuenta cuántas variables {{n}} tiene un texto (el mayor índice). */
+function countVars(text: string): number {
+  return Array.from(text.matchAll(/\{\{\s*(\d+)\s*\}\}/g)).reduce(
+    (m, x) => Math.max(m, Number(x[1] || 0)),
+    0,
+  );
+}
+
+/** Arma el array de botones en formato Meta. Reusable (root + cada card del carousel). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildButtons(buttons: ButtonIn[]): any[] {
+  return buttons.map((b) => {
+    const t = (b.type || "").toUpperCase();
+    if (t === "URL") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const btn: any = { type: "URL", text: b.text, url: b.url };
+      if (HAS_VAR.test(b.url || "") && b.example) btn.example = [b.example];
+      return btn;
+    }
+    if (t === "PHONE_NUMBER")
+      return { type: "PHONE_NUMBER", text: b.text, phone_number: b.phoneNumber };
+    if (t === "COPY_CODE") return { type: "COPY_CODE", example: b.example || "" };
+    if (t === "FLOW") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fb: any = { type: "FLOW", text: b.text, flow_id: b.flowId };
+      if (b.navigateScreen) {
+        fb.flow_action = "navigate";
+        fb.navigate_screen = b.navigateScreen;
+      } else {
+        fb.flow_action = "data_exchange";
+      }
+      return fb;
+    }
+    return { type: "QUICK_REPLY", text: b.text };
+  });
+}
 
 export function buildTemplateComponents(i: BuildInput): BuildResult {
   const category = (i.category || "").toUpperCase();
@@ -65,7 +115,10 @@ export function buildTemplateComponents(i: BuildInput): BuildResult {
     ];
     const exp = Number(i.codeExpirationMinutes || 0);
     if (exp > 0) {
-      components.push({ type: "FOOTER", code_expiration_minutes: Math.min(90, Math.max(1, Math.round(exp))) });
+      components.push({
+        type: "FOOTER",
+        code_expiration_minutes: Math.min(90, Math.max(1, Math.round(exp))),
+      });
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const otp: any = { type: "OTP", otp_type: "COPY_CODE" };
@@ -82,7 +135,7 @@ export function buildTemplateComponents(i: BuildInput): BuildResult {
   }
   const varCount = Array.from(bodyText.matchAll(/\{\{\s*(\d+)\s*\}\}/g)).reduce(
     (m, x) => Math.max(m, Number(x[1] || 0)),
-    0
+    0,
   );
   const examples = (i.variableExamples || []).map((v) => String(v));
   if (varCount > 0 && examples.filter((v) => v.trim()).length < varCount) {
@@ -95,14 +148,21 @@ export function buildTemplateComponents(i: BuildInput): BuildResult {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const components: any[] = [];
   const headerFormat = (i.headerFormat || "TEXT").toUpperCase();
-  if (MEDIA_FORMATS.includes(headerFormat)) {
-    // Encabezado multimedia: el sample va como header_handle (lo da upload-whatsapp-template-media).
-    if (i.headerHandle) {
-      components.push({ type: "HEADER", format: headerFormat, example: { header_handle: [i.headerHandle] } });
+  // Un carousel NO lleva header raíz (los headers van por-tarjeta) → lo saltamos.
+  if (!(i.cards && i.cards.length)) {
+    if (MEDIA_FORMATS.includes(headerFormat)) {
+      // Encabezado multimedia: el sample va como header_handle (lo da upload-whatsapp-template-media).
+      if (i.headerHandle) {
+        components.push({
+          type: "HEADER",
+          format: headerFormat,
+          example: { header_handle: [i.headerHandle] },
+        });
+      }
+    } else {
+      const headerText = (i.headerText || "").trim();
+      if (headerText) components.push({ type: "HEADER", format: "TEXT", text: headerText });
     }
-  } else {
-    const headerText = (i.headerText || "").trim();
-    if (headerText) components.push({ type: "HEADER", format: "TEXT", text: headerText });
   }
 
   const bodyComp: Record<string, unknown> = { type: "BODY", text: bodyText };
@@ -114,33 +174,40 @@ export function buildTemplateComponents(i: BuildInput): BuildResult {
 
   const buttons = i.buttons || [];
   if (buttons.length) {
+    components.push({ type: "BUTTONS", buttons: buildButtons(buttons) });
+  }
+
+  // ── CAROUSEL (Fase 4 · F4.2b) — 2-10 tarjetas con la MISMA estructura. El BODY
+  // raíz (arriba) es el texto de la burbuja; cada tarjeta trae su header multimedia
+  // + body + botones. Meta rechaza si las tarjetas no son homogéneas. ──────────
+  const cards = i.cards || [];
+  if (cards.length) {
+    if (cards.length < 2 || cards.length > 10) {
+      return { ok: false, error: "Un carousel necesita entre 2 y 10 tarjetas." };
+    }
+    for (const c of cards) {
+      if (!(c.bodyText || "").trim()) {
+        return { ok: false, error: "Cada tarjeta del carousel necesita un cuerpo (body)." };
+      }
+    }
     components.push({
-      type: "BUTTONS",
-      buttons: buttons.map((b) => {
-        const t = (b.type || "").toUpperCase();
-        if (t === "URL") {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const btn: any = { type: "URL", text: b.text, url: b.url };
-          // URL dinámica: si la URL trae {{1}}, Meta exige un ejemplo completo.
-          if (HAS_VAR.test(b.url || "") && b.example) btn.example = [b.example];
-          return btn;
+      type: "CAROUSEL",
+      cards: cards.map((c) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const comps: any[] = [];
+        const fmt = (c.headerFormat || "IMAGE").toUpperCase();
+        if (c.headerHandle) {
+          comps.push({ type: "HEADER", format: fmt, example: { header_handle: [c.headerHandle] } });
         }
-        if (t === "PHONE_NUMBER") return { type: "PHONE_NUMBER", text: b.text, phone_number: b.phoneNumber };
-        if (t === "COPY_CODE") return { type: "COPY_CODE", example: b.example || "" };
-        if (t === "FLOW") {
-          // Meta: flow_action "navigate" EXIGE navigate_screen; si no hay pantalla,
-          // usamos "data_exchange" (el flow decide el ruteo) para que sea válido.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const fb: any = { type: "FLOW", text: b.text, flow_id: b.flowId };
-          if (b.navigateScreen) {
-            fb.flow_action = "navigate";
-            fb.navigate_screen = b.navigateScreen;
-          } else {
-            fb.flow_action = "data_exchange";
-          }
-          return fb;
+        const bt = (c.bodyText || "").trim();
+        const bc: Record<string, unknown> = { type: "BODY", text: bt };
+        const vc = countVars(bt);
+        if (vc > 0) bc.example = { body_text: [(c.bodyExamples || []).slice(0, vc)] };
+        comps.push(bc);
+        if (c.buttons && c.buttons.length) {
+          comps.push({ type: "BUTTONS", buttons: buildButtons(c.buttons) });
         }
-        return { type: "QUICK_REPLY", text: b.text };
+        return { components: comps };
       }),
     });
   }
