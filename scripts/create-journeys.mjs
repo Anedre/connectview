@@ -11,7 +11,7 @@
  * node scripts/create-journeys.mjs  (con el sandbox deshabilitado).
  */
 import { execSync } from "node:child_process";
-import { mkdtempSync, statSync } from "node:fs";
+import { mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -74,6 +74,25 @@ async function bundle(dir) {
     log(`   ✅ ${FN} (creado)`);
   }
   const fnArn = sh(`aws lambda get-function --function-name ${FN} --region ${REGION} --query Configuration.FunctionArn --output text`);
+
+  // 1b) Env (Fase 3C): el runner ahora ENVÍA de verdad. Copiamos la Function URL
+  //     del send-whatsapp-template + el secreto interno del automation-engine (así
+  //     no hardcodeamos el secreto acá) y fijamos FROM_EMAIL para el canal email.
+  //     El gate de supresión lo aplica send-whatsapp-template; SES ya está en el rol.
+  log("1b) Env del runner (SEND_WHATSAPP_TEMPLATE_URL + VOX_INTERNAL_SECRET + FROM_EMAIL)…");
+  const autoEnv = JSON.parse(
+    sh(`aws lambda get-function-configuration --function-name connectview-automation-engine --region ${REGION} --query "Environment.Variables" --output json`),
+  );
+  const runnerVars = {
+    SEND_WHATSAPP_TEMPLATE_URL: autoEnv.SEND_WHATSAPP_TEMPLATE_URL || "",
+    VOX_INTERNAL_SECRET: autoEnv.VOX_INTERNAL_SECRET || "",
+    FROM_EMAIL: "ARIA <notificaciones@novasys.com.pe>",
+  };
+  const envFile = join(mkdtempSync(join(tmpdir(), "jr-env-")), "env.json");
+  writeFileSync(envFile, JSON.stringify({ Variables: runnerVars }));
+  sh(`aws lambda update-function-configuration --function-name ${FN} --environment file://${envFile} --region ${REGION} --no-cli-pager`);
+  quiet(`aws lambda wait function-updated --function-name ${FN} --region ${REGION}`);
+  log(`   ✅ env fijado (WA url ${runnerVars.SEND_WHATSAPP_TEMPLATE_URL ? "ok" : "FALTA"})`);
 
   // 2) EventBridge rule rate(5 min) → journey-runner
   log("2) EventBridge rule connectview-journey-tick (rate 5 min)…");

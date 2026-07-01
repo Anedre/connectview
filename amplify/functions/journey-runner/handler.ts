@@ -3,30 +3,42 @@ import {
   DynamoDBClient,
   ScanCommand,
   GetItemCommand,
+  PutItemCommand,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
-import { planAdvance, type JourneyDef, type Enrollment } from "../_shared/journeys";
+import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
+import { planAdvance, entryNodeId, type JourneyDef, type Enrollment } from "../_shared/journeys";
+import { evaluateLeadFilter, type FilterRule } from "../_shared/leadFilter";
 import { appendLeadHistory, setActiveDynamo, stageIdToLabel } from "../_shared/leadSync";
 import { evaluateSend } from "../_shared/suppression";
 
 /**
- * journey-runner — el MOTOR de journeys (Fase 3 · 3A). EventBridge lo dispara
- * cada 5 min: toma los enrollments ACTIVOS cuyo `nextRunAt` venció, avanza cada
- * uno con `planAdvance` (lógica pura de _shared/journeys) y ejecuta los efectos
- * (mover etapa, webhook, enviar, encolar dialer) con los libs existentes; después
- * persiste el nuevo estado. Reentrante e idempotente.
+ * journey-runner — el MOTOR de journeys (Fase 3). EventBridge lo dispara cada
+ * 5 min y hace DOS pasadas:
+ *   1) AUTO-ENROLL (3C): inscribe leads que matchean la entrada de cada journey
+ *      activo (por segmento, o `new_lead` con marca de agua) — sin duplicar.
+ *   2) AVANCE (3A): toma los enrollments activos cuyo `nextRunAt` venció, avanza
+ *      cada uno con `planAdvance` (lógica pura) y ejecuta los efectos.
  *
- * v1 (3A-core): efectos moveStage + webhook REALES; send + enqueueDialer se
- * REGISTRAN en el history del enrollment (el wiring real de los senders/dialer =
- * 3A.2, reusa send-whatsapp-template + el dialer priorizado por score de 2B).
- * Procesa la tabla pooled (tenant demo). Multi-tenant con assume-role = follow-up.
+ * Efectos v2 (3C): moveStage + webhook + **send REAL** (WhatsApp por el
+ * send-whatsapp-template ya gateado por supresión; email por SES) + enqueueDialer
+ * (registrado). Reentrante e idempotente. Procesa la tabla pooled (tenant demo);
+ * multi-tenant con assume-role = follow-up.
  */
 const dynamo = new DynamoDBClient({});
+const ses = new SESv2Client({});
 const JOURNEYS_TABLE = process.env.JOURNEYS_TABLE || "connectview-journeys";
 const ENROLLMENTS_TABLE =
   process.env.JOURNEY_ENROLLMENTS_TABLE || "connectview-journey-enrollments";
 const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
+const SEGMENTS_TABLE = process.env.SEGMENTS_TABLE || "connectview-segments";
+const SEND_WA_URL = process.env.SEND_WHATSAPP_TEMPLATE_URL || "";
+const INTERNAL_SECRET = process.env.VOX_INTERNAL_SECRET || "";
+const FROM_EMAIL = process.env.FROM_EMAIL || "ARIA <notificaciones@novasys.com.pe>";
+const MAX_ENROLL_PER_JOURNEY = 200;
+
+type LeadRec = Record<string, unknown> & { leadId?: string; tenantId?: string };
 
 async function loadJourney(tenantId: string, journeyId: string): Promise<JourneyDef | null> {
   const r = await dynamo.send(
@@ -38,18 +50,168 @@ async function loadJourney(tenantId: string, journeyId: string): Promise<Journey
   return r.Item ? (unmarshall(r.Item) as JourneyDef) : null;
 }
 
-async function loadLead(leadId: string): Promise<Record<string, unknown> | null> {
+async function loadLead(leadId: string): Promise<LeadRec | null> {
   const r = await dynamo.send(
     new GetItemCommand({ TableName: LEADS_TABLE, Key: { leadId: { S: leadId } } }),
   );
-  return r.Item ? (unmarshall(r.Item) as Record<string, unknown>) : null;
+  return r.Item ? (unmarshall(r.Item) as LeadRec) : null;
 }
 
-/** Ejecuta un efecto. moveStage/webhook reales; send/enqueueDialer registrados. */
+// ── PASADA 1: auto-enroll ────────────────────────────────────────────────────
+
+/** Journeys activos (scan de la tabla pooled). */
+async function scanActiveJourneys(): Promise<JourneyDef[]> {
+  const out: JourneyDef[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const res = await dynamo.send(
+      new ScanCommand({
+        TableName: JOURNEYS_TABLE,
+        FilterExpression: "#st = :active",
+        ExpressionAttributeNames: { "#st": "status" },
+        ExpressionAttributeValues: { ":active": { S: "active" } },
+        ExclusiveStartKey: lastKey as never,
+      }),
+    );
+    for (const it of res.Items || []) out.push(unmarshall(it) as JourneyDef);
+    lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+  return out;
+}
+
+/** Todos los leads (tabla pooled) — igual que el scanAll de manage-leads. */
+async function scanLeads(): Promise<LeadRec[]> {
+  const out: LeadRec[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const res = await dynamo.send(
+      new ScanCommand({ TableName: LEADS_TABLE, ExclusiveStartKey: lastKey as never }),
+    );
+    for (const it of res.Items || []) out.push(unmarshall(it) as LeadRec);
+    lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+  return out;
+}
+
+async function loadSegmentRules(
+  tenantId: string,
+  segmentId: string,
+): Promise<{ rules: FilterRule[]; match: "all" | "any" } | null> {
+  const r = await dynamo.send(
+    new GetItemCommand({
+      TableName: SEGMENTS_TABLE,
+      Key: { tenantId: { S: tenantId }, segmentId: { S: segmentId } },
+    }),
+  );
+  if (!r.Item) return null;
+  const seg = unmarshall(r.Item) as { rules?: FilterRule[]; match?: "all" | "any" };
+  return { rules: seg.rules || [], match: seg.match === "any" ? "any" : "all" };
+}
+
+async function enrollmentFor(
+  journeyId: string,
+  leadId: string,
+): Promise<{ status?: string } | null> {
+  const r = await dynamo.send(
+    new GetItemCommand({
+      TableName: ENROLLMENTS_TABLE,
+      Key: { journeyId: { S: journeyId }, leadId: { S: leadId } },
+    }),
+  );
+  return r.Item ? (unmarshall(r.Item) as { status?: string }) : null;
+}
+
+async function createEnrollment(j: JourneyDef, leadId: string, nowMs: number): Promise<void> {
+  const nowIso = new Date(nowMs).toISOString();
+  const enr: Enrollment & { tenantId?: string } = {
+    journeyId: j.journeyId,
+    leadId,
+    tenantId: j.tenantId,
+    currentNodeId: entryNodeId(j) || "",
+    status: "active",
+    enteredAt: nowIso,
+    nextRunAt: nowIso, // listo para avanzar en el próximo tick que venza
+    history: [{ node: entryNodeId(j) || "", at: nowIso }],
+  };
+  await dynamo.send(
+    new PutItemCommand({
+      TableName: ENROLLMENTS_TABLE,
+      Item: marshall(enr, { removeUndefinedValues: true }),
+    }),
+  );
+}
+
+/**
+ * Auto-enroll: por cada journey activo con entrada por SEGMENTO o `new_lead`,
+ * inscribe los leads que matchean y no están ya inscritos. `new_lead` usa
+ * `lastEnrollAt` como marca de agua (solo leads creados después) para no
+ * inscribir todo el histórico. Cap por journey por tick.
+ */
+async function autoEnroll(nowMs: number): Promise<{ enrolled: number; journeys: number }> {
+  const journeys = await scanActiveJourneys();
+  const needsLeads = journeys.filter((j) => j.entry?.segmentId || j.entry?.trigger === "new_lead");
+  if (!needsLeads.length) return { enrolled: 0, journeys: 0 };
+
+  const leads = await scanLeads();
+  const nowIso = new Date(nowMs).toISOString();
+  let enrolled = 0;
+
+  for (const j of needsLeads) {
+    // Candidatos según la entrada.
+    let candidates: LeadRec[] = [];
+    if (j.entry?.segmentId) {
+      const seg = await loadSegmentRules(j.tenantId || "", j.entry.segmentId);
+      if (!seg) continue;
+      candidates = leads.filter((l) => evaluateLeadFilter(l, seg.rules, seg.match));
+    } else if (j.entry?.trigger === "new_lead") {
+      // Marca de agua: primera vez → solo fija el watermark (no inscribe histórico).
+      const watermark = String((j as { lastEnrollAt?: string }).lastEnrollAt || "");
+      if (watermark) {
+        candidates = leads.filter((l) => String(l.createdAt || "") > watermark);
+      }
+    }
+    // Respetar tenant si el lead lo trae (defensa multi-tenant; pooled demo no lo trae).
+    if (j.tenantId) {
+      candidates = candidates.filter((l) => !l.tenantId || l.tenantId === j.tenantId);
+    }
+
+    let count = 0;
+    for (const l of candidates) {
+      if (count >= MAX_ENROLL_PER_JOURNEY) break;
+      const leadId = String(l.leadId || "");
+      if (!leadId) continue;
+      const existing = await enrollmentFor(j.journeyId, leadId);
+      if (existing && (existing.status === "active" || !j.reenroll)) continue;
+      await createEnrollment(j, leadId, nowMs);
+      count++;
+      enrolled++;
+    }
+    if (count >= MAX_ENROLL_PER_JOURNEY) {
+      console.warn(
+        `[journey-runner] auto-enroll cap (${MAX_ENROLL_PER_JOURNEY}) en ${j.journeyId}`,
+      );
+    }
+    // Actualizar la marca de agua (para new_lead) y timestamp de última corrida.
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: JOURNEYS_TABLE,
+        Key: { tenantId: { S: j.tenantId || "" }, journeyId: { S: j.journeyId } },
+        UpdateExpression: "SET lastEnrollAt = :n",
+        ExpressionAttributeValues: { ":n": { S: nowIso } },
+      }),
+    );
+  }
+  return { enrolled, journeys: needsLeads.length };
+}
+
+// ── Efectos ──────────────────────────────────────────────────────────────────
+
+/** Ejecuta un efecto. moveStage/webhook/send reales; enqueueDialer registrado. */
 async function runEffect(
   effect: { type: string; action?: string; channel?: string; params: Record<string, unknown> },
   leadId: string,
-  lead: Record<string, unknown>,
+  lead: LeadRec,
+  tenantId: string,
 ): Promise<string> {
   if (effect.type === "action" && effect.action === "moveStage") {
     const stageId = String(effect.params.stageId || "");
@@ -90,22 +252,10 @@ async function runEffect(
   }
 
   if (effect.type === "send") {
-    // Gate de supresión (real) + registro. El envío real del template/email se
-    // cablea en 3A.2 (reusa send-whatsapp-template + el mailer). Aquí probamos que
-    // el journey NO le manda a un suprimido.
-    const phone = String(lead.phone || "");
-    const channel = effect.channel || "whatsapp";
-    try {
-      const v = await evaluateSend(dynamo, {
-        phone,
-        channel: channel === "email" ? "email" : "whatsapp",
-      });
-      return v.allowed
-        ? `send:${channel}:allowed(pending-wire)`
-        : `send:${channel}:suppressed:${v.blockedBy}`;
-    } catch {
-      return `send:${channel}:gate-error`;
-    }
+    const channel = effect.channel === "email" ? "email" : "whatsapp";
+    return channel === "email"
+      ? sendEmail(effect.params, lead)
+      : sendWhatsApp(effect.params, lead, tenantId);
   }
 
   if (effect.type === "action" && effect.action === "enqueueDialer") {
@@ -114,6 +264,84 @@ async function runEffect(
 
   return `${effect.type}:noop`;
 }
+
+/** WhatsApp REAL — reusa send-whatsapp-template (que ya aplica el gate de supresión). */
+async function sendWhatsApp(
+  params: Record<string, unknown>,
+  lead: LeadRec,
+  tenantId: string,
+): Promise<string> {
+  const phone = String(lead.phone || "");
+  if (!phone) return "send:whatsapp:sin-telefono";
+  const templateName = String(params.templateName || "");
+  if (!templateName) return "send:whatsapp:sin-plantilla";
+  if (!SEND_WA_URL) return "send:whatsapp:sin-url";
+  const variables = (Array.isArray(params.variables) ? params.variables : []).map((v) => String(v));
+  try {
+    const r = await fetch(SEND_WA_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-vox-internal": INTERNAL_SECRET },
+      body: JSON.stringify({
+        phone,
+        templateName,
+        language: String(params.language || "es"),
+        variables,
+        tenantId, // BYO: manda desde el número del cliente
+      }),
+    });
+    const body = (await r.json().catch(() => ({}))) as {
+      sent?: boolean;
+      suppressed?: boolean;
+      blockedBy?: string;
+      error?: string;
+    };
+    if (body.suppressed) return `send:whatsapp:suppressed:${body.blockedBy || "?"}`;
+    if (!r.ok || !body.sent) return `send:whatsapp:err:${body.error || `HTTP ${r.status}`}`;
+    return "send:whatsapp:sent";
+  } catch (e) {
+    return `send:whatsapp:err:${e instanceof Error ? e.message : e}`;
+  }
+}
+
+/** Email REAL por SES (gate de supresión channel-scoped por teléfono del lead). */
+async function sendEmail(params: Record<string, unknown>, lead: LeadRec): Promise<string> {
+  const to = String(lead.email || "");
+  if (!to) return "send:email:sin-email";
+  // Gate: si el lead optó por no recibir email (opt-out channel-scoped), no mandamos.
+  const phone = String(lead.phone || "");
+  if (phone) {
+    try {
+      const v = await evaluateSend(dynamo, { phone, channel: "email" });
+      if (!v.allowed) return `send:email:suppressed:${v.blockedBy}`;
+    } catch {
+      /* gate best-effort */
+    }
+  }
+  const subject = String(params.subject || "ARIA");
+  const bodyText = String(params.body || "");
+  try {
+    const res = await ses.send(
+      new SendEmailCommand({
+        FromEmailAddress: FROM_EMAIL,
+        Destination: { ToAddresses: [to] },
+        Content: {
+          Simple: {
+            Subject: { Data: subject, Charset: "UTF-8" },
+            Body: {
+              Text: { Data: bodyText, Charset: "UTF-8" },
+              Html: { Data: `<p>${bodyText.replace(/\n/g, "<br>")}</p>`, Charset: "UTF-8" },
+            },
+          },
+        },
+      }),
+    );
+    return `send:email:sent:${res.MessageId?.slice(0, 12) || "ok"}`;
+  } catch (e) {
+    return `send:email:err:${e instanceof Error ? e.message : e}`;
+  }
+}
+
+// ── PASADA 2: avance de enrollments vencidos ─────────────────────────────────
 
 async function processDueEnrollments(
   nowMs: number,
@@ -136,8 +364,6 @@ async function processDueEnrollments(
       processed++;
       const enr = unmarshall(it) as Enrollment & { tenantId?: string };
       try {
-        // El tenant vive en el journey; el enrollment guarda journeyId. Buscamos el
-        // journey escaneando por journeyId (v1 pooled) — o el enrollment trae tenantId.
         const tenantId = String(enr.tenantId || "");
         const journey = tenantId ? await loadJourney(tenantId, enr.journeyId) : null;
         if (!journey || journey.status !== "active") {
@@ -151,7 +377,7 @@ async function processDueEnrollments(
         const plan = planAdvance(journey, enr.currentNodeId, lead, nowMs);
         const notes: string[] = [];
         for (const eff of plan.effects) {
-          notes.push(await runEffect(eff, enr.leadId, lead));
+          notes.push(await runEffect(eff, enr.leadId, lead, tenantId));
         }
         await markEnrollment(
           enr,
@@ -197,9 +423,10 @@ async function markEnrollment(
 export const handler: Handler = async (event: any) => {
   // `event.nowMs` permite forzar el "ahora" en pruebas (avanzar esperas sin esperar).
   const nowMs = Number(event?.nowMs) || Date.now();
+  const enr = await autoEnroll(nowMs);
   const res = await processDueEnrollments(nowMs);
   console.log(
-    `[journey-runner] due=${res.processed} advanced=${res.advanced} @${new Date(nowMs).toISOString()}`,
+    `[journey-runner] enrolled=${enr.enrolled} (de ${enr.journeys} journeys) · due=${res.processed} advanced=${res.advanced} @${new Date(nowMs).toISOString()}`,
   );
-  return { statusCode: 200, body: JSON.stringify(res) };
+  return { statusCode: 200, body: JSON.stringify({ ...res, ...enr }) };
 };
