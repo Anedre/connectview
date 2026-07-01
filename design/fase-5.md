@@ -6,14 +6,14 @@
 
 ## Estado por ítem (2026-07-01)
 
-| Ítem     | Qué es                                      | Estado                                                                            |
-| -------- | ------------------------------------------- | --------------------------------------------------------------------------------- |
-| **F5.1** | Write-back de golpes (R4) a `Vox*__c` en SF | ✅ **código HECHO + desplegado** · live cuando el cliente cree los campos         |
-| **F5.2** | Deliverability WhatsApp real                | ✅ **código ya completo** (meta-mode) · live = conectar el número meta-standalone |
-| F5.3     | IG comments a nivel app                     | ❌ bloqueado (App Secret / App Review de Meta)                                    |
-| F5.4     | `agent-channel-adapter` en vivo             | ❌ bloqueado (flip `DRY_RUN=false` + número real)                                 |
-| F5.5     | Suite e2e Playwright                        | ⬜ pendiente (buildable; requiere resolver login Cognito)                         |
-| F5.6     | Hardening + runbook                         | ⬜ pendiente                                                                      |
+| Ítem     | Qué es                                      | Estado                                                                             |
+| -------- | ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **F5.1** | Write-back de golpes (R4) a `Vox*__c` en SF | ✅ **código HECHO + desplegado** · live cuando el cliente cree los campos          |
+| **F5.2** | Deliverability WhatsApp real                | ✅ **código ya completo** (meta-mode) · live = conectar el número meta-standalone  |
+| F5.3     | IG comments a nivel app                     | ✅ **código listo** (webhook maneja IG comments) · bloqueado en App Review de Meta |
+| F5.4     | `agent-channel-adapter` en vivo             | ✅ **YA ACTIVADO** (DRY_RUN=false + IAM + número configurado)                      |
+| F5.5     | Suite e2e Playwright                        | ⬜ pendiente (buildable; requiere resolver login Cognito)                          |
+| F5.6     | Hardening + runbook                         | ⬜ pendiente                                                                       |
 
 ---
 
@@ -78,8 +78,36 @@ disruptivo).
 
 ---
 
+---
+
+## F5.3 — Comentarios de Instagram a nivel app · ✅ código listo, falta App Review de Meta
+
+**El código YA maneja comentarios de IG.** `meta-messaging-webhook` (líneas 169-198) procesa
+`changes[]` con `field === "comments"` → `platform: "instagram"` → `appendComment` → entran al inbox
+como conversación `fb_comment` (responder público / pasar a privado). No hay nada que construir.
+
+**Bloqueado-cliente (activación en el panel de Meta):**
+
+1. En la **Meta App** → Webhooks → suscribir el objeto **`instagram`** con el campo **`comments`**
+   (hoy la Página tiene el override_callback_uri unificado; falta el objeto instagram).
+2. **App Review** del permiso **`instagram_manage_comments`** (Meta exige revisión para comentarios de
+   IG en producción). Con eso, los comentarios de IG del cliente empiezan a caer al inbox solos.
+
+## F5.4 — `agent-channel-adapter` en vivo · ✅ YA ACTIVADO
+
+Auditoría 2026-07-01: **ya está prendido.** El adapter (`connectview-agent-channel-adapter`) tiene
+`DRY_RUN=false`, `WHATSAPP_PHONE_NUMBER_ID=phone-number-id-720bc945…` configurado, y el rol
+`campaign-lambda-role` tiene la inline `WhatsAppSend` = `social-messaging:SendWhatsAppMessage` sobre ese
+mismo `phone-number-id`. ⇒ el agente IA responde por WhatsApp real cuando lo invoca un contact flow.
+Para **tenants BYO** (número propio, como UDEP) ni siquiera aplica el gate DRY_RUN: envían desde SU
+número apenas cargan su End User Messaging (`getTenantConnect`). No queda nada para F5.4.
+
+> Nota: no hicimos un envío real de prueba (guardrail de envíos externos); la verificación es de
+> configuración (env + IAM + número). Un smoke-test de envío requiere pedido explícito.
+
+---
+
 ## Sigue en Fase 5 (no en esta pasada)
 
 - **F5.5 — e2e Playwright:** resolver login Cognito (test user + storageState) + specs de flujos críticos.
 - **F5.6 — hardening + `DEMO_RUNBOOK.md`:** repaso IAM, rate limits, runbook al día, e2e en CI.
-- **F5.3 / F5.4:** bloqueados en credenciales/número del cliente.
