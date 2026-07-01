@@ -29,11 +29,11 @@ jobs:
         run: npm run build
 
   # Lint NO-bloqueante: hay deuda pre-existente (eslint . = ~97 errores en archivos
-  # viejos). husky ya exige que lo NUEVO pase (lint-staged). Este job surfacea la
-  # deuda sin frenar merges; se puede volver bloqueante cuando se queme.
+  # viejos). husky ya exige que lo NUEVO pase (lint-staged). El step de eslint es
+  # continue-on-error → el job queda verde y la deuda se ve en el log; se puede
+  # volver bloqueante cuando se queme.
   lint:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,7 +41,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Lint (eslint)
+      - name: Lint (eslint · no bloquea, deuda pre-existente)
+        continue-on-error: true
         run: npm run lint
 
   # e2e Playwright. El smoke (sin auth) corre siempre; el flujo autenticado solo si
