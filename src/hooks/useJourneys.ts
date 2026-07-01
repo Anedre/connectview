@@ -31,6 +31,15 @@ export interface Journey {
   edges: JourneyEdge[];
   goal?: { segmentId?: string; stageId?: string };
   updatedAt?: string;
+  /** Conteo de inscritos (lo agrega ?journeys=1 en 3C). */
+  stats?: { total: number; active: number; done: number };
+}
+/** Observabilidad detallada de un journey (embudo por nodo + timeline). */
+export interface JourneyStats {
+  total: number;
+  byStatus: Record<string, number>;
+  byNode: Record<string, number>;
+  recent: { leadId: string; node: string; at: string; note?: string }[];
 }
 export type { FilterRule };
 
@@ -108,5 +117,14 @@ export function useJourneys() {
     return r.json();
   }, []);
 
-  return { journeys, loading, error, reload: load, save, remove, enroll };
+  /** Observabilidad de un journey: embudo por nodo + estado + timeline (3C). */
+  const stats = useCallback(async (journeyId: string): Promise<JourneyStats | null> => {
+    const url = getApiEndpoints()?.manageLeads;
+    if (!url) return null;
+    const r = await authedFetch(`${url}?journeyStats=${encodeURIComponent(journeyId)}`);
+    const j = await r.json();
+    return (j?.stats as JourneyStats) || null;
+  }, []);
+
+  return { journeys, loading, error, reload: load, save, remove, enroll, stats };
 }

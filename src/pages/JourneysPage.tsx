@@ -276,6 +276,14 @@ export function JourneysPage() {
                       <span className="bot-card__chip">
                         {steps} {steps === 1 ? "paso" : "pasos"}
                       </span>
+                      {j.stats && j.stats.total > 0 && (
+                        <span
+                          className="bot-card__chip"
+                          title={`${j.stats.active} activos · ${j.stats.done} completados`}
+                        >
+                          {j.stats.total} inscrito{j.stats.total === 1 ? "" : "s"}
+                        </span>
+                      )}
                     </div>
                     <div className="bot-card__foot">
                       <span>

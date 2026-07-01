@@ -38,6 +38,59 @@ const SEGMENTS_TABLE = process.env.SEGMENTS_TABLE || "connectview-segments";
 const JOURNEYS_TABLE = process.env.JOURNEYS_TABLE || "connectview-journeys";
 const ENROLLMENTS_TABLE =
   process.env.JOURNEY_ENROLLMENTS_TABLE || "connectview-journey-enrollments";
+
+/**
+ * Observabilidad de un journey (Fase 3 · 3C): agrega los enrollments (PK=journeyId)
+ * → embudo por nodo (cuántos leads descansan en cada paso), corte por estado, y un
+ * timeline reciente. Query por journeyId (no scan).
+ */
+async function journeyStats(journeyId: string): Promise<{
+  total: number;
+  byStatus: Record<string, number>;
+  byNode: Record<string, number>;
+  recent: { leadId: string; node: string; at: string; note?: string }[];
+}> {
+  let total = 0;
+  const byStatus: Record<string, number> = {};
+  const byNode: Record<string, number> = {};
+  const recent: { leadId: string; node: string; at: string; note?: string }[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const r = await dynamo.send(
+      new QueryCommand({
+        TableName: ENROLLMENTS_TABLE,
+        KeyConditionExpression: "journeyId = :j",
+        ExpressionAttributeValues: { ":j": { S: journeyId } },
+        ExclusiveStartKey: lastKey as never,
+      }),
+    );
+    for (const it of r.Items || []) {
+      const e = unmarshall(it) as {
+        leadId?: string;
+        status?: string;
+        currentNodeId?: string;
+        history?: { node?: string; at?: string; note?: string }[];
+      };
+      total++;
+      const st = String(e.status || "active");
+      byStatus[st] = (byStatus[st] || 0) + 1;
+      const node = String(e.currentNodeId || "");
+      byNode[node] = (byNode[node] || 0) + 1;
+      const last = Array.isArray(e.history) ? e.history[e.history.length - 1] : undefined;
+      if (last)
+        recent.push({
+          leadId: String(e.leadId || ""),
+          node: String(last.node || node),
+          at: String(last.at || ""),
+          note: last.note,
+        });
+    }
+    lastKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+  recent.sort((a, b) => b.at.localeCompare(a.at));
+  return { total, byStatus, byNode, recent: recent.slice(0, 25) };
+}
+
 async function listSegments(tenantId: string): Promise<SegmentDef[]> {
   const r = await dynamo.send(
     new QueryCommand({
@@ -360,7 +413,11 @@ export const handler: Handler = async (event: any) => {
     if (method === "GET") {
       // Fase 2 · F2.3 — listar segmentos guardados (no escanea leads).
       if (params.segments === "1") return ok({ segments: await listSegments(tenantId) });
-      // Fase 3 — listar journeys del tenant.
+      // Fase 3 · 3C — observabilidad de un journey (embudo por nodo + timeline).
+      if (params.journeyStats) {
+        return ok({ stats: await journeyStats(String(params.journeyStats)) });
+      }
+      // Fase 3 — listar journeys del tenant (+ conteo de inscritos por journey, 3C).
       if (params.journeys === "1") {
         const r = await dynamo.send(
           new QueryCommand({
@@ -369,9 +426,18 @@ export const handler: Handler = async (event: any) => {
             ExpressionAttributeValues: { ":t": { S: tenantId } },
           }),
         );
-        const journeys = (r.Items || [])
+        const base = (r.Items || [])
           .map((i) => unmarshall(i) as JourneyDef)
           .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        const journeys = await Promise.all(
+          base.map(async (j) => {
+            const s = await journeyStats(j.journeyId);
+            return {
+              ...j,
+              stats: { total: s.total, active: s.byStatus.active || 0, done: s.byStatus.done || 0 },
+            };
+          }),
+        );
         return ok({ journeys });
       }
       const all = await scanAll();

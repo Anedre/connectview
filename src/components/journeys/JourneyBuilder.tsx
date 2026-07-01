@@ -34,9 +34,10 @@ import {
   AlertTriangle,
   X,
 } from "lucide-react";
-import type { Journey, JourneyNode, JourneyNodeKind } from "@/hooks/useJourneys";
+import type { Journey, JourneyNode, JourneyNodeKind, JourneyStats } from "@/hooks/useJourneys";
 import { useSegments, type FilterRule, type FilterOp } from "@/hooks/useSegments";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 
 /**
  * JourneyBuilder — el editor visual del motor de Journeys (Fase 3 · 3B). Lienzo
@@ -133,7 +134,7 @@ function summaryOf(kind: JourneyNodeKind, p: NodeParams): string {
 }
 
 // ── Nodo custom del lienzo ──────────────────────────────────────────────────
-type JData = { kind: JourneyNodeKind; params: NodeParams };
+type JData = { kind: JourneyNodeKind; params: NodeParams; count?: number };
 function JourneyFlowNodeImpl({ data, selected }: NodeProps) {
   const d = data as JData;
   const def = JOURNEY_KINDS[d.kind];
@@ -142,6 +143,7 @@ function JourneyFlowNodeImpl({ data, selected }: NodeProps) {
   const accent = def.accent;
   const branchy = def.outlets.length > 1 || Boolean(def.outlets[0]?.label);
   const single = def.outlets.length === 1 && !def.outlets[0].label ? def.outlets[0] : null;
+  const count = Number(d.count || 0); // leads que descansan en este nodo (embudo 3C)
 
   return (
     <div
@@ -187,6 +189,23 @@ function JourneyFlowNodeImpl({ data, selected }: NodeProps) {
           <Icon size={14} strokeWidth={2.2} />
         </span>
         <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--text-1)" }}>{def.label}</span>
+        {count > 0 && (
+          <span
+            title={`${count} lead${count === 1 ? "" : "s"} en este paso`}
+            style={{
+              marginLeft: "auto",
+              minWidth: 20,
+              padding: "1px 7px",
+              borderRadius: 999,
+              background: accent,
+              color: "#fff",
+              fontSize: 11,
+              fontWeight: 800,
+            }}
+          >
+            {count}
+          </span>
+        )}
       </div>
       <div
         style={{ padding: "0 11px 11px", fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.35 }}
@@ -389,6 +408,7 @@ function JourneyBuilderInner({
   const [reenroll, setReenroll] = useState(!!initial.reenroll);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showIssues, setShowIssues] = useState(false);
+  const [stats, setStats] = useState<JourneyStats | null>(null);
 
   // Recargar al cambiar de journey.
   useEffect(() => {
@@ -401,6 +421,29 @@ function JourneyBuilderInner({
     setSelectedId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial.journeyId]);
+
+  // Observabilidad (3C): trae el embudo del journey guardado y pinta el conteo
+  // de leads en cada nodo (data.count) + el timeline en el inspector.
+  useEffect(() => {
+    const url = getApiEndpoints()?.manageLeads;
+    if (!url || !initial.journeyId) {
+      setStats(null);
+      return;
+    }
+    authedFetch(`${url}?journeyStats=${encodeURIComponent(initial.journeyId)}`)
+      .then((r) => r.json())
+      .then((j) => setStats((j?.stats as JourneyStats) || null))
+      .catch(() => setStats(null));
+  }, [initial.journeyId]);
+
+  // Inyecta el conteo por nodo en data.count cuando llegan las stats.
+  useEffect(() => {
+    const byNode = stats?.byNode || {};
+    setNodes((nds) =>
+      nds.map((n) => ({ ...n, data: { ...(n.data as JData), count: byNode[n.id] || 0 } })),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stats]);
 
   const onConnect = useCallback(
     (c: Connection) => setEdges((eds) => addEdge({ ...c, ...edgeDefaults }, eds)),
@@ -545,6 +588,14 @@ function JourneyBuilderInner({
           </select>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          {stats && stats.total > 0 && (
+            <span
+              className="fb-chip"
+              title={`${stats.byStatus.active || 0} activos · ${stats.byStatus.done || 0} completados`}
+            >
+              {stats.total} inscrito{stats.total === 1 ? "" : "s"}
+            </span>
+          )}
           <button
             onClick={() => setShowIssues((s) => !s)}
             title="Validación del recorrido"
@@ -628,6 +679,7 @@ function JourneyBuilderInner({
           node={selectedNode}
           entry={entry}
           reenroll={reenroll}
+          stats={stats}
           onEntry={setEntry}
           onReenroll={setReenroll}
           onParams={updateNodeParams}
@@ -833,6 +885,7 @@ function JourneyInspector({
   node,
   entry,
   reenroll,
+  stats,
   onEntry,
   onReenroll,
   onParams,
@@ -841,6 +894,7 @@ function JourneyInspector({
   node: Node | null;
   entry: NonNullable<Journey["entry"]>;
   reenroll: boolean;
+  stats: JourneyStats | null;
   onEntry: (e: NonNullable<Journey["entry"]>) => void;
   onReenroll: (b: boolean) => void;
   onParams: (id: string, patch: NodeParams) => void;
@@ -872,6 +926,63 @@ function JourneyInspector({
           Seleccioná un paso del lienzo para editarlo. Empezá por la <strong>Entrada</strong> para
           definir cómo entran los leads.
         </div>
+        {stats && stats.total > 0 && (
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-1)", marginBottom: 8 }}>
+              Actividad · {stats.total} inscrito{stats.total === 1 ? "" : "s"}
+            </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              <span
+                className="fb-chip"
+                style={{ background: "var(--accent-green-soft)", color: "var(--accent-green)" }}
+              >
+                {stats.byStatus.active || 0} activos
+              </span>
+              <span className="fb-chip">{stats.byStatus.done || 0} completados</span>
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: "var(--text-3)",
+                textTransform: "uppercase",
+                letterSpacing: 0.4,
+                marginBottom: 6,
+              }}
+            >
+              Timeline reciente
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {stats.recent.slice(0, 12).map((r, i) => (
+                <div
+                  key={i}
+                  style={{
+                    fontSize: 11.5,
+                    color: "var(--text-2)",
+                    lineHeight: 1.4,
+                    borderLeft: "2px solid var(--border-2)",
+                    paddingLeft: 8,
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: "var(--text-1)" }}>
+                    {r.note || `en ${r.node}`}
+                  </div>
+                  <div style={{ color: "var(--text-3)" }}>
+                    {r.leadId.slice(0, 12)} ·{" "}
+                    {r.at
+                      ? new Date(r.at).toLocaleString("es-PE", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "—"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
