@@ -31,6 +31,9 @@ const DEFAULT_MATRIX: Record<string, string> = {
   monitor_agents: "Supervisors",
   view_reports: "Supervisors",
   view_live_queue: "Supervisors",
+  // R29 — Copilot desactivable por rol. "Agents" = abierto a todos (comportamiento
+  // actual); un admin puede subir el mínimo a Supervisors/Admins para restringirlo.
+  use_copilot: "Agents",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,7 +58,7 @@ export const handler: Handler = async (event: any) => {
   try {
     if (method === "GET") {
       const res = await dynamo.send(
-        new GetItemCommand({ TableName: TABLE, Key: { configId: { S: configId } } })
+        new GetItemCommand({ TableName: TABLE, Key: { configId: { S: configId } } }),
       );
       const stored = res.Item ? unmarshall(res.Item) : null;
       // Merge defaults so newly-added capabilities always have a value.
@@ -65,7 +68,11 @@ export const handler: Handler = async (event: any) => {
 
     if (method === "POST") {
       if (!identity.groups.includes("Admins")) {
-        return { statusCode: 403, headers: CORS, body: JSON.stringify({ error: "Solo administradores pueden editar permisos" }) };
+        return {
+          statusCode: 403,
+          headers: CORS,
+          body: JSON.stringify({ error: "Solo administradores pueden editar permisos" }),
+        };
       }
       const body = JSON.parse(event.body || "{}");
       const incoming = body.matrix && typeof body.matrix === "object" ? body.matrix : {};
@@ -78,15 +85,24 @@ export const handler: Handler = async (event: any) => {
         new PutItemCommand({
           TableName: TABLE,
           Item: marshall(
-            { configId, matrix, updatedAt: new Date().toISOString(), updatedBy: identity.email || identity.tenantId },
-            { removeUndefinedValues: true }
+            {
+              configId,
+              matrix,
+              updatedAt: new Date().toISOString(),
+              updatedBy: identity.email || identity.tenantId,
+            },
+            { removeUndefinedValues: true },
           ),
-        })
+        }),
       );
       return { statusCode: 200, headers: CORS, body: JSON.stringify({ matrix, saved: true }) };
     }
 
-    return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: "Method not allowed" }) };
+    return {
+      statusCode: 405,
+      headers: CORS,
+      body: JSON.stringify({ error: "Method not allowed" }),
+    };
   } catch (err) {
     console.error("manage-permissions error", err);
     return {

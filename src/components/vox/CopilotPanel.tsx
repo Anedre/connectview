@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Sparkles, X, Send, RotateCcw, Search, LayoutGrid } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { useCatalogs } from "@/hooks/useCatalogs";
+import { useCan } from "@/hooks/usePermissions";
 
 /**
  * CopilotPanel — the global "ARIA Copilot" assistant (Kommo-style floating
@@ -23,6 +24,14 @@ const SUGGESTIONS = [
 ];
 
 export function CopilotPanel() {
+  // R29 — Copilot "desactivable por rol": gate por la capability `use_copilot`.
+  // Default abierto (capability minRole "Agents" en el matrix) → comportamiento
+  // actual intacto; un admin puede subir el mínimo a Supervisores/Admins.
+  if (!useCan("use_copilot")) return null;
+  return <CopilotPanelInner />;
+}
+
+function CopilotPanelInner() {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<"chat" | "catalogos">("chat");
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -39,7 +48,11 @@ export function CopilotPanel() {
     const q = question.trim();
     if (!q || loading) return;
     if (!ep?.generateCallSummary) {
-      setMsgs((m) => [...m, { role: "user", text: q }, { role: "bot", text: "Copilot no está configurado." }]);
+      setMsgs((m) => [
+        ...m,
+        { role: "user", text: q },
+        { role: "bot", text: "Copilot no está configurado." },
+      ]);
       return;
     }
     const history = msgs.slice(-6);
@@ -157,16 +170,36 @@ export function CopilotPanel() {
       </div>
 
       {/* Tabs: Asistente (chat IA) / Catálogos (referencia viva, en toda ruta) */}
-      <div style={{ display: "flex", gap: 4, padding: "8px 12px", borderBottom: "1px solid var(--border-1)", flex: "0 0 auto" }}>
-        {([["chat", "Asistente", Sparkles], ["catalogos", "Catálogos", LayoutGrid]] as const).map(([v, label, Ic]) => {
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          padding: "8px 12px",
+          borderBottom: "1px solid var(--border-1)",
+          flex: "0 0 auto",
+        }}
+      >
+        {(
+          [
+            ["chat", "Asistente", Sparkles],
+            ["catalogos", "Catálogos", LayoutGrid],
+          ] as const
+        ).map(([v, label, Ic]) => {
           const on = view === v;
           return (
             <button
               key={v}
               onClick={() => setView(v)}
               style={{
-                display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
-                fontSize: 12, fontWeight: 700, padding: "6px 11px", borderRadius: 8, border: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 700,
+                padding: "6px 11px",
+                borderRadius: 8,
+                border: "none",
                 background: on ? "var(--bg-2)" : "transparent",
                 color: on ? "var(--text-1)" : "var(--text-3)",
                 boxShadow: on ? "inset 0 0 0 1px var(--border-1)" : "none",
@@ -181,97 +214,111 @@ export function CopilotPanel() {
       {view === "catalogos" && <CatalogLookup />}
 
       {view === "chat" && (
-      <>
-      {/* Body */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-        {msgs.length === 0 && (
-          <div style={{ color: "var(--text-2)", fontSize: 12.5, lineHeight: 1.6 }}>
-            <p style={{ marginTop: 4 }}>
-              Hola 👋 Soy <strong>ARIA Copilot</strong>. Preguntame cómo usar la plataforma o pedime que
-              redacte un mensaje.
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => ask(s)}
-                  style={{
-                    textAlign: "left",
-                    fontSize: 12,
-                    padding: "8px 10px",
-                    borderRadius: 9,
-                    border: "1px solid var(--border-1)",
-                    background: "var(--bg-2)",
-                    color: "var(--text-1)",
-                    cursor: "pointer",
-                  }}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {msgs.map((m, i) => (
+        <>
+          {/* Body */}
           <div
-            key={i}
+            ref={scrollRef}
             style={{
-              alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-              maxWidth: "85%",
-              padding: "8px 11px",
-              borderRadius: 12,
-              fontSize: 12.5,
-              lineHeight: 1.5,
-              whiteSpace: "pre-wrap",
-              background: m.role === "user" ? "#6E54E0" : "var(--bg-2)",
-              color: m.role === "user" ? "#fff" : "var(--text-1)",
-              border: m.role === "user" ? "none" : "1px solid var(--border-1)",
+              flex: 1,
+              overflowY: "auto",
+              padding: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
             }}
           >
-            {m.text}
+            {msgs.length === 0 && (
+              <div style={{ color: "var(--text-2)", fontSize: 12.5, lineHeight: 1.6 }}>
+                <p style={{ marginTop: 4 }}>
+                  Hola 👋 Soy <strong>ARIA Copilot</strong>. Preguntame cómo usar la plataforma o
+                  pedime que redacte un mensaje.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+                  {SUGGESTIONS.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => ask(s)}
+                      style={{
+                        textAlign: "left",
+                        fontSize: 12,
+                        padding: "8px 10px",
+                        borderRadius: 9,
+                        border: "1px solid var(--border-1)",
+                        background: "var(--bg-2)",
+                        color: "var(--text-1)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {msgs.map((m, i) => (
+              <div
+                key={i}
+                style={{
+                  alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                  maxWidth: "85%",
+                  padding: "8px 11px",
+                  borderRadius: 12,
+                  fontSize: 12.5,
+                  lineHeight: 1.5,
+                  whiteSpace: "pre-wrap",
+                  background: m.role === "user" ? "#6E54E0" : "var(--bg-2)",
+                  color: m.role === "user" ? "#fff" : "var(--text-1)",
+                  border: m.role === "user" ? "none" : "1px solid var(--border-1)",
+                }}
+              >
+                {m.text}
+              </div>
+            ))}
+            {loading && (
+              <div style={{ alignSelf: "flex-start", color: "var(--text-3)", fontSize: 12 }}>
+                pensando…
+              </div>
+            )}
           </div>
-        ))}
-        {loading && (
-          <div style={{ alignSelf: "flex-start", color: "var(--text-3)", fontSize: 12 }}>pensando…</div>
-        )}
-      </div>
 
-      {/* Input */}
-      <div style={{ padding: 12, borderTop: "1px solid var(--border-1)", display: "flex", gap: 6 }}>
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && ask(text)}
-          placeholder="Preguntá algo…"
-          disabled={loading}
-          style={{
-            flex: 1,
-            fontSize: 12.5,
-            padding: "8px 10px",
-            borderRadius: 9,
-            border: "1px solid var(--border-1)",
-            background: "var(--bg-2)",
-            color: "var(--text-1)",
-          }}
-        />
-        <button
-          onClick={() => ask(text)}
-          disabled={loading || !text.trim()}
-          style={{
-            border: "none",
-            background: "#6E54E0",
-            color: "#fff",
-            borderRadius: 9,
-            padding: "0 12px",
-            cursor: "pointer",
-            display: "grid",
-            placeItems: "center",
-          }}
-        >
-          <Send size={14} />
-        </button>
-      </div>
-      </>
+          {/* Input */}
+          <div
+            style={{ padding: 12, borderTop: "1px solid var(--border-1)", display: "flex", gap: 6 }}
+          >
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && ask(text)}
+              placeholder="Preguntá algo…"
+              disabled={loading}
+              style={{
+                flex: 1,
+                fontSize: 12.5,
+                padding: "8px 10px",
+                borderRadius: 9,
+                border: "1px solid var(--border-1)",
+                background: "var(--bg-2)",
+                color: "var(--text-1)",
+              }}
+            />
+            <button
+              onClick={() => ask(text)}
+              disabled={loading || !text.trim()}
+              style={{
+                border: "none",
+                background: "#6E54E0",
+                color: "#fff",
+                borderRadius: 9,
+                padding: "0 12px",
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <Send size={14} />
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
@@ -287,52 +334,120 @@ function CatalogLookup() {
   const groups = catalogs
     .map((c) => ({
       catalog: c,
-      rows: c.rows.filter((r) => !query || r.some((cell) => (cell ?? "").toLowerCase().includes(query))),
+      rows: c.rows.filter(
+        (r) => !query || r.some((cell) => (cell ?? "").toLowerCase().includes(query)),
+      ),
     }))
     .filter((g) => g.rows.length > 0);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-1)", flex: "0 0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 10px", borderRadius: 9, border: "1px solid var(--border-1)", background: "var(--bg-2)" }}>
+      <div
+        style={{
+          padding: "10px 12px",
+          borderBottom: "1px solid var(--border-1)",
+          flex: "0 0 auto",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            padding: "8px 10px",
+            borderRadius: 9,
+            border: "1px solid var(--border-1)",
+            background: "var(--bg-2)",
+          }}
+        >
           <Search size={14} style={{ color: "var(--text-3)" }} />
           <input
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar precio, programa, motivo…"
-            style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 12.5, color: "var(--text-1)" }}
+            style={{
+              flex: 1,
+              border: "none",
+              background: "transparent",
+              outline: "none",
+              fontSize: 12.5,
+              color: "var(--text-1)",
+            }}
           />
         </div>
       </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+        }}
+      >
         {loading ? (
           <div style={{ color: "var(--text-3)", fontSize: 12.5 }}>Cargando catálogos…</div>
         ) : catalogs.length === 0 ? (
           <div style={{ color: "var(--text-2)", fontSize: 12.5, lineHeight: 1.6 }}>
-            Todavía no hay catálogos. Creálos en <strong>Configuración → Catálogos</strong> (precios,
-            programas, motivos…) y los buscás acá durante la llamada.
+            Todavía no hay catálogos. Creálos en <strong>Configuración → Catálogos</strong>{" "}
+            (precios, programas, motivos…) y los buscás acá durante la llamada.
           </div>
         ) : groups.length === 0 ? (
-          <div style={{ color: "var(--text-3)", fontSize: 12.5 }}>Sin coincidencias para “{q}”.</div>
+          <div style={{ color: "var(--text-3)", fontSize: 12.5 }}>
+            Sin coincidencias para “{q}”.
+          </div>
         ) : (
           groups.map((g) => (
             <div key={g.catalog.catalogId}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-3)", marginBottom: 7 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: ".05em",
+                  color: "var(--text-3)",
+                  marginBottom: 7,
+                }}
+              >
                 <LayoutGrid size={11} /> {g.catalog.name} · {g.rows.length}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 {g.rows.slice(0, 40).map((r, i) => (
-                  <div key={i} style={{ borderRadius: 10, border: "1px solid var(--border-1)", background: "var(--bg-2)", padding: "9px 11px" }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-1)" }}>{r[0] || "—"}</div>
+                  <div
+                    key={i}
+                    style={{
+                      borderRadius: 10,
+                      border: "1px solid var(--border-1)",
+                      background: "var(--bg-2)",
+                      padding: "9px 11px",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-1)" }}>
+                      {r[0] || "—"}
+                    </div>
                     {r.slice(1).some((c) => (c ?? "").trim()) && (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
                         {g.catalog.columns.slice(1).map((col, ci) =>
                           (r[ci + 1] ?? "").trim() ? (
-                            <span key={ci} style={{ fontSize: 11, color: "var(--text-2)", background: "var(--bg-1)", border: "1px solid var(--border-1)", borderRadius: 7, padding: "2px 8px" }}>
+                            <span
+                              key={ci}
+                              style={{
+                                fontSize: 11,
+                                color: "var(--text-2)",
+                                background: "var(--bg-1)",
+                                border: "1px solid var(--border-1)",
+                                borderRadius: 7,
+                                padding: "2px 8px",
+                              }}
+                            >
                               <span style={{ color: "var(--text-3)" }}>{col}:</span> {r[ci + 1]}
                             </span>
-                          ) : null
+                          ) : null,
                         )}
                       </div>
                     )}
