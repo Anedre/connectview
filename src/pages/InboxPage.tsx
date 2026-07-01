@@ -68,7 +68,7 @@ export function InboxPage() {
       count={
         loading
           ? "Cargando…"
-          : `${filtered.length} conversación${filtered.length === 1 ? "" : "es"}${unread > 0 ? ` · ${unread} sin leer` : ""}`
+          : `${filtered.length} ${filtered.length === 1 ? "conversación" : "conversaciones"}${unread > 0 ? ` · ${unread} sin leer` : ""}`
       }
       search={{ value: q, onChange: setQ, placeholder: "Buscar por nombre o mensaje…" }}
       tabs={

@@ -120,7 +120,7 @@ function summaryOf(kind: JourneyNodeKind, p: NodeParams): string {
     case "branch": {
       const n = Array.isArray(p.rules) ? p.rules.length : 0;
       const m = p.match === "any" ? "cualquiera" : "todas";
-      return n ? `${n} condición${n === 1 ? "" : "es"} · ${m}` : "Sin condiciones";
+      return n ? `${n} ${n === 1 ? "condición" : "condiciones"} · ${m}` : "Sin condiciones";
     }
     case "action": {
       if (p.type === "moveStage") return `Mover a etapa "${p.stageId || "?"}"`;
