@@ -2037,7 +2037,7 @@ function MercadoLibreCard({
     <ConnCard
       icon={<ShoppingBag size={20} style={{ color: "#2d3277" }} />}
       title="Mercado Libre"
-      desc="Recibí las preguntas de tus publicaciones y los mensajes post-venta en el inbox omnicanal, y respondé desde ARIA."
+      desc="Opcional — si vendés en Mercado Libre, recibí las preguntas de tus publicaciones y los mensajes post-venta en el inbox omnicanal. El canal aparece en el inbox solo cuando lo conectás."
       tone={tone}
       statusLabel={statusLabel}
       open={open}

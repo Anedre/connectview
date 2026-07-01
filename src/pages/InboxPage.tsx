@@ -13,14 +13,19 @@ import { ConversationThread } from "@/components/inbox/ConversationThread";
  */
 type ChannelFilter = "all" | ConvChannel;
 
+// Canales "core" siempre visibles. Mercado Libre (F4.1) es OPCIONAL: su tab solo
+// aparece si el tenant realmente tiene conversaciones de ML (para universidades /
+// tenants que no venden en ML, el canal no ensucia el inbox). Auto-activable.
 const FILTERS: { id: ChannelFilter; label: string }[] = [
   { id: "all", label: "Todas" },
   { id: "instagram", label: "Instagram" },
   { id: "messenger", label: "Messenger" },
   { id: "fb_comment", label: "Comentarios" },
   { id: "whatsapp", label: "WhatsApp" },
-  { id: "mercadolibre", label: "Mercado Libre" },
 ];
+const OPTIONAL_FILTERS: Record<string, { id: ChannelFilter; label: string }> = {
+  mercadolibre: { id: "mercadolibre", label: "Mercado Libre" },
+};
 
 export function InboxPage() {
   const { conversations, unread, configured, loading, error } = useConversations();
@@ -38,6 +43,15 @@ export function InboxPage() {
         .includes(needle);
     });
   }, [conversations, q, filter]);
+
+  // Filtros efectivos: los core + los opcionales que el tenant realmente usa.
+  const filters = useMemo(() => {
+    const present = new Set(conversations.map((c) => c.channel));
+    const extras = Object.entries(OPTIONAL_FILTERS)
+      .filter(([ch]) => present.has(ch as ConvChannel))
+      .map(([, f]) => f);
+    return [...FILTERS, ...extras];
+  }, [conversations]);
 
   // Selección EFECTIVA (derivada, no en un efecto): la elegida si sigue visible
   // tras filtro/búsqueda; si no, la primera de la lista. Evita el setState-in-
@@ -59,7 +73,7 @@ export function InboxPage() {
       search={{ value: q, onChange: setQ, placeholder: "Buscar por nombre o mensaje…" }}
       tabs={
         <>
-          {FILTERS.map((f) => (
+          {filters.map((f) => (
             <button
               key={f.id}
               type="button"
