@@ -66,13 +66,18 @@ template` ya manda **cualquier** componente (carousel funciona apenas esté apro
 flow` ya manda `type:interactive` (flow) — un LIST interactivo es un Lambda chico que copia ese patrón.
 El FlowBuilder (Pilar 8) ya tiene nodo `list`; falta nodo `carousel`.
 
-**F4.2a — LIST interactivo (no-template, SIN aprobación) — verificable ya:**
+**F4.2a — LIST interactivo (no-template, SIN aprobación) — ✅ SENDER HECHO Y VERIFICADO:**
 
-- Nuevo Lambda `send-whatsapp-list-interactive` (molde `send-whatsapp-flow`): payload
-  `{type:"interactive", interactive:{type:"list", header, body, footer?, action:{button, sections:[{rows:[{id,title,description}]}]}}}`.
-  Reusa `sendWhatsApp()` (router BYO) + gate de supresión.
-- Inbox (`manage-conversations`): acción `sendListInteractive`. Bot-runtime: el nodo `list` ya
-  produce `rows`; cablear el envío real cuando corre en WhatsApp.
+- Lambda `send-whatsapp-list-interactive` (molde `send-whatsapp-flow`, mismo auth/BYO/gate/registro):
+  payload `{type:"interactive", interactive:{type:"list", header, body, footer?, action:{button, sections:[{rows:[{id,title,description}]}]}}}`.
+  `buildSections` recorta a los límites de Meta (≤10 filas, título ≤24, desc ≤72). Reusa `sendWhatsApp()`
+  (router BYO) + gate de supresión + `recordSend` a hsm-sends (`list:<n>opts`). Function URL pública
+  (auth NONE) vía `create-whatsapp-list.mjs` (copia el env del flow sender, sin hardcodear el secreto).
+  **Verificado E2E:** dryRun = payload Meta correcto; envío real (x-vox-internal + tenantId real) =
+  `sent:true` + messageId de Meta → la lista de 3 opciones llegó a +51953730189 como menú tappable.
+- **Sigue (UI hook):** endpoint `sendWhatsAppList` en api.ts + botón "Enviar lista" en el composer del
+  inbox (`manage-conversations` acción `sendListInteractive`) + cablear el nodo `list` del bot-runtime
+  al envío real. La elección vuelve como `interactive.list_reply` al whatsapp-meta-webhook.
 
 **F4.2b — CAROUSEL template (REQUIERE aprobación Meta):**
 
