@@ -822,6 +822,7 @@ export const handler: Handler = async (event: any) => {
               sfLeadId: l.sfLeadId,
               source: l.source || "Vox Leads",
               attributes: l.attributes,
+              history: l.history, // F5.1 — rollup R4 de golpes a Vox*__c
             },
             {
               taskSubject: "ARIA · Enviado a Salesforce",

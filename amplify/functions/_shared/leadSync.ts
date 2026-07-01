@@ -129,6 +129,24 @@ const TAXONOMIES_TABLE = process.env.TAXONOMIES_TABLE || "connectview-taxonomies
  *  push degrada con gracia al match por sfLeadId/teléfono/email (ver más abajo). */
 const SF_VOX_EXTID_FIELD = process.env.SF_VOX_EXTID_FIELD || "VoxLeadId__c";
 
+/**
+ * F5.1 — rollup de golpes (R4) escrito al Lead de SF: cuántos toques, último
+ * toque, y (si convirtió) golpes/días al cierre. El cliente crea estos campos
+ * custom en su org; si NO existen, el push los descarta y reintenta (misma
+ * degradación que `VoxLeadId__c`). `converted` es un checkbox. Ver design/fase-5.md.
+ */
+const VOX_ROLLUP_FIELDS = {
+  touches: "VoxTouches__c",
+  lastTouch: "VoxLastTouch__c",
+  firstTouch: "VoxFirstTouch__c",
+  touchesToClose: "VoxTouchesToClose__c",
+  daysToClose: "VoxDaysToClose__c",
+  converted: "VoxConverted__c",
+} as const;
+const VOX_ROLLUP_SET: Set<string> = new Set(Object.values(VOX_ROLLUP_FIELDS));
+// Campos rollup que la org NO tiene (aprendidos del error de SF) → no reintentar.
+const voxRollupMissing = new Set<string>();
+
 /** Forma canónica de un lead, agnóstica del origen. */
 export interface LeadInput {
   phone?: string;
@@ -147,6 +165,9 @@ export interface LeadInput {
    *  en connectview-lead-programs. Auto-tagging: cada origen que conozca su
    *  programa lo pasa y el lead aparece scopeado en ese programa. */
   programId?: string;
+  /** F5.1 — ledger de golpes (Pilar 2). Si viene, el push a SF escribe el rollup
+   *  R4 (touches/lastTouch/daysToClose) en los campos `Vox*__c` del Lead. */
+  history?: LeadHistoryEvent[];
 }
 
 export interface VoxLead extends LeadInput {
@@ -356,27 +377,55 @@ async function sfWriteLead(
     await updateSObject("Lead", id as string, f);
     return id as string;
   };
-  try {
-    return await write(fields);
-  } catch (err) {
-    // El campo External Id no existe en la org → quitarlo y reintentar una vez.
-    if (SF_VOX_EXTID_FIELD in fields && isInvalidField(err)) {
-      voxExtId = { exists: false, at: Date.now() }; // el campo no existe → recordar
-      const rest = { ...fields };
-      delete rest[SF_VOX_EXTID_FIELD];
-      try {
-        return await write(rest);
-      } catch (err2) {
-        if (mode === "update" && isConvertedLeadError(err2))
-          throw new ConvertedLeadError(id as string, err2);
-        throw err2;
+  // Los campos OPCIONALES de Vox (External Id + rollup R4) pueden no existir en la
+  // org del cliente. Si SF los rechaza (INVALID_FIELD), los quitamos —el que
+  // identifique el error, o todos los presentes— y reintentamos. Un campo inválido
+  // que NO sea de Vox (mapeo mal configurado del cliente) se propaga tal cual.
+  let f = fields;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await write(f);
+    } catch (err) {
+      if (isInvalidField(err)) {
+        const bad = invalidFieldName(err);
+        const dropOne = (k: string) => {
+          if (k === SF_VOX_EXTID_FIELD) voxExtId = { exists: false, at: Date.now() };
+          else voxRollupMissing.add(k);
+          f = { ...f };
+          delete f[k];
+        };
+        if (bad && (bad === SF_VOX_EXTID_FIELD || VOX_ROLLUP_SET.has(bad)) && bad in f) {
+          dropOne(bad);
+          continue;
+        }
+        // No identificamos el campo exacto → quitamos todos los opcionales presentes.
+        const present = Object.keys(f).filter(
+          (k) => k === SF_VOX_EXTID_FIELD || VOX_ROLLUP_SET.has(k),
+        );
+        if (present.length) {
+          present.forEach(dropOne);
+          continue;
+        }
       }
+      // Lead ya convertido → señal tipada para que el caller redirija al Contact.
+      if (mode === "update" && isConvertedLeadError(err))
+        throw new ConvertedLeadError(id as string, err);
+      throw err;
     }
-    // Lead ya convertido → señal tipada para que el caller redirija al Contact.
-    if (mode === "update" && isConvertedLeadError(err))
-      throw new ConvertedLeadError(id as string, err);
-    throw err;
   }
+  // Agotados los reintentos, un último intento propaga el error real (sin tragarlo).
+  return await write(f);
+}
+
+/** Extrae el nombre del campo inválido del error de SF ("No such column 'X'…"). */
+export function invalidFieldName(err: unknown): string | null {
+  const m = err instanceof Error ? err.message : String(err);
+  const col = m.match(/No such column '([^']+)'/i) || m.match(/INVALID_FIELD[^']*'([^']+)'/i);
+  if (col) return col[1];
+  for (const field of [SF_VOX_EXTID_FIELD, ...VOX_ROLLUP_SET]) {
+    if (m.includes(field)) return field;
+  }
+  return null;
 }
 
 // El match trae el estado de conversión: un Lead convertido NO se puede
@@ -587,6 +636,23 @@ export async function pushLeadToSalesforce(
   // Vox → todo sync posterior matchea por ahí (determinístico). `sfWriteLead`
   // lo quita y reintenta si la org aún no tiene el campo. NO es remapeable.
   if (extIdOk) fields[SF_VOX_EXTID_FIELD] = voxLeadId;
+
+  // F5.1 — rollup de golpes (R4). Solo si el lead trae history (señal de que hay
+  // ledger que resumir); los campos que la org no tenga se descartan en sfWriteLead.
+  if (Array.isArray(lead.history)) {
+    const roll = await summarizeGolpes(lead.history, lead.stageId);
+    const putRoll = (field: string, val: unknown) => {
+      if (val != null && val !== "" && !voxRollupMissing.has(field)) fields[field] = val;
+    };
+    putRoll(VOX_ROLLUP_FIELDS.touches, roll.total);
+    putRoll(VOX_ROLLUP_FIELDS.lastTouch, roll.lastTouchAt?.slice(0, 10));
+    putRoll(VOX_ROLLUP_FIELDS.firstTouch, roll.firstTouchAt?.slice(0, 10));
+    putRoll(VOX_ROLLUP_FIELDS.converted, roll.converted);
+    if (roll.converted) {
+      putRoll(VOX_ROLLUP_FIELDS.touchesToClose, roll.touchesToClose);
+      putRoll(VOX_ROLLUP_FIELDS.daysToClose, roll.daysToClose);
+    }
+  }
 
   // Resolver el registro destino + dónde se ancla la gestión (Task).
   let leadId: string;
@@ -1041,7 +1107,12 @@ export async function propagateLead(
   if (pushToSf) {
     try {
       const sf = await pushLeadToSalesforce(
-        { ...lead, sfLeadId: lead.sfLeadId ?? stored?.sfLeadId },
+        {
+          ...lead,
+          sfLeadId: lead.sfLeadId ?? stored?.sfLeadId,
+          // Rollup R4 (F5.1): usar el history persistido (trae el golpe recién sumado).
+          history: lead.history ?? stored?.history,
+        },
         opts.sfExtra,
         stored?.leadId, // External Id (VoxLeadId__c) → dedup determinístico en SF
       );
