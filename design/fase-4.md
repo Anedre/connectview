@@ -12,7 +12,7 @@
 | **F4.2a LIST interactivo**  | mensaje `type:interactive` list (no-template)                             | ✅ total (llega a WhatsApp)                                                            | ninguno (sin aprobación Meta)                |
 | **F4.2b CAROUSEL template** | componente `CAROUSEL` en templates                                        | ✅ builder+UI composer; envío real espera **imágenes UDEP + aprobación Meta (48-72h)** | imágenes del cliente + aprobación Meta       |
 | **F4.1 Mercado Libre**      | canal ML en el inbox omnicanal                                            | ⚠️ backend/skeleton sí; live no                                                        | **OAuth App ML del cliente**                 |
-| **F4.3 SSO SAML/OIDC**      | login federado por-tenant                                                 | ⚠️ config/UI sí; login real no                                                         | **IdP del cliente + `ampx pipeline-deploy`** |
+| **F4.3 SSO SAML/OIDC**      | login federado por-tenant                                                 | ✅ scaffold+login+config UI (build-ahead); login real no                               | **IdP del cliente + `ampx pipeline-deploy`** |
 
 **Arco recomendado:** F4.4 → F4.2 (verificables, self-contained, F4.4 cierra la última pieza de
 Pardot enganchándose con lo de Fase 3). F4.1 + F4.3 = **build-ahead** (backend/config listos,
@@ -119,11 +119,22 @@ de ML, validación de firma, reply real. **Deploy:** `deploy-lambda.mjs` (hand-m
 
 ---
 
-## F4.3 — SSO SAML/OIDC (build-ahead + deploy operacional)
+## F4.3 — SSO SAML/OIDC (build-ahead + deploy operacional) — ✅ BUILD-AHEAD HECHO
 
-**Estado:** `amplify/auth/resource.ts` = solo `email:true` (sin `externalProviders`). El login
-(`VoxAuthContext` → `<Authenticator>`) no tiene `signInWithRedirect`. El footer ya _dice_ "SSO SAML
-2.0" pero es claim de UI. La metadata del IdP viviría en `connectview-connections` (`configJson.idp`),
+**Detalle completo en `design/sso.md` + `design/sso-setup-udep.md`.** Scaffold + login + config UI +
+docs hechos y verificado lo verificable (2026-07-01). Go-live = IdP del cliente + `ampx pipeline-deploy`.
+
+- **`auth/resource.ts`:** `externalProviders` (SAML por metadata / OIDC por issuer + `secret()` para
+  clientId/secret) **gateado por env** → sin env = no-op. SAML precede (un IdP piloto).
+- **`VoxAuthContext.tsx`:** botón "Entrar con tu empresa" en `SignIn.Footer`, gateado por
+  `outputs.auth.oauth` → invisible hasta el deploy (verificado: no aparece, sin regresión).
+- **`IntegrationsManager` + `useConnections`:** `SsoCard` guarda `config.sso` en connections (sin
+  backend nuevo) + read-only Entity ID/ACS/callback. Verificado E2E (round-trip real, limpiado).
+- **Doc:** `sso-setup-udep.md` (guía cliente + runbook deploy + rollback).
+
+**Estado previo (grounding):** `amplify/auth/resource.ts` = solo `email:true` (sin `externalProviders`).
+El login (`VoxAuthContext` → `<Authenticator>`) no tenía `signInWithRedirect`. El footer ya _dice_ "SSO
+SAML 2.0" pero era claim de UI. La config del IdP vive en `connectview-connections` (`configJson.sso`),
 como el resto de la config de tenant.
 
 **Construible sin cliente:** `externalProviders` SAML/OIDC en el auth resource (detrás de flag);
