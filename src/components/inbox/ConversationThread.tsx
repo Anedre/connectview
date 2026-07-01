@@ -85,13 +85,61 @@ function Bubble({ m }: { m: ConvMessage }) {
   );
 }
 
+const LIST_INP: React.CSSProperties = {
+  fontSize: 13,
+  padding: "8px 10px",
+  borderRadius: 8,
+  border: "1px solid var(--border-2)",
+  background: "var(--bg-2)",
+  color: "var(--text-1)",
+};
+
 export function ConversationThread({ conversationId }: { conversationId: string }) {
   const { conversation, loading } = useConversation(conversationId);
-  const { reply, replyComment, commentToDm, markRead, close } = useConversationActions();
+  const { reply, replyComment, commentToDm, markRead, close, sendList } = useConversationActions();
   const [text, setText] = useState("");
+  const [listOpen, setListOpen] = useState(false);
+  const [listHeader, setListHeader] = useState("");
+  const [listBody, setListBody] = useState("");
+  const [listButton, setListButton] = useState("Ver opciones");
+  const [listRows, setListRows] = useState<{ title: string; description: string }[]>([
+    { title: "", description: "" },
+  ]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const msgs = conversation?.messages ?? [];
   const isComment = conversation?.channel === "fb_comment";
+  const isWhatsApp = conversation?.channel === "whatsapp";
+
+  // Fase 4 · F4.2a — enviar un LIST interactivo (menú tappable) por WhatsApp.
+  const sendListNow = async () => {
+    const rows = listRows
+      .filter((r) => r.title.trim())
+      .map((r, i) => ({
+        id: `opt_${i}`,
+        title: r.title.trim(),
+        description: r.description.trim() || undefined,
+      }));
+    if (!listBody.trim() || !rows.length) {
+      toast.error("Poné un texto y al menos una opción con título");
+      return;
+    }
+    try {
+      await sendList.mutateAsync({
+        conversationId,
+        header: listHeader.trim() || undefined,
+        body: listBody.trim(),
+        button: listButton.trim() || undefined,
+        rows,
+      });
+      setListOpen(false);
+      setListHeader("");
+      setListBody("");
+      setListRows([{ title: "", description: "" }]);
+      toast.success("Lista enviada");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo enviar la lista");
+    }
+  };
 
   // Marcar leída al abrir (si tiene no-leídas). markRead invalida la lista.
   const markedRef = useRef<string | null>(null);
@@ -332,22 +380,35 @@ export function ConversationThread({ conversationId }: { conversationId: string 
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={send}
-              disabled={reply.isPending || !text.trim()}
-              title="Enviar"
-              style={{ flex: "0 0 auto" }}
-            >
-              {reply.isPending ? (
-                "Enviando…"
-              ) : (
-                <>
-                  <Icon.Send size={14} /> Enviar
-                </>
+            <>
+              {isWhatsApp && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setListOpen(true)}
+                  title="Enviar un menú de opciones (lista interactiva de WhatsApp)"
+                  style={{ flex: "0 0 auto" }}
+                >
+                  <Icon.Workflow size={14} /> Lista
+                </button>
               )}
-            </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={send}
+                disabled={reply.isPending || !text.trim()}
+                title="Enviar"
+                style={{ flex: "0 0 auto" }}
+              >
+                {reply.isPending ? (
+                  "Enviando…"
+                ) : (
+                  <>
+                    <Icon.Send size={14} /> Enviar
+                  </>
+                )}
+              </button>
+            </>
           )}
         </div>
         <div className="muted" style={{ fontSize: 10.5, marginTop: 6 }}>
@@ -356,6 +417,120 @@ export function ConversationThread({ conversationId }: { conversationId: string 
             : "La respuesta se envía por la Graph API de Meta al remitente."}
         </div>
       </div>
+
+      {listOpen && (
+        <div
+          onClick={() => setListOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 200,
+            background: "rgba(0,0,0,0.5)",
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 480,
+              maxWidth: "100%",
+              maxHeight: "88vh",
+              overflowY: "auto",
+              background: "var(--bg-1)",
+              border: "1px solid var(--border-2)",
+              borderRadius: 14,
+              padding: 18,
+            }}
+          >
+            <div style={{ fontSize: 15, fontWeight: 800 }}>Enviar lista interactiva</div>
+            <div style={{ fontSize: 12, color: "var(--text-3)", margin: "4px 0 14px" }}>
+              Un menú tappable de WhatsApp (hasta 10 opciones). No necesita plantilla aprobada — se
+              envía dentro de la ventana de 24h.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <input
+                value={listHeader}
+                onChange={(e) => setListHeader(e.target.value)}
+                placeholder="Título (opcional)"
+                style={LIST_INP}
+              />
+              <textarea
+                value={listBody}
+                onChange={(e) => setListBody(e.target.value)}
+                rows={2}
+                placeholder="Texto del mensaje…"
+                style={{ ...LIST_INP, resize: "vertical", fontFamily: "inherit" }}
+              />
+              <input
+                value={listButton}
+                onChange={(e) => setListButton(e.target.value)}
+                placeholder="Texto del botón (ej. Ver opciones)"
+                style={LIST_INP}
+              />
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginTop: 4 }}>
+                Opciones
+              </div>
+              {listRows.map((r, i) => (
+                <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input
+                    value={r.title}
+                    onChange={(e) =>
+                      setListRows((rows) =>
+                        rows.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)),
+                      )
+                    }
+                    placeholder={`Opción ${i + 1}`}
+                    style={{ ...LIST_INP, flex: 1 }}
+                  />
+                  <input
+                    value={r.description}
+                    onChange={(e) =>
+                      setListRows((rows) =>
+                        rows.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)),
+                      )
+                    }
+                    placeholder="Descripción (opcional)"
+                    style={{ ...LIST_INP, flex: 1 }}
+                  />
+                  {listRows.length > 1 && (
+                    <button
+                      className="btn btn--sm"
+                      onClick={() => setListRows((rows) => rows.filter((_, j) => j !== i))}
+                      title="Quitar"
+                      style={{ flex: "0 0 auto" }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+              {listRows.length < 10 && (
+                <button
+                  className="btn btn--sm"
+                  onClick={() => setListRows((rows) => [...rows, { title: "", description: "" }])}
+                  style={{ alignSelf: "flex-start" }}
+                >
+                  + Opción
+                </button>
+              )}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button className="btn" onClick={() => setListOpen(false)}>
+                Cancelar
+              </button>
+              <button
+                className="btn btn--primary"
+                onClick={sendListNow}
+                disabled={sendList.isPending}
+              >
+                {sendList.isPending ? "Enviando…" : "Enviar lista"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

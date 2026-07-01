@@ -138,6 +138,18 @@ export function useConversationActions() {
     mutationFn: (conversationId: string) => post({ action: "close", conversationId }),
     onSuccess: (_d, conversationId) => invalidate(conversationId),
   });
+  // Fase 4 · F4.2a — enviar un LIST interactivo (menú tappable) por WhatsApp.
+  const sendList = useMutation({
+    mutationFn: (v: {
+      conversationId: string;
+      header?: string;
+      body: string;
+      footer?: string;
+      button?: string;
+      rows: { id: string; title: string; description?: string }[];
+    }) => post({ action: "sendListInteractive", ...v }),
+    onSuccess: (_d, v) => invalidate(v.conversationId),
+  });
   // Identidad (Fase C): vincular la conversación a un lead / desvincular.
   const link = useMutation({
     mutationFn: (v: {
@@ -154,5 +166,5 @@ export function useConversationActions() {
     onSuccess: (_d, conversationId) => invalidate(conversationId),
   });
 
-  return { reply, replyComment, commentToDm, markRead, close, link, unlink };
+  return { reply, replyComment, commentToDm, markRead, close, sendList, link, unlink };
 }

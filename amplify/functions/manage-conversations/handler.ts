@@ -384,6 +384,56 @@ export const handler: Handler = async (event: any) => {
         return ok({ conversation: updated, sent: true });
       }
 
+      // Fase 4 · F4.2a — enviar un LIST interactivo (menú tappable) por WhatsApp.
+      if (body.action === "sendListInteractive") {
+        const conv = await getConversation(legacyDynamo, conversationId);
+        if (!conv) return bad(404, "conversación no encontrada");
+        if (conv.channel !== "whatsapp")
+          return bad(400, "el list interactivo es solo para WhatsApp");
+        const { token, waPhoneId } = await getTenantMeta(tenantId);
+        if (!token || !waPhoneId)
+          return bad(400, "WhatsApp (meta) no configurado para este tenant");
+        const actor = typeof body.actor === "string" ? body.actor : "agente";
+        const bodyTxt = String(body.body || "").trim();
+        const rowsIn = Array.isArray(body.rows) ? body.rows : [];
+        const rows = rowsIn.slice(0, 10).map((r: Record<string, unknown>, i: number) => ({
+          id: String(r.id || `row_${i}`).slice(0, 200),
+          title: String(r.title || `Opción ${i + 1}`).slice(0, 24),
+          ...(r.description ? { description: String(r.description).slice(0, 72) } : {}),
+        }));
+        if (!bodyTxt || !rows.length) return bad(400, "body y al menos una fila son requeridos");
+        const interactive: Record<string, unknown> = {
+          type: "list",
+          body: { text: bodyTxt.slice(0, 4096) },
+          action: {
+            button: String(body.button || "Ver opciones").slice(0, 20),
+            sections: [{ rows }],
+          },
+        };
+        if (body.header)
+          interactive.header = { type: "text", text: String(body.header).slice(0, 60) };
+        if (body.footer) interactive.footer = { text: String(body.footer).slice(0, 60) };
+        try {
+          await sendWhatsApp(
+            { mode: "meta", metaPhoneNumberId: waPhoneId, tenantId },
+            { messaging_product: "whatsapp", to: conv.senderId, type: "interactive", interactive },
+          );
+        } catch (e) {
+          return bad(502, `Meta rechazó el envío: ${e instanceof Error ? e.message : "error"}`);
+        }
+        const summary = `📋 Lista enviada: “${bodyTxt}” (${rows.length} opciones)`;
+        const updated = await appendOutbound(legacyDynamo, conversationId, summary, actor);
+        if (conv.leadId) {
+          await appendLeadGolpe(conv.leadId, {
+            channel: conv.channel,
+            direction: "out",
+            text: summary,
+            agent: actor,
+          });
+        }
+        return ok({ conversation: updated, sent: true });
+      }
+
       return bad(400, "acción inválida");
     }
 
