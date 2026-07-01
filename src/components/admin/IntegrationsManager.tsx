@@ -19,8 +19,10 @@ import {
   type ConnectConn,
   type WhatsAppConn,
   type WhatsAppNumber,
+  type SsoConn,
 } from "@/hooks/useConnections";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import outputs from "../../../amplify_outputs.json";
 
 /**
  * IntegrationsManager — Configuración → Integraciones. El cliente conecta SU
@@ -1711,6 +1713,266 @@ function MessagingCard({
   );
 }
 
+/** Campo read-only con botón de copiar (datos del SP que el cliente pega en su IdP). */
+function SsoRoField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span style={labelStyle}>{label}</span>
+      <div className="row" style={{ gap: 8, marginTop: 3 }}>
+        <code
+          style={{
+            flex: 1,
+            padding: "7px 10px",
+            background: "var(--bg-2)",
+            borderRadius: 6,
+            fontSize: 11.5,
+            border: "1px solid var(--border-1)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {value}
+        </code>
+        <button
+          className="btn btn--sm"
+          onClick={() => copy(value, label)}
+          disabled={!value || value.startsWith("(")}
+        >
+          <Icon.Copy size={12} /> Copiar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── SSO SAML/OIDC (F4.3 · build-ahead) ──────────────────────────────────
+ * Config por-tenant del login federado. Guarda la metadata/routing en
+ * connections (`config.sso`); el REGISTRO real del IdP en Cognito lo hace el
+ * equipo con `ampx pipeline-deploy` + env (ver design/sso.md). Los valores
+ * read-only (Entity ID, ACS/redirect URL) son lo que el admin carga en SU IdP. */
+function SsoCard({
+  config,
+  update,
+}: {
+  config: ConnectionsConfig;
+  update: (patch: Partial<ConnectionsConfig>) => void;
+}) {
+  const sso = config.sso || {};
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<SsoConn>(() => ({
+    provider: "saml",
+    ...sso,
+  }));
+  const [domainsText, setDomainsText] = useState((sso.emailDomains || []).join(", "));
+
+  // Valores del Service Provider (Cognito) que el cliente pega en SU IdP.
+  const userPoolId = (outputs.auth as { user_pool_id?: string }).user_pool_id || "";
+  const oauth = (outputs.auth as { oauth?: { domain?: string } }).oauth;
+  const entityId = userPoolId ? `urn:amazon:cognito:sp:${userPoolId}` : "";
+  // El dominio Cognito recién existe tras el deploy con externalProviders.
+  const cognitoDomain = oauth?.domain || "";
+  const acsUrl = cognitoDomain
+    ? `https://${cognitoDomain}/saml2/idpresponse`
+    : "(se genera al desplegar el SSO)";
+  const oidcRedirect = cognitoDomain
+    ? `https://${cognitoDomain}/oauth2/idpresponse`
+    : "(se genera al desplegar el SSO)";
+  const appOrigin = typeof window !== "undefined" ? window.location.origin : "";
+
+  const isSaml = draft.provider === "saml";
+  const configured = isSaml ? !!draft.metadataUrl : !!(draft.issuerUrl && draft.clientId);
+  const tone: Tone = !configured ? "idle" : oauth ? "ok" : "warn";
+  const statusLabel = !configured ? "No configurado" : oauth ? "Activo" : "Pendiente de deploy";
+
+  const set = (patch: Partial<SsoConn>) => setDraft((d) => ({ ...d, ...patch }));
+
+  const onSave = () => {
+    const emailDomains = domainsText
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    if (isSaml && !draft.metadataUrl?.trim()) {
+      toast.error("Pegá la URL de metadata del IdP (SAML).");
+      return;
+    }
+    if (!isSaml && !(draft.issuerUrl?.trim() && draft.clientId?.trim())) {
+      toast.error("Completá el Issuer URL y el Client ID (OIDC).");
+      return;
+    }
+    const next: SsoConn = {
+      ...draft,
+      cognitoProviderName: draft.cognitoProviderName?.trim() || undefined,
+      metadataUrl: isSaml ? draft.metadataUrl?.trim() : undefined,
+      issuerUrl: !isSaml ? draft.issuerUrl?.trim() : undefined,
+      clientId: !isSaml ? draft.clientId?.trim() : undefined,
+      emailDomains,
+      updatedAt: new Date().toISOString(),
+    };
+    setDraft(next);
+    update({ sso: next });
+    toast.success("Configuración de SSO guardada");
+  };
+
+  return (
+    <ConnCard
+      icon={<Lock size={20} style={{ color: "var(--accent-cyan)" }} />}
+      title="SSO — Inicio de sesión con tu empresa"
+      desc="Login federado SAML 2.0 / OpenID Connect: tus usuarios entran con las credenciales de tu organización (Azure AD, ADFS, Google Workspace…)."
+      tone={tone}
+      statusLabel={statusLabel}
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Nota de activación: la config se guarda; el go-live necesita el deploy. */}
+        <div
+          style={{
+            fontSize: 12,
+            lineHeight: 1.55,
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: "color-mix(in srgb, var(--accent-cyan) 8%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--accent-cyan) 30%, transparent)",
+          }}
+        >
+          Esta configuración se <b>guarda</b> ahora. Para <b>activar</b> el botón «Entrar con tu
+          empresa» en el login, el equipo de la plataforma registra tu IdP y publica el cambio
+          (deploy). Mientras tanto, el inicio de sesión con correo sigue funcionando normal.
+        </div>
+
+        {/* Paso 1 — proveedor */}
+        <div>
+          <StepLabel n={1}>Elegí el protocolo de tu IdP</StepLabel>
+          <div
+            className="row"
+            style={{
+              gap: 0,
+              border: "1px solid var(--border-2)",
+              borderRadius: 6,
+              overflow: "hidden",
+              width: "fit-content",
+            }}
+          >
+            {(
+              [
+                ["saml", "SAML 2.0"],
+                ["oidc", "OpenID Connect"],
+              ] as const
+            ).map(([p, label]) => (
+              <button
+                key={p}
+                onClick={() => set({ provider: p })}
+                style={{
+                  padding: "6px 14px",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  background: draft.provider === p ? "var(--bg-3)" : "transparent",
+                  color: draft.provider === p ? "var(--text-1)" : "var(--text-3)",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label style={{ display: "block", marginTop: 12 }}>
+            <span style={labelStyle}>Nombre del proveedor (interno, ej. UDEP)</span>
+            <input
+              style={inputStyle}
+              placeholder="UDEP"
+              value={draft.cognitoProviderName || ""}
+              onChange={(e) => set({ cognitoProviderName: e.target.value })}
+            />
+          </label>
+        </div>
+
+        {/* Paso 2 — credenciales del IdP */}
+        <div>
+          <StepLabel n={2}>Datos de tu IdP</StepLabel>
+          {isSaml ? (
+            <label style={{ display: "block" }}>
+              <span style={labelStyle}>URL de metadata (SAML)</span>
+              <input
+                style={inputStyle}
+                placeholder="https://login.tu-idp.com/…/federationmetadata.xml"
+                value={draft.metadataUrl || ""}
+                onChange={(e) => set({ metadataUrl: e.target.value })}
+              />
+            </label>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <label style={{ display: "block" }}>
+                <span style={labelStyle}>Issuer / Discovery URL</span>
+                <input
+                  style={inputStyle}
+                  placeholder="https://login.microsoftonline.com/<tenant>/v2.0"
+                  value={draft.issuerUrl || ""}
+                  onChange={(e) => set({ issuerUrl: e.target.value })}
+                />
+              </label>
+              <label style={{ display: "block" }}>
+                <span style={labelStyle}>Client ID</span>
+                <input
+                  style={inputStyle}
+                  placeholder="ID de la aplicación registrada en tu IdP"
+                  value={draft.clientId || ""}
+                  onChange={(e) => set({ clientId: e.target.value })}
+                />
+              </label>
+              <div
+                className="muted"
+                style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}
+              >
+                <Lock size={11} style={{ flexShrink: 0 }} /> El <b>Client Secret</b> no se pega acá:
+                se carga como secreto en el deploy (Secrets Manager de Amplify), nunca en el
+                navegador ni en la base.
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Paso 3 — routing por dominio */}
+        <div>
+          <StepLabel n={3}>Dominios de correo de tu organización</StepLabel>
+          <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
+            Los usuarios con estos dominios entran por tu IdP. Separalos por coma.
+          </div>
+          <input
+            style={inputStyle}
+            placeholder="udep.edu.pe, udep.pe"
+            value={domainsText}
+            onChange={(e) => setDomainsText(e.target.value)}
+          />
+        </div>
+
+        {/* Paso 4 — datos para cargar en el IdP del cliente (read-only) */}
+        <div>
+          <StepLabel n={4}>Pegá estos datos en tu IdP</StepLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <SsoRoField label="Entity ID / Audience URI" value={entityId} />
+            <SsoRoField
+              label={isSaml ? "ACS URL (Reply URL)" : "Redirect URI (OIDC)"}
+              value={isSaml ? acsUrl : oidcRedirect}
+            />
+            <SsoRoField label="URL de la aplicación (callback)" value={appOrigin} />
+          </div>
+        </div>
+
+        <div className="row">
+          <button className="btn btn--primary" onClick={onSave}>
+            Guardar configuración
+          </button>
+          {sso.updatedAt && (
+            <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>
+              Guardada {new Date(sso.updatedAt).toLocaleString("es-PE")}
+            </span>
+          )}
+        </div>
+      </div>
+    </ConnCard>
+  );
+}
+
 export function IntegrationsManager() {
   const { config, save, hasBackend, loading, whatsappNumbers } = useConnections();
   const update = (patch: Partial<ConnectionsConfig>) => save({ ...config, ...patch });
@@ -1757,6 +2019,7 @@ export function IntegrationsManager() {
       <AmazonConnectCard config={config} update={update} />
       <SalesforceCard config={config} update={update} />
       <WhatsAppCard config={config} update={update} awsNumbers={whatsappNumbers} />
+      <SsoCard config={config} update={update} />
       <MessagingCard config={config} update={update} />
     </div>
   );

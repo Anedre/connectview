@@ -133,6 +133,28 @@ export interface BrandingConn {
   logoUrl?: string;
   accentColor?: string;
 }
+/**
+ * F4.3 — SSO SAML/OIDC por-tenant. Config NO sensible (routing + metadata pública);
+ * el clientSecret de OIDC vive en Secrets/Amplify, acá solo `clientSecretSet`. El
+ * registro real del IdP en Cognito es el paso `ampx pipeline-deploy` (ver
+ * amplify/auth/resource.ts + design/sso.md). Esta config es la capa de la app:
+ * qué IdP, para qué dominios de email, con qué nombre de provider.
+ */
+export interface SsoConn {
+  enabled?: boolean;
+  provider?: "saml" | "oidc";
+  /** Nombre del IdP en Cognito — el mismo que usa signInWithRedirect({ custom }). */
+  cognitoProviderName?: string;
+  /** SAML: URL pública de la metadata del IdP. */
+  metadataUrl?: string;
+  /** OIDC: issuer/discovery URL + clientId (público). El secret va a Secrets Manager. */
+  issuerUrl?: string;
+  clientId?: string;
+  clientSecretSet?: boolean;
+  /** Routing: dominios de email que entran por este IdP (ej. ["udep.edu.pe"]). */
+  emailDomains?: string[];
+  updatedAt?: string;
+}
 export interface ConnectionsConfig {
   connect?: ConnectConn;
   salesforce?: SalesforceConn;
@@ -141,6 +163,7 @@ export interface ConnectionsConfig {
   contactFlows?: ContactFlowsConfig;
   routingRules?: RoutingRulesConfig;
   branding?: BrandingConn;
+  sso?: SsoConn;
 }
 
 const LS_KEY = "vox:connections";
