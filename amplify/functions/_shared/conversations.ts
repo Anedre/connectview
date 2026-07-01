@@ -28,7 +28,19 @@ export function extractContact(text: string): { phone?: string; email?: string }
 
 const CONV_TABLE = process.env.CONVERSATIONS_TABLE || "connectview-conversations";
 
-export type ConvChannel = "instagram" | "messenger" | "whatsapp" | "fb_comment";
+export type ConvChannel = "instagram" | "messenger" | "whatsapp" | "fb_comment" | "mercadolibre";
+
+/** Contexto de Mercado Libre (F4.1) para responder por el endpoint correcto:
+ *  una PREGUNTA se responde con POST /answers (question_id); un MENSAJE post-venta
+ *  con POST /messages/packs/<packId>/sellers/<sellerId>. `buyerId` = senderId. */
+export interface MlContext {
+  kind: "question" | "message";
+  questionId?: string;
+  itemId?: string;
+  packId?: string;
+  sellerId?: string;
+  buyerId?: string;
+}
 
 export interface ConvMessage {
   id: string;
@@ -62,6 +74,8 @@ export interface Conversation {
   postId?: string;
   platform?: "facebook" | "instagram";
   dmSent?: boolean;
+  /** Solo `mercadolibre` (F4.1): contexto para responder por el endpoint correcto. */
+  ml?: MlContext;
   messages: ConvMessage[];
   createdAt: string;
   updatedAt: string;
@@ -190,6 +204,47 @@ export async function appendComment(
   conv.commentId = m.commentId;
   conv.postId = m.postId;
   conv.dmSent = false;
+  conv.status = "open";
+  conv.updatedAt = now;
+  await put(dynamo, conv);
+  return conv;
+}
+
+/**
+ * Entrante de Mercado Libre (F4.1) → upsert de una conversación `mercadolibre`
+ * agrupada por el comprador (`mercadolibre#<buyerId>`). Guarda el contexto `ml`
+ * (question vs message + ids) para poder responder por el endpoint correcto. El
+ * texto entra como mensaje "in". Reusa la lógica común de `appendInbound`.
+ */
+export async function appendMlInbound(
+  dynamo: DynamoDBClient,
+  m: {
+    buyerId: string;
+    text: string;
+    customerName?: string;
+    ml: MlContext;
+    ts?: string;
+    tenantId?: string;
+  },
+): Promise<Conversation> {
+  const now = m.ts || new Date().toISOString();
+  const conv =
+    (await getConversation(dynamo, convId("mercadolibre", m.buyerId))) ||
+    blank("mercadolibre", m.buyerId, now, m.tenantId);
+  conv.messages = [
+    ...(conv.messages || []).slice(-199),
+    { id: randomUUID(), direction: "in", text: m.text, ts: now },
+  ];
+  conv.unread = (conv.unread || 0) + 1;
+  conv.lastMessageAt = now;
+  conv.lastMessagePreview = (m.text || "").slice(0, 120) || "[pregunta]";
+  if (m.customerName) conv.customerName = m.customerName;
+  if (m.tenantId) conv.tenantId = m.tenantId;
+  conv.ml = { ...m.ml, buyerId: m.buyerId };
+  // Pista de identidad si el comprador dejó teléfono/email en el texto.
+  const hint = extractContact(m.text || "");
+  if (hint.phone && !conv.phone) conv.phone = hint.phone;
+  if (hint.email && !conv.email) conv.email = hint.email;
   conv.status = "open";
   conv.updatedAt = now;
   await put(dynamo, conv);

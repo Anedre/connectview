@@ -107,7 +107,8 @@ export type ChannelType =
   | "email"
   | "instagram"
   | "messenger"
-  | "comment";
+  | "comment"
+  | "mercadolibre";
 
 const CHANNEL_META: Record<ChannelType, { cls: string; label: string; iconPath: ReactNode }> = {
   voice: {
@@ -180,6 +181,16 @@ const CHANNEL_META: Record<ChannelType, { cls: string; label: string; iconPath: 
       <>
         <path d="M21 11.5a7.5 7.5 0 0 1-10.9 6.7L4 20l1.8-4.2A7.5 7.5 0 1 1 21 11.5z" />
         <path d="M8.5 10.5h7M8.5 13.5h4" />
+      </>
+    ),
+  },
+  mercadolibre: {
+    cls: "ch--mercadolibre",
+    label: "Mercado Libre",
+    iconPath: (
+      <>
+        <path d="M6 7h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7z" />
+        <path d="M9 7a3 3 0 0 1 6 0" />
       </>
     ),
   },

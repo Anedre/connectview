@@ -257,6 +257,9 @@ export function ConversationThread({ conversationId }: { conversationId: string 
           </div>
           <div className="muted" style={{ fontSize: 11.5 }}>
             {CH_LABEL[conversation.channel] || conversation.channel}
+            {conversation.ml
+              ? ` · ${conversation.ml.kind === "question" ? "Pregunta" : "Post-venta"}`
+              : ""}
             {closed ? " · cerrada" : ""}
           </div>
         </div>
@@ -414,7 +417,11 @@ export function ConversationThread({ conversationId }: { conversationId: string 
         <div className="muted" style={{ fontSize: 10.5, marginTop: 6 }}>
           {isComment
             ? "“Público” responde en el hilo del comentario; “Privado” abre un DM al autor (1 vez por comentario, ventana de Meta)."
-            : "La respuesta se envía por la Graph API de Meta al remitente."}
+            : conversation.channel === "mercadolibre"
+              ? conversation.ml?.kind === "question"
+                ? "La respuesta se publica como respuesta a la pregunta en Mercado Libre."
+                : "La respuesta se envía por la mensajería post-venta de Mercado Libre."
+              : "La respuesta se envía por la Graph API de Meta al remitente."}
         </div>
       </div>
 

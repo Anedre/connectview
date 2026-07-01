@@ -10,7 +10,7 @@ import type { ConvChannel } from "@/hooks/useConversations";
 export function chipType(channel: ConvChannel): ChannelType {
   if (channel === "whatsapp") return "wa";
   if (channel === "fb_comment") return "comment";
-  return channel; // instagram | messenger
+  return channel; // instagram | messenger | mercadolibre
 }
 
 /** Color de acento por canal (avatares / bordes). */
@@ -19,6 +19,7 @@ export const CH_COLOR: Record<ConvChannel, string> = {
   messenger: "#0084ff",
   whatsapp: "#1FAE6C",
   fb_comment: "#4f46e5",
+  mercadolibre: "#ffe600",
 };
 
 /** Etiqueta legible del canal (subtítulo del hilo). */
@@ -27,4 +28,5 @@ export const CH_LABEL: Record<ConvChannel, string> = {
   messenger: "Messenger",
   whatsapp: "WhatsApp",
   fb_comment: "Comentario",
+  mercadolibre: "Mercado Libre",
 };

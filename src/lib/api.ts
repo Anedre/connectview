@@ -144,6 +144,10 @@ interface ApiEndpoints {
   // en la cuenta del cliente vía el rol de provisión. 3 modos en el body:
   // create (CreateInstance) · status (poll DescribeInstance) · finalize (AssociateApprovedOrigin).
   createConnectInstance?: string;
+  // F4.1 — Mercado Libre: inicia el OAuth (devuelve la URL de autorización) y
+  // el webhook público de inbound (su URL se pega en el panel de ML → Notificaciones).
+  mercadolibreOAuthStart?: string;
+  mercadolibreWebhook?: string;
   // Inicia el flujo OAuth web de Salesforce (devuelve la URL de autorización).
   salesforceOAuthStart?: string;
   // Callback del OAuth web de Salesforce. SF redirige acá con ?code=…&state=…

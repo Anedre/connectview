@@ -8,7 +8,7 @@ import { authedFetch } from "@/lib/authedFetch";
  * leída / cerrar). La lista se refresca sola (poll) para sentirse en vivo sin
  * websockets; el thread abierto refresca más rápido.
  */
-export type ConvChannel = "instagram" | "messenger" | "whatsapp" | "fb_comment";
+export type ConvChannel = "instagram" | "messenger" | "whatsapp" | "fb_comment" | "mercadolibre";
 
 export interface ConvMessage {
   id: string;
@@ -40,6 +40,15 @@ export interface Conversation {
   postId?: string;
   platform?: "facebook" | "instagram";
   dmSent?: boolean;
+  /** Solo `mercadolibre` (F4.1): tipo (pregunta/mensaje) + ids para responder. */
+  ml?: {
+    kind: "question" | "message";
+    questionId?: string;
+    itemId?: string;
+    packId?: string;
+    sellerId?: string;
+    buyerId?: string;
+  };
   messages?: ConvMessage[];
   createdAt: string;
   updatedAt: string;

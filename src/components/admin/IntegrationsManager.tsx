@@ -8,6 +8,7 @@ import {
   Palette,
   ClipboardList,
   Trash2,
+  ShoppingBag,
 } from "lucide-react";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
@@ -1973,6 +1974,147 @@ function SsoCard({
   );
 }
 
+/* ── Mercado Libre (F4.1 · canal del inbox) ──────────────────────────────
+ * Conecta la cuenta de ML del tenant (OAuth) para recibir preguntas + mensajes
+ * post-venta en el inbox omnicanal. Build-ahead: el OAuth se activa con la App
+ * de ML del cliente. La URL del webhook se pega en el panel de ML → Notificaciones. */
+const ML_SITES: { v: string; l: string }[] = [
+  { v: "MPE", l: "Perú" },
+  { v: "MLA", l: "Argentina" },
+  { v: "MLB", l: "Brasil" },
+  { v: "MLM", l: "México" },
+  { v: "MLC", l: "Chile" },
+  { v: "MCO", l: "Colombia" },
+  { v: "MLU", l: "Uruguay" },
+];
+
+function MercadoLibreCard({
+  config,
+  update,
+}: {
+  config: ConnectionsConfig;
+  update: (patch: Partial<ConnectionsConfig>) => void;
+}) {
+  const ml = config.mercadolibre || {};
+  const [open, setOpen] = useState(false);
+  const [siteId, setSiteId] = useState(ml.siteId || "MPE");
+  const ep = getApiEndpoints();
+  const webhookUrl = ep?.mercadolibreWebhook || "";
+
+  const tone: Tone = ml.connected ? "ok" : "idle";
+  const statusLabel = ml.connected ? "Conectado" : "No conectado";
+
+  const onConnect = async () => {
+    if (!ep?.mercadolibreOAuthStart) {
+      // Sin backend desplegado aún: guardamos el sitio elegido para después.
+      update({ mercadolibre: { ...ml, siteId } });
+      toast.message(
+        "El OAuth de Mercado Libre se habilita al desplegar el backend + la App de ML.",
+      );
+      return;
+    }
+    try {
+      const r = await authedFetch(
+        `${ep.mercadolibreOAuthStart}?siteId=${encodeURIComponent(siteId)}`,
+      );
+      const j = await r.json();
+      if (j.authUrl) {
+        window.location.assign(j.authUrl);
+        return;
+      }
+      toast.error(j.error || "No se obtuvo la URL de autorización de Mercado Libre");
+    } catch {
+      toast.error("No se pudo iniciar el OAuth con Mercado Libre");
+    }
+  };
+
+  const onDisconnect = () => {
+    update({ mercadolibre: { connected: false } });
+    toast.success("Mercado Libre desconectado");
+  };
+
+  return (
+    <ConnCard
+      icon={<ShoppingBag size={20} style={{ color: "#2d3277" }} />}
+      title="Mercado Libre"
+      desc="Recibí las preguntas de tus publicaciones y los mensajes post-venta en el inbox omnicanal, y respondé desde ARIA."
+      tone={tone}
+      statusLabel={statusLabel}
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {ml.connected ? (
+          <>
+            <div className="muted" style={{ fontSize: 12.5 }}>
+              Conectado como <b>{ml.nickname || ml.userId || "tu cuenta de ML"}</b>
+              {ml.connectedAt
+                ? ` · desde ${new Date(ml.connectedAt).toLocaleDateString("es-PE")}`
+                : ""}
+              .
+            </div>
+            <div className="row">
+              <button className="btn btn--danger btn--sm" onClick={onDisconnect}>
+                <Icon.Close size={13} /> Desconectar
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div
+              style={{
+                fontSize: 12,
+                lineHeight: 1.55,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "color-mix(in srgb, var(--accent-amber) 8%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--accent-amber) 30%, transparent)",
+              }}
+            >
+              El OAuth de Mercado Libre requiere una <b>App de ML</b> registrada (app_id/secret). El
+              equipo la configura una vez; después, «Conectar» te lleva a autorizar tu cuenta.
+            </div>
+            <div>
+              <StepLabel n={1}>Elegí tu país de Mercado Libre</StepLabel>
+              <select
+                style={{ ...inputStyle, maxWidth: 220 }}
+                value={siteId}
+                onChange={(e) => setSiteId(e.target.value)}
+              >
+                {ML_SITES.map((s) => (
+                  <option key={s.v} value={s.v}>
+                    {s.l} · {s.v}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <StepLabel n={2}>Autorizá a ARIA</StepLabel>
+              <button className="btn btn--primary btn--sm" onClick={onConnect}>
+                <ShoppingBag size={13} /> Conectar con Mercado Libre
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* URL del webhook — se pega en el panel de ML → Notificaciones. */}
+        <div>
+          <StepLabel n={ml.connected ? 1 : 3}>Webhook de notificaciones</StepLabel>
+          <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
+            En tu App de Mercado Libre → <b>Notificaciones</b>, pegá esta URL y suscribite a los
+            topics <code style={{ fontSize: 11.5 }}>questions</code> y{" "}
+            <code style={{ fontSize: 11.5 }}>messages</code>.
+          </div>
+          <SsoRoField
+            label="Callback / Notifications URL"
+            value={webhookUrl || "(se genera al desplegar el webhook)"}
+          />
+        </div>
+      </div>
+    </ConnCard>
+  );
+}
+
 export function IntegrationsManager() {
   const { config, save, hasBackend, loading, whatsappNumbers } = useConnections();
   const update = (patch: Partial<ConnectionsConfig>) => save({ ...config, ...patch });
@@ -2019,6 +2161,7 @@ export function IntegrationsManager() {
       <AmazonConnectCard config={config} update={update} />
       <SalesforceCard config={config} update={update} />
       <WhatsAppCard config={config} update={update} awsNumbers={whatsappNumbers} />
+      <MercadoLibreCard config={config} update={update} />
       <SsoCard config={config} update={update} />
       <MessagingCard config={config} update={update} />
     </div>

@@ -17,6 +17,7 @@ import {
 } from "../_shared/conversations";
 import { samePhone } from "../_shared/phone";
 import { sendWhatsApp } from "../_shared/whatsappSend";
+import { resolveMlSecret, answerQuestion, sendMlMessage } from "../_shared/mercadolibre";
 
 /**
  * manage-conversations — backend del inbox omnicanal (Pilar 6 · R13).
@@ -40,6 +41,7 @@ const CH_LABEL: Record<string, string> = {
   messenger: "Messenger",
   whatsapp: "WhatsApp",
   fb_comment: "Comentario",
+  mercadolibre: "Mercado Libre",
 };
 
 interface LeadLite {
@@ -322,6 +324,48 @@ export const handler: Handler = async (event: any) => {
         if (!text) return bad(400, "text requerido");
         const conv = await getConversation(legacyDynamo, conversationId);
         if (!conv) return bad(404, "conversación no encontrada");
+
+        // Mercado Libre (F4.1): reply por la API de ML (no Meta). Una PREGUNTA se
+        // responde con POST /answers; un MENSAJE post-venta con /messages/packs/…
+        if (conv.channel === "mercadolibre" && body.action === "reply") {
+          const actorMl = typeof body.actor === "string" ? body.actor : "agente";
+          const secret = await resolveMlSecret(tenantId);
+          if (!secret?.accessToken)
+            return bad(400, "Mercado Libre no está conectado para este tenant");
+          const ml = conv.ml;
+          if (!ml) return bad(400, "conversación de ML sin contexto (ml)");
+          try {
+            if (ml.kind === "question") {
+              if (!ml.questionId) return bad(400, "falta el questionId de la pregunta");
+              await answerQuestion(secret.accessToken, ml.questionId, text);
+            } else {
+              if (!ml.packId || !ml.sellerId) return bad(400, "faltan packId/sellerId del mensaje");
+              await sendMlMessage(
+                secret.accessToken,
+                ml.packId,
+                ml.sellerId,
+                ml.buyerId || conv.senderId,
+                text,
+              );
+            }
+          } catch (e) {
+            return bad(
+              502,
+              `Mercado Libre rechazó el envío: ${e instanceof Error ? e.message : "error"}`,
+            );
+          }
+          const updatedMl = await appendOutbound(legacyDynamo, conversationId, text, actorMl);
+          if (conv.leadId) {
+            await appendLeadGolpe(conv.leadId, {
+              channel: conv.channel,
+              direction: "out",
+              text,
+              agent: actorMl,
+            });
+          }
+          return ok({ conversation: updatedMl, sent: true });
+        }
+
         const { token, pageId, waPhoneId } = await getTenantMeta(tenantId);
         if (!token) return bad(400, "Meta no configurado para este tenant");
         const actor = typeof body.actor === "string" ? body.actor : "agente";

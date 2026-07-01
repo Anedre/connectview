@@ -4763,6 +4763,10 @@ textarea:focus {
 .ch--comment {
   background: linear-gradient(135deg, #6366f1, #4f46e5);
 }
+.ch--mercadolibre {
+  background: #ffe600;
+  color: #2d3277;
+}
 
 /* ============================================================
    Tabs

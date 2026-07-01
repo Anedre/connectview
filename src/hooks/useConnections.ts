@@ -155,6 +155,19 @@ export interface SsoConn {
   emailDomains?: string[];
   updatedAt?: string;
 }
+/**
+ * F4.1 — Canal Mercado Libre. Config NO sensible por-tenant: el `userId` del
+ * seller (para rutear el webhook al tenant), el sitio/país, y flags de estado.
+ * Los tokens OAuth viven en Secrets Manager (`connectview/tenant/<id>/mercadolibre`),
+ * NO acá. Ver design/mercadolibre.md.
+ */
+export interface MlConn {
+  connected?: boolean;
+  userId?: string; // user_id del seller en ML (lo cablea el OAuth callback)
+  siteId?: string; // MPE / MLA / MLB…
+  nickname?: string;
+  connectedAt?: string;
+}
 export interface ConnectionsConfig {
   connect?: ConnectConn;
   salesforce?: SalesforceConn;
@@ -164,6 +177,7 @@ export interface ConnectionsConfig {
   routingRules?: RoutingRulesConfig;
   branding?: BrandingConn;
   sso?: SsoConn;
+  mercadolibre?: MlConn;
 }
 
 const LS_KEY = "vox:connections";

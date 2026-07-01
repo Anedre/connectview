@@ -6,13 +6,13 @@
 
 ## Panorama: verificable ya vs bloqueado-cliente
 
-| Bloque                      | Qué es                                                                    | Verificable en vivo                                                                    | Bloqueo                                      |
-| --------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------- |
-| **F4.4 Email tracking**     | pixel de apertura + wrap de links → golpes `email_opened`/`email_clicked` | ✅ total (abro el pixel → golpe + score)                                               | ninguno                                      |
-| **F4.2a LIST interactivo**  | mensaje `type:interactive` list (no-template)                             | ✅ total (llega a WhatsApp)                                                            | ninguno (sin aprobación Meta)                |
-| **F4.2b CAROUSEL template** | componente `CAROUSEL` en templates                                        | ✅ builder+UI composer; envío real espera **imágenes UDEP + aprobación Meta (48-72h)** | imágenes del cliente + aprobación Meta       |
-| **F4.1 Mercado Libre**      | canal ML en el inbox omnicanal                                            | ⚠️ backend/skeleton sí; live no                                                        | **OAuth App ML del cliente**                 |
-| **F4.3 SSO SAML/OIDC**      | login federado por-tenant                                                 | ✅ scaffold+login+config UI (build-ahead); login real no                               | **IdP del cliente + `ampx pipeline-deploy`** |
+| Bloque                      | Qué es                                                                    | Verificable en vivo                                                                     | Bloqueo                                      |
+| --------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------- |
+| **F4.4 Email tracking**     | pixel de apertura + wrap de links → golpes `email_opened`/`email_clicked` | ✅ total (abro el pixel → golpe + score)                                                | ninguno                                      |
+| **F4.2a LIST interactivo**  | mensaje `type:interactive` list (no-template)                             | ✅ total (llega a WhatsApp)                                                             | ninguno (sin aprobación Meta)                |
+| **F4.2b CAROUSEL template** | componente `CAROUSEL` en templates                                        | ✅ builder+UI composer; envío real espera **imágenes UDEP + aprobación Meta (48-72h)**  | imágenes del cliente + aprobación Meta       |
+| **F4.1 Mercado Libre**      | canal ML en el inbox omnicanal                                            | ✅ webhook+reply+UI+config desplegados y verificados; envío/recepción real espera OAuth | **OAuth App ML del cliente**                 |
+| **F4.3 SSO SAML/OIDC**      | login federado por-tenant                                                 | ✅ scaffold+login+config UI (build-ahead); login real no                                | **IdP del cliente + `ampx pipeline-deploy`** |
 
 **Arco recomendado:** F4.4 → F4.2 (verificables, self-contained, F4.4 cierra la última pieza de
 Pardot enganchándose con lo de Fase 3). F4.1 + F4.3 = **build-ahead** (backend/config listos,
@@ -111,11 +111,12 @@ El FlowBuilder (Pilar 8) ya tiene nodo `list`; falta nodo `carousel`.
 el webhook unificado + `manage-conversations` (switch de reply por-canal), secretos de tenant
 (`connectview/tenant/<id>/mercadolibre`). **Nada de ML existe hoy** en el repo.
 
-**Construible sin cliente:** extender `ConvChannel += "mercadolibre"`; modelo de pregunta/mensaje ML
-(questionId + itemId); skeleton del webhook de ML (topics `questions`/`messages`) + la rama de reply
-por la REST API de ML; UI del canal en el inbox; tests de ingesta.
-**Bloqueado-cliente:** OAuth 2.0 real (app_id/app_secret), URL de webhook confirmada en el dashboard
-de ML, validación de firma, reply real. **Deploy:** `deploy-lambda.mjs` (hand-managed).
+**✅ HECHO (2026-07-01) — detalle en `design/mercadolibre.md`.** `mercadolibre-webhook` +
+`mercadolibre-oauth-start` desplegados (Function URLs cableadas), rama de reply ML en
+`manage-conversations`, canal en el inbox (chip/filtro/badge), tarjeta de config. Verificado en vivo:
+webhook (GET/POST 200, ruteo por topic/tenant), reply enruta a ML, UI con conversación sembrada. 7 tests
+de ingesta. **Bloqueado-cliente:** OAuth real (app_id/secret → secret `connectview/mercadolibre` +
+callback Lambda), URL de webhook confirmada en el panel de ML, validación de firma, envío/recepción real.
 
 ---
 

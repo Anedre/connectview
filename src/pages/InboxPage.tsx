@@ -19,6 +19,7 @@ const FILTERS: { id: ChannelFilter; label: string }[] = [
   { id: "messenger", label: "Messenger" },
   { id: "fb_comment", label: "Comentarios" },
   { id: "whatsapp", label: "WhatsApp" },
+  { id: "mercadolibre", label: "Mercado Libre" },
 ];
 
 export function InboxPage() {
