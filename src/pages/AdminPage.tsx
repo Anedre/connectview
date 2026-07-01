@@ -10,6 +10,7 @@ import { KnowledgeEditor } from "@/components/admin/KnowledgeEditor";
 import { ChannelsManager } from "@/components/admin/ChannelsManager";
 import { WhatsAppTemplatesManager } from "@/components/admin/WhatsAppTemplatesManager";
 import { SuppressionManager } from "@/components/admin/SuppressionManager";
+import { SegmentsManager } from "@/components/admin/SegmentsManager";
 import { AiContactLensManager } from "@/components/admin/AiContactLensManager";
 import { SecurityManager } from "@/components/admin/SecurityManager";
 import { IntegrationsManager } from "@/components/admin/IntegrationsManager";
@@ -121,6 +122,7 @@ export function AdminPage() {
     { id: "channels", label: "Canales", icon: Icon.Globe },
     { id: "watemplates", label: "Plantillas WhatsApp", icon: Icon.Chat },
     { id: "suppression", label: "Supresión", icon: Icon.Stop },
+    { id: "segments", label: "Segmentos", icon: Icon.Ticket },
     { id: "queues", label: "Colas", icon: Icon.Queue },
     { id: "integrations", label: "Integraciones", icon: Icon.Lightning },
     { id: "ai", label: "IA y Contact Lens", icon: Icon.Sparkles },
@@ -339,6 +341,7 @@ export function AdminPage() {
           {section === "channels" && <ChannelsManager />}
           {section === "watemplates" && <WhatsAppTemplatesManager />}
           {section === "suppression" && <SuppressionManager />}
+          {section === "segments" && <SegmentsManager />}
           {section === "integrations" && <IntegrationsManager />}
           {section === "queues" && <QueuesPanel />}
           {section === "ai" && <AiContactLensManager />}

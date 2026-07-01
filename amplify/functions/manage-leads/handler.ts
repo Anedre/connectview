@@ -29,6 +29,31 @@ import { setActiveTenant } from "../_shared/salesforceClient";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
 import { fireAutomation } from "../_shared/automationHook";
+import { evaluateLeadFilter, type SegmentDef } from "../_shared/leadFilter";
+
+// Fase 2 · F2.3 — segmentos dinámicos (predicado reutilizable por tenant).
+const SEGMENTS_TABLE = process.env.SEGMENTS_TABLE || "connectview-segments";
+async function listSegments(tenantId: string): Promise<SegmentDef[]> {
+  const r = await dynamo.send(
+    new QueryCommand({
+      TableName: SEGMENTS_TABLE,
+      KeyConditionExpression: "tenantId = :t",
+      ExpressionAttributeValues: { ":t": { S: tenantId } },
+    }),
+  );
+  return (r.Items || [])
+    .map((i) => unmarshall(i) as SegmentDef)
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+}
+async function getSegment(tenantId: string, segmentId: string): Promise<SegmentDef | null> {
+  const r = await dynamo.send(
+    new GetItemCommand({
+      TableName: SEGMENTS_TABLE,
+      Key: { tenantId: { S: tenantId }, segmentId: { S: segmentId } },
+    }),
+  );
+  return r.Item ? (unmarshall(r.Item) as SegmentDef) : null;
+}
 
 /**
  * manage-leads — the unified lead funnel / embudo (roadmap #4, Kommo-style).
@@ -328,6 +353,8 @@ export const handler: Handler = async (event: any) => {
 
   try {
     if (method === "GET") {
+      // Fase 2 · F2.3 — listar segmentos guardados (no escanea leads).
+      if (params.segments === "1") return ok({ segments: await listSegments(tenantId) });
       const all = await scanAll();
 
       // Reporte de atribución "golpes→conversión" (Pilar 2). Opcionalmente
@@ -483,6 +510,18 @@ export const handler: Handler = async (event: any) => {
         r.golpesCount = (r.golpesCount as number) + (hsmByPhone.get(k) || 0);
         return r;
       });
+      // Fase 2 · F2.3 — filtrar por un segmento guardado (audiencia reutilizable:
+      // campaña/journey/export/vista). Evalúa el predicado sobre los leans (traen
+      // score/grade/golpesCount).
+      if (params.segment) {
+        const seg = await getSegment(tenantId, String(params.segment));
+        if (!seg) return bad(404, "segmento no encontrado");
+        const matched = lean.filter((l) => evaluateLeadFilter(l, seg.rules, seg.match));
+        return ok({
+          leads: matched,
+          segment: { segmentId: seg.segmentId, name: seg.name, total: matched.length },
+        });
+      }
       return ok({ leads: lean });
     }
 
@@ -561,6 +600,38 @@ export const handler: Handler = async (event: any) => {
           );
         }
         return ok({ unassigned: leadIds.length, programId });
+      }
+
+      // Fase 2 · F2.3 — guardar / borrar un segmento (predicado reutilizable).
+      if (body.action === "saveSegment") {
+        const seg = (body.segment || {}) as Partial<SegmentDef>;
+        const item: SegmentDef = {
+          tenantId,
+          segmentId: seg.segmentId || randomUUID(),
+          name: (seg.name || "Segmento").slice(0, 120),
+          description: seg.description ? String(seg.description).slice(0, 300) : undefined,
+          match: seg.match === "any" ? "any" : "all",
+          rules: Array.isArray(seg.rules) ? seg.rules.slice(0, 30) : [],
+          updatedAt: new Date().toISOString(),
+          updatedBy: body.actor ? String(body.actor) : undefined,
+        };
+        await dynamo.send(
+          new PutItemCommand({
+            TableName: SEGMENTS_TABLE,
+            Item: marshall(item, { removeUndefinedValues: true }),
+          }),
+        );
+        return ok({ segment: item, saved: true });
+      }
+      if (body.action === "deleteSegment") {
+        if (!body.segmentId) return bad(400, "segmentId requerido");
+        await dynamo.send(
+          new DeleteItemCommand({
+            TableName: SEGMENTS_TABLE,
+            Key: { tenantId: { S: tenantId }, segmentId: { S: String(body.segmentId) } },
+          }),
+        );
+        return ok({ deleted: true, segmentId: body.segmentId });
       }
 
       // Forzar el envío de UN lead a Salesforce (botón "Enviar a Salesforce"
