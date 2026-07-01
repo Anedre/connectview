@@ -289,8 +289,8 @@ async function findChatContactIds(phone: string): Promise<{
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (c: any) => c.CustomerEndpoint?.Address === phone || c.CustomerEndpoint?.Value === phone,
       )
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .map(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (c: any): ChatContactRef => ({
           contactId: (c.Id as string) || "",
           initiationTimestamp: c.InitiationTimestamp

@@ -208,27 +208,25 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
     )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((x): x is any => !!x);
-    return (
-      detailed
-        .filter(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (c: any) => c.CustomerEndpoint?.Address === phone || c.CustomerEndpoint?.Value === phone,
-        )
+    return detailed
+      .filter(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map(
-          (c: any): ContactBrief => ({
-            contactId: (c.Id as string) || "",
-            channel: String(c.Channel ?? "")
-              .trim()
-              .toUpperCase(),
-            initiationTimestamp: c.InitiationTimestamp
-              ? new Date(c.InitiationTimestamp).toISOString()
-              : "",
-            recordings: c.Recordings || [],
-          }),
-        )
-        .filter((x) => x.contactId)
-    );
+        (c: any) => c.CustomerEndpoint?.Address === phone || c.CustomerEndpoint?.Value === phone,
+      )
+      .map(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (c: any): ContactBrief => ({
+          contactId: (c.Id as string) || "",
+          channel: String(c.Channel ?? "")
+            .trim()
+            .toUpperCase(),
+          initiationTimestamp: c.InitiationTimestamp
+            ? new Date(c.InitiationTimestamp).toISOString()
+            : "",
+          recordings: c.Recordings || [],
+        }),
+      )
+      .filter((x) => x.contactId);
   } catch {
     return [];
   }

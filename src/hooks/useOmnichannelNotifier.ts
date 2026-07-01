@@ -189,8 +189,8 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
     for (const contact of contacts) {
       if (wired.has(contact.contactId)) continue;
       if ((contact.channel || "").toUpperCase() !== "CHAT") continue;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const streamsContact = (agent?.getContacts?.() || []).find(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (x: any) => x.getContactId?.() === contact.contactId,
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
