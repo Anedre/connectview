@@ -30,9 +30,14 @@ import { resolveTenantId } from "../_shared/cognitoAuth";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
 import { fireAutomation } from "../_shared/automationHook";
 import { evaluateLeadFilter, type SegmentDef } from "../_shared/leadFilter";
+import { entryNodeId, type JourneyDef } from "../_shared/journeys";
 
 // Fase 2 · F2.3 — segmentos dinámicos (predicado reutilizable por tenant).
 const SEGMENTS_TABLE = process.env.SEGMENTS_TABLE || "connectview-segments";
+// Fase 3 — journeys (CRUD + enrol manual folded acá; el motor es journey-runner).
+const JOURNEYS_TABLE = process.env.JOURNEYS_TABLE || "connectview-journeys";
+const ENROLLMENTS_TABLE =
+  process.env.JOURNEY_ENROLLMENTS_TABLE || "connectview-journey-enrollments";
 async function listSegments(tenantId: string): Promise<SegmentDef[]> {
   const r = await dynamo.send(
     new QueryCommand({
@@ -355,6 +360,20 @@ export const handler: Handler = async (event: any) => {
     if (method === "GET") {
       // Fase 2 · F2.3 — listar segmentos guardados (no escanea leads).
       if (params.segments === "1") return ok({ segments: await listSegments(tenantId) });
+      // Fase 3 — listar journeys del tenant.
+      if (params.journeys === "1") {
+        const r = await dynamo.send(
+          new QueryCommand({
+            TableName: JOURNEYS_TABLE,
+            KeyConditionExpression: "tenantId = :t",
+            ExpressionAttributeValues: { ":t": { S: tenantId } },
+          }),
+        );
+        const journeys = (r.Items || [])
+          .map((i) => unmarshall(i) as JourneyDef)
+          .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        return ok({ journeys });
+      }
       const all = await scanAll();
 
       // Reporte de atribución "golpes→conversión" (Pilar 2). Opcionalmente
@@ -632,6 +651,84 @@ export const handler: Handler = async (event: any) => {
           }),
         );
         return ok({ deleted: true, segmentId: body.segmentId });
+      }
+
+      // Fase 3 — journeys: CRUD + enrol manual (el motor de avance es journey-runner).
+      if (body.action === "saveJourney") {
+        const j = (body.journey || {}) as Partial<JourneyDef>;
+        const item: JourneyDef = {
+          tenantId,
+          journeyId: j.journeyId || randomUUID(),
+          name: (j.name || "Journey").slice(0, 120),
+          status: j.status === "active" || j.status === "paused" ? j.status : "draft",
+          entry: j.entry || { manual: true },
+          reenroll: !!j.reenroll,
+          nodes: Array.isArray(j.nodes) ? j.nodes.slice(0, 100) : [],
+          edges: Array.isArray(j.edges) ? j.edges.slice(0, 200) : [],
+          goal: j.goal,
+          updatedAt: new Date().toISOString(),
+          updatedBy: body.actor ? String(body.actor) : undefined,
+        };
+        await dynamo.send(
+          new PutItemCommand({
+            TableName: JOURNEYS_TABLE,
+            Item: marshall(item, { removeUndefinedValues: true }),
+          }),
+        );
+        return ok({ journey: item, saved: true });
+      }
+      if (body.action === "deleteJourney") {
+        if (!body.journeyId) return bad(400, "journeyId requerido");
+        await dynamo.send(
+          new DeleteItemCommand({
+            TableName: JOURNEYS_TABLE,
+            Key: { tenantId: { S: tenantId }, journeyId: { S: String(body.journeyId) } },
+          }),
+        );
+        return ok({ deleted: true, journeyId: body.journeyId });
+      }
+      if (body.action === "enrollJourney") {
+        if (!body.journeyId || !body.leadId) return bad(400, "journeyId y leadId requeridos");
+        const jr = await dynamo.send(
+          new GetItemCommand({
+            TableName: JOURNEYS_TABLE,
+            Key: { tenantId: { S: tenantId }, journeyId: { S: String(body.journeyId) } },
+          }),
+        );
+        if (!jr.Item) return bad(404, "journey no encontrado");
+        const journey = unmarshall(jr.Item) as JourneyDef;
+        const entry = entryNodeId(journey);
+        if (!entry) return bad(400, "el journey no tiene nodo de entrada");
+        // reenroll off: no re-inscribir si ya existe un enrollment.
+        const existing = await dynamo.send(
+          new GetItemCommand({
+            TableName: ENROLLMENTS_TABLE,
+            Key: { journeyId: { S: String(body.journeyId) }, leadId: { S: String(body.leadId) } },
+          }),
+        );
+        if (existing.Item && !journey.reenroll) {
+          return ok({ enrolled: false, reason: "ya inscrito (reenroll off)" });
+        }
+        const now = new Date().toISOString();
+        await dynamo.send(
+          new PutItemCommand({
+            TableName: ENROLLMENTS_TABLE,
+            Item: marshall(
+              {
+                journeyId: String(body.journeyId),
+                leadId: String(body.leadId),
+                tenantId, // el runner lo usa para resolver el journey
+                currentNodeId: entry,
+                status: "active",
+                enteredAt: now,
+                nextRunAt: now, // listo para el próximo tick
+                history: [{ node: entry, at: now, note: "enrolado" }],
+              },
+              { removeUndefinedValues: true },
+            ),
+          }),
+        );
+        return ok({ enrolled: true, journeyId: body.journeyId, leadId: body.leadId, at: entry });
       }
 
       // Forzar el envío de UN lead a Salesforce (botón "Enviar a Salesforce"
