@@ -987,11 +987,21 @@ async function processCampaignWithBuckets(
       unassigned.push(c);
     }
   }
-  // FIFO: oldest contact first within each bucket and the pool.
-  const byCreatedAt = (a: CampaignContact, b: CampaignContact) =>
-    (a.createdAt || "").localeCompare(b.createdAt || "");
-  for (const list of buckets.values()) list.sort(byCreatedAt);
-  unassigned.sort(byCreatedAt);
+  // Fase 2 · F2.4 — prioridad por SCORE del lead (estampado en customAttributes
+  // al crear la campaña) DESC, y FIFO (createdAt) como desempate. El lead más
+  // caliente se marca primero en vez del más viejo. Sin score → 0 (va al final,
+  // igual que antes por createdAt).
+  const scoreOf = (c: CampaignContact): number => {
+    try {
+      return Number(JSON.parse(c.customAttributes || "{}").score) || 0;
+    } catch {
+      return 0;
+    }
+  };
+  const byScoreThenCreatedAt = (a: CampaignContact, b: CampaignContact) =>
+    scoreOf(b) - scoreOf(a) || (a.createdAt || "").localeCompare(b.createdAt || "");
+  for (const list of buckets.values()) list.sort(byScoreThenCreatedAt);
+  unassigned.sort(byScoreThenCreatedAt);
 
   // 3. Refill each agent's bucket up to maxPerAgent + remember the in-flight
   //    count so the dial step can reuse it without re-querying.

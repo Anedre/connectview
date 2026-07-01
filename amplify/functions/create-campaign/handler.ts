@@ -7,7 +7,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { bulkUpsertProfilesFromCsv } from "../_shared/upsertCustomerProfileFromCsv";
-import { bulkUpsertVoxLeads, setActiveDynamo } from "../_shared/leadSync";
+import { bulkUpsertVoxLeads, setActiveDynamo, getLeadScoresByPhones } from "../_shared/leadSync";
 import { kickDialer } from "../_shared/invokeDialer";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
@@ -286,6 +286,15 @@ export const handler: Handler = async (event: any, context: any) => {
       }),
     );
 
+    // Fase 2 · F2.4 — estampar el score/grade del lead en cada contacto (UN scan)
+    // para que el dialer priorice por score sin lookups en el hot path. Best-effort.
+    let scoreMap = new Map<string, { score?: number; grade?: string }>();
+    try {
+      scoreMap = await getLeadScoresByPhones(validContacts.map((c) => c.phone));
+    } catch (err) {
+      console.warn("getLeadScoresByPhones failed (sin score en la campaña):", err);
+    }
+
     // 3. Batch insert contacts
     for (const batch of chunk(validContacts, 25)) {
       await dynamo.send(
@@ -293,7 +302,11 @@ export const handler: Handler = async (event: any, context: any) => {
           RequestItems: {
             [CONTACTS_TABLE]: batch.map((c) => {
               const rowId = randomUUID();
-              const attrs = JSON.stringify(c.attributes || {});
+              const sc = scoreMap.get(c.phone);
+              const attrs = JSON.stringify({
+                ...(c.attributes || {}),
+                ...(sc?.score != null ? { score: sc.score, grade: sc.grade } : {}),
+              });
               return {
                 PutRequest: {
                   Item: {

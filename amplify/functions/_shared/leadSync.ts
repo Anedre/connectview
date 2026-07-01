@@ -1188,6 +1188,31 @@ export async function getLeadByPhone(phone: string): Promise<Lead | null> {
   return all.find((l) => samePhone(l.phone, p)) || null;
 }
 
+/**
+ * Fase 2 · F2.4 — mapa teléfono→{score,grade} para una lista de números (UN solo
+ * scan). Lo usa create-campaign para estampar el score del lead en el contacto de
+ * la campaña, y así el dialer prioriza por score sin lookups en el hot path. Solo
+ * incluye los que tienen score. Devuelve keyed por el string de teléfono de entrada.
+ */
+export async function getLeadScoresByPhones(
+  phones: string[],
+): Promise<Map<string, { score?: number; grade?: string }>> {
+  const out = new Map<string, { score?: number; grade?: string }>();
+  if (!phones.length) return out;
+  const all = await scanAll();
+  const byDigits = new Map<string, Lead>();
+  for (const l of all) {
+    const d = normalizePhone(l.phone)?.digits;
+    if (d) byDigits.set(d, l);
+  }
+  for (const p of phones) {
+    const d = normalizePhone(p)?.digits;
+    const l = d ? byDigits.get(d) : undefined;
+    if (l && (l.score != null || l.grade)) out.set(p, { score: l.score, grade: l.grade });
+  }
+  return out;
+}
+
 /** Historial de un lead por teléfono (para el panel del detalle en Vox). */
 export async function getLeadHistoryByPhone(phone: string): Promise<LeadHistoryEvent[]> {
   const lead = await getLeadByPhone(phone);
