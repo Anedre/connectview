@@ -92,6 +92,58 @@ interface WaFlow {
   name?: string;
   status?: string;
 }
+
+// ── Carousel (Fase 4 · F4.2b) ────────────────────────────────────────────
+// Meta exige tarjetas HOMOGÉNEAS: mismo formato de media y mismos tipos/orden
+// de botón en TODAS. Por eso la "forma" de botones se define UNA vez
+// (cardBtnShape) y cada tarjeta solo llena los valores. Carousel solo admite
+// estos 3 tipos de botón (ni COPY_CODE ni FLOW ni OTP).
+type CardBtnType = "QUICK_REPLY" | "URL" | "PHONE_NUMBER";
+const CARD_BTN_META: Record<CardBtnType, { label: string; hint: string }> = {
+  QUICK_REPLY: { label: "Respuesta rápida", hint: "El cliente toca y te responde con ese texto" },
+  URL: { label: "Enlace", hint: "Abre una página web (podés usar {{1}} para una URL dinámica)" },
+  PHONE_NUMBER: { label: "Llamar", hint: "Marca un número de teléfono" },
+};
+const CARD_MEDIA_FORMATS = [
+  { v: "IMAGE", l: "Imagen" },
+  { v: "VIDEO", l: "Video" },
+];
+const CARD_BODY_MAX = 160; // Meta: body de tarjeta ≤ 160 caracteres.
+const MIN_CARDS = 2;
+const MAX_CARDS = 10;
+
+// Valor de un botón dentro de una tarjeta (el tipo lo fija cardBtnShape).
+interface CardBtnValue {
+  text?: string;
+  url?: string;
+  phoneNumber?: string;
+  example?: string; // URL dinámica: URL de ejemplo
+}
+// Una tarjeta del carousel en el editor.
+interface CarouselCard {
+  headerHandle: string; // metaHeaderHandle de upload-whatsapp-template-media
+  headerMediaName: string;
+  headerMediaPreview: string; // object URL (solo imágenes)
+  uploading: boolean;
+  bodyText: string;
+  bodyExamples: string[]; // ejemplos para {{n}} del body de la tarjeta
+  buttons: CardBtnValue[]; // paralelo a cardBtnShape
+}
+const emptyCard = (): CarouselCard => ({
+  headerHandle: "",
+  headerMediaName: "",
+  headerMediaPreview: "",
+  uploading: false,
+  bodyText: "",
+  bodyExamples: [],
+  buttons: [],
+});
+const countVars = (s: string) =>
+  Array.from(s.matchAll(/\{\{\s*(\d+)\s*\}\}/g)).reduce(
+    (m, x) => Math.max(m, Number(x[1] || 0)),
+    0,
+  );
+
 // Detecta una variable {{n}} (para URL dinámica).
 const HAS_VAR = /\{\{\s*\d+\s*\}\}/;
 
@@ -139,9 +191,18 @@ export function WhatsAppTemplatesManager() {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   // WhatsApp Flows del tenant (para el botón de formulario).
   const [flows, setFlows] = useState<WaFlow[]>([]);
+  // Carousel (Fase 4 · F4.2b): modo tarjetas. bodyText/varExamples se reusan
+  // como el texto de la burbuja (body raíz); las tarjetas viven aparte.
+  const [isCarousel, setIsCarousel] = useState(false);
+  const [cardMediaFormat, setCardMediaFormat] = useState<"IMAGE" | "VIDEO">("IMAGE");
+  const [cardBtnShape, setCardBtnShape] = useState<CardBtnType[]>(["QUICK_REPLY"]);
+  const [cards, setCards] = useState<CarouselCard[]>([emptyCard(), emptyCard()]);
 
   const isAuth = category === "AUTHENTICATION";
   const isMedia = MEDIA_HEADER.includes(headerFormat);
+  // El carousel solo aplica a MARKETING/UTILITY (no AUTHENTICATION).
+  const carouselAllowed = category === "MARKETING" || category === "UTILITY";
+  const useCarousel = isCarousel && carouselAllowed;
 
   const refresh = useCallback(async () => {
     const ep = getApiEndpoints();
@@ -194,6 +255,33 @@ export function WhatsAppTemplatesManager() {
     setVarExamples((prev) => Array.from({ length: varCount }, (_, i) => prev[i] || ""));
   }, [varCount]);
 
+  // Carousel: reconciliar cada tarjeta con la forma de botones (largo paralelo)
+  // y con las variables {{n}} de su propio body. Solo re-escribe si algo cambió,
+  // para no entrar en loop de renders.
+  useEffect(() => {
+    if (!useCarousel) return;
+    setCards((prev) => {
+      let changed = false;
+      const next = prev.map((c) => {
+        const vc = countVars(c.bodyText);
+        const buttons =
+          c.buttons.length === cardBtnShape.length
+            ? c.buttons
+            : cardBtnShape.map((_, i) => c.buttons[i] || {});
+        const bodyExamples =
+          c.bodyExamples.length === vc
+            ? c.bodyExamples
+            : Array.from({ length: vc }, (_, i) => c.bodyExamples[i] || "");
+        if (buttons !== c.buttons || bodyExamples !== c.bodyExamples) {
+          changed = true;
+          return { ...c, buttons, bodyExamples };
+        }
+        return c;
+      });
+      return changed ? next : prev;
+    });
+  }, [useCarousel, cardBtnShape, cards]);
+
   // ── Botones ──────────────────────────────────────────────────────────
   const countByType = (t: WaBtnType) => buttons.filter((b) => b.type === t).length;
   const canAdd = (t: WaBtnType) => {
@@ -240,40 +328,50 @@ export function WhatsAppTemplatesManager() {
     setHeaderHandle("");
     setHeaderMediaName("");
     setHeaderMediaPreview("");
+    setIsCarousel(false);
+    setCardMediaFormat("IMAGE");
+    setCardBtnShape(["QUICK_REPLY"]);
+    setCards([emptyCard(), emptyCard()]);
   };
 
-  // Sube un archivo de encabezado multimedia → metaHeaderHandle.
-  const uploadMedia = async (file: File) => {
+  // Sube un archivo a Meta → { metaHeaderHandle, previewUrl }. Reusado por el
+  // encabezado multimedia simple Y por cada tarjeta del carousel.
+  const doUploadMedia = async (file: File): Promise<{ handle: string; preview: string }> => {
     const ep = getApiEndpoints();
     if (!ep?.uploadWhatsAppTemplateMedia) {
-      toast.error(
+      throw new Error(
         "Falta desplegar el Lambda upload-whatsapp-template-media (endpoint no configurado).",
       );
-      return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("El archivo supera 5 MB.");
-      return;
-    }
+    if (file.size > 5 * 1024 * 1024) throw new Error("El archivo supera 5 MB.");
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+      reader.readAsDataURL(file);
+    });
+    const base64 = dataUrl.split(",")[1] || "";
+    const r = await authedFetch(ep.uploadWhatsAppTemplateMedia, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileBase64: base64, contentType: file.type, fileName: file.name }),
+    });
+    const j = await r.json();
+    if (!r.ok || !j.metaHeaderHandle) throw new Error(j.error || `HTTP ${r.status}`);
+    return {
+      handle: j.metaHeaderHandle,
+      preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : "",
+    };
+  };
+
+  // Encabezado multimedia simple (no-carousel).
+  const uploadMedia = async (file: File) => {
     setUploadingMedia(true);
     try {
-      const dataUrl: string = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
-        reader.readAsDataURL(file);
-      });
-      const base64 = dataUrl.split(",")[1] || "";
-      const r = await authedFetch(ep.uploadWhatsAppTemplateMedia, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileBase64: base64, contentType: file.type, fileName: file.name }),
-      });
-      const j = await r.json();
-      if (!r.ok || !j.metaHeaderHandle) throw new Error(j.error || `HTTP ${r.status}`);
-      setHeaderHandle(j.metaHeaderHandle);
+      const { handle, preview } = await doUploadMedia(file);
+      setHeaderHandle(handle);
       setHeaderMediaName(file.name);
-      setHeaderMediaPreview(file.type.startsWith("image/") ? URL.createObjectURL(file) : "");
+      setHeaderMediaPreview(preview);
       toast.success("Archivo cargado");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo subir el archivo");
@@ -281,6 +379,58 @@ export function WhatsAppTemplatesManager() {
       setUploadingMedia(false);
     }
   };
+
+  // ── Carousel: helpers de tarjetas y de la forma compartida de botones ──────
+  const patchCard = (i: number, patch: Partial<CarouselCard>) =>
+    setCards((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+
+  const uploadCardMedia = async (i: number, file: File) => {
+    patchCard(i, { uploading: true });
+    try {
+      const { handle, preview } = await doUploadMedia(file);
+      patchCard(i, {
+        headerHandle: handle,
+        headerMediaName: file.name,
+        headerMediaPreview: preview,
+      });
+      toast.success(`Imagen de la tarjeta ${i + 1} cargada`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo subir la imagen");
+    } finally {
+      patchCard(i, { uploading: false });
+    }
+  };
+
+  const addCard = () =>
+    setCards((prev) => (prev.length >= MAX_CARDS ? prev : [...prev, emptyCard()]));
+  const removeCard = (i: number) =>
+    setCards((prev) => (prev.length <= MIN_CARDS ? prev : prev.filter((_, idx) => idx !== i)));
+  const setCardBtn = (ci: number, bi: number, patch: Partial<CardBtnValue>) =>
+    setCards((prev) =>
+      prev.map((c, idx) =>
+        idx === ci
+          ? { ...c, buttons: c.buttons.map((b, j) => (j === bi ? { ...b, ...patch } : b)) }
+          : c,
+      ),
+    );
+
+  // La forma de botones (tipos/orden) es compartida por TODAS las tarjetas.
+  // Al cambiarla, reajusto el array de valores de cada tarjeta para que quede
+  // paralelo (mismo largo), preservando lo ya escrito.
+  const setShape = (next: CardBtnType[]) => {
+    setCardBtnShape(next);
+    setCards((prev) =>
+      prev.map((c) => ({
+        ...c,
+        buttons: next.map((_, i) => c.buttons[i] || {}),
+      })),
+    );
+  };
+  const addShapeBtn = (t: CardBtnType) => {
+    if (cardBtnShape.length >= 2) return;
+    setShape([...cardBtnShape, t]);
+  };
+  const removeShapeBtn = (i: number) => setShape(cardBtnShape.filter((_, idx) => idx !== i));
 
   // Carga una plantilla existente en el editor (modo edición). Mapea solo los
   // tipos de botón soportados; si la plantilla trae otros (copiar código, flow…)
@@ -354,9 +504,102 @@ export function WhatsAppTemplatesManager() {
       );
       return;
     }
+    // ── Carousel (Fase 4 · F4.2b): validación propia + armado de `cards` ──────
+    // Meta exige tarjetas homogéneas; el root es SOLO la burbuja (body), sin
+    // header/footer/botones. La forma de botones es compartida por todas.
+    let cardsPayload:
+      | {
+          headerHandle: string;
+          headerFormat: string;
+          bodyText: string;
+          bodyExamples: string[];
+          buttons: {
+            type: string;
+            text?: string;
+            url?: string;
+            phoneNumber?: string;
+            example?: string;
+          }[];
+        }[]
+      | undefined;
+    if (useCarousel) {
+      if (!bodyText.trim()) {
+        toast.error("Escribí el texto de la burbuja (el mensaje arriba de las tarjetas).");
+        return;
+      }
+      if (varCount > 0 && varExamples.filter((v) => v.trim()).length < varCount) {
+        toast.error(`Completá los ${varCount} ejemplos de variables del texto de la burbuja.`);
+        return;
+      }
+      if (cards.length < MIN_CARDS || cards.length > MAX_CARDS) {
+        toast.error(`El carrusel necesita entre ${MIN_CARDS} y ${MAX_CARDS} tarjetas.`);
+        return;
+      }
+      for (let ci = 0; ci < cards.length; ci++) {
+        const c = cards[ci];
+        if (!c.headerHandle) {
+          toast.error(
+            `Subí la ${cardMediaFormat === "VIDEO" ? "video" : "imagen"} de la tarjeta ${ci + 1}.`,
+          );
+          return;
+        }
+        if (!c.bodyText.trim()) {
+          toast.error(`La tarjeta ${ci + 1} necesita un cuerpo (body).`);
+          return;
+        }
+        if (c.bodyText.length > CARD_BODY_MAX) {
+          toast.error(`El cuerpo de la tarjeta ${ci + 1} supera ${CARD_BODY_MAX} caracteres.`);
+          return;
+        }
+        const cvc = countVars(c.bodyText);
+        if (cvc > 0 && c.bodyExamples.filter((v) => v.trim()).length < cvc) {
+          toast.error(`Completá los ejemplos de variables de la tarjeta ${ci + 1}.`);
+          return;
+        }
+        for (let bi = 0; bi < cardBtnShape.length; bi++) {
+          const t = cardBtnShape[bi];
+          const bv = c.buttons[bi] || {};
+          if (!(bv.text || "").trim()) {
+            toast.error(`El botón ${bi + 1} de la tarjeta ${ci + 1} necesita un texto.`);
+            return;
+          }
+          if (t === "URL") {
+            if (!(bv.url || "").trim()) {
+              toast.error(`El botón de enlace de la tarjeta ${ci + 1} necesita una URL.`);
+              return;
+            }
+            if (HAS_VAR.test(bv.url || "") && !(bv.example || "").trim()) {
+              toast.error(`La URL dinámica de la tarjeta ${ci + 1} necesita una URL de ejemplo.`);
+              return;
+            }
+          }
+          if (t === "PHONE_NUMBER" && !(bv.phoneNumber || "").trim()) {
+            toast.error(`El botón de llamada de la tarjeta ${ci + 1} necesita un teléfono.`);
+            return;
+          }
+        }
+      }
+      cardsPayload = cards.map((c) => ({
+        headerHandle: c.headerHandle,
+        headerFormat: cardMediaFormat,
+        bodyText: c.bodyText.trim(),
+        bodyExamples: c.bodyExamples.map((v) => v.trim()),
+        buttons: cardBtnShape.map((t, bi) => {
+          const bv = c.buttons[bi] || {};
+          return {
+            type: t,
+            text: (bv.text || "").trim(),
+            url: t === "URL" ? (bv.url || "").trim() : undefined,
+            phoneNumber: t === "PHONE_NUMBER" ? (bv.phoneNumber || "").trim() : undefined,
+            example: t === "URL" ? (bv.example || "").trim() || undefined : undefined,
+          };
+        }),
+      }));
+    }
+
     // Validaciones del contenido. Las de AUTHENTICATION son distintas (Meta
-    // genera el cuerpo, no hay body ni botones libres).
-    if (!isAuth) {
+    // genera el cuerpo, no hay body ni botones libres). El carousel ya se validó.
+    if (!isAuth && !useCarousel) {
       if (isMedia && !headerHandle) {
         toast.error("Subí el archivo del encabezado multimedia (o cambiá el tipo a Texto).");
         return;
@@ -429,16 +672,26 @@ export function WhatsAppTemplatesManager() {
           codeExpirationMinutes: authCodeExp || undefined,
           otpButtonText: authOtpText.trim() || undefined,
         }
-      : {
-          category,
-          headerText: headerText.trim() || undefined,
-          headerFormat,
-          headerHandle: headerHandle || undefined,
-          bodyText: bodyText.trim(),
-          footerText: footerText.trim() || undefined,
-          variableExamples: varExamples,
-          buttons: mappedButtons,
-        };
+      : useCarousel
+        ? {
+            // Root = SOLO burbuja (body + ejemplos); las tarjetas van en `cards`.
+            // El backend salta el header raíz cuando hay cards; no mandamos
+            // footer ni botones raíz (Meta los rechaza en un carousel).
+            category,
+            bodyText: bodyText.trim(),
+            variableExamples: varExamples,
+            cards: cardsPayload,
+          }
+        : {
+            category,
+            headerText: headerText.trim() || undefined,
+            headerFormat,
+            headerHandle: headerHandle || undefined,
+            bodyText: bodyText.trim(),
+            footerText: footerText.trim() || undefined,
+            variableExamples: varExamples,
+            buttons: mappedButtons,
+          };
 
     setCreating(true);
     try {
@@ -713,98 +966,136 @@ export function WhatsAppTemplatesManager() {
 
                 {!isAuth && (
                   <>
-                    <div className="col" style={{ gap: 4 }}>
-                      <span className="muted" style={{ fontSize: 10.5 }}>
-                        Encabezado (opcional)
-                      </span>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <select
-                          style={{ ...inputStyle, width: 120, flexShrink: 0 }}
-                          value={headerFormat}
-                          onChange={(e) => {
-                            setHeaderFormat(e.target.value);
-                            setHeaderHandle("");
-                            setHeaderMediaName("");
-                            setHeaderMediaPreview("");
-                          }}
-                        >
-                          {HEADER_FORMATS.map((h) => (
-                            <option key={h.v} value={h.v}>
-                              {h.l}
-                            </option>
-                          ))}
-                        </select>
-                        {headerFormat === "TEXT" ? (
-                          <input
-                            style={{ ...inputStyle, flex: 1 }}
-                            value={headerText}
-                            onChange={(e) => setHeaderText(e.target.value)}
-                            placeholder="Ej. Confirmación de tu cita"
-                          />
-                        ) : (
-                          <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
-                            <label
-                              className="btn btn--ghost btn--sm"
-                              style={{
-                                cursor: uploadingMedia ? "wait" : "pointer",
-                                margin: 0,
-                                flexShrink: 0,
-                              }}
-                            >
-                              <Icon.Plus size={12} />{" "}
-                              {uploadingMedia
-                                ? "Subiendo…"
-                                : headerHandle
-                                  ? "Cambiar archivo"
-                                  : "Subir archivo"}
-                              <input
-                                type="file"
-                                accept={
-                                  headerFormat === "IMAGE"
-                                    ? "image/*"
-                                    : headerFormat === "VIDEO"
-                                      ? "video/*"
-                                      : "application/pdf"
-                                }
-                                style={{ display: "none" }}
-                                disabled={uploadingMedia}
-                                onChange={(e) => {
-                                  const f = e.target.files?.[0];
-                                  if (f) uploadMedia(f);
-                                  e.target.value = "";
-                                }}
-                              />
-                            </label>
-                            {headerHandle ? (
-                              <span
+                    {/* Carousel (Fase 4 · F4.2b): toggle de modo tarjetas. Solo
+                        MARKETING/UTILITY. No editable en modo edición (la
+                        estructura de una plantilla es inmutable en Meta). */}
+                    {carouselAllowed && !editingId && (
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          fontSize: 12,
+                          cursor: "pointer",
+                          padding: "8px 10px",
+                          border: "1px solid var(--border-1)",
+                          borderRadius: 8,
+                          background: useCarousel ? "var(--bg-1)" : "transparent",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isCarousel}
+                          onChange={(e) => setIsCarousel(e.target.checked)}
+                        />
+                        <Icon.Copy size={14} />
+                        <span>
+                          <b>Carrusel</b> — 2-10 tarjetas deslizables, cada una con imagen, texto y
+                          botones (ideal para catálogo de programas)
+                        </span>
+                      </label>
+                    )}
+
+                    {!useCarousel && (
+                      <div className="col" style={{ gap: 4 }}>
+                        <span className="muted" style={{ fontSize: 10.5 }}>
+                          Encabezado (opcional)
+                        </span>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <select
+                            style={{ ...inputStyle, width: 120, flexShrink: 0 }}
+                            value={headerFormat}
+                            onChange={(e) => {
+                              setHeaderFormat(e.target.value);
+                              setHeaderHandle("");
+                              setHeaderMediaName("");
+                              setHeaderMediaPreview("");
+                            }}
+                          >
+                            {HEADER_FORMATS.map((h) => (
+                              <option key={h.v} value={h.v}>
+                                {h.l}
+                              </option>
+                            ))}
+                          </select>
+                          {headerFormat === "TEXT" ? (
+                            <input
+                              style={{ ...inputStyle, flex: 1 }}
+                              value={headerText}
+                              onChange={(e) => setHeaderText(e.target.value)}
+                              placeholder="Ej. Confirmación de tu cita"
+                            />
+                          ) : (
+                            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+                              <label
+                                className="btn btn--ghost btn--sm"
                                 style={{
-                                  fontSize: 11,
-                                  color: "var(--text-2)",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
+                                  cursor: uploadingMedia ? "wait" : "pointer",
+                                  margin: 0,
+                                  flexShrink: 0,
                                 }}
                               >
-                                <span style={{ color: "#16a34a" }}>✓</span> {headerMediaName}
-                              </span>
-                            ) : (
-                              <span className="muted" style={{ fontSize: 10.5 }}>
-                                ≤ 5 MB
-                              </span>
-                            )}
-                          </div>
-                        )}
+                                <Icon.Plus size={12} />{" "}
+                                {uploadingMedia
+                                  ? "Subiendo…"
+                                  : headerHandle
+                                    ? "Cambiar archivo"
+                                    : "Subir archivo"}
+                                <input
+                                  type="file"
+                                  accept={
+                                    headerFormat === "IMAGE"
+                                      ? "image/*"
+                                      : headerFormat === "VIDEO"
+                                        ? "video/*"
+                                        : "application/pdf"
+                                  }
+                                  style={{ display: "none" }}
+                                  disabled={uploadingMedia}
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) uploadMedia(f);
+                                    e.target.value = "";
+                                  }}
+                                />
+                              </label>
+                              {headerHandle ? (
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    color: "var(--text-2)",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  <span style={{ color: "#16a34a" }}>✓</span> {headerMediaName}
+                                </span>
+                              ) : (
+                                <span className="muted" style={{ fontSize: 10.5 }}>
+                                  ≤ 5 MB
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                     <label className="col" style={{ gap: 4 }}>
                       <span className="muted" style={{ fontSize: 10.5 }}>
-                        Cuerpo — usá {"{{1}}"}, {"{{2}}"}… para variables
+                        {useCarousel
+                          ? "Texto de la burbuja — el mensaje arriba de las tarjetas"
+                          : "Cuerpo — usá {{1}}, {{2}}… para variables"}
                       </span>
                       <textarea
                         style={{ ...inputStyle, minHeight: 88, resize: "vertical" }}
                         value={bodyText}
                         onChange={(e) => setBodyText(e.target.value)}
-                        placeholder="Hola {{1}}, tu cita es el {{2}}. ¡Te esperamos!"
+                        placeholder={
+                          useCarousel
+                            ? "Conocé nuestros programas 👇"
+                            : "Hola {{1}}, tu cita es el {{2}}. ¡Te esperamos!"
+                        }
                       />
                     </label>
                     {varCount > 0 && (
@@ -834,209 +1125,549 @@ export function WhatsAppTemplatesManager() {
                         ))}
                       </div>
                     )}
-                    <label className="col" style={{ gap: 4 }}>
-                      <span className="muted" style={{ fontSize: 10.5 }}>
-                        Pie (opcional)
-                      </span>
-                      <input
-                        style={inputStyle}
-                        value={footerText}
-                        onChange={(e) => setFooterText(e.target.value)}
-                        placeholder="Ej. Equipo UDEP"
-                      />
-                    </label>
+                    {!useCarousel && (
+                      <label className="col" style={{ gap: 4 }}>
+                        <span className="muted" style={{ fontSize: 10.5 }}>
+                          Pie (opcional)
+                        </span>
+                        <input
+                          style={inputStyle}
+                          value={footerText}
+                          onChange={(e) => setFooterText(e.target.value)}
+                          placeholder="Ej. Equipo UDEP"
+                        />
+                      </label>
+                    )}
 
-                    {/* Botones: respuestas rápidas, enlaces (incl. dinámico), llamada, copiar código */}
-                    <div className="col" style={{ gap: 6 }}>
-                      <span className="muted" style={{ fontSize: 10.5 }}>
-                        Botones (opcional) — hasta {BTN_LIMITS.total}: respuestas rápidas, enlaces,
-                        llamada y copiar código
-                      </span>
-                      {buttons.map((b, i) => {
-                        const isUrlDyn = b.type === "URL" && HAS_VAR.test(b.url || "");
-                        return (
-                          <div
-                            key={i}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            <span
-                              title={BTN_META[b.type].hint}
+                    {/* Botones simples (no-carousel): respuestas rápidas, enlaces (incl. dinámico), llamada, copiar código */}
+                    {!useCarousel && (
+                      <div className="col" style={{ gap: 6 }}>
+                        <span className="muted" style={{ fontSize: 10.5 }}>
+                          Botones (opcional) — hasta {BTN_LIMITS.total}: respuestas rápidas,
+                          enlaces, llamada y copiar código
+                        </span>
+                        {buttons.map((b, i) => {
+                          const isUrlDyn = b.type === "URL" && HAS_VAR.test(b.url || "");
+                          return (
+                            <div
+                              key={i}
                               style={{
-                                display: "inline-flex",
+                                display: "flex",
                                 alignItems: "center",
-                                gap: 4,
-                                fontSize: 10.5,
-                                color: "var(--text-2)",
-                                width: 104,
-                                flexShrink: 0,
+                                gap: 6,
+                                flexWrap: "wrap",
                               }}
                             >
-                              {b.type === "URL" ? (
-                                <Icon.Globe size={13} />
-                              ) : b.type === "PHONE_NUMBER" ? (
-                                <Icon.Phone size={13} />
-                              ) : b.type === "COPY_CODE" ? (
-                                <Icon.Copy size={13} />
-                              ) : b.type === "FLOW" ? (
-                                <Icon.Note size={13} />
-                              ) : (
-                                <Icon.Chat size={13} />
-                              )}
-                              {BTN_META[b.type].label}
-                            </span>
-                            {b.type === "FLOW" ? (
-                              <select
-                                style={{ ...inputStyle, flex: 1.2 }}
-                                value={b.flowId || ""}
-                                onChange={(e) => updateButton(i, { flowId: e.target.value })}
+                              <span
+                                title={BTN_META[b.type].hint}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  fontSize: 10.5,
+                                  color: "var(--text-2)",
+                                  width: 104,
+                                  flexShrink: 0,
+                                }}
                               >
-                                {flows.map((f) => (
-                                  <option key={f.id} value={f.id}>
-                                    {(f.name || f.id) +
-                                      (f.status && f.status !== "PUBLISHED"
-                                        ? ` (${f.status})`
-                                        : "")}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : b.type === "COPY_CODE" ? (
-                              <input
-                                style={{ ...inputStyle, flex: 1 }}
-                                value={b.example || ""}
-                                maxLength={15}
-                                onChange={(e) => updateButton(i, { example: e.target.value })}
-                                placeholder="Código de ejemplo (ej. PROMO25)"
-                              />
-                            ) : (
-                              <input
-                                style={{ ...inputStyle, flex: 1 }}
-                                value={b.text}
-                                maxLength={25}
-                                onChange={(e) => updateButton(i, { text: e.target.value })}
-                                placeholder="Texto del botón"
-                              />
-                            )}
-                            {b.type === "URL" && (
-                              <input
-                                style={{ ...inputStyle, flex: 1.4 }}
-                                value={b.url || ""}
-                                onChange={(e) => updateButton(i, { url: e.target.value })}
-                                placeholder="https://ejemplo.com/{{1}}"
-                              />
-                            )}
-                            {b.type === "PHONE_NUMBER" && (
-                              <input
-                                style={{ ...inputStyle, flex: 1.4 }}
-                                value={b.phoneNumber || ""}
-                                onChange={(e) => updateButton(i, { phoneNumber: e.target.value })}
-                                placeholder="+51999888777"
-                              />
-                            )}
-                            {b.type === "FLOW" && (
-                              <input
-                                style={{ ...inputStyle, flex: 1 }}
-                                value={b.text}
-                                maxLength={25}
-                                onChange={(e) => updateButton(i, { text: e.target.value })}
-                                placeholder="Texto del botón"
-                              />
-                            )}
-                            <button
-                              type="button"
-                              className="btn btn--ghost btn--sm"
-                              onClick={() => removeButton(i)}
-                              title="Quitar botón"
-                              style={{ flexShrink: 0, padding: "6px 8px" }}
-                            >
-                              <Icon.Close size={13} />
-                            </button>
-                            {isUrlDyn && (
-                              <input
-                                style={{ ...inputStyle, flexBasis: "100%" }}
-                                value={b.example || ""}
-                                onChange={(e) => updateButton(i, { example: e.target.value })}
-                                placeholder="URL de ejemplo completa (ej. https://ejemplo.com/orden/12345)"
-                              />
-                            )}
-                            {b.type === "FLOW" && (
-                              <input
-                                style={{ ...inputStyle, flexBasis: "100%" }}
-                                value={b.navigateScreen || ""}
-                                onChange={(e) =>
-                                  updateButton(i, { navigateScreen: e.target.value })
-                                }
-                                placeholder="Pantalla inicial del formulario (opcional, ej. WELCOME_SCREEN)"
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          disabled={!canAdd("QUICK_REPLY")}
-                          onClick={() => addButton("QUICK_REPLY")}
-                        >
-                          <Icon.Plus size={12} /> Respuesta rápida
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          disabled={!canAdd("URL")}
-                          onClick={() => addButton("URL")}
-                          title={canAdd("URL") ? "" : `Máximo ${BTN_LIMITS.URL} enlaces`}
-                        >
-                          <Icon.Globe size={12} /> Enlace
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          disabled={!canAdd("PHONE_NUMBER")}
-                          onClick={() => addButton("PHONE_NUMBER")}
-                          title={
-                            canAdd("PHONE_NUMBER")
-                              ? ""
-                              : `Máximo ${BTN_LIMITS.PHONE_NUMBER} botón de llamada`
-                          }
-                        >
-                          <Icon.Phone size={12} /> Llamar
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          disabled={!canAdd("COPY_CODE")}
-                          onClick={() => addButton("COPY_CODE")}
-                          title={
-                            canAdd("COPY_CODE")
-                              ? ""
-                              : `Máximo ${BTN_LIMITS.COPY_CODE} botón de copiar código`
-                          }
-                        >
-                          <Icon.Copy size={12} /> Copiar código
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          disabled={!canAdd("FLOW")}
-                          onClick={() => addButton("FLOW")}
-                          title={
-                            flows.length === 0
-                              ? "No hay formularios (Flows) en esta WABA"
-                              : canAdd("FLOW")
+                                {b.type === "URL" ? (
+                                  <Icon.Globe size={13} />
+                                ) : b.type === "PHONE_NUMBER" ? (
+                                  <Icon.Phone size={13} />
+                                ) : b.type === "COPY_CODE" ? (
+                                  <Icon.Copy size={13} />
+                                ) : b.type === "FLOW" ? (
+                                  <Icon.Note size={13} />
+                                ) : (
+                                  <Icon.Chat size={13} />
+                                )}
+                                {BTN_META[b.type].label}
+                              </span>
+                              {b.type === "FLOW" ? (
+                                <select
+                                  style={{ ...inputStyle, flex: 1.2 }}
+                                  value={b.flowId || ""}
+                                  onChange={(e) => updateButton(i, { flowId: e.target.value })}
+                                >
+                                  {flows.map((f) => (
+                                    <option key={f.id} value={f.id}>
+                                      {(f.name || f.id) +
+                                        (f.status && f.status !== "PUBLISHED"
+                                          ? ` (${f.status})`
+                                          : "")}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : b.type === "COPY_CODE" ? (
+                                <input
+                                  style={{ ...inputStyle, flex: 1 }}
+                                  value={b.example || ""}
+                                  maxLength={15}
+                                  onChange={(e) => updateButton(i, { example: e.target.value })}
+                                  placeholder="Código de ejemplo (ej. PROMO25)"
+                                />
+                              ) : (
+                                <input
+                                  style={{ ...inputStyle, flex: 1 }}
+                                  value={b.text}
+                                  maxLength={25}
+                                  onChange={(e) => updateButton(i, { text: e.target.value })}
+                                  placeholder="Texto del botón"
+                                />
+                              )}
+                              {b.type === "URL" && (
+                                <input
+                                  style={{ ...inputStyle, flex: 1.4 }}
+                                  value={b.url || ""}
+                                  onChange={(e) => updateButton(i, { url: e.target.value })}
+                                  placeholder="https://ejemplo.com/{{1}}"
+                                />
+                              )}
+                              {b.type === "PHONE_NUMBER" && (
+                                <input
+                                  style={{ ...inputStyle, flex: 1.4 }}
+                                  value={b.phoneNumber || ""}
+                                  onChange={(e) => updateButton(i, { phoneNumber: e.target.value })}
+                                  placeholder="+51999888777"
+                                />
+                              )}
+                              {b.type === "FLOW" && (
+                                <input
+                                  style={{ ...inputStyle, flex: 1 }}
+                                  value={b.text}
+                                  maxLength={25}
+                                  onChange={(e) => updateButton(i, { text: e.target.value })}
+                                  placeholder="Texto del botón"
+                                />
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                onClick={() => removeButton(i)}
+                                title="Quitar botón"
+                                style={{ flexShrink: 0, padding: "6px 8px" }}
+                              >
+                                <Icon.Close size={13} />
+                              </button>
+                              {isUrlDyn && (
+                                <input
+                                  style={{ ...inputStyle, flexBasis: "100%" }}
+                                  value={b.example || ""}
+                                  onChange={(e) => updateButton(i, { example: e.target.value })}
+                                  placeholder="URL de ejemplo completa (ej. https://ejemplo.com/orden/12345)"
+                                />
+                              )}
+                              {b.type === "FLOW" && (
+                                <input
+                                  style={{ ...inputStyle, flexBasis: "100%" }}
+                                  value={b.navigateScreen || ""}
+                                  onChange={(e) =>
+                                    updateButton(i, { navigateScreen: e.target.value })
+                                  }
+                                  placeholder="Pantalla inicial del formulario (opcional, ej. WELCOME_SCREEN)"
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!canAdd("QUICK_REPLY")}
+                            onClick={() => addButton("QUICK_REPLY")}
+                          >
+                            <Icon.Plus size={12} /> Respuesta rápida
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!canAdd("URL")}
+                            onClick={() => addButton("URL")}
+                            title={canAdd("URL") ? "" : `Máximo ${BTN_LIMITS.URL} enlaces`}
+                          >
+                            <Icon.Globe size={12} /> Enlace
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!canAdd("PHONE_NUMBER")}
+                            onClick={() => addButton("PHONE_NUMBER")}
+                            title={
+                              canAdd("PHONE_NUMBER")
                                 ? ""
-                                : `Máximo ${BTN_LIMITS.FLOW} formulario`
-                          }
-                        >
-                          <Icon.Note size={12} /> Formulario
-                        </button>
+                                : `Máximo ${BTN_LIMITS.PHONE_NUMBER} botón de llamada`
+                            }
+                          >
+                            <Icon.Phone size={12} /> Llamar
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!canAdd("COPY_CODE")}
+                            onClick={() => addButton("COPY_CODE")}
+                            title={
+                              canAdd("COPY_CODE")
+                                ? ""
+                                : `Máximo ${BTN_LIMITS.COPY_CODE} botón de copiar código`
+                            }
+                          >
+                            <Icon.Copy size={12} /> Copiar código
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!canAdd("FLOW")}
+                            onClick={() => addButton("FLOW")}
+                            title={
+                              flows.length === 0
+                                ? "No hay formularios (Flows) en esta WABA"
+                                : canAdd("FLOW")
+                                  ? ""
+                                  : `Máximo ${BTN_LIMITS.FLOW} formulario`
+                            }
+                          >
+                            <Icon.Note size={12} /> Formulario
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {/* ── Composer de tarjetas del carousel (Fase 4 · F4.2b) ── */}
+                    {useCarousel && (
+                      <div
+                        className="col"
+                        style={{
+                          gap: 12,
+                          padding: 12,
+                          border: "1px solid var(--border-1)",
+                          borderRadius: 10,
+                          background: "var(--bg-1)",
+                        }}
+                      >
+                        {/* Ajustes globales: formato de media + forma de botones (homogéneos) */}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 12,
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                          }}
+                        >
+                          <label className="col" style={{ gap: 4 }}>
+                            <span className="muted" style={{ fontSize: 10.5 }}>
+                              Media de las tarjetas
+                            </span>
+                            <select
+                              style={{ ...inputStyle, width: 130 }}
+                              value={cardMediaFormat}
+                              onChange={(e) =>
+                                setCardMediaFormat(e.target.value as "IMAGE" | "VIDEO")
+                              }
+                            >
+                              {CARD_MEDIA_FORMATS.map((f) => (
+                                <option key={f.v} value={f.v}>
+                                  {f.l}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <div className="col" style={{ gap: 4, flex: 1, minWidth: 220 }}>
+                            <span className="muted" style={{ fontSize: 10.5 }}>
+                              Botones (iguales en todas las tarjetas · hasta 2)
+                            </span>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 6,
+                                flexWrap: "wrap",
+                                alignItems: "center",
+                              }}
+                            >
+                              {cardBtnShape.map((t, i) => (
+                                <span
+                                  key={i}
+                                  className="chip"
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    fontSize: 11,
+                                  }}
+                                  title={CARD_BTN_META[t].hint}
+                                >
+                                  {t === "URL" ? (
+                                    <Icon.Globe size={12} />
+                                  ) : t === "PHONE_NUMBER" ? (
+                                    <Icon.Phone size={12} />
+                                  ) : (
+                                    <Icon.Chat size={12} />
+                                  )}
+                                  {CARD_BTN_META[t].label}
+                                  <button
+                                    type="button"
+                                    onClick={() => removeShapeBtn(i)}
+                                    title="Quitar este botón de todas las tarjetas"
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      color: "inherit",
+                                      display: "inline-flex",
+                                      padding: 0,
+                                    }}
+                                  >
+                                    <Icon.Close size={11} />
+                                  </button>
+                                </span>
+                              ))}
+                              {cardBtnShape.length < 2 && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn btn--ghost btn--sm"
+                                    style={{ padding: "3px 8px", fontSize: 11 }}
+                                    onClick={() => addShapeBtn("QUICK_REPLY")}
+                                  >
+                                    <Icon.Plus size={11} /> Respuesta
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn--ghost btn--sm"
+                                    style={{ padding: "3px 8px", fontSize: 11 }}
+                                    onClick={() => addShapeBtn("URL")}
+                                  >
+                                    <Icon.Plus size={11} /> Enlace
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn--ghost btn--sm"
+                                    style={{ padding: "3px 8px", fontSize: 11 }}
+                                    onClick={() => addShapeBtn("PHONE_NUMBER")}
+                                  >
+                                    <Icon.Plus size={11} /> Llamar
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Tarjetas */}
+                        {cards.map((c, ci) => {
+                          const cvc = countVars(c.bodyText);
+                          return (
+                            <div
+                              key={ci}
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "150px 1fr",
+                                gap: 10,
+                                padding: 10,
+                                border: "1px solid var(--border-1)",
+                                borderRadius: 8,
+                                background: "var(--bg-2)",
+                              }}
+                            >
+                              {/* Media de la tarjeta */}
+                              <div className="col" style={{ gap: 6 }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                  }}
+                                >
+                                  <span
+                                    className="muted"
+                                    style={{ fontSize: 10.5, fontWeight: 600 }}
+                                  >
+                                    Tarjeta {ci + 1}
+                                  </span>
+                                  {cards.length > MIN_CARDS && (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeCard(ci)}
+                                      title="Quitar tarjeta"
+                                      className="btn btn--ghost btn--sm"
+                                      style={{ padding: "2px 6px" }}
+                                    >
+                                      <Icon.Close size={12} />
+                                    </button>
+                                  )}
+                                </div>
+                                <div
+                                  style={{
+                                    height: 90,
+                                    borderRadius: 6,
+                                    border: "1px dashed var(--border-1)",
+                                    background: "var(--bg-1)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    overflow: "hidden",
+                                  }}
+                                >
+                                  {c.headerMediaPreview ? (
+                                    <img
+                                      src={c.headerMediaPreview}
+                                      alt=""
+                                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                    />
+                                  ) : c.headerHandle ? (
+                                    <span style={{ fontSize: 11, color: "#16a34a" }}>
+                                      ✓ {cardMediaFormat === "VIDEO" ? "Video" : "Archivo"}
+                                    </span>
+                                  ) : (
+                                    <span className="muted" style={{ fontSize: 11 }}>
+                                      {cardMediaFormat === "VIDEO" ? "🎬" : "🖼️"} Sin media
+                                    </span>
+                                  )}
+                                </div>
+                                <label
+                                  className="btn btn--ghost btn--sm"
+                                  style={{
+                                    cursor: c.uploading ? "wait" : "pointer",
+                                    margin: 0,
+                                    fontSize: 11,
+                                  }}
+                                >
+                                  <Icon.Plus size={11} />{" "}
+                                  {c.uploading ? "Subiendo…" : c.headerHandle ? "Cambiar" : "Subir"}
+                                  <input
+                                    type="file"
+                                    accept={cardMediaFormat === "VIDEO" ? "video/*" : "image/*"}
+                                    style={{ display: "none" }}
+                                    disabled={c.uploading}
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0];
+                                      if (f) uploadCardMedia(ci, f);
+                                      e.target.value = "";
+                                    }}
+                                  />
+                                </label>
+                              </div>
+
+                              {/* Body + variables + valores de botones */}
+                              <div className="col" style={{ gap: 6 }}>
+                                <textarea
+                                  style={{ ...inputStyle, minHeight: 52, resize: "vertical" }}
+                                  value={c.bodyText}
+                                  maxLength={CARD_BODY_MAX}
+                                  onChange={(e) => patchCard(ci, { bodyText: e.target.value })}
+                                  placeholder={`Cuerpo de la tarjeta ${ci + 1} (máx ${CARD_BODY_MAX})`}
+                                />
+                                {cvc > 0 && (
+                                  <div className="col" style={{ gap: 4 }}>
+                                    {Array.from({ length: cvc }, (_, vi) => (
+                                      <input
+                                        key={vi}
+                                        style={{ ...inputStyle, fontSize: 12 }}
+                                        value={c.bodyExamples[vi] || ""}
+                                        onChange={(e) =>
+                                          patchCard(ci, {
+                                            bodyExamples: Array.from({ length: cvc }, (_, k) =>
+                                              k === vi ? e.target.value : c.bodyExamples[k] || "",
+                                            ),
+                                          })
+                                        }
+                                        placeholder={`Ejemplo para {{${vi + 1}}}`}
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                                {cardBtnShape.map((t, bi) => {
+                                  const bv = c.buttons[bi] || {};
+                                  const dyn = t === "URL" && HAS_VAR.test(bv.url || "");
+                                  return (
+                                    <div
+                                      key={bi}
+                                      style={{
+                                        display: "flex",
+                                        gap: 6,
+                                        flexWrap: "wrap",
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 4,
+                                          fontSize: 10.5,
+                                          color: "var(--text-2)",
+                                          width: 90,
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        {t === "URL" ? (
+                                          <Icon.Globe size={12} />
+                                        ) : t === "PHONE_NUMBER" ? (
+                                          <Icon.Phone size={12} />
+                                        ) : (
+                                          <Icon.Chat size={12} />
+                                        )}
+                                        {CARD_BTN_META[t].label}
+                                      </span>
+                                      <input
+                                        style={{ ...inputStyle, flex: 1, fontSize: 12 }}
+                                        value={bv.text || ""}
+                                        maxLength={25}
+                                        onChange={(e) =>
+                                          setCardBtn(ci, bi, { text: e.target.value })
+                                        }
+                                        placeholder="Texto del botón"
+                                      />
+                                      {t === "URL" && (
+                                        <input
+                                          style={{ ...inputStyle, flex: 1.3, fontSize: 12 }}
+                                          value={bv.url || ""}
+                                          onChange={(e) =>
+                                            setCardBtn(ci, bi, { url: e.target.value })
+                                          }
+                                          placeholder="https://ejemplo.com/{{1}}"
+                                        />
+                                      )}
+                                      {t === "PHONE_NUMBER" && (
+                                        <input
+                                          style={{ ...inputStyle, flex: 1.3, fontSize: 12 }}
+                                          value={bv.phoneNumber || ""}
+                                          onChange={(e) =>
+                                            setCardBtn(ci, bi, { phoneNumber: e.target.value })
+                                          }
+                                          placeholder="+51999888777"
+                                        />
+                                      )}
+                                      {dyn && (
+                                        <input
+                                          style={{ ...inputStyle, flexBasis: "100%", fontSize: 12 }}
+                                          value={bv.example || ""}
+                                          onChange={(e) =>
+                                            setCardBtn(ci, bi, { example: e.target.value })
+                                          }
+                                          placeholder="URL de ejemplo completa"
+                                        />
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {cards.length < MAX_CARDS && (
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            style={{ alignSelf: "flex-start" }}
+                            onClick={addCard}
+                          >
+                            <Icon.Plus size={12} /> Agregar tarjeta ({cards.length}/{MAX_CARDS})
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -1077,7 +1708,113 @@ export function WhatsAppTemplatesManager() {
                     minHeight: 120,
                   }}
                 >
-                  {isAuth ? (
+                  {useCarousel ? (
+                    <>
+                      {/* Burbuja (texto raíz) */}
+                      <div
+                        style={{
+                          background: "#fff",
+                          borderRadius: "8px 8px 8px 2px",
+                          padding: "8px 10px",
+                          boxShadow: "0 1px 1px rgba(0,0,0,0.15)",
+                          maxWidth: 240,
+                          fontSize: 12.5,
+                          color: "#111",
+                          lineHeight: 1.45,
+                          marginBottom: 8,
+                          whiteSpace: "pre-wrap",
+                        }}
+                      >
+                        {previewBody || "Texto de la burbuja…"}
+                      </div>
+                      {/* Tarjetas deslizables */}
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          overflowX: "auto",
+                          paddingBottom: 6,
+                        }}
+                      >
+                        {cards.map((c, ci) => (
+                          <div
+                            key={ci}
+                            style={{
+                              flex: "0 0 auto",
+                              width: 150,
+                              background: "#fff",
+                              borderRadius: 8,
+                              boxShadow: "0 1px 1px rgba(0,0,0,0.15)",
+                              overflow: "hidden",
+                            }}
+                          >
+                            {c.headerMediaPreview ? (
+                              <img
+                                src={c.headerMediaPreview}
+                                alt=""
+                                style={{
+                                  width: "100%",
+                                  height: 80,
+                                  objectFit: "cover",
+                                  display: "block",
+                                }}
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  height: 80,
+                                  background: "#d9d2c9",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  color: "#5b6b73",
+                                  fontSize: 20,
+                                }}
+                              >
+                                {cardMediaFormat === "VIDEO" ? "🎬" : "🖼️"}
+                              </div>
+                            )}
+                            <div
+                              style={{
+                                padding: "6px 8px",
+                                fontSize: 11.5,
+                                color: "#111",
+                                lineHeight: 1.35,
+                              }}
+                            >
+                              {c.bodyText || <span style={{ color: "#8a8a8a" }}>(cuerpo…)</span>}
+                            </div>
+                            {cardBtnShape.map((t, bi) => (
+                              <div
+                                key={bi}
+                                style={{
+                                  borderTop: "1px solid #eee",
+                                  padding: "6px 8px",
+                                  textAlign: "center",
+                                  fontSize: 11.5,
+                                  color: "#00a5f4",
+                                  fontWeight: 500,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: 4,
+                                }}
+                              >
+                                {t === "URL" ? (
+                                  <Icon.Globe size={12} />
+                                ) : t === "PHONE_NUMBER" ? (
+                                  <Icon.Phone size={12} />
+                                ) : (
+                                  <Icon.Chat size={12} />
+                                )}
+                                {(c.buttons[bi]?.text || "").trim() || "Botón"}
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : isAuth ? (
                     <>
                       <div
                         style={{

@@ -6,13 +6,13 @@
 
 ## Panorama: verificable ya vs bloqueado-cliente
 
-| Bloque                      | Qué es                                                                    | Verificable en vivo                                           | Bloqueo                                      |
-| --------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------- |
-| **F4.4 Email tracking**     | pixel de apertura + wrap de links → golpes `email_opened`/`email_clicked` | ✅ total (abro el pixel → golpe + score)                      | ninguno                                      |
-| **F4.2a LIST interactivo**  | mensaje `type:interactive` list (no-template)                             | ✅ total (llega a WhatsApp)                                   | ninguno (sin aprobación Meta)                |
-| **F4.2b CAROUSEL template** | componente `CAROUSEL` en templates                                        | ⚠️ builder sí; envío real espera **aprobación Meta (48-72h)** | aprobación Meta                              |
-| **F4.1 Mercado Libre**      | canal ML en el inbox omnicanal                                            | ⚠️ backend/skeleton sí; live no                               | **OAuth App ML del cliente**                 |
-| **F4.3 SSO SAML/OIDC**      | login federado por-tenant                                                 | ⚠️ config/UI sí; login real no                                | **IdP del cliente + `ampx pipeline-deploy`** |
+| Bloque                      | Qué es                                                                    | Verificable en vivo                                                                    | Bloqueo                                      |
+| --------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------- |
+| **F4.4 Email tracking**     | pixel de apertura + wrap de links → golpes `email_opened`/`email_clicked` | ✅ total (abro el pixel → golpe + score)                                               | ninguno                                      |
+| **F4.2a LIST interactivo**  | mensaje `type:interactive` list (no-template)                             | ✅ total (llega a WhatsApp)                                                            | ninguno (sin aprobación Meta)                |
+| **F4.2b CAROUSEL template** | componente `CAROUSEL` en templates                                        | ✅ builder+UI composer; envío real espera **imágenes UDEP + aprobación Meta (48-72h)** | imágenes del cliente + aprobación Meta       |
+| **F4.1 Mercado Libre**      | canal ML en el inbox omnicanal                                            | ⚠️ backend/skeleton sí; live no                                                        | **OAuth App ML del cliente**                 |
+| **F4.3 SSO SAML/OIDC**      | login federado por-tenant                                                 | ⚠️ config/UI sí; login real no                                                         | **IdP del cliente + `ampx pipeline-deploy`** |
 
 **Arco recomendado:** F4.4 → F4.2 (verificables, self-contained, F4.4 cierra la última pieza de
 Pardot enganchándose con lo de Fase 3). F4.1 + F4.3 = **build-ahead** (backend/config listos,
@@ -79,19 +79,29 @@ El FlowBuilder (Pilar 8) ya tiene nodo `list`; falta nodo `carousel`.
   inbox (`manage-conversations` acción `sendListInteractive`) + cablear el nodo `list` del bot-runtime
   al envío real. La elección vuelve como `interactive.list_reply` al whatsapp-meta-webhook.
 
-**F4.2b — CAROUSEL template — ✅ BACKEND HECHO + TESTEADO:**
+**F4.2b — CAROUSEL template — ✅ BACKEND + ✅ UI COMPOSER (envío real espera imágenes del cliente):**
 
-- `waTemplateComponents.ts`: `CarouselCardIn` + `cards` en `BuildInput`; construye
+- **Backend (✅):** `waTemplateComponents.ts`: `CarouselCardIn` + `cards` en `BuildInput`; construye
   `{type:"CAROUSEL", cards:[{components:[HEADER(IMAGE), BODY, BUTTONS]}]}`. `buildButtons`/`countVars`
   extraídos y reusados por-tarjeta. Valida 2-10 tarjetas + body por tarjeta; **salta el header raíz**
   (los headers van por-tarjeta). 3 tests (`shared-wa-carousel.test.ts`) fijan la estructura Meta exacta.
-- `create-whatsapp-template` acepta `cards`; `list-whatsapp-templates` extrae `cards` (body/header/
-  botones por tarjeta). Los 3 Lambdas (create/update/list) re-desplegados. El sender/dialer no cambian
-  (mandan el template genérico ya aprobado).
-- **Sigue (para el envío real):** el UI composer con editor de tarjetas + picker de imagen (usa
-  `upload-whatsapp-template-media` → `headerHandle`), y **mandar el template a aprobación de Meta**
-  (queda PENDING 48-72h). El builder ya produce el payload correcto (probado); falta la UI + subir las
-  imágenes de sample.
+  `create-whatsapp-template` acepta `cards`; `list-whatsapp-templates` extrae `cards`. Los 3 Lambdas
+  (create/update/list) re-desplegados. El sender/dialer no cambian.
+- **UI composer (✅) — `WhatsAppTemplatesManager.tsx`:** toggle "Carrusel" (solo MARKETING/UTILITY, no en
+  modo edición porque la estructura es inmutable en Meta) → editor de 2-10 tarjetas: el body raíz pasa a
+  ser el **texto de la burbuja**; media global (Imagen/Video); **forma de botones compartida** (defino
+  tipos/orden UNA vez → cada tarjeta solo llena texto/URL/teléfono, garantiza la homogeneidad que Meta
+  exige). Cada tarjeta: picker de imagen (reusa `upload-whatsapp-template-media` → `headerHandle` por
+  tarjeta vía `doUploadMedia` refactorizado), body ≤160 + ejemplos de variables, botones. Preview estilo
+  WhatsApp con tarjetas deslizables. Validación en `submit` (burbuja, 2-10 tarjetas, imagen+body por
+  tarjeta, homogeneidad) y arma `cards` en el payload (root = solo body, sin footer/botones raíz).
+  **Verificado en vivo (Browser 1):** render OK, homogeneidad (agregar "Enlace" a la forma → aparece en
+  las 3 tarjetas), add/remove tarjeta (2-10), cadena de validación en orden con mensajes correctos, y
+  **cero llamada a Meta sin imágenes**. La simulación de subida no se pudo automatizar (React 19 no
+  dispara onChange de `<input type=file>` sintético) → el file-picker real funciona.
+- **Sigue (bloqueado-cliente):** **mandar UN carousel real a aprobación de Meta** (queda PENDING 48-72h)
+  — espera las **imágenes reales de UDEP** (2-3 JPG por tarjeta). Con ellas: subir vía el picker → Enviar
+  a aprobación → confirmar que Meta acepta la estructura (no rechazo inmediato).
 
 ---
 
