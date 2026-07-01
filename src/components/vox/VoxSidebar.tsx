@@ -8,6 +8,7 @@ import {
   UserPlus,
   Megaphone,
   Robot,
+  FlowArrow,
   Lightning,
   Sparkle,
   CalendarDots,
@@ -88,6 +89,13 @@ const NAV: NavEntry[] = [
     minRole: "Admins",
   },
   {
+    id: "journeys",
+    path: "/journeys",
+    label: "Journeys",
+    icon: FlowArrow,
+    minRole: "Admins",
+  },
+  {
     id: "automations",
     path: "/automations",
     label: "Automatizaciones",
@@ -153,9 +161,7 @@ export function VoxSidebar() {
     <aside className="app__sidebar">
       <div className="sb__brand">
         <div className="sb__logo" />
-        <div className="sb__name">
-          {productName}
-        </div>
+        <div className="sb__name">{productName}</div>
       </div>
       <nav className="sb__nav">
         {NAV.map((entry, i) => {
@@ -215,7 +221,14 @@ export function VoxSidebar() {
                 flex: "0 0 auto",
               }}
             />
-            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span
+              style={{
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {p.label}
             </span>
           </div>

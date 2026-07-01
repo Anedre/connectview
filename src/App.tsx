@@ -44,6 +44,7 @@ import { BotTemplateGallery } from "@/components/bots/BotTemplateGallery";
 import { RecordingsWorkspace } from "@/components/recordings/RecordingsWorkspace";
 import { RecordingsShowcasePage } from "@/components/recordings/RecordingsShowcase";
 import { FlowBuilderPage } from "@/pages/FlowBuilderPage";
+import { JourneysPage } from "@/pages/JourneysPage";
 import { AutomationsPage } from "@/pages/AutomationsPage";
 import { AgentePage } from "@/pages/AgentePage";
 import { InicioDemoPage } from "@/pages/InicioDemoPage";
@@ -57,8 +58,7 @@ function VoxLogo({ size = 32 }: { size?: number }) {
         width: size,
         height: size,
         borderRadius: size / 4,
-        background:
-          "linear-gradient(135deg, var(--accent-amber), var(--accent-pink) 70%)",
+        background: "linear-gradient(135deg, var(--accent-amber), var(--accent-pink) 70%)",
         display: "grid",
         placeItems: "center",
         boxShadow: "0 0 0 1px rgba(255,255,255,0.08) inset",
@@ -101,8 +101,8 @@ function LoadingScreen() {
       setStageIdx((i) => Math.min(i + 1, STAGES.length - 1));
     }, 900);
     return () => clearInterval(id);
-  // STAGES es constante en este scope → safe sin deps.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // STAGES es constante en este scope → safe sin deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -127,9 +127,14 @@ function LoadingScreen() {
           animate={{ x: [-40, 40, -20, -40], y: [-30, 10, 30, -30], scale: [1, 1.08, 0.95, 1] }}
           transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
           style={{
-            position: "absolute", top: "18%", left: "30%", width: 420, height: 420,
+            position: "absolute",
+            top: "18%",
+            left: "30%",
+            width: 420,
+            height: 420,
             borderRadius: "50%",
-            background: "radial-gradient(circle, color-mix(in srgb, var(--accent-amber) 35%, transparent), transparent 70%)",
+            background:
+              "radial-gradient(circle, color-mix(in srgb, var(--accent-amber) 35%, transparent), transparent 70%)",
             filter: "blur(60px)",
           }}
         />
@@ -137,9 +142,14 @@ function LoadingScreen() {
           animate={{ x: [30, -20, 40, 30], y: [20, -30, 10, 20], scale: [1, 0.9, 1.05, 1] }}
           transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
           style={{
-            position: "absolute", top: "40%", left: "55%", width: 380, height: 380,
+            position: "absolute",
+            top: "40%",
+            left: "55%",
+            width: 380,
+            height: 380,
             borderRadius: "50%",
-            background: "radial-gradient(circle, color-mix(in srgb, var(--accent-pink) 32%, transparent), transparent 70%)",
+            background:
+              "radial-gradient(circle, color-mix(in srgb, var(--accent-pink) 32%, transparent), transparent 70%)",
             filter: "blur(70px)",
           }}
         />
@@ -147,9 +157,14 @@ function LoadingScreen() {
           animate={{ x: [-20, 30, -10, -20], y: [10, -20, 30, 10], scale: [1.05, 1, 0.95, 1.05] }}
           transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
           style={{
-            position: "absolute", top: "55%", left: "35%", width: 360, height: 360,
+            position: "absolute",
+            top: "55%",
+            left: "35%",
+            width: 360,
+            height: 360,
             borderRadius: "50%",
-            background: "radial-gradient(circle, color-mix(in srgb, var(--accent-cyan) 28%, transparent), transparent 70%)",
+            background:
+              "radial-gradient(circle, color-mix(in srgb, var(--accent-cyan) 28%, transparent), transparent 70%)",
             filter: "blur(75px)",
           }}
         />
@@ -159,7 +174,10 @@ function LoadingScreen() {
       <div
         aria-hidden
         style={{
-          position: "absolute", inset: 0, pointerEvents: "none", opacity: 0.4,
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          opacity: 0.4,
           background: "radial-gradient(circle at 50% 50%, transparent 30%, rgba(0,0,0,0.04) 100%)",
         }}
       />
@@ -193,9 +211,13 @@ function LoadingScreen() {
             animate={{ opacity: [0.35, 0.65, 0.35], scale: [1, 1.25, 1] }}
             transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
             style={{
-              position: "absolute", inset: -22, borderRadius: "50%",
-              background: "radial-gradient(circle, color-mix(in srgb, var(--accent-amber) 60%, transparent), transparent 70%)",
-              filter: "blur(20px)", pointerEvents: "none",
+              position: "absolute",
+              inset: -22,
+              borderRadius: "50%",
+              background:
+                "radial-gradient(circle, color-mix(in srgb, var(--accent-amber) 60%, transparent), transparent 70%)",
+              filter: "blur(20px)",
+              pointerEvents: "none",
             }}
           />
           <VoxLogo size={56} />
@@ -242,7 +264,9 @@ function LoadingScreen() {
             animate={{ opacity: [0.4, 1, 0.4], scale: [0.9, 1.1, 0.9] }}
             transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
             style={{
-              width: 7, height: 7, borderRadius: "50%",
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
               background: "var(--accent-amber)",
             }}
           />
@@ -329,18 +353,20 @@ function LoginScreen() {
             Plataforma de contact center
           </span>
           <h1 className="vox-auth__title">
-            El espacio de trabajo del{" "}
-            <span className="vox-auth__title-grad">agente moderno</span>.
+            El espacio de trabajo del <span className="vox-auth__title-grad">agente moderno</span>.
           </h1>
           <p className="vox-auth__sub">
-            Llamadas, WhatsApp, leads y campañas — todo en una sola pantalla,
-            potenciado por Amazon Connect.
+            Llamadas, WhatsApp, leads y campañas — todo en una sola pantalla, potenciado por Amazon
+            Connect.
           </p>
 
           <div className="vox-auth__trust">
             <div className="vox-auth__avs">
               <div aria-hidden className="vox-auth__avs-stack">
-                <i /><i /><i /><i />
+                <i />
+                <i />
+                <i />
+                <i />
               </div>
               <span>+2,400 agentes activos hoy</span>
             </div>
@@ -365,8 +391,8 @@ function LoginScreen() {
           <span className="vox-login__eyebrow">Conectar a Amazon Connect</span>
           <h2 className="vox-login__head">Casi listo para empezar</h2>
           <p className="vox-login__sub">
-            ARIA usa tu sesión de Amazon Connect para voz y chats. Te
-            abriremos una pestaña; este panel se conectará solo.
+            ARIA usa tu sesión de Amazon Connect para voz y chats. Te abriremos una pestaña; este
+            panel se conectará solo.
           </p>
 
           <ol className="vox-login__steps">
@@ -385,7 +411,14 @@ function LoginScreen() {
           <button onClick={openLogin} className="vox-login__cta" type="button">
             Iniciar sesión en Connect
             <span aria-hidden className="vox-login__cta-arrow">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
             </span>
@@ -402,18 +435,18 @@ function LoginScreen() {
           </button>
 
           <div className="vox-login__tip">
-            <span aria-hidden className="vox-login__tip-icon">i</span>
+            <span aria-hidden className="vox-login__tip-icon">
+              i
+            </span>
             <span className="vox-login__tip-text">
-              Mantén la pestaña de Amazon Connect abierta mientras usas ARIA —
-              la sesión se comparte automáticamente.
+              Mantén la pestaña de Amazon Connect abierta mientras usas ARIA — la sesión se comparte
+              automáticamente.
             </span>
           </div>
         </div>
       </motion.section>
 
-      <div className="vox-login__protect">
-        Protegido con cifrado AES-256 · SSO SAML 2.0 · MFA
-      </div>
+      <div className="vox-login__protect">Protegido con cifrado AES-256 · SSO SAML 2.0 · MFA</div>
     </div>
   );
 }
@@ -509,6 +542,7 @@ function AnimatedRoutes() {
             <Route path="/charts-lab" element={<ChartsLabPage />} />
             <Route path="/appointments" element={<AppointmentsPage />} />
             <Route path="/bot" element={<FlowBuilderPage />} />
+            <Route path="/journeys" element={<JourneysPage />} />
             <Route path="/automations" element={<AutomationsPage />} />
             <Route path="/agente" element={<AgentePage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
@@ -752,9 +786,32 @@ export default function App() {
     return (
       <ThemeProvider>
         {real ? (
-          <div style={{ height: "100vh", padding: 16, boxSizing: "border-box", background: "var(--bg-0)" }}>
-            <div style={{ height: "100%", border: "1px solid var(--border-1)", borderRadius: 10, overflow: "hidden", background: "var(--bg-1)" }}>
-              <RecordingsWorkspace initialLead={{ leadId: "demo", name: demoName, phone: demoPhone, company: "Cobranzas SAC", source: "phone" }} />
+          <div
+            style={{
+              height: "100vh",
+              padding: 16,
+              boxSizing: "border-box",
+              background: "var(--bg-0)",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                border: "1px solid var(--border-1)",
+                borderRadius: 10,
+                overflow: "hidden",
+                background: "var(--bg-1)",
+              }}
+            >
+              <RecordingsWorkspace
+                initialLead={{
+                  leadId: "demo",
+                  name: demoName,
+                  phone: demoPhone,
+                  company: "Cobranzas SAC",
+                  source: "phone",
+                }}
+              />
             </div>
           </div>
         ) : (

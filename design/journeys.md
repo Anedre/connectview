@@ -24,7 +24,7 @@
 
 - **`connectview-journeys`** (PK=tenantId, SK=journeyId) — la DEFINICIÓN:
   `{ name, status: draft|active|paused, entry: {trigger|segmentId|manual}, reenroll: bool,
-   nodes: JourneyNode[], edges: JourneyEdge[], goal?: {segmentId|stageId}, stats… }`.
+ nodes: JourneyNode[], edges: JourneyEdge[], goal?: {segmentId|stageId}, stats… }`.
   - `JourneyNode` = `{ id, kind, params }`. Kinds: **send** (channel: whatsapp|email + template),
     **wait** (`{days}` ó `{untilRule}`), **branch** (`{rules, match}` → yes/no edges),
     **action** (moveStage | task | webhook | enqueueDialer), **exit**.
@@ -64,12 +64,17 @@
 
 ## Plan por sub-fases
 
-- **3A — motor headless:** tablas + `journey-runner` (tick) + enrolamiento por trigger +
-  nodos send/wait/branch/action/exit + gate de supresión. Verificable: un journey seed
-  ("enviar → esperar 2d → si no respondió, encolar dialer → si respondió, mover etapa")
-  avanza un lead real end-to-end en ticks forzados. **(XL)**
-- **3B — builder visual:** `JourneyBuilder` (react-flow) + CRUD `manage-journeys` (o folded)
-  - paleta de nodos + validación. **(L)**
+- **3A — motor headless: ✅ HECHO (commit `e40b6c3`).** Tablas + `journey-runner` (tick 5min) +
+  `_shared/journeys.ts` (`planAdvance` puro) + nodos send/wait/branch/action/exit + gate de
+  supresión. CRUD + enrol manual **folded en `manage-leads`** (no Lambda nueva). Verificado E2E:
+  entry→send→wait2d→branch(score≥70)→moveStage avanza un lead real en ticks forzados. 5 tests.
+- **3B — builder visual: ✅ HECHO.** `JourneyBuilder.tsx` (react-flow, molde del FlowBuilder):
+  lienzo con auto-layout L→R, paleta (Enviar/Esperar/Ramificar/Acción/Fin), inspector por-tipo
+  (canal+plantilla/asunto, días o condición, reglas+match, tipo de acción, config de Entrada:
+  trigger/segmento/manual+reenroll), ramas con salidas **Sí/No**, y validación en vivo. Hook
+  `useJourneys` + página `/journeys` (lista + KPIs + activar/pausar) + nav "Journeys". CRUD via
+  `manage-leads` (folded — sin backend nuevo). Verificado E2E en Browser 1: crear→guardar→listar
+  →reabrir round-trip exacto (posiciones + params + ramas Sí/No persisten).
 - **3C — entrada + observabilidad + plantillas:** enrolamiento por segmento/score/manual +
   panel de embudo del journey + timeline por-lead + journeys semilla. **(M)**
 

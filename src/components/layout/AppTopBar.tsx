@@ -16,24 +16,33 @@ import { ProgramSwitcher } from "@/components/layout/ProgramSwitcher";
  */
 
 const STATE_COLORS: Record<string, { fg: string; bg: string }> = {
-  Available:       { fg: "var(--accent-green)", bg: "var(--accent-green-soft)" },
-  Routable:        { fg: "var(--accent-green)", bg: "var(--accent-green-soft)" },
-  Busy:            { fg: "var(--accent-cyan)",  bg: "var(--accent-cyan-soft)"  },
-  CallingCustomer: { fg: "var(--accent-cyan)",  bg: "var(--accent-cyan-soft)"  },
-  AfterCallWork:   { fg: "var(--accent-amber)", bg: "var(--accent-amber-soft)" },
-  PendingBusy:     { fg: "var(--accent-amber)", bg: "var(--accent-amber-soft)" },
-  Offline:         { fg: "var(--text-3)",       bg: "var(--bg-3)"              },
-  Init:            { fg: "var(--text-3)",       bg: "var(--bg-3)"              },
-  Error:           { fg: "var(--accent-red)",   bg: "var(--accent-red-soft)"   },
+  Available: { fg: "var(--accent-green)", bg: "var(--accent-green-soft)" },
+  Routable: { fg: "var(--accent-green)", bg: "var(--accent-green-soft)" },
+  Busy: { fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)" },
+  CallingCustomer: { fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)" },
+  AfterCallWork: { fg: "var(--accent-amber)", bg: "var(--accent-amber-soft)" },
+  PendingBusy: { fg: "var(--accent-amber)", bg: "var(--accent-amber-soft)" },
+  Offline: { fg: "var(--text-3)", bg: "var(--bg-3)" },
+  Init: { fg: "var(--text-3)", bg: "var(--bg-3)" },
+  Error: { fg: "var(--accent-red)", bg: "var(--accent-red-soft)" },
 };
 function colorFor(s: ConnectAgentState): { fg: string; bg: string } {
   return STATE_COLORS[s.name] || STATE_COLORS[s.type] || { fg: "var(--text-3)", bg: "var(--bg-3)" };
 }
 const STATE_LABELS: Record<string, string> = {
-  Available: "Disponible", Routable: "Disponible", Busy: "En llamada",
-  CallingCustomer: "Marcando", AfterCallWork: "ACW", PendingBusy: "Ocupado",
-  Offline: "Offline", Init: "Conectando…", Error: "Error",
-  Lunch: "Almuerzo", Break: "Pausa", Training: "Capacitación", Meeting: "Reunión",
+  Available: "Disponible",
+  Routable: "Disponible",
+  Busy: "En llamada",
+  CallingCustomer: "Marcando",
+  AfterCallWork: "ACW",
+  PendingBusy: "Ocupado",
+  Offline: "Offline",
+  Init: "Conectando…",
+  Error: "Error",
+  Lunch: "Almuerzo",
+  Break: "Pausa",
+  Training: "Capacitación",
+  Meeting: "Reunión",
 };
 const labelFor = (n: string) => STATE_LABELS[n] || n;
 
@@ -46,6 +55,7 @@ const CRUMBS: Record<string, { section: string; label: string }> = {
   "/leads": { section: "Crecimiento", label: "Leads" },
   "/campaigns": { section: "Crecimiento", label: "Campañas" },
   "/bot": { section: "Crecimiento", label: "Bots" },
+  "/journeys": { section: "Crecimiento", label: "Journeys" },
   "/automations": { section: "Crecimiento", label: "Automatizaciones" },
   "/agente": { section: "Crecimiento", label: "Agente IA" },
   "/appointments": { section: "Crecimiento", label: "Citas" },
@@ -98,62 +108,76 @@ export function AppTopBar() {
         )}
 
         <div className="tbx__status-wrap">
-        {isOnboarding ? (
-          <Link
-            to="/admin"
-            className="tbx__status"
-            style={{ background: "var(--accent-amber-soft)", color: "var(--accent-amber)" }}
-            title="Configurá tu Amazon Connect para activar el contact center"
-          >
-            <span className="dot" /> Configurá Connect
-          </Link>
-        ) : (
-          <button
-            className="tbx__status"
-            onClick={() => setStatusOpen((o) => !o)}
-            style={{ background: c.bg, color: c.fg }}
-            disabled={selectable.length === 0}
-            title={
-              selectable.length === 0
-                ? "Esperando conexión con Amazon Connect…"
-                : "Cambiar estado del agente"
-            }
-          >
-            <span className="dot" />
-            {labelFor(agentState)}
-            {selectable.length > 0 && <Icon.ChevDown size={12} style={{ opacity: 0.7 }} />}
-          </button>
-        )}
+          {isOnboarding ? (
+            <Link
+              to="/admin"
+              className="tbx__status"
+              style={{ background: "var(--accent-amber-soft)", color: "var(--accent-amber)" }}
+              title="Configurá tu Amazon Connect para activar el contact center"
+            >
+              <span className="dot" /> Configurá Connect
+            </Link>
+          ) : (
+            <button
+              className="tbx__status"
+              onClick={() => setStatusOpen((o) => !o)}
+              style={{ background: c.bg, color: c.fg }}
+              disabled={selectable.length === 0}
+              title={
+                selectable.length === 0
+                  ? "Esperando conexión con Amazon Connect…"
+                  : "Cambiar estado del agente"
+              }
+            >
+              <span className="dot" />
+              {labelFor(agentState)}
+              {selectable.length > 0 && <Icon.ChevDown size={12} style={{ opacity: 0.7 }} />}
+            </button>
+          )}
 
-        {statusOpen && selectable.length > 0 && (
-          <div className="tbx__menu">
-            <div className="tbx__menu-head">Estado del agente · Amazon Connect</div>
-            {selectable.map((s) => {
-              const sc = colorFor(s);
-              const isCurrent = s.name === agentState;
-              return (
-                <button
-                  type="button"
-                  key={s.name}
-                  onClick={() => { changeAgentState(s); setStatusOpen(false); }}
-                  className={`sb__item ${isCurrent ? "sb__item--active" : ""}`}
-                  style={{ margin: 0, padding: "8px 10px" }}
-                  aria-current={isCurrent ? "true" : undefined}
-                >
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: sc.fg, flex: "0 0 auto" }} />
-                  <span className="sb__label">{labelFor(s.name)}</span>
-                  {isCurrent && <Icon.Check size={12} style={{ color: sc.fg }} />}
-                </button>
-              );
-            })}
-          </div>
-        )}
+          {statusOpen && selectable.length > 0 && (
+            <div className="tbx__menu">
+              <div className="tbx__menu-head">Estado del agente · Amazon Connect</div>
+              {selectable.map((s) => {
+                const sc = colorFor(s);
+                const isCurrent = s.name === agentState;
+                return (
+                  <button
+                    type="button"
+                    key={s.name}
+                    onClick={() => {
+                      changeAgentState(s);
+                      setStatusOpen(false);
+                    }}
+                    className={`sb__item ${isCurrent ? "sb__item--active" : ""}`}
+                    style={{ margin: 0, padding: "8px 10px" }}
+                    aria-current={isCurrent ? "true" : undefined}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: sc.fg,
+                        flex: "0 0 auto",
+                      }}
+                    />
+                    <span className="sb__label">{labelFor(s.name)}</span>
+                    {isCurrent && <Icon.Check size={12} style={{ color: sc.fg }} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {pageActions && <div className="tbx__pageactions">{pageActions}</div>}
 
         {statusOpen && (
-          <div onClick={() => setStatusOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
+          <div
+            onClick={() => setStatusOpen(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 150 }}
+          />
         )}
       </div>
     </header>
