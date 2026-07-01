@@ -78,8 +78,6 @@ disruptivo).
 
 ---
 
----
-
 ## F5.3 — Comentarios de Instagram a nivel app · ✅ código listo, falta App Review de Meta
 
 **El código YA maneja comentarios de IG.** `meta-messaging-webhook` (líneas 169-198) procesa
