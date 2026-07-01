@@ -67,7 +67,9 @@ function FieldInput({
       <select style={inputStyle} value={String(v)} onChange={(e) => onChange(e.target.value)}>
         <option value="">— cualquiera —</option>
         {ctx.stages.map((s) => (
-          <option key={s.id} value={s.id}>{s.label}</option>
+          <option key={s.id} value={s.id}>
+            {s.label}
+          </option>
         ))}
       </select>
     );
@@ -78,7 +80,8 @@ function FieldInput({
         <option value="">— elegí una plantilla —</option>
         {ctx.templates.map((t) => (
           <option key={t.name} value={t.name}>
-            {t.name}{t.variableCount ? ` · ${t.variableCount} var` : ""}
+            {t.name}
+            {t.variableCount ? ` · ${t.variableCount} var` : ""}
           </option>
         ))}
       </select>
@@ -89,7 +92,9 @@ function FieldInput({
       <select style={inputStyle} value={String(v)} onChange={(e) => onChange(e.target.value)}>
         <option value="">— sin asignar —</option>
         {ctx.agents.map((a) => (
-          <option key={a.userId} value={a.userId}>{a.username}</option>
+          <option key={a.userId} value={a.userId}>
+            {a.username}
+          </option>
         ))}
       </select>
     );
@@ -98,7 +103,9 @@ function FieldInput({
     return (
       <select style={inputStyle} value={String(v)} onChange={(e) => onChange(e.target.value)}>
         {(field.options || []).map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
         ))}
       </select>
     );
@@ -126,7 +133,7 @@ function FieldInput({
             e.target.value
               .split(",")
               .map((s) => s.trim())
-              .filter(Boolean)
+              .filter(Boolean),
           )
         }
       />
@@ -155,7 +162,14 @@ function FieldsBlock({
 }) {
   if (fields.length === 0) return null;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginTop: 12 }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        gap: 12,
+        marginTop: 12,
+      }}
+    >
       {fields.map((f) => (
         <FormField key={f.key} label={f.label} hint={f.hint} required={f.required}>
           {(a) => (
@@ -175,10 +189,26 @@ function FieldsBlock({
 }
 
 /** Bloque del editor con eyebrow de sección (CUANDO / SI / ENTONCES). */
-function Section({ kicker, title, children }: { kicker: string; title: string; children: React.ReactNode }) {
+function Section({
+  kicker,
+  title,
+  children,
+}: {
+  kicker: string;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="card" style={{ padding: 18 }}>
-      <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, color: "var(--accent-amber)" }}>
+      <div
+        style={{
+          fontSize: 10.5,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          fontWeight: 700,
+          color: "var(--accent-amber)",
+        }}
+      >
         {kicker}
       </div>
       <div style={{ fontSize: 14.5, fontWeight: 600, margin: "2px 0 12px" }}>{title}</div>
@@ -211,11 +241,14 @@ export function AutomationsPage() {
         .filter((u) => u.userId)
         .map((u) => ({ userId: u.userId as string, username: u.username })),
     }),
-    [tree, waTemplates, users]
+    [tree, waTemplates, users],
   );
 
   const load = async () => {
-    if (!ep?.manageAutomations) { setLoading(false); return; }
+    if (!ep?.manageAutomations) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const r = await fetch(ep.manageAutomations);
@@ -228,7 +261,9 @@ export function AutomationsPage() {
       setLoading(false);
     }
   };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   useEffect(() => {
     if (!ep?.listWhatsAppTemplates) return;
@@ -241,8 +276,14 @@ export function AutomationsPage() {
 
   const save = async (rule: AutomationRule) => {
     if (!ep?.manageAutomations) return;
-    if (!rule.name.trim()) { toast.error("Poné un nombre"); return; }
-    if (rule.actions.length === 0) { toast.error("Agregá al menos una acción"); return; }
+    if (!rule.name.trim()) {
+      toast.error("Poné un nombre");
+      return;
+    }
+    if (rule.actions.length === 0) {
+      toast.error("Agregá al menos una acción");
+      return;
+    }
     for (const a of rule.actions) {
       for (const f of ACTION_DEFS[a.type].fields) {
         if (f.required && !a.params?.[f.key]) {
@@ -284,7 +325,9 @@ export function AutomationsPage() {
     });
     if (!okd) return;
     try {
-      await fetch(`${ep.manageAutomations}?ruleId=${encodeURIComponent(rule.ruleId)}`, { method: "DELETE" });
+      await fetch(`${ep.manageAutomations}?ruleId=${encodeURIComponent(rule.ruleId)}`, {
+        method: "DELETE",
+      });
       toast.success("Automatización eliminada");
       load();
     } catch {
@@ -345,7 +388,13 @@ export function AutomationsPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {/* CUANDO */}
           <Section kicker="Cuando" title="¿Qué dispara la regla?">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                gap: 10,
+              }}
+            >
               {TRIGGER_ORDER.map((t) => {
                 const d = TRIGGER_DEFS[t];
                 const Icn = d.icon;
@@ -366,12 +415,34 @@ export function AutomationsPage() {
                       boxShadow: active ? `0 0 0 1px ${d.accent}` : undefined,
                     }}
                   >
-                    <span style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 8, flexShrink: 0, background: "var(--bg-2)", color: d.accent }}>
+                    <span
+                      style={{
+                        display: "grid",
+                        placeItems: "center",
+                        width: 30,
+                        height: 30,
+                        borderRadius: 8,
+                        flexShrink: 0,
+                        background: "var(--bg-2)",
+                        color: d.accent,
+                      }}
+                    >
                       <Icn size={15} />
                     </span>
                     <span>
-                      <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{d.label}</span>
-                      <span style={{ display: "block", fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>{d.description}</span>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>
+                        {d.label}
+                      </span>
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 11.5,
+                          color: "var(--text-3)",
+                          marginTop: 2,
+                        }}
+                      >
+                        {d.description}
+                      </span>
                     </span>
                   </button>
                 );
@@ -380,7 +451,9 @@ export function AutomationsPage() {
             <FieldsBlock
               fields={trig.fields}
               params={editing.trigger.params || {}}
-              onParams={(p) => setEditing({ ...editing, trigger: { ...editing.trigger, params: p } })}
+              onParams={(p) =>
+                setEditing({ ...editing, trigger: { ...editing.trigger, params: p } })
+              }
               ctx={ctx}
             />
           </Section>
@@ -400,7 +473,9 @@ export function AutomationsPage() {
                     }}
                   >
                     {CONDITION_FIELDS.map((f) => (
-                      <option key={f.value} value={f.value}>{f.label}</option>
+                      <option key={f.value} value={f.value}>
+                        {f.label}
+                      </option>
                     ))}
                   </select>
                   <select
@@ -427,14 +502,18 @@ export function AutomationsPage() {
                     >
                       <option value="">— elegí —</option>
                       {ctx.stages.map((s) => (
-                        <option key={s.id} value={s.id}>{s.label}</option>
+                        <option key={s.id} value={s.id}>
+                          {s.label}
+                        </option>
                       ))}
                     </select>
                   ) : (
                     <input
                       style={{ ...inputStyle, flex: 1 }}
                       value={c.value}
-                      placeholder={c.field === "valoracion" ? "positiva / negativa / neutra" : "valor"}
+                      placeholder={
+                        c.field === "valoracion" ? "positiva / negativa / neutra" : "valor"
+                      }
                       onChange={(e) => {
                         const conditions = [...(editing.conditions || [])];
                         conditions[i] = { ...c, value: e.target.value };
@@ -446,7 +525,10 @@ export function AutomationsPage() {
                     className="btn btn--ghost btn--sm"
                     aria-label="Quitar condición"
                     onClick={() =>
-                      setEditing({ ...editing, conditions: (editing.conditions || []).filter((_, j) => j !== i) })
+                      setEditing({
+                        ...editing,
+                        conditions: (editing.conditions || []).filter((_, j) => j !== i),
+                      })
                     }
                   >
                     <Trash2 size={13} />
@@ -459,7 +541,10 @@ export function AutomationsPage() {
                 onClick={() =>
                   setEditing({
                     ...editing,
-                    conditions: [...(editing.conditions || []), { field: "source", op: "eq", value: "" }],
+                    conditions: [
+                      ...(editing.conditions || []),
+                      { field: "source", op: "eq", value: "" },
+                    ],
                   })
                 }
               >
@@ -475,16 +560,37 @@ export function AutomationsPage() {
                 const d = ACTION_DEFS[a.type];
                 const Icn = d.icon;
                 return (
-                  <div key={i} className="card" style={{ padding: 14, border: "1px solid var(--border-1)" }}>
+                  <div
+                    key={i}
+                    className="card"
+                    style={{ padding: 14, border: "1px solid var(--border-1)" }}
+                  >
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ display: "grid", placeItems: "center", width: 28, height: 28, borderRadius: 8, background: "var(--bg-2)", color: d.accent }}>
+                      <span
+                        style={{
+                          display: "grid",
+                          placeItems: "center",
+                          width: 28,
+                          height: 28,
+                          borderRadius: 8,
+                          background: "var(--bg-2)",
+                          color: d.accent,
+                        }}
+                      >
                         <Icn size={14} />
                       </span>
-                      <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{i + 1}. {d.label}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>
+                        {i + 1}. {d.label}
+                      </span>
                       <button
                         className="btn btn--ghost btn--sm"
                         aria-label="Quitar acción"
-                        onClick={() => setEditing({ ...editing, actions: editing.actions.filter((_, j) => j !== i) })}
+                        onClick={() =>
+                          setEditing({
+                            ...editing,
+                            actions: editing.actions.filter((_, j) => j !== i),
+                          })
+                        }
                       >
                         <Trash2 size={13} />
                       </button>
@@ -512,8 +618,12 @@ export function AutomationsPage() {
                       className="btn btn--sm"
                       onClick={() => {
                         const params: Record<string, unknown> = {};
-                        for (const f of d.fields) if (f.defaultValue !== undefined) params[f.key] = f.defaultValue;
-                        setEditing({ ...editing, actions: [...editing.actions, { type: t, params }] });
+                        for (const f of d.fields)
+                          if (f.defaultValue !== undefined) params[f.key] = f.defaultValue;
+                        setEditing({
+                          ...editing,
+                          actions: [...editing.actions, { type: t, params }],
+                        });
                       }}
                     >
                       <Icn size={13} style={{ color: d.accent }} /> {d.label}
@@ -543,7 +653,13 @@ export function AutomationsPage() {
             </button>
           }
         />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+            gap: 14,
+          }}
+        >
           {RULE_TEMPLATES.map((t) => {
             const rule = t.build();
             const d = TRIGGER_DEFS[rule.trigger.type];
@@ -552,17 +668,37 @@ export function AutomationsPage() {
               <button
                 key={t.id}
                 className="card"
-                style={{ textAlign: "left", padding: 18, cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, border: "1px solid var(--border-1)" }}
+                style={{
+                  textAlign: "left",
+                  padding: 18,
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                  border: "1px solid var(--border-1)",
+                }}
                 onClick={() => {
                   setPicking(false);
                   setEditing(rule);
                 }}
               >
-                <span style={{ display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: 10, background: "var(--bg-2)", color: d.accent }}>
+                <span
+                  style={{
+                    display: "grid",
+                    placeItems: "center",
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    background: "var(--bg-2)",
+                    color: d.accent,
+                  }}
+                >
                   <Icn size={18} />
                 </span>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{t.name}</div>
-                <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>{t.description}</div>
+                <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+                  {t.description}
+                </div>
               </button>
             );
           })}
@@ -588,7 +724,11 @@ export function AutomationsPage() {
             <button className="btn" onClick={load} disabled={loading}>
               <RefreshCw size={14} /> Actualizar
             </button>
-            <button className="btn" onClick={() => setShowWebhooks(true)} title="Entregas de webhooks salientes (#17)">
+            <button
+              className="btn"
+              onClick={() => setShowWebhooks(true)}
+              title="Entregas de webhooks salientes (#17)"
+            >
               <Webhook size={14} /> Webhooks
             </button>
             <button className="btn btn--primary" onClick={() => setPicking(true)}>
@@ -611,7 +751,13 @@ export function AutomationsPage() {
       </Modal>
 
       {loading ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+            gap: 14,
+          }}
+        >
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="skel" style={{ height: 140, borderRadius: 14 }} />
           ))}
@@ -620,7 +766,9 @@ export function AutomationsPage() {
         <div className="card">
           <EmptyState
             icon={<Plus />}
-            title={rules.length === 0 ? "Todavía no hay automatizaciones" : "Ninguna regla coincide"}
+            title={
+              rules.length === 0 ? "Todavía no hay automatizaciones" : "Ninguna regla coincide"
+            }
             description="Creá reglas tipo «lead nuevo del form web → plantilla de bienvenida por WhatsApp» y dejá que el embudo trabaje solo."
             action={
               <button className="btn btn--primary" onClick={() => setPicking(true)}>
@@ -630,18 +778,49 @@ export function AutomationsPage() {
           />
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 14 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
+            gap: 14,
+          }}
+        >
           {kept.map((r) => {
             const d = TRIGGER_DEFS[r.trigger.type];
             const Icn = d.icon;
             return (
-              <div key={r.ruleId} className="card" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div
+                key={r.ruleId}
+                className="card"
+                style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}
+              >
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ display: "grid", placeItems: "center", width: 32, height: 32, borderRadius: 9, background: "var(--bg-2)", color: d.accent, flexShrink: 0 }}>
+                  <span
+                    style={{
+                      display: "grid",
+                      placeItems: "center",
+                      width: 32,
+                      height: 32,
+                      borderRadius: 9,
+                      background: "var(--bg-2)",
+                      color: d.accent,
+                      flexShrink: 0,
+                    }}
+                  >
                     <Icn size={15} />
                   </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        fontSize: 13.5,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {r.name}
+                    </div>
                     <div style={{ fontSize: 11, color: "var(--text-3)" }}>
                       {d.label}
                       {(r.conditions?.length || 0) > 0 && ` · ${r.conditions!.length} cond.`}
@@ -668,18 +847,41 @@ export function AutomationsPage() {
                     );
                   })}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--text-3)", marginTop: "auto" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 11.5,
+                    color: "var(--text-3)",
+                    marginTop: "auto",
+                  }}
+                >
                   <span style={{ flex: 1, fontVariantNumeric: "tabular-nums" }}>
                     {r.firedCount || 0} ejecuciones
-                    {r.lastFiredAt ? ` · última ${new Date(r.lastFiredAt).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}
+                    {r.lastFiredAt
+                      ? ` · última ${new Date(r.lastFiredAt).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                      : ""}
                   </span>
-                  <button className="btn btn--ghost btn--sm" onClick={() => openRuns(r)} title="Ver ejecuciones">
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => openRuns(r)}
+                    title="Ver ejecuciones"
+                  >
                     <History size={13} />
                   </button>
-                  <button className="btn btn--ghost btn--sm" onClick={() => setEditing({ ...r })} title="Editar">
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setEditing({ ...r })}
+                    title="Editar"
+                  >
                     <Pencil size={13} />
                   </button>
-                  <button className="btn btn--ghost btn--sm" onClick={() => remove(r)} title="Eliminar">
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => remove(r)}
+                    title="Eliminar"
+                  >
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -692,29 +894,80 @@ export function AutomationsPage() {
       {/* Ejecuciones */}
       <Modal
         open={runsFor !== null}
-        onOpenChange={(o) => { if (!o) setRunsFor(null); }}
+        onOpenChange={(o) => {
+          if (!o) setRunsFor(null);
+        }}
         title={runsFor ? `Ejecuciones · ${runsFor.name}` : ""}
         className="max-w-2xl"
       >
-        <div style={{ marginTop: 12, maxHeight: 420, overflow: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div
+          style={{
+            marginTop: 12,
+            maxHeight: 420,
+            overflow: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
           {runs === null ? (
             <div className="skel" style={{ height: 80, borderRadius: 10 }} />
           ) : runs.length === 0 ? (
-            <EmptyState title="Sin ejecuciones todavía" description="Cuando la regla dispare, vas a ver acá cada acción con su resultado." />
+            <EmptyState
+              title="Sin ejecuciones todavía"
+              description="Cuando la regla dispare, vas a ver acá cada acción con su resultado."
+            />
           ) : (
             runs.map((run) => (
-              <div key={run.sk} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "var(--bg-2)", borderRadius: 8, fontSize: 12 }}>
+              <div
+                key={run.sk}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "8px 10px",
+                  background: "var(--bg-2)",
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+              >
                 <span
-                  style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: run.ok ? "var(--accent-green)" : "var(--accent-red)" }}
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    background: run.ok ? "var(--accent-green)" : "var(--accent-red)",
+                  }}
                   title={run.ok ? "OK" : run.error}
                 />
                 <span style={{ flex: 1 }}>
                   {ACTION_DEFS[run.action as ActionType]?.label || run.action}
-                  <span style={{ color: "var(--text-3)" }}> · {TRIGGER_DEFS[run.trigger as TriggerType]?.label || run.trigger}</span>
-                  {run.error && <span style={{ display: "block", color: "var(--accent-red)", fontSize: 11 }}>{run.error}</span>}
+                  <span style={{ color: "var(--text-3)" }}>
+                    {" "}
+                    · {TRIGGER_DEFS[run.trigger as TriggerType]?.label || run.trigger}
+                  </span>
+                  {run.error && (
+                    <span style={{ display: "block", color: "var(--accent-red)", fontSize: 11 }}>
+                      {run.error}
+                    </span>
+                  )}
                 </span>
-                <span style={{ color: "var(--text-3)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-                  {run.at ? new Date(run.at).toLocaleString("es-PE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
+                <span
+                  style={{
+                    color: "var(--text-3)",
+                    fontVariantNumeric: "tabular-nums",
+                    flexShrink: 0,
+                  }}
+                >
+                  {run.at
+                    ? new Date(run.at).toLocaleString("es-PE", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : ""}
                 </span>
               </div>
             ))

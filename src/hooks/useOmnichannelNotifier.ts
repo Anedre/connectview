@@ -44,12 +44,8 @@ const NEW_CONTACT_TITLE: Record<string, string> = {
 };
 
 function newContactBody(c: ActiveContact): string {
-  const isWA =
-    c.channel?.toUpperCase() === "CHAT" &&
-    c.attributes?.udep_source === "whatsapp";
-  const channelLabel = isWA
-    ? "WhatsApp"
-    : c.channel?.toLowerCase() || "contacto";
+  const isWA = c.channel?.toUpperCase() === "CHAT" && c.attributes?.udep_source === "whatsapp";
+  const channelLabel = isWA ? "WhatsApp" : c.channel?.toLowerCase() || "contacto";
   const who = c.customerPhone || c.queueName || "Cliente";
   return `${who} (${channelLabel})`;
 }
@@ -59,9 +55,11 @@ function newContactBody(c: ActiveContact): string {
 // session (the focus click that opened the desktop).
 function playDing(kind: "incoming" | "message") {
   try {
-     
-    const AC: typeof AudioContext | undefined =
-      (window as any).AudioContext || (window as any).webkitAudioContext;
+    const w = window as unknown as {
+      AudioContext?: typeof AudioContext;
+      webkitAudioContext?: typeof AudioContext;
+    };
+    const AC: typeof AudioContext | undefined = w.AudioContext || w.webkitAudioContext;
     if (!AC) return;
     const ctx = new AC();
     const osc = ctx.createOscillator();
@@ -97,7 +95,7 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
   const { focusedContactId } = useContactFocus();
   const [unreadCount, setUnreadCount] = useState<Record<string, number>>({});
   const [permission, setPermission] = useState<NotificationPermission>(
-    typeof Notification !== "undefined" ? Notification.permission : "denied"
+    typeof Notification !== "undefined" ? Notification.permission : "denied",
   );
 
   // Track which contacts we've already announced (to avoid re-firing on
@@ -138,7 +136,7 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
       // Don't re-announce a contact we've already seen at all (e.g. the
       // ring state flipped from ringing → connecting → ringing in a beat).
       const wasAnnouncedAlready = Array.from(announcedRef.current).some(
-        (k) => k !== key && k.startsWith(`${c.contactId}:`)
+        (k) => k !== key && k.startsWith(`${c.contactId}:`),
       );
       // Note: the .add above adds the new key BEFORE we check, so we
       // expect at minimum the just-added entry. The "already announced"
@@ -151,9 +149,7 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
       ensurePermission().then((ok) => {
         if (!ok) return;
         try {
-          const title =
-            NEW_CONTACT_TITLE[c.channel?.toUpperCase() || ""] ||
-            "Nuevo contacto";
+          const title = NEW_CONTACT_TITLE[c.channel?.toUpperCase() || ""] || "Nuevo contacto";
           const notif = new Notification(title, {
             body: newContactBody(c),
             tag: `contact-${c.contactId}`,
@@ -194,12 +190,11 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
       if (wired.has(contact.contactId)) continue;
       if ((contact.channel || "").toUpperCase() !== "CHAT") continue;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const streamsContact = (agent?.getContacts?.() || []).find((x: any) =>
-        x.getContactId?.() === contact.contactId
+      const streamsContact = (agent?.getContacts?.() || []).find(
+        (x: any) => x.getContactId?.() === contact.contactId,
       );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const chatSession = (streamsContact as any)?.getAgentConnection?.()
-        ?.getMediaController?.();
+      const chatSession = (streamsContact as any)?.getAgentConnection?.()?.getMediaController?.();
       if (!chatSession) continue;
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -213,9 +208,8 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
           // We read focusedContactId via the closure-captured ref so this
           // listener stays correct as the focus changes.
           // We don't reset to zero here — that happens in the focus effect.
-           
-          const focus = (focusRef as React.MutableRefObject<string | null>)
-            .current;
+
+          const focus = (focusRef as React.MutableRefObject<string | null>).current;
           if (focus === contact.contactId) return;
           setUnreadCount((prev) => ({
             ...prev,
@@ -226,9 +220,7 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
             if (!ok) return;
             try {
               const isWA = contact.attributes?.udep_source === "whatsapp";
-              const title = isWA
-                ? "💚 WhatsApp · nuevo mensaje"
-                : "💬 Chat · nuevo mensaje";
+              const title = isWA ? "💚 WhatsApp · nuevo mensaje" : "💬 Chat · nuevo mensaje";
               const body =
                 (typeof data.Content === "string" && data.Content) ||
                 contact.customerPhone ||
@@ -246,7 +238,7 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
                 window.dispatchEvent(
                   new CustomEvent("vox:focus-contact", {
                     detail: { contactId: contact.contactId },
-                  })
+                  }),
                 );
                 notif.close();
               };

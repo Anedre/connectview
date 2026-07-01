@@ -23,27 +23,12 @@ jobs:
       - run: npm ci
       - name: Typecheck (tsc -b)
         run: npm run typecheck
+      - name: Lint (eslint · 0 errores; los warnings del React Compiler no fallan)
+        run: npm run lint
       - name: Unit tests (vitest)
         run: npm run test:run
       - name: Build (vite)
         run: npm run build
-
-  # Lint NO-bloqueante: hay deuda pre-existente (eslint . = ~97 errores en archivos
-  # viejos). husky ya exige que lo NUEVO pase (lint-staged). El step de eslint es
-  # continue-on-error → el job queda verde y la deuda se ve en el log; se puede
-  # volver bloqueante cuando se queme.
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - name: Lint (eslint · no bloquea, deuda pre-existente)
-        continue-on-error: true
-        run: npm run lint
 
   # e2e Playwright. El smoke (sin auth) corre siempre; el flujo autenticado solo si
   # están los secretos TEST_EMAIL/TEST_PASSWORD (un usuario Cognito de prueba). No

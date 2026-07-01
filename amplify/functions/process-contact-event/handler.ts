@@ -25,8 +25,7 @@ const legacyConnect = new ConnectClient({ maxAttempts: 1 });
 const connect: ConnectClient = legacyConnect;
 const TABLE_NAME = process.env.CONTACTS_TABLE_NAME || "";
 const ENRICH_FUNCTION_NAME = process.env.ENRICH_FUNCTION_NAME || "";
-const CAMPAIGNS_TABLE =
-  process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
+const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CAMPAIGN_CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 const CONNECT_INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
@@ -46,7 +45,7 @@ async function resolveUsername(userId: string): Promise<string> {
       new DescribeUserCommand({
         InstanceId: CONNECT_INSTANCE_ID,
         UserId: userId,
-      })
+      }),
     );
     const username = res.User?.Username || userId;
     usernameCache.set(userId, username);
@@ -57,11 +56,17 @@ async function resolveUsername(userId: string): Promise<string> {
   }
 }
 
-function deriveSub(channel: string, initiationMethod?: string, endpointType?: string): string | undefined {
+function deriveSub(
+  channel: string,
+  initiationMethod?: string,
+  endpointType?: string,
+): string | undefined {
   if (channel !== "CHAT") return undefined;
   if (initiationMethod === "API") return "Messaging API";
   if (initiationMethod === "MESSAGING_PLATFORM")
-    return endpointType === "PHONE_NUMBER" || endpointType === "TELEPHONE_NUMBER" ? "WhatsApp/SMS" : "Messaging";
+    return endpointType === "PHONE_NUMBER" || endpointType === "TELEPHONE_NUMBER"
+      ? "WhatsApp/SMS"
+      : "Messaging";
   if (initiationMethod === "EXTERNAL_OUTBOUND") return "Outbound";
   return undefined;
 }
@@ -80,7 +85,9 @@ const mQueueCache = new Map<string, string>();
 async function materializeContact(contactId: string, instanceId: string): Promise<void> {
   if (!contactId || !instanceId) return;
   try {
-    const desc = await connect.send(new DescribeContactCommand({ InstanceId: instanceId, ContactId: contactId }));
+    const desc = await connect.send(
+      new DescribeContactCommand({ InstanceId: instanceId, ContactId: contactId }),
+    );
     const c = desc.Contact;
     const phone = c?.CustomerEndpoint?.Address;
     const channel = String(c?.Channel || "").toUpperCase();
@@ -90,18 +97,26 @@ async function materializeContact(contactId: string, instanceId: string): Promis
     let agentUsername = (agentId && mUserCache.get(agentId)) || "";
     if (agentId && !agentUsername) {
       try {
-        const u = await connect.send(new DescribeUserCommand({ InstanceId: instanceId, UserId: agentId }));
+        const u = await connect.send(
+          new DescribeUserCommand({ InstanceId: instanceId, UserId: agentId }),
+        );
         agentUsername = u.User?.Username || "";
         if (agentUsername) mUserCache.set(agentId, agentUsername);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     let queueName = (queueId && mQueueCache.get(queueId)) || "";
     if (queueId && !queueName) {
       try {
-        const q = await connect.send(new DescribeQueueCommand({ InstanceId: instanceId, QueueId: queueId }));
+        const q = await connect.send(
+          new DescribeQueueCommand({ InstanceId: instanceId, QueueId: queueId }),
+        );
         queueName = q.Queue?.Name || "";
         if (queueName) mQueueCache.set(queueId, queueName);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     const initMs = c.InitiationTimestamp?.getTime() || 0;
     const discMs = c.DisconnectTimestamp?.getTime() || 0;
@@ -144,16 +159,13 @@ interface ConnectContactEvent {
 }
 
 // Find the campaign-contact row linked to this Connect contactId, if any.
-async function findCampaignContact(contactId: string): Promise<
-  | {
-      campaignId: string;
-      rowId: string;
-      attempts: number;
-      status: string;
-      connectedAt?: string;
-    }
-  | null
-> {
+async function findCampaignContact(contactId: string): Promise<{
+  campaignId: string;
+  rowId: string;
+  attempts: number;
+  status: string;
+  connectedAt?: string;
+} | null> {
   try {
     const res = await dynamo.send(
       new QueryCommand({
@@ -162,7 +174,7 @@ async function findCampaignContact(contactId: string): Promise<
         KeyConditionExpression: "connectContactId = :cid",
         ExpressionAttributeValues: { ":cid": { S: contactId } },
         Limit: 1,
-      })
+      }),
     );
     const first = res.Items?.[0];
     if (!first) return null;
@@ -188,7 +200,7 @@ async function findCampaignContact(contactId: string): Promise<
 function classifyDisconnect(
   reason: string | undefined,
   previousStatus: string,
-  callDurationSec: number | null
+  callDurationSec: number | null,
 ): "done" | "no_answer" | "failed" {
   const r = (reason || "").toUpperCase();
 
@@ -205,11 +217,7 @@ function classifyDisconnect(
   }
 
   // Connected-to-agent, but very short call: likely voicemail or customer rejected.
-  if (
-    previousStatus === "connected" &&
-    callDurationSec !== null &&
-    callDurationSec < 10
-  ) {
+  if (previousStatus === "connected" && callDurationSec !== null && callDurationSec < 10) {
     return "no_answer";
   }
 
@@ -225,7 +233,7 @@ function classifyDisconnect(
 async function updateCampaignContactStatus(
   link: { campaignId: string; rowId: string; attempts: number; status: string },
   newStatus: string,
-  extra: Record<string, string | number> = {}
+  extra: Record<string, string | number> = {},
 ): Promise<void> {
   const setParts: string[] = ["#st = :new"];
   const exprVals: Record<string, { S?: string; N?: string }> = {
@@ -249,7 +257,7 @@ async function updateCampaignContactStatus(
       UpdateExpression: "SET " + setParts.join(", "),
       ExpressionAttributeNames: exprNames,
       ExpressionAttributeValues: exprVals,
-    })
+    }),
   );
 }
 
@@ -258,7 +266,7 @@ async function updateCampaignContactStatus(
 async function updateCampaignCounters(
   campaignId: string,
   newStatus: string,
-  previousStatus: string
+  previousStatus: string,
 ): Promise<void> {
   const counterInc: Record<string, number> = {};
   const counterDec: Record<string, number> = {};
@@ -281,9 +289,7 @@ async function updateCampaignCounters(
 
   if (Object.keys(allOps).length === 0) return;
 
-  const addParts = Object.entries(allOps).map(
-    ([key, val], i) => `${key} :v${i}`
-  );
+  const addParts = Object.entries(allOps).map(([key], i) => `${key} :v${i}`);
   const exprVals: Record<string, { N: string }> = {};
   Object.entries(allOps).forEach(([, val], i) => {
     exprVals[`:v${i}`] = { N: String(val) };
@@ -296,7 +302,7 @@ async function updateCampaignCounters(
         Key: { campaignId: { S: campaignId } },
         UpdateExpression: "ADD " + addParts.join(", "),
         ExpressionAttributeValues: exprVals,
-      })
+      }),
     );
   } catch (err) {
     console.warn("updateCampaignCounters failed:", err);
@@ -341,13 +347,10 @@ export const handler: EventBridgeHandler<
                 status: { S: "ACTIVE" },
               },
               ConditionExpression: "attribute_not_exists(contactId)",
-            })
+            }),
           );
         } catch (err) {
-          if (
-            !(err instanceof Error) ||
-            err.name !== "ConditionalCheckFailedException"
-          ) {
+          if (!(err instanceof Error) || err.name !== "ConditionalCheckFailedException") {
             // Don't rethrow — failing analytics shouldn't block campaign updates (step 2)
             console.warn("analytics table Put failed, continuing:", err);
           }
@@ -372,7 +375,7 @@ export const handler: EventBridgeHandler<
               },
               ":dr": { S: detail.disconnectReason || "UNKNOWN" },
             },
-          })
+          }),
         );
         if (ENRICH_FUNCTION_NAME) {
           await lambda.send(
@@ -383,16 +386,13 @@ export const handler: EventBridgeHandler<
                 JSON.stringify({
                   contactId,
                   instanceId: detail.instanceArn?.split("/").pop() || "",
-                })
+                }),
               ),
-            })
+            }),
           );
         }
       } catch (err) {
-        if (
-          !(err instanceof Error) ||
-          err.name !== "ConditionalCheckFailedException"
-        ) {
+        if (!(err instanceof Error) || err.name !== "ConditionalCheckFailedException") {
           console.warn("analytics table Update failed, continuing:", err);
         }
       }
@@ -416,10 +416,7 @@ export const handler: EventBridgeHandler<
         connectedAt: new Date().toISOString(),
       });
       await updateCampaignCounters(link.campaignId, "connected", link.status);
-    } else if (
-      eventType === "DISCONNECTED" ||
-      eventType === "CONTACT_END"
-    ) {
+    } else if (eventType === "DISCONNECTED" || eventType === "CONTACT_END") {
       // Compute call duration (seconds between agent-connected and now) so we
       // can distinguish a real conversation from a quick voicemail / rejection.
       let callDurationSec: number | null = null;
@@ -433,11 +430,7 @@ export const handler: EventBridgeHandler<
         }
       }
 
-      const newStatus = classifyDisconnect(
-        detail.disconnectReason,
-        link.status,
-        callDurationSec
-      );
+      const newStatus = classifyDisconnect(detail.disconnectReason, link.status, callDurationSec);
       await updateCampaignContactStatus(link, newStatus, {
         disconnectReason: detail.disconnectReason || "UNKNOWN",
         disconnectedAt: new Date().toISOString(),
@@ -446,10 +439,7 @@ export const handler: EventBridgeHandler<
       await updateCampaignCounters(link.campaignId, newStatus, link.status);
     }
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.name === "ConditionalCheckFailedException"
-    ) {
+    if (error instanceof Error && error.name === "ConditionalCheckFailedException") {
       return;
     }
     console.error("Error processing contact event:", error);

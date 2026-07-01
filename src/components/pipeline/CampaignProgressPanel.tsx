@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { Clock, Hourglass } from "lucide-react";
+import { Hourglass } from "lucide-react";
 import type { CampaignActivityKpis } from "@/hooks/useCampaignActivity";
 import type { Campaign } from "@/hooks/useCampaigns";
 import type { CampaignStatsData } from "@/hooks/useCampaignStats";
@@ -103,19 +103,12 @@ export function CampaignProgressPanel({ campaign: _campaign, stats, kpis }: Prop
             Procesados
           </div>
           <div className="mt-2 flex items-baseline gap-3">
-            <span className="text-6xl font-semibold tabular-nums tracking-tight">
-              {completed}
-            </span>
-            <span className="text-2xl text-muted-foreground/60 tabular-nums">
-              / {total}
-            </span>
+            <span className="text-6xl font-semibold tabular-nums tracking-tight">{completed}</span>
+            <span className="text-2xl text-muted-foreground/60 tabular-nums">/ {total}</span>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
             <span>
-              <span className="font-semibold tabular-nums text-foreground">
-                {pct}%
-              </span>{" "}
-              completado
+              <span className="font-semibold tabular-nums text-foreground">{pct}%</span> completado
             </span>
             {kpis.pending > 0 && (
               <>
@@ -137,10 +130,8 @@ export function CampaignProgressPanel({ campaign: _campaign, stats, kpis }: Prop
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent-green)] opacity-75" />
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--accent-green)]" />
                   </span>
-                  <span className="font-semibold tabular-nums text-foreground">
-                    {kpis.live}
-                  </span>{" "}
-                  en vivo
+                  <span className="font-semibold tabular-nums text-foreground">{kpis.live}</span> en
+                  vivo
                 </span>
               </>
             )}
@@ -181,7 +172,7 @@ export function CampaignProgressPanel({ campaign: _campaign, stats, kpis }: Prop
                   style={{ width: `${s.pct}%` }}
                   title={`${s.label}: ${s.value}`}
                 />
-              ) : null
+              ) : null,
             )}
           </div>
         </div>
@@ -191,9 +182,7 @@ export function CampaignProgressPanel({ campaign: _campaign, stats, kpis }: Prop
             .map((s) => (
               <span key={s.key} className="inline-flex items-center gap-1.5">
                 <span className={`h-1.5 w-1.5 rounded-full ${s.color}`} />
-                <span className="font-medium tabular-nums text-foreground">
-                  {s.value}
-                </span>{" "}
+                <span className="font-medium tabular-nums text-foreground">{s.value}</span>{" "}
                 {s.label}
               </span>
             ))}
@@ -205,12 +194,7 @@ export function CampaignProgressPanel({ campaign: _campaign, stats, kpis }: Prop
 
       {/* ── KPI strip: 4 big metrics in a row ────────────────────── */}
       <div className="grid grid-cols-2 gap-x-12 gap-y-6 border-t pt-8 md:grid-cols-4">
-        <HeroKpi
-          label="Pendientes"
-          value={kpis.pending}
-          tone="warning"
-          hint="Sin marcar todavía"
-        />
+        <HeroKpi label="Pendientes" value={kpis.pending} tone="warning" hint="Sin marcar todavía" />
         <HeroKpi
           label="En vivo"
           value={kpis.live}
@@ -222,11 +206,7 @@ export function CampaignProgressPanel({ campaign: _campaign, stats, kpis }: Prop
           label="Tasa de éxito"
           value={`${kpis.successRate}%`}
           tone={
-            kpis.successRate >= 50
-              ? "success"
-              : kpis.successRate >= 25
-                ? "warning"
-                : "critical"
+            kpis.successRate >= 50 ? "success" : kpis.successRate >= 25 ? "warning" : "critical"
           }
           hint="done / cerrados"
         />
@@ -236,17 +216,6 @@ export function CampaignProgressPanel({ campaign: _campaign, stats, kpis }: Prop
           hint="Mediana observada"
         />
       </div>
-
-      {/* SmallStat is unused in the live layout but kept exported for the
-          Campaign Detail page which still imports it. */}
-      {false && (
-        <SmallStat
-          Icon={Clock}
-          label="placeholder"
-          value={0}
-          color="text-muted-foreground"
-        />
-      )}
     </motion.div>
   );
 }
@@ -285,46 +254,12 @@ function HeroKpi({
       <div className="mt-2 flex items-baseline gap-2">
         {dotCls && (
           <span
-            className={`h-2 w-2 shrink-0 rounded-full ${dotCls} ${
-              pulse ? "animate-pulse" : ""
-            }`}
+            className={`h-2 w-2 shrink-0 rounded-full ${dotCls} ${pulse ? "animate-pulse" : ""}`}
           />
         )}
-        <span className="truncate text-3xl font-semibold tabular-nums tracking-tight">
-          {value}
-        </span>
+        <span className="truncate text-3xl font-semibold tabular-nums tracking-tight">{value}</span>
       </div>
-      {hint && (
-        <div className="mt-1 text-xs text-muted-foreground">{hint}</div>
-      )}
-    </div>
-  );
-}
-
-function SmallStat({
-  Icon,
-  label,
-  value,
-  color,
-  highlight,
-}: {
-  Icon: React.ElementType;
-  label: string;
-  value: number;
-  color: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={`flex items-center justify-between gap-1.5 rounded-md px-2 py-1 text-[11px] ${
-        highlight ? "bg-[var(--accent-cyan-soft)]" : "bg-muted/30"
-      }`}
-    >
-      <span className="flex items-center gap-1">
-        <Icon className={`h-3 w-3 ${color}`} />
-        <span className="text-muted-foreground">{label}</span>
-      </span>
-      <span className="font-semibold tabular-nums">{value}</span>
+      {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
     </div>
   );
 }

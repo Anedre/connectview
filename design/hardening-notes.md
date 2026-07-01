@@ -51,7 +51,9 @@ mercadolibre,sf-inbound}`, `connectview/salesforce`, `connectview/mercadolibre`.
 
 ## CI / gate de regresión (F5.6)
 
-- `.github/workflows/ci.yml`: **quality** (typecheck + unit + build) bloqueante; **lint** y **e2e**
-  no-bloqueantes (deuda de lint pre-existente ~97; e2e autenticado gateado por secretos).
-- **TODO (deuda):** quemar los ~97 errores de `eslint .` en archivos viejos → volver el lint
-  bloqueante. husky ya exige que lo NUEVO pase (lint-staged).
+- `.github/workflows/ci.yml`: **quality** (typecheck + **lint** + unit + build) **bloqueante**;
+  **e2e** no-bloqueante (autenticado gateado por secretos `TEST_EMAIL`/`TEST_PASSWORD`).
+- **Deuda de lint quemada:** los ~97 errores de `eslint .` se fueron a 0 (dead code removido +
+  `no-unused-vars` con patrón `^_`). Las reglas advisory del React Compiler
+  (`set-state-in-effect`, `purity`, `exhaustive-deps`…) quedaron como **warning** (87, visibles, no
+  fallan el build) — son guía, no bugs de correctitud. El lint ya es parte del gate bloqueante.

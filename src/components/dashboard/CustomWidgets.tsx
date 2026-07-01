@@ -29,6 +29,7 @@ function loadEnabled(): Set<WidgetId> {
   return new Set<WidgetId>(["leads", "appts", "hsm"]);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- respuesta JSON de endpoint arbitrario (widget genérico)
 async function getJson(url?: string): Promise<any> {
   if (!url) return null;
   try {
@@ -59,7 +60,7 @@ const WIDGETS: WidgetDef[] = [
     load: async () => {
       const ep = getApiEndpoints();
       const d = await getJson(
-        ep?.manageAppointment ? `${ep.manageAppointment}?upcoming=true` : undefined
+        ep?.manageAppointment ? `${ep.manageAppointment}?upcoming=true` : undefined,
       );
       const appts = Array.isArray(d?.appointments) ? d.appointments : [];
       const next = appts[0]?.whenISO
@@ -103,7 +104,7 @@ export function CustomWidgets() {
       WIDGETS.filter((w) => enabled.has(w.id)).map(async (w) => {
         const res = await w.load().catch(() => ({ value: "—" }));
         return [w.id, res] as const;
-      })
+      }),
     ).then((pairs) => {
       if (!cancelled) setData(Object.fromEntries(pairs));
     });
@@ -115,7 +116,8 @@ export function CustomWidgets() {
   const toggle = (id: WidgetId) => {
     setEnabled((cur) => {
       const next = new Set(cur);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       try {
         localStorage.setItem(LS_KEY, JSON.stringify([...next]));
       } catch {
@@ -130,7 +132,10 @@ export function CustomWidgets() {
   return (
     <div style={{ marginBottom: 16 }}>
       <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-        <span className="muted" style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}>
+        <span
+          className="muted"
+          style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}
+        >
           Mis widgets
         </span>
         <button className="btn btn--ghost btn--sm" onClick={() => setCustomizing((c) => !c)}>
@@ -142,7 +147,11 @@ export function CustomWidgets() {
         <div className="card" style={{ padding: 10, marginBottom: 10 }}>
           <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
             {WIDGETS.map((w) => (
-              <label key={w.id} className="row" style={{ gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+              <label
+                key={w.id}
+                className="row"
+                style={{ gap: 6, fontSize: 12.5, cursor: "pointer" }}
+              >
                 <input type="checkbox" checked={enabled.has(w.id)} onChange={() => toggle(w.id)} />
                 {w.label}
               </label>
@@ -151,7 +160,13 @@ export function CustomWidgets() {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, shown.length)}, 1fr)`, gap: 12 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${Math.max(1, shown.length)}, 1fr)`,
+          gap: 12,
+        }}
+      >
         {shown.map((w) => {
           const Ico = Icon[w.icon] as React.ComponentType<{ size?: number }>;
           const d = data[w.id];
@@ -165,14 +180,19 @@ export function CustomWidgets() {
                 background: "var(--bg-1)",
               }}
             >
-              <div className="row" style={{ gap: 6, color: "var(--text-2)", fontSize: 11.5, fontWeight: 600 }}>
+              <div
+                className="row"
+                style={{ gap: 6, color: "var(--text-2)", fontSize: 11.5, fontWeight: 600 }}
+              >
                 {Ico && <Ico size={13} />} {w.label}
               </div>
               <div style={{ fontSize: 26, fontWeight: 700, marginTop: 4, color: "var(--text-1)" }}>
                 {d?.value ?? "…"}
               </div>
               {d?.hint && (
-                <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{d.hint}</div>
+                <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                  {d.hint}
+                </div>
               )}
             </div>
           );

@@ -7,17 +7,9 @@ import {
   DescribeUserCommand,
   DescribeQueueCommand,
 } from "@aws-sdk/client-connect";
-import {
-  S3Client,
-  GetObjectCommand,
-  ListObjectsV2Command,
-} from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  QueryCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, GetItemCommand, QueryCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { resolveConnect } from "../_shared/tenantConnect";
 import { readBlobCache, writeBlobCache } from "../_shared/recordingsCache";
@@ -65,7 +57,7 @@ let dynamo: DynamoDBClient = legacyDynamo;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 let instanceId = INSTANCE_ID;
 /** Connect instance alias used as the S3 prefix segment in
- *  amazon-connect-*/connect/<alias>/... paths. */
+ *  `amazon-connect-{domain}/connect/<alias>/...` paths. */
 const INSTANCE_ALIAS = process.env.CONNECT_INSTANCE_ALIAS || "novasys";
 const CONTACTS_TABLE = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
 const PRESIGN_EXPIRES = 3600; // 1 hour
@@ -90,7 +82,7 @@ async function resolveAgentUsername(agentId: string): Promise<string> {
       new DescribeUserCommand({
         InstanceId: instanceId,
         UserId: agentId,
-      })
+      }),
     );
     const name = r.User?.Username || agentId;
     userNameCache.set(k, name);
@@ -109,7 +101,7 @@ async function resolveQueueName(queueId: string): Promise<string> {
       new DescribeQueueCommand({
         InstanceId: instanceId,
         QueueId: queueId,
-      })
+      }),
     );
     const name = r.Queue?.Name || queueId;
     queueNameCache.set(k, name);
@@ -174,9 +166,7 @@ async function fetchContactLensTranscript(location: string): Promise<{
   const s3loc = parseS3Location(location);
   if (!s3loc) return null;
   try {
-    const obj = await s3.send(
-      new GetObjectCommand({ Bucket: s3loc.bucket, Key: s3loc.key })
-    );
+    const obj = await s3.send(new GetObjectCommand({ Bucket: s3loc.bucket, Key: s3loc.key }));
     const text = await obj.Body?.transformToString();
     if (!text) return null;
     const parsed = JSON.parse(text);
@@ -188,11 +178,7 @@ async function fetchContactLensTranscript(location: string): Promise<{
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .map((s: any) => ({
         type: "transcript" as const,
-        participant:
-          s.ParticipantRole ||
-          s.ParticipantId ||
-          s.participantRole ||
-          "UNKNOWN",
+        participant: s.ParticipantRole || s.ParticipantId || s.participantRole || "UNKNOWN",
         content: s.Content || s.content || "",
         sentiment: s.Sentiment || s.sentiment,
         beginOffsetMs: s.BeginOffsetMillis || s.beginOffsetMillis || 0,
@@ -257,18 +243,14 @@ async function fetchChatTranscript(location: string): Promise<{
   const s3loc = parseS3Location(location);
   if (!s3loc) return null;
   try {
-    const obj = await s3.send(
-      new GetObjectCommand({ Bucket: s3loc.bucket, Key: s3loc.key })
-    );
+    const obj = await s3.send(new GetObjectCommand({ Bucket: s3loc.bucket, Key: s3loc.key }));
     const text = await obj.Body?.transformToString();
     if (!text) return null;
     const parsed = JSON.parse(text);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const list: any[] = parsed.Transcript || parsed.transcript || [];
     const startMs =
-      list.length > 0
-        ? Date.parse(list[0].AbsoluteTime || list[0].absoluteTime || 0)
-        : 0;
+      list.length > 0 ? Date.parse(list[0].AbsoluteTime || list[0].absoluteTime || 0) : 0;
 
     const segments: ChatSegment[] = list.map((s) => {
       const ts = Date.parse(s.AbsoluteTime || s.absoluteTime || "") || 0;
@@ -311,10 +293,7 @@ async function fetchChatTranscript(location: string): Promise<{
       // event kind short.
       if (sType === "EVENT") {
         const rawCt = contentType || "";
-        const kind = rawCt.replace(
-          /^application\/vnd\.amazonaws\.connect\.event\./,
-          ""
-        ); // → "participant.joined", "chat.ended", "typing", ...
+        const kind = rawCt.replace(/^application\/vnd\.amazonaws\.connect\.event\./, ""); // → "participant.joined", "chat.ended", "typing", ...
         return {
           type: "event",
           participant,
@@ -372,7 +351,7 @@ interface AttachmentOut {
  */
 async function fetchEmailBody(
   contactId: string,
-  associatedResourceArn: string
+  associatedResourceArn: string,
 ): Promise<{
   body: string;
   contentType: string;
@@ -384,7 +363,7 @@ async function fetchEmailBody(
         InstanceId: instanceId,
         ContactId: contactId,
         ReferenceTypes: ["EMAIL_MESSAGE"],
-      })
+      }),
     );
     const summary = (refs.ReferenceSummaryList || [])[0];
     const fileId = summary?.EmailMessage?.Name;
@@ -398,10 +377,9 @@ async function fetchEmailBody(
         InstanceId: instanceId,
         FileId: fileId,
         AssociatedResourceArn: associatedResourceArn,
-      })
+      }),
     );
-    const url =
-      att.DownloadUrlMetadata?.Url || (att as { DownloadUrl?: string }).DownloadUrl;
+    const url = att.DownloadUrlMetadata?.Url || (att as { DownloadUrl?: string }).DownloadUrl;
     if (!url) return null;
     // Fetch the small JSON file from S3 via the presigned URL.
     const r = await fetch(url);
@@ -432,7 +410,7 @@ async function fetchEmailBody(
 
 async function fetchAttachments(
   contactId: string,
-  associatedResourceArn: string
+  associatedResourceArn: string,
 ): Promise<AttachmentOut[]> {
   const out: AttachmentOut[] = [];
   try {
@@ -441,7 +419,7 @@ async function fetchAttachments(
         InstanceId: instanceId,
         ContactId: contactId,
         ReferenceTypes: ["ATTACHMENT"],
-      })
+      }),
     );
     for (const r of refs.ReferenceSummaryList || []) {
       const att = r.Attachment;
@@ -457,9 +435,7 @@ async function fetchAttachments(
       const baseName = s3Key.split("/").pop() || fileId;
       // The S3 key follows: <contactId>_<fileId>_<YYYYMMDDTHH:MM_UTC>.<ext>
       // Strip the leading contactId_ and fileId_ to show a friendly name.
-      const cleanedName = baseName
-        .replace(`${contactId}_`, "")
-        .replace(`${fileId}_`, "");
+      const cleanedName = baseName.replace(`${contactId}_`, "").replace(`${fileId}_`, "");
       let downloadUrl: string | null = null;
       let fileSize: number | undefined;
       try {
@@ -469,7 +445,7 @@ async function fetchAttachments(
             FileId: fileId,
             AssociatedResourceArn: associatedResourceArn,
             UrlExpiryInSeconds: PRESIGN_EXPIRES,
-          })
+          }),
         );
         downloadUrl = getRes.DownloadUrl ?? null;
         fileSize = getRes.FileSizeInBytes;
@@ -478,7 +454,12 @@ async function fetchAttachments(
         // (e.g. some legacy chat attachments stored straight to S3). Fall
         // back to a direct S3 presign so the agent still gets a working
         // download link instead of a dead attachment chip.
-        console.warn("GetAttachedFile failed for", fileId, "— falling back to direct S3 presign", err);
+        console.warn(
+          "GetAttachedFile failed for",
+          fileId,
+          "— falling back to direct S3 presign",
+          err,
+        );
         downloadUrl = await presignS3Location(s3Key);
       }
       out.push({
@@ -526,7 +507,7 @@ interface DetailCore {
 /** Construye el objeto `recording` re-firmando la ubicación del audio. La URL
  *  firmada caduca, por eso jamás se cachea — siempre fresca. */
 async function buildRecording(
-  audioLocation: string | null
+  audioLocation: string | null,
 ): Promise<{ url: string; expiresAt: string } | null> {
   if (!audioLocation) return null;
   const url = await presignS3Location(audioLocation);
@@ -545,7 +526,7 @@ async function fetchWrapUp(contactId: string): Promise<Record<string, unknown> |
       new GetItemCommand({
         TableName: CONTACTS_TABLE,
         Key: { contactId: { S: contactId } },
-      })
+      }),
     );
     if (ddbRes.Item) {
       const u = unmarshall(ddbRes.Item);
@@ -587,7 +568,7 @@ async function fetchWrapUp(contactId: string): Promise<Record<string, unknown> |
         ExpressionAttributeValues: { ":cid": { S: contactId } },
         ScanIndexForward: false, // newest first
         Limit: 50,
-      })
+      }),
     );
     const rows = (histRes.Items || []).map((r) => unmarshall(r));
     if (rows.length > 0) {
@@ -624,7 +605,7 @@ function detailBody(
   core: DetailCore,
   recording: { url: string; expiresAt: string } | null,
   attachments: AttachmentOut[],
-  wrapUp: Record<string, unknown> | null
+  wrapUp: Record<string, unknown> | null,
 ) {
   return {
     contactId: core.contactId,
@@ -655,7 +636,11 @@ function detailBody(
 export const handler: Handler = async (event: any) => {
   // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min — corta el cold start.
   if (event?.warmup || event?.queryStringParameters?.warmup) {
-    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: '{"warm":true}' };
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: '{"warm":true}',
+    };
   }
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
@@ -709,7 +694,7 @@ export const handler: Handler = async (event: any) => {
       new DescribeContactCommand({
         InstanceId: instanceId,
         ContactId: contactId,
-      })
+      }),
     );
     const c = desc.Contact;
     if (!c) {
@@ -733,7 +718,10 @@ export const handler: Handler = async (event: any) => {
     // audio recording, the Contact Lens transcript JSON, or the chat
     // transcript JSON. We handle each.
     let audioLocation: string | null = null;
-    let transcript: Awaited<ReturnType<typeof fetchContactLensTranscript>> | Awaited<ReturnType<typeof fetchChatTranscript>> | null = null;
+    let transcript:
+      | Awaited<ReturnType<typeof fetchContactLensTranscript>>
+      | Awaited<ReturnType<typeof fetchChatTranscript>>
+      | null = null;
     /** Remember the bucket we saw the audio in, so the fallback transcript
      *  lookups below know where to ListObjectsV2 instead of guessing. */
     let connectBucket: string | null = null;
@@ -783,10 +771,7 @@ export const handler: Handler = async (event: any) => {
     if (!transcript && connectBucket) {
       const initTs = c.InitiationTimestamp;
       if (initTs) {
-        const dt =
-          typeof initTs === "string"
-            ? new Date(initTs)
-            : (initTs as Date);
+        const dt = typeof initTs === "string" ? new Date(initTs) : (initTs as Date);
         const yyyy = String(dt.getUTCFullYear());
         const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
         const dd = String(dt.getUTCDate()).padStart(2, "0");
@@ -824,24 +809,19 @@ export const handler: Handler = async (event: any) => {
                 Bucket: connectBucket,
                 Prefix: prefix,
                 MaxKeys: 5,
-              })
+              }),
             );
             const obj = (res.Contents || [])[0];
             if (!obj?.Key) continue;
             const fullLoc = `${connectBucket}/${obj.Key}`;
-            console.log(
-              `[transcript-fallback] found ${kind} at s3://${fullLoc}`
-            );
+            console.log(`[transcript-fallback] found ${kind} at s3://${fullLoc}`);
             transcript =
               kind === "chat"
                 ? await fetchChatTranscript(fullLoc)
                 : await fetchContactLensTranscript(fullLoc);
             if (transcript) break;
           } catch (err) {
-            console.warn(
-              `[transcript-fallback] ListObjectsV2 prefix=${prefix} failed:`,
-              err
-            );
+            console.warn(`[transcript-fallback] ListObjectsV2 prefix=${prefix} failed:`, err);
           }
         }
       }
@@ -882,11 +862,7 @@ export const handler: Handler = async (event: any) => {
 
     const duration =
       c.DisconnectTimestamp && c.InitiationTimestamp
-        ? Math.round(
-            (c.DisconnectTimestamp.getTime() -
-              c.InitiationTimestamp.getTime()) /
-              1000
-          )
+        ? Math.round((c.DisconnectTimestamp.getTime() - c.InitiationTimestamp.getTime()) / 1000)
         : 0;
 
     const core: DetailCore = {

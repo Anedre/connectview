@@ -3,8 +3,6 @@ import {
   ConnectClient,
   SearchContactsCommand,
   DescribeContactCommand,
-  ListContactReferencesCommand,
-  GetAttachedFileCommand,
 } from "@aws-sdk/client-connect";
 import {
   CustomerProfilesClient,
@@ -33,8 +31,6 @@ let instanceId = INSTANCE_ID;
 const LEGACY_CUSTOMER_PROFILES_DOMAIN =
   process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
 let CUSTOMER_PROFILES_DOMAIN = LEGACY_CUSTOMER_PROFILES_DOMAIN;
-const REGION = process.env.AWS_REGION || "us-east-1";
-const ACCOUNT_ID = process.env.AWS_ACCOUNT_ID || "";
 // GetAttachedFile topa UrlExpiryInSeconds en 300s; 3600 tiraba
 // InvalidRequestException → los adjuntos volvían sin URL. (#grabaciones)
 const PRESIGN_EXPIRES = 300;
@@ -91,22 +87,6 @@ function classifyMedia(contentType?: string, name?: string): CustomerAttachment[
   return "other";
 }
 
-function deriveSubChannel(
-  initiationMethod: string | undefined,
-  customerEndpointType: string | undefined
-): string | undefined {
-  if (initiationMethod === "API") return "Messaging API";
-  if (initiationMethod === "MESSAGING_PLATFORM") {
-    if (
-      customerEndpointType === "PHONE_NUMBER" ||
-      customerEndpointType === "TELEPHONE_NUMBER"
-    )
-      return "WhatsApp/SMS";
-    return "Messaging";
-  }
-  return undefined;
-}
-
 interface ContactBrief {
   contactId: string;
   channel: string;
@@ -122,7 +102,7 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
         DomainName: CUSTOMER_PROFILES_DOMAIN,
         KeyName: "_phone",
         Values: [phone],
-      })
+      }),
     );
     const profileId = sp.Items?.[0]?.ProfileId;
     if (profileId) {
@@ -138,14 +118,14 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
               ObjectTypeName: "CTR",
               MaxResults: 100,
               NextToken: nextToken,
-            })
+            }),
           );
         items.push(...(r.Items || []));
         if (!r.NextToken) break;
         nextToken = r.NextToken;
       }
       const out = items
-         
+
         .map((it) => {
           try {
             return JSON.parse(it.Object || "{}");
@@ -154,26 +134,30 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
           }
         })
         .filter((ctr) => ctr && ctr.contactId)
-        .map((ctr): ContactBrief => ({
-          contactId: ctr.contactId,
-          channel: String(ctr.channel ?? ctr.Channel ?? "").trim().toUpperCase(),
-          initiationTimestamp: ctr.initiationTimestamp
-            ? new Date(
-                typeof ctr.initiationTimestamp === "number"
-                  ? ctr.initiationTimestamp
-                  : Date.parse(ctr.initiationTimestamp)
-              ).toISOString()
-            : "",
-          recordings: Array.isArray(ctr.recordings)
-            ? ctr.recordings.map(
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (r: any) => ({
-                  Location: r.location || r.Location,
-                  MediaStreamType: r.mediaStreamType || r.MediaStreamType,
-                })
-              )
-            : [],
-        }));
+        .map(
+          (ctr): ContactBrief => ({
+            contactId: ctr.contactId,
+            channel: String(ctr.channel ?? ctr.Channel ?? "")
+              .trim()
+              .toUpperCase(),
+            initiationTimestamp: ctr.initiationTimestamp
+              ? new Date(
+                  typeof ctr.initiationTimestamp === "number"
+                    ? ctr.initiationTimestamp
+                    : Date.parse(ctr.initiationTimestamp),
+                ).toISOString()
+              : "",
+            recordings: Array.isArray(ctr.recordings)
+              ? ctr.recordings.map(
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (r: any) => ({
+                    Location: r.location || r.Location,
+                    MediaStreamType: r.mediaStreamType || r.MediaStreamType,
+                  }),
+                )
+              : [],
+          }),
+        );
       if (out.length > 0) return out;
     }
   } catch (err) {
@@ -200,7 +184,7 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
         SearchCriteria: { Channels: ["VOICE", "CHAT", "EMAIL", "TASK"] },
         Sort: { FieldName: "INITIATION_TIMESTAMP", Order: "DESCENDING" },
         MaxResults: 100,
-      })
+      }),
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const summaries = ((sc.Contacts as any[]) || []).slice(0, 50);
@@ -213,33 +197,38 @@ async function findContacts(phone: string): Promise<ContactBrief[]> {
               new DescribeContactCommand({
                 InstanceId: instanceId,
                 ContactId: c.Id,
-              })
+              }),
             );
             return d.Contact || null;
           } catch {
             return null;
           }
-        })
+        }),
       )
+    )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ).filter((x): x is any => !!x);
-    return detailed
-      .filter(
+      .filter((x): x is any => !!x);
+    return (
+      detailed
+        .filter(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (c: any) => c.CustomerEndpoint?.Address === phone || c.CustomerEndpoint?.Value === phone,
+        )
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (c: any) =>
-          c.CustomerEndpoint?.Address === phone ||
-          c.CustomerEndpoint?.Value === phone
-      )
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((c: any): ContactBrief => ({
-        contactId: (c.Id as string) || "",
-        channel: String(c.Channel ?? "").trim().toUpperCase(),
-        initiationTimestamp: c.InitiationTimestamp
-          ? new Date(c.InitiationTimestamp).toISOString()
-          : "",
-        recordings: c.Recordings || [],
-      }))
-      .filter((x) => x.contactId);
+        .map(
+          (c: any): ContactBrief => ({
+            contactId: (c.Id as string) || "",
+            channel: String(c.Channel ?? "")
+              .trim()
+              .toUpperCase(),
+            initiationTimestamp: c.InitiationTimestamp
+              ? new Date(c.InitiationTimestamp).toISOString()
+              : "",
+            recordings: c.Recordings || [],
+          }),
+        )
+        .filter((x) => x.contactId)
+    );
   } catch {
     return [];
   }
@@ -258,7 +247,7 @@ interface ChatTranscriptAttachment {
  * Returns the attachmentId list (we still need GetAttachedFile to presign).
  */
 async function readChatAttachments(
-  recordings: Array<{ Location?: string; MediaStreamType?: string }>
+  recordings: Array<{ Location?: string; MediaStreamType?: string }>,
 ): Promise<ChatTranscriptAttachment[]> {
   const chatRec = recordings.find((r) => {
     if (!r.Location) return false;
@@ -275,9 +264,7 @@ async function readChatAttachments(
   if (!s3loc) return [];
 
   try {
-    const obj = await s3.send(
-      new GetObjectCommand({ Bucket: s3loc.bucket, Key: s3loc.key })
-    );
+    const obj = await s3.send(new GetObjectCommand({ Bucket: s3loc.bucket, Key: s3loc.key }));
     const text = await obj.Body?.transformToString();
     if (!text) return [];
     const parsed = JSON.parse(text);
@@ -287,8 +274,7 @@ async function readChatAttachments(
     for (const s of list) {
       const sType = (s.Type || s.type || "").toUpperCase();
       const isAttachment =
-        sType === "ATTACHMENT" ||
-        (Array.isArray(s.Attachments) && s.Attachments.length > 0);
+        sType === "ATTACHMENT" || (Array.isArray(s.Attachments) && s.Attachments.length > 0);
       if (!isAttachment) continue;
       const att = (s.Attachments || [])[0] || {};
       const id = att.AttachmentId || att.attachmentId;
@@ -313,7 +299,11 @@ async function readChatAttachments(
 export const handler: Handler = async (event: any) => {
   // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min — corta el cold start.
   if (event?.warmup || event?.queryStringParameters?.warmup) {
-    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: '{"warm":true}' };
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: '{"warm":true}',
+    };
   }
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
@@ -377,8 +367,7 @@ export const handler: Handler = async (event: any) => {
       .filter((b) => b.channel === "CHAT" || b.channel === "EMAIL")
       .sort(
         (a, b) =>
-          (Date.parse(b.initiationTimestamp) || 0) -
-          (Date.parse(a.initiationTimestamp) || 0)
+          (Date.parse(b.initiationTimestamp) || 0) - (Date.parse(a.initiationTimestamp) || 0),
       )
       .slice(0, MAX_CONTACTS);
 
@@ -398,7 +387,7 @@ export const handler: Handler = async (event: any) => {
                     b.contactId,
                     inline.attachmentId,
                     ts,
-                    PRESIGN_EXPIRES
+                    PRESIGN_EXPIRES,
                   );
                   if (!res) return;
                   all.push({
@@ -414,7 +403,7 @@ export const handler: Handler = async (event: any) => {
                     timestamp: ts,
                     kind: classifyMedia(inline.contentType, inline.name),
                   });
-                })
+                }),
               );
             } else if (b.channel === "EMAIL") {
               const listed = await listContactAttachments(
@@ -423,7 +412,7 @@ export const handler: Handler = async (event: any) => {
                 "email",
                 b.contactId,
                 b.initiationTimestamp,
-                PRESIGN_EXPIRES
+                PRESIGN_EXPIRES,
               );
               for (const a of listed) {
                 all.push({
@@ -444,14 +433,12 @@ export const handler: Handler = async (event: any) => {
           } catch (err) {
             console.warn(`brief ${b.contactId} failed:`, err);
           }
-        })
+        }),
       );
     }
 
     // Newest first — usually what the user wants to see.
-    all.sort(
-      (a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0)
-    );
+    all.sort((a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0));
 
     const payload = { phone, totalAttachments: all.length, attachments: all };
     if (all.length > 0) await writeBlobCache(cacheKey, payload);

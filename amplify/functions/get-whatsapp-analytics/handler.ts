@@ -31,7 +31,9 @@ async function getToken(): Promise<string> {
   try {
     const j = JSON.parse(raw);
     if (j && typeof j.token === "string") token = j.token;
-  } catch { /* string plano */ }
+  } catch {
+    /* string plano */
+  }
   cachedToken = token;
   return token;
 }
@@ -45,6 +47,7 @@ interface TemplateAgg {
   read: number;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- respuesta JSON de la Graph API de Meta (forma dinámica)
 async function graph(path: string, token: string): Promise<any> {
   const sep = path.includes("?") ? "&" : "?";
   const r = await fetch(`${GRAPH}/${path}${sep}access_token=${encodeURIComponent(token)}`);
@@ -96,7 +99,14 @@ export const handler: Handler = async (event: any) => {
           const tid = String(dp.template_id);
           if (!agg.has(tid)) {
             const meta = tmplMap.get(tid) || { name: tid, status: "" };
-            agg.set(tid, { templateId: tid, name: meta.name, status: meta.status, sent: 0, delivered: 0, read: 0 });
+            agg.set(tid, {
+              templateId: tid,
+              name: meta.name,
+              status: meta.status,
+              sent: 0,
+              delivered: 0,
+              read: 0,
+            });
           }
           const a = agg.get(tid)!;
           a.sent += dp.sent || 0;
@@ -108,11 +118,11 @@ export const handler: Handler = async (event: any) => {
 
     // 2b) Actividad WABA-level (mensajes enviados/entregados del número) — da un
     //     headline real aunque template_analytics esté ralo (mensajes de sesión, etc.).
-    let wabaActivity = { sent: 0, delivered: 0 };
+    const wabaActivity = { sent: 0, delivered: 0 };
     try {
       const a = await graph(
         `${WABA_ID}?fields=analytics.start(${start}).end(${end}).granularity(DAY)`,
-        token
+        token,
       );
       for (const dp of a?.analytics?.data_points || []) {
         wabaActivity.sent += dp.sent || 0;
@@ -125,8 +135,12 @@ export const handler: Handler = async (event: any) => {
     // 3) Agregados + tasas. Solo plantillas con envíos.
     const templates = [...agg.values()].filter((t) => t.sent > 0).sort((a, b) => b.sent - a.sent);
     const totals = templates.reduce(
-      (acc, t) => ({ sent: acc.sent + t.sent, delivered: acc.delivered + t.delivered, read: acc.read + t.read }),
-      { sent: 0, delivered: 0, read: 0 }
+      (acc, t) => ({
+        sent: acc.sent + t.sent,
+        delivered: acc.delivered + t.delivered,
+        read: acc.read + t.read,
+      }),
+      { sent: 0, delivered: 0, read: 0 },
     );
     const deliveredRate = totals.sent > 0 ? Math.round((totals.delivered / totals.sent) * 100) : 0;
     const readRate = totals.delivered > 0 ? Math.round((totals.read / totals.delivered) * 100) : 0;
@@ -149,6 +163,10 @@ export const handler: Handler = async (event: any) => {
     });
   } catch (err) {
     console.error("get-whatsapp-analytics error", err);
-    return ok({ configured: true, error: err instanceof Error ? err.message : "analytics failed", templates: [] });
+    return ok({
+      configured: true,
+      error: err instanceof Error ? err.message : "analytics failed",
+      templates: [],
+    });
   }
 };

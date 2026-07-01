@@ -3,9 +3,6 @@ import {
   ConnectClient,
   SearchContactsCommand,
   DescribeContactCommand,
-  ListContactReferencesCommand,
-  GetAttachedFileCommand,
-  DescribeUserCommand,
 } from "@aws-sdk/client-connect";
 import {
   CustomerProfilesClient,
@@ -15,10 +12,7 @@ import {
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { resolveConnect } from "../_shared/tenantConnect";
 import { readBlobCache, writeBlobCache } from "../_shared/recordingsCache";
-import {
-  getAttachmentsStore,
-  presignAttachment,
-} from "../_shared/attachmentsS3";
+import { getAttachmentsStore, presignAttachment } from "../_shared/attachmentsS3";
 
 // BYO (#43+#46): module-active. Connect + S3 + Customer Profiles + domain.
 const legacyConnect = new ConnectClient({ maxAttempts: 1 });
@@ -33,14 +27,11 @@ let instanceId = INSTANCE_ID;
 const LEGACY_CUSTOMER_PROFILES_DOMAIN =
   process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
 let CUSTOMER_PROFILES_DOMAIN = LEGACY_CUSTOMER_PROFILES_DOMAIN;
-const REGION = process.env.AWS_REGION || "us-east-1";
-const ACCOUNT_ID = process.env.AWS_ACCOUNT_ID || "";
 // Expiry de las URLs presignadas de S3 para adjuntos (S3 admite hasta 7 días;
 // 1h alcanza para que el manager los abra). (#grabaciones)
 const PRESIGN_EXPIRES = 3600;
 
 const CORS: Record<string, string> = { "Content-Type": "application/json" };
-const userNameCache = new Map<string, string>();
 
 interface ThreadMessage {
   /** Stable id (Connect message Id when present, else synthetic). */
@@ -81,36 +72,13 @@ interface ThreadSession {
   messageCount: number;
 }
 
-async function resolveAgentUsername(agentId: string): Promise<string> {
-  if (!agentId) return "";
-  const k = `${instanceId}:${agentId}`;
-  if (userNameCache.has(k)) return userNameCache.get(k)!;
-  try {
-    const r = await connect.send(
-      new DescribeUserCommand({
-        InstanceId: instanceId,
-        UserId: agentId,
-      })
-    );
-    const name = r.User?.Username || agentId;
-    userNameCache.set(k, name);
-    return name;
-  } catch {
-    userNameCache.set(k, agentId);
-    return agentId;
-  }
-}
-
 function deriveSubChannel(
   initiationMethod: string | undefined,
-  customerEndpointType: string | undefined
+  customerEndpointType: string | undefined,
 ): string | undefined {
   if (initiationMethod === "API") return "Messaging API";
   if (initiationMethod === "MESSAGING_PLATFORM") {
-    if (
-      customerEndpointType === "PHONE_NUMBER" ||
-      customerEndpointType === "TELEPHONE_NUMBER"
-    )
+    if (customerEndpointType === "PHONE_NUMBER" || customerEndpointType === "TELEPHONE_NUMBER")
       return "WhatsApp/SMS";
     return "Messaging";
   }
@@ -174,7 +142,7 @@ async function findChatContactIds(phone: string): Promise<{
         DomainName: CUSTOMER_PROFILES_DOMAIN,
         KeyName: "_phone",
         Values: [phone],
-      })
+      }),
     );
     const profileId = sp.Items?.[0]?.ProfileId;
     diag.profileFound = !!profileId;
@@ -191,14 +159,14 @@ async function findChatContactIds(phone: string): Promise<{
               ObjectTypeName: "CTR",
               MaxResults: 100,
               NextToken: nextToken,
-            })
+            }),
           );
         items.push(...(r.Items || []));
         if (!r.NextToken) break;
         nextToken = r.NextToken;
       }
       const parsed = items
-         
+
         .map((it) => {
           try {
             return JSON.parse(it.Object || "{}");
@@ -209,8 +177,7 @@ async function findChatContactIds(phone: string): Promise<{
         .filter((ctr) => ctr && ctr.contactId);
       diag.ctrTotal = parsed.length;
       const seenChannels = new Set<string>();
-      for (const ctr of parsed)
-        seenChannels.add(String(ctr.channel ?? ctr.Channel ?? "(none)"));
+      for (const ctr of parsed) seenChannels.add(String(ctr.channel ?? ctr.Channel ?? "(none)"));
       diag.channelsSeen = [...seenChannels].slice(0, 10);
 
       const ids = parsed
@@ -223,40 +190,42 @@ async function findChatContactIds(phone: string): Promise<{
           (ctr) =>
             String(ctr.channel ?? ctr.Channel ?? "")
               .trim()
-              .toUpperCase() === "CHAT"
+              .toUpperCase() === "CHAT",
         )
-        .map((ctr): ChatContactRef => ({
-          contactId: ctr.contactId,
-          initiationTimestamp: ctr.initiationTimestamp
-            ? new Date(
-                typeof ctr.initiationTimestamp === "number"
-                  ? ctr.initiationTimestamp
-                  : Date.parse(ctr.initiationTimestamp)
-              ).toISOString()
-            : "",
-          disconnectTimestamp: ctr.disconnectTimestamp
-            ? new Date(
-                typeof ctr.disconnectTimestamp === "number"
-                  ? ctr.disconnectTimestamp
-                  : Date.parse(ctr.disconnectTimestamp)
-              ).toISOString()
-            : "",
-          channel: "CHAT",
-          fromProfile: true,
-          // CTR.recordings (minúsculas) → forma {Location, MediaStreamType} que
-          // espera readChatTranscript; la de CHAT apunta a la transcripción S3.
-          recordings: Array.isArray(ctr.recordings)
-            ? ctr.recordings.map(
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (r: any) => ({
-                  Location: r.location || r.Location,
-                  MediaStreamType: r.mediaStreamType || r.MediaStreamType,
-                })
-              )
-            : [],
-          initiationMethod: ctr.initiationMethod,
-          customerEndpointType: ctr.customerEndpoint?.type,
-        }));
+        .map(
+          (ctr): ChatContactRef => ({
+            contactId: ctr.contactId,
+            initiationTimestamp: ctr.initiationTimestamp
+              ? new Date(
+                  typeof ctr.initiationTimestamp === "number"
+                    ? ctr.initiationTimestamp
+                    : Date.parse(ctr.initiationTimestamp),
+                ).toISOString()
+              : "",
+            disconnectTimestamp: ctr.disconnectTimestamp
+              ? new Date(
+                  typeof ctr.disconnectTimestamp === "number"
+                    ? ctr.disconnectTimestamp
+                    : Date.parse(ctr.disconnectTimestamp),
+                ).toISOString()
+              : "",
+            channel: "CHAT",
+            fromProfile: true,
+            // CTR.recordings (minúsculas) → forma {Location, MediaStreamType} que
+            // espera readChatTranscript; la de CHAT apunta a la transcripción S3.
+            recordings: Array.isArray(ctr.recordings)
+              ? ctr.recordings.map(
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (r: any) => ({
+                    Location: r.location || r.Location,
+                    MediaStreamType: r.mediaStreamType || r.MediaStreamType,
+                  }),
+                )
+              : [],
+            initiationMethod: ctr.initiationMethod,
+            customerEndpointType: ctr.customerEndpoint?.type,
+          }),
+        );
       diag.chatMatched = ids.length;
       if (ids.length > 0) {
         diag.strategy = "customer-profiles";
@@ -291,7 +260,7 @@ async function findChatContactIds(phone: string): Promise<{
         // Más recientes primero → el slice(0,50) de describes toma los nuevos.
         Sort: { FieldName: "INITIATION_TIMESTAMP", Order: "DESCENDING" },
         MaxResults: 100,
-      })
+      }),
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const summaries = ((sc.Contacts as any[]) || []).slice(0, 50);
@@ -304,40 +273,41 @@ async function findChatContactIds(phone: string): Promise<{
               new DescribeContactCommand({
                 InstanceId: instanceId,
                 ContactId: c.Id,
-              })
+              }),
             );
             return d.Contact || null;
           } catch {
             return null;
           }
-        })
+        }),
       )
+    )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ).filter((x): x is any => !!x);
+      .filter((x): x is any => !!x);
     const ids = detailed
       .filter(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (c: any) =>
-          c.CustomerEndpoint?.Address === phone ||
-          c.CustomerEndpoint?.Value === phone
+        (c: any) => c.CustomerEndpoint?.Address === phone || c.CustomerEndpoint?.Value === phone,
       )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((c: any): ChatContactRef => ({
-        contactId: (c.Id as string) || "",
-        initiationTimestamp: c.InitiationTimestamp
-          ? new Date(c.InitiationTimestamp).toISOString()
-          : "",
-        disconnectTimestamp: c.DisconnectTimestamp
-          ? new Date(c.DisconnectTimestamp).toISOString()
-          : "",
-        channel: (c.Channel as string) || "CHAT",
-        fromProfile: false,
-        // Ya hicimos DescribeContact para filtrar → reusamos sus Recordings
-        // así el loop principal NO vuelve a describir. (#grabaciones perf)
-        recordings: c.Recordings || [],
-        initiationMethod: c.InitiationMethod,
-        customerEndpointType: c.CustomerEndpoint?.Type,
-      }))
+      .map(
+        (c: any): ChatContactRef => ({
+          contactId: (c.Id as string) || "",
+          initiationTimestamp: c.InitiationTimestamp
+            ? new Date(c.InitiationTimestamp).toISOString()
+            : "",
+          disconnectTimestamp: c.DisconnectTimestamp
+            ? new Date(c.DisconnectTimestamp).toISOString()
+            : "",
+          channel: (c.Channel as string) || "CHAT",
+          fromProfile: false,
+          // Ya hicimos DescribeContact para filtrar → reusamos sus Recordings
+          // así el loop principal NO vuelve a describir. (#grabaciones perf)
+          recordings: c.Recordings || [],
+          initiationMethod: c.InitiationMethod,
+          customerEndpointType: c.CustomerEndpoint?.Type,
+        }),
+      )
       .filter((x) => x.contactId);
     diag.strategy = "search-contacts";
     diag.chatMatched = ids.length;
@@ -382,7 +352,7 @@ interface ChatRawSegment {
 async function readChatTranscript(
   recordings: Array<{ Location?: string; MediaStreamType?: string }>,
   contactId: string,
-  agentUsername: string
+  agentUsername: string,
 ): Promise<ThreadMessage[]> {
   const chatRec = recordings.find((r) => {
     if (!r.Location) return false;
@@ -400,9 +370,7 @@ async function readChatTranscript(
   if (!s3loc) return [];
 
   try {
-    const obj = await s3.send(
-      new GetObjectCommand({ Bucket: s3loc.bucket, Key: s3loc.key })
-    );
+    const obj = await s3.send(new GetObjectCommand({ Bucket: s3loc.bucket, Key: s3loc.key }));
     const text = await obj.Body?.transformToString();
     if (!text) return [];
 
@@ -422,14 +390,9 @@ async function readChatTranscript(
       // hace falta DescribeContact+DescribeUser por sesión. (#grabaciones perf)
       const displayName = s.DisplayName || s.displayName || "";
       const baseAgent =
-        participant === "AGENT"
-          ? displayName || agentUsername || undefined
-          : undefined;
+        participant === "AGENT" ? displayName || agentUsername || undefined : undefined;
 
-      if (
-        sType === "ATTACHMENT" ||
-        (Array.isArray(s.Attachments) && s.Attachments.length > 0)
-      ) {
+      if (sType === "ATTACHMENT" || (Array.isArray(s.Attachments) && s.Attachments.length > 0)) {
         const att = (s.Attachments || [])[0] || {};
         return {
           id,
@@ -450,10 +413,7 @@ async function readChatTranscript(
       }
       if (sType === "EVENT") {
         const rawCt = contentType || "";
-        const kind = rawCt.replace(
-          /^application\/vnd\.amazonaws\.connect\.event\./,
-          ""
-        );
+        const kind = rawCt.replace(/^application\/vnd\.amazonaws\.connect\.event\./, "");
         return {
           id,
           type: "event",
@@ -491,15 +451,13 @@ async function readChatTranscript(
  * (S3 tiene alta TPS, sin el throttle de Connect). (#grabaciones)
  */
 async function resolveAttachmentUrls(
-  messagesBySession: Map<string, ThreadMessage[]>
+  messagesBySession: Map<string, ThreadMessage[]>,
 ): Promise<void> {
   const store = await getAttachmentsStore(connect, instanceId);
   if (!store) return; // sin storage config de adjuntos no hay nada que presignar
   const jobs: Array<Promise<void>> = [];
   for (const [contactId, msgs] of messagesBySession) {
-    const attachmentMsgs = msgs.filter(
-      (m) => m.type === "attachment" && m.attachment?.id
-    );
+    const attachmentMsgs = msgs.filter((m) => m.type === "attachment" && m.attachment?.id);
     for (const m of attachmentMsgs.slice(0, 50)) {
       jobs.push(
         presignAttachment(
@@ -509,13 +467,13 @@ async function resolveAttachmentUrls(
           contactId,
           m.attachment!.id,
           m.timestamp,
-          PRESIGN_EXPIRES
+          PRESIGN_EXPIRES,
         ).then((res) => {
           if (res) {
             m.attachment!.url = res.url;
             m.attachment!.sizeBytes = res.sizeBytes;
           }
-        })
+        }),
       );
     }
   }
@@ -526,7 +484,11 @@ async function resolveAttachmentUrls(
 export const handler: Handler = async (event: any) => {
   // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min — corta el cold start.
   if (event?.warmup || event?.queryStringParameters?.warmup) {
-    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: '{"warm":true}' };
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: '{"warm":true}',
+    };
   }
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
@@ -591,9 +553,7 @@ export const handler: Handler = async (event: any) => {
     // aparezcan inline en el hilo. (#grabaciones)
     const MAX_SESSIONS = 120;
     const orderedIds = [...chatIds].sort(
-      (a, b) =>
-        (Date.parse(b.initiationTimestamp) || 0) -
-        (Date.parse(a.initiationTimestamp) || 0)
+      (a, b) => (Date.parse(b.initiationTimestamp) || 0) - (Date.parse(a.initiationTimestamp) || 0),
     );
     const loadIds = orderedIds.slice(0, MAX_SESSIONS);
     const sessions: ThreadSession[] = [];
@@ -619,7 +579,7 @@ export const handler: Handler = async (event: any) => {
                 new DescribeContactCommand({
                   InstanceId: instanceId,
                   ContactId: entry.contactId,
-                })
+                }),
               );
               const c = detail.Contact;
               if (c) {
@@ -640,8 +600,7 @@ export const handler: Handler = async (event: any) => {
           // Agente: DisplayName del primer segmento AGENT del transcript (sin
           // DescribeUser).
           const agentUsername =
-            msgs.find((m) => m.participant === "AGENT" && m.agentUsername)
-              ?.agentUsername || "";
+            msgs.find((m) => m.participant === "AGENT" && m.agentUsername)?.agentUsername || "";
 
           sessions.push({
             contactId: entry.contactId,
@@ -654,7 +613,7 @@ export const handler: Handler = async (event: any) => {
         } catch (err) {
           console.warn(`session ${entry.contactId} failed:`, err);
         }
-      })
+      }),
     );
 
     // 3. Resolve every attachment URL (per-session batches).
@@ -680,10 +639,7 @@ export const handler: Handler = async (event: any) => {
       daysWithActivity[d] = (daysWithActivity[d] || 0) + 1;
     }
 
-    sessions.sort(
-      (a, b) =>
-        (Date.parse(a.startTime) || 0) - (Date.parse(b.startTime) || 0)
-    );
+    sessions.sort((a, b) => (Date.parse(a.startTime) || 0) - (Date.parse(b.startTime) || 0));
 
     const payload = {
       phone,
