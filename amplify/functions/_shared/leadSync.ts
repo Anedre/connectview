@@ -1074,6 +1074,8 @@ export interface LeadHistoryEvent {
     | "whatsapp_out"
     | "whatsapp_in"
     | "email_out"
+    | "email_opened" // Fase 4 · F4.4 — apertura de email (pixel)
+    | "email_clicked" // Fase 4 · F4.4 — click en link de email
     | "call"; // tipos de toque (Pilar 2)
   channel?: string; // "Llamada" | "Correo" | "WhatsApp" | …
   /** Dirección del toque (Pilar 2). */
@@ -1086,6 +1088,10 @@ export interface LeadHistoryEvent {
   templateName?: string;
   /** Resultado del toque: delivered|read|failed|answered|no_answer (Pilar 2). */
   outcome?: string;
+  /** URL del link clickeado (Fase 4 · F4.4 email_clicked). */
+  url?: string;
+  /** Token de tracking que identificó el evento (Fase 4 · F4.4). */
+  trackingToken?: string;
   /** true ⇒ interacción registrada SIN tipificación (señal de seguimiento). */
   untyped?: boolean;
   /** Id del contacto de Connect (trazabilidad). */
@@ -1233,6 +1239,8 @@ const GOLPE_TYPES = new Set([
   "whatsapp_out",
   "whatsapp_in",
   "email_out",
+  "email_opened", // Fase 4 · F4.4 — abrir un email es una señal de intención (golpe)
+  "email_clicked",
   "call",
 ]);
 

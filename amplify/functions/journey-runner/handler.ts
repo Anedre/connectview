@@ -12,6 +12,7 @@ import { planAdvance, entryNodeId, type JourneyDef, type Enrollment } from "../_
 import { evaluateLeadFilter, type FilterRule } from "../_shared/leadFilter";
 import { appendLeadHistory, setActiveDynamo, stageIdToLabel } from "../_shared/leadSync";
 import { evaluateSend } from "../_shared/suppression";
+import { newTrackingToken, storeTrackingToken, buildTrackedHtml } from "../_shared/emailTracking";
 
 /**
  * journey-runner — el MOTOR de journeys (Fase 3). EventBridge lo dispara cada
@@ -36,6 +37,7 @@ const SEGMENTS_TABLE = process.env.SEGMENTS_TABLE || "connectview-segments";
 const SEND_WA_URL = process.env.SEND_WHATSAPP_TEMPLATE_URL || "";
 const INTERNAL_SECRET = process.env.VOX_INTERNAL_SECRET || "";
 const FROM_EMAIL = process.env.FROM_EMAIL || "ARIA <notificaciones@novasys.com.pe>";
+const EMAIL_TRACKING_URL = process.env.EMAIL_TRACKING_URL || ""; // Function URL de email-tracking (F4.4)
 const MAX_ENROLL_PER_JOURNEY = 200;
 
 type LeadRec = Record<string, unknown> & { leadId?: string; tenantId?: string };
@@ -212,6 +214,7 @@ async function runEffect(
   leadId: string,
   lead: LeadRec,
   tenantId: string,
+  journeyId: string,
 ): Promise<string> {
   if (effect.type === "action" && effect.action === "moveStage") {
     const stageId = String(effect.params.stageId || "");
@@ -254,7 +257,7 @@ async function runEffect(
   if (effect.type === "send") {
     const channel = effect.channel === "email" ? "email" : "whatsapp";
     return channel === "email"
-      ? sendEmail(effect.params, lead)
+      ? sendEmail(effect.params, lead, leadId, tenantId, journeyId)
       : sendWhatsApp(effect.params, lead, tenantId);
   }
 
@@ -303,8 +306,18 @@ async function sendWhatsApp(
   }
 }
 
-/** Email REAL por SES (gate de supresión channel-scoped por teléfono del lead). */
-async function sendEmail(params: Record<string, unknown>, lead: LeadRec): Promise<string> {
+/**
+ * Email REAL por SES + tracking 1:1 (F4.4): genera un token, inyecta el pixel de
+ * apertura y envuelve los links, y registra el envío como golpe `email_out`. La
+ * apertura/click las registra la Lambda pública email-tracking.
+ */
+async function sendEmail(
+  params: Record<string, unknown>,
+  lead: LeadRec,
+  leadId: string,
+  tenantId: string,
+  journeyId: string,
+): Promise<string> {
   const to = String(lead.email || "");
   if (!to) return "send:email:sin-email";
   // Gate: si el lead optó por no recibir email (opt-out channel-scoped), no mandamos.
@@ -319,6 +332,28 @@ async function sendEmail(params: Record<string, unknown>, lead: LeadRec): Promis
   }
   const subject = String(params.subject || "ARIA");
   const bodyText = String(params.body || "");
+  const baseHtml = `<p>${bodyText.replace(/\n/g, "<br>")}</p>`;
+
+  // Tracking: token → a quién apunta; HTML con pixel + links envueltos.
+  let html = baseHtml;
+  let token = "";
+  if (EMAIL_TRACKING_URL && leadId) {
+    token = newTrackingToken();
+    try {
+      await storeTrackingToken(dynamo, {
+        token,
+        leadId,
+        tenantId: tenantId || undefined,
+        journeyId: journeyId || undefined,
+        subject,
+      });
+      html = buildTrackedHtml(baseHtml, { token, base: EMAIL_TRACKING_URL });
+    } catch (e) {
+      console.warn("email tracking token store failed", e);
+      token = "";
+    }
+  }
+
   try {
     const res = await ses.send(
       new SendEmailCommand({
@@ -329,13 +364,27 @@ async function sendEmail(params: Record<string, unknown>, lead: LeadRec): Promis
             Subject: { Data: subject, Charset: "UTF-8" },
             Body: {
               Text: { Data: bodyText, Charset: "UTF-8" },
-              Html: { Data: `<p>${bodyText.replace(/\n/g, "<br>")}</p>`, Charset: "UTF-8" },
+              Html: { Data: html, Charset: "UTF-8" },
             },
           },
         },
       }),
     );
-    return `send:email:sent:${res.MessageId?.slice(0, 12) || "ok"}`;
+    // El envío es un golpe (Pilar 2) → suma al score. La apertura/click vienen después.
+    try {
+      setActiveDynamo(dynamo);
+      await appendLeadHistory(leadId, {
+        ts: new Date().toISOString(),
+        type: "email_out",
+        channel: "Correo",
+        direction: "out",
+        summary: subject,
+        trackingToken: token || undefined,
+      });
+    } catch {
+      /* best-effort */
+    }
+    return `send:email:sent:${res.MessageId?.slice(0, 12) || "ok"}${token ? ":tracked" : ""}`;
   } catch (e) {
     return `send:email:err:${e instanceof Error ? e.message : e}`;
   }
@@ -377,7 +426,7 @@ async function processDueEnrollments(
         const plan = planAdvance(journey, enr.currentNodeId, lead, nowMs);
         const notes: string[] = [];
         for (const eff of plan.effects) {
-          notes.push(await runEffect(eff, enr.leadId, lead, tenantId));
+          notes.push(await runEffect(eff, enr.leadId, lead, tenantId, enr.journeyId));
         }
         await markEnrollment(
           enr,

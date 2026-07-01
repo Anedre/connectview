@@ -83,10 +83,16 @@ async function bundle(dir) {
   const autoEnv = JSON.parse(
     sh(`aws lambda get-function-configuration --function-name connectview-automation-engine --region ${REGION} --query "Environment.Variables" --output json`),
   );
+  // MERGE con el env actual del runner (preserva EMAIL_TRACKING_* que fija
+  // create-email-tracking.mjs, etc. — no lo pisamos al re-desplegar).
+  const curEnv = JSON.parse(
+    sh(`aws lambda get-function-configuration --function-name ${FN} --region ${REGION} --query "Environment.Variables" --output json`) || "null",
+  ) || {};
   const runnerVars = {
+    ...curEnv,
     SEND_WHATSAPP_TEMPLATE_URL: autoEnv.SEND_WHATSAPP_TEMPLATE_URL || "",
     VOX_INTERNAL_SECRET: autoEnv.VOX_INTERNAL_SECRET || "",
-    FROM_EMAIL: "ARIA <notificaciones@novasys.com.pe>",
+    FROM_EMAIL: curEnv.FROM_EMAIL || "ARIA <notificaciones@novasys.com.pe>",
   };
   const envFile = join(mkdtempSync(join(tmpdir(), "jr-env-")), "env.json");
   writeFileSync(envFile, JSON.stringify({ Variables: runnerVars }));
