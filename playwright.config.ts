@@ -18,7 +18,26 @@ export default defineConfig({
     baseURL: "http://localhost:5173",
     trace: "on-first-retry",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // Con TEST_EMAIL/TEST_PASSWORD corre el flujo autenticado (setup loguea y guarda
+  // la sesión; las `*.authed.spec.ts` la reusan). Sin ellos, solo el smoke sin-auth.
+  projects: [
+    { name: "smoke", testMatch: /smoke\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
+    ...(process.env.TEST_EMAIL
+      ? [
+          {
+            name: "setup",
+            testMatch: /auth\.setup\.ts/,
+            use: { ...devices["Desktop Chrome"] },
+          },
+          {
+            name: "authed",
+            testMatch: /\.authed\.spec\.ts/,
+            dependencies: ["setup"],
+            use: { ...devices["Desktop Chrome"], storageState: "e2e/.auth/user.json" },
+          },
+        ]
+      : []),
+  ],
   webServer: {
     command: "npm run dev",
     url: "http://localhost:5173",

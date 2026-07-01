@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Cancela corridas viejas del mismo ref cuando llega un push nuevo.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Gate principal (bloqueante): tipos + unit tests + build.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (tsc -b)
+        run: npm run typecheck
+      - name: Unit tests (vitest)
+        run: npm run test:run
+      - name: Build (vite)
+        run: npm run build
+
+  # Lint NO-bloqueante: hay deuda pre-existente (eslint . = ~97 errores en archivos
+  # viejos). husky ya exige que lo NUEVO pase (lint-staged). Este job surfacea la
+  # deuda sin frenar merges; se puede volver bloqueante cuando se queme.
+  lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Lint (eslint)
+        run: npm run lint
+
+  # e2e Playwright. El smoke (sin auth) corre siempre; el flujo autenticado solo si
+  # están los secretos TEST_EMAIL/TEST_PASSWORD (un usuario Cognito de prueba). No
+  # bloquea el merge (continue-on-error) para no frenar por flakiness del entorno.
+  e2e:
+    runs-on: ubuntu-latest
+    needs: quality
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run e2e (smoke + authed si hay secretos)
+        env:
+          CI: "true"
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

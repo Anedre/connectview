@@ -12,8 +12,8 @@
 | **F5.2** | Deliverability WhatsApp real                | ✅ **código ya completo** (meta-mode) · live = conectar el número meta-standalone  |
 | F5.3     | IG comments a nivel app                     | ✅ **código listo** (webhook maneja IG comments) · bloqueado en App Review de Meta |
 | F5.4     | `agent-channel-adapter` en vivo             | ✅ **YA ACTIVADO** (DRY_RUN=false + IAM + número configurado)                      |
-| F5.5     | Suite e2e Playwright                        | ⬜ pendiente (buildable; requiere resolver login Cognito)                          |
-| F5.6     | Hardening + runbook                         | ⬜ pendiente                                                                       |
+| F5.5     | Suite e2e Playwright                        | ✅ **HECHO + verificado** (login Cognito + 9 rutas críticas montan)                |
+| F5.6     | Hardening + runbook                         | ✅ **HECHO** (CI GitHub Actions + hardening-notes + DEMO_RUNBOOK actualizado)      |
 
 ---
 
@@ -107,7 +107,25 @@ número apenas cargan su End User Messaging (`getTenantConnect`). No queda nada 
 
 ---
 
-## Sigue en Fase 5 (no en esta pasada)
+## F5.5 — Suite e2e Playwright · ✅ HECHO + verificado
 
-- **F5.5 — e2e Playwright:** resolver login Cognito (test user + storageState) + specs de flujos críticos.
-- **F5.6 — hardening + `DEMO_RUNBOOK.md`:** repaso IAM, rate limits, runbook al día, e2e en CI.
+`playwright.config.ts` con 3 proyectos: **smoke** (sin auth, corre siempre), **setup**
+(`e2e/auth.setup.ts` loguea vía el Authenticator de Amplify → guarda `storageState`) y **authed**
+(`*.authed.spec.ts`, reusa la sesión). Gateado por env `TEST_EMAIL`/`TEST_PASSWORD` → sin creds
+solo corre el smoke (CI/máquinas sin usuario de prueba). `e2e/app-shell.authed.spec.ts`: la sesión
+sigue activa + **9 rutas críticas** (leads, campaigns, journeys, inbox, reports, automations,
+programs, bot, admin) montan sin crashear, sin caer al login, sin errores de página.
+**Verificado en vivo:** creé un usuario Cognito de prueba (scopeado al tenant demo), corrí la suite
+→ 11/11 verde (login real + navegación); borré el usuario. Specs read-only (no ensucian datos).
+**Follow-up:** flujos de mutación (alta de lead con cleanup) + fixture de sesión Connect.
+
+## F5.6 — Hardening + runbook + CI · ✅ HECHO
+
+- **CI (`.github/workflows/ci.yml`):** job **quality** bloqueante (typecheck + unit + build) +
+  **lint** no-bloqueante (deuda pre-existente ~97 en archivos viejos; husky ya exige que lo nuevo
+  pase) + **e2e** no-bloqueante (smoke siempre; authed si hay secretos `TEST_EMAIL`/`TEST_PASSWORD`).
+  Fix: `eslint.config.js` ignora ahora `.amplify`/`dist-lambda`/`coverage`/reportes.
+- **Hardening:** `design/hardening-notes.md` — IAM (rol saturado, scoping por ARN), superficie
+  pública (webhooks auth NONE + mitigaciones, TODO rate-limit), secretos en SM, aislamiento de tenant.
+- **Runbook:** `DEMO_RUNBOOK.md` actualizado (sección 2026-07-01: novedades Fase 2-5 + corrige claims
+  viejos) + `design/go-live-runbook.md` (checklist de activaciones del cliente).
