@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { MessageCircle, Wrench, Check, Copy } from "lucide-react";
+import { MessageCircle, Wrench, Check, Copy, Sparkles, BookText, ShieldAlert, Radio } from "lucide-react";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import * as Icon from "@/components/vox/primitives";
 import { BotTester } from "@/components/bots/BotTester";
 import { useConfirm } from "@/components/ui/confirm-dialog";
-import { botColor } from "@/pages/FlowBuilderPage";
 import type { Bot } from "@/lib/botFlow";
+import { Icon as AIcon, Btn, Card, Stat, Pill, HeroBand, Num } from "@/components/aria";
 
 /**
  * AgentePage — the "Agentes IA" hub (autonomous, tool-using AI agents).
@@ -25,6 +25,10 @@ const MODELS = [
 ];
 // Text channels only — WhatsApp / web chat (no voice / IVR).
 const CHANNELS = ["WhatsApp", "Chat web", "Nuevo lead", "Palabra clave"];
+// Paleta de identidad "IA" (fría: violeta / cyan / azul) — coherente en tarjetas y features,
+// en vez de los colores rotativos heredados de Bots.
+const AGENT_ACCENTS = ["var(--iris)", "var(--cyan)", "var(--accent)"];
+const agentAccent = (i: number) => AGENT_ACCENTS[i % AGENT_ACCENTS.length];
 
 interface ToolDef { key: string; label: string; desc: string; icon: React.ComponentType<{ size?: number }>; accent: string; req: string; }
 const TOOLS: ToolDef[] = [
@@ -297,18 +301,21 @@ export function AgentePage() {
   (convs?.byAgent || []).forEach((a) => { if (a.agentBotId) convByAgent[a.agentBotId] = a; });
 
   return (
-    <div className="view">
-      <div className="view__head">
-        <div>
-          <div className="view__crumb"><span>Inteligencia artificial</span></div>
-          <h1 className="view__title">Agentes IA</h1>
-          <div className="view__sub">Empleados digitales que atienden, califican y resuelven — solos</div>
-        </div>
-        <div className="row" style={{ gap: 8 }}>
-          <button className="btn" onClick={loadList} disabled={loading}><Icon.Refresh size={14} /> Actualizar</button>
-          <button className="btn btn--primary" onClick={() => setPicking(true)}><Icon.Sparkles size={14} /> Nuevo agente</button>
-        </div>
-      </div>
+    <div className="page" style={{ maxWidth: 1320 }}>
+      {/* ARIA hero band — reemplaza el header plano por el lenguaje premium de
+          ARIA, sin perder ninguna de las acciones reales (actualizar / crear). */}
+      <HeroBand
+        title="Agentes IA"
+        chip={<>Empleados digitales que atienden, califican y resuelven — solos</>}
+        chipIcon="sparkle"
+        chipTone="var(--iris)"
+        right={
+          <div className="row gap10">
+            <Btn variant="ghost" size="sm" icon="refresh" onClick={loadList} disabled={loading}>Actualizar</Btn>
+            <Btn variant="primary" size="sm" icon="sparkle" onClick={() => setPicking(true)}>Nuevo agente</Btn>
+          </div>
+        }
+      />
 
       {loading ? (
         <div className="bots-grid">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="skel" style={{ height: 176, borderRadius: 16 }} />)}</div>
@@ -316,34 +323,36 @@ export function AgentePage() {
         <AgentHero onCreate={() => setPicking(true)} />
       ) : (
         <>
-          <div className="bots-kpis">
-            <div className="bots-kpi"><span className="bots-kpi__n">{list.length}</span><span className="bots-kpi__l">Agentes</span></div>
-            <div className="bots-kpi"><span className="bots-kpi__n" style={{ color: "var(--accent-green)" }}>{active}</span><span className="bots-kpi__l">Activos</span></div>
-            <div className="bots-kpi"><span className="bots-kpi__n" style={{ color: "var(--accent-cyan)" }}>{convs?.totals.total ?? 0}</span><span className="bots-kpi__l">Conversaciones</span></div>
-            <div className="bots-kpi"><span className="bots-kpi__n" style={{ color: "var(--accent-violet)" }}>{TOOLS.length}</span><span className="bots-kpi__l">Herramientas</span></div>
+          <div className="grid" style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 20 }}>
+            <Stat icon="bot" color="var(--iris)" label="Agentes" value={<Num value={list.length} />} sub="empleados digitales" />
+            <Stat icon="check" color="var(--green)" label="Activos" value={<Num value={active} />} sub={active > 0 ? "en producción" : "ninguno activo"} />
+            <Stat icon="chats" color="var(--cyan)" label="Conversaciones" value={<Num value={convs?.totals.total ?? 0} />} sub={`${convs?.totals.resolved ?? 0} resueltas`} />
+            <Stat icon="tag" color="var(--accent)" label="Herramientas" value={<Num value={TOOLS.length} />} sub="acciones disponibles" />
           </div>
 
-          <div style={{ marginBottom: 14 }}>
+          <div style={{ marginBottom: 14, position: "relative", maxWidth: 300 }}>
+            <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", display: "grid", placeItems: "center" }}><AIcon name="search" size={15} /></span>
             <input placeholder="Buscar agente…" value={q} onChange={(e) => setQ(e.target.value)}
-              style={{ maxWidth: 280, width: "100%", padding: "8px 11px", fontSize: 13, border: "1px solid var(--border-1)", borderRadius: 8, background: "var(--bg-1)", color: "var(--text-1)" }} />
+              style={{ width: "100%", padding: "8px 11px 8px 33px", fontSize: 13, border: "1px solid var(--border-1)", borderRadius: 10, background: "var(--bg-1)", color: "var(--text-1)" }} />
           </div>
 
           <div className="bots-grid">
             {kept.map((b, i) => {
               const cv = convByAgent[b.botId];
+              const accent = agentAccent(i);
               return (
-              <div key={b.botId} className="bot-card ag-card" style={{ "--bot-accent": botColor(i) } as React.CSSProperties} onClick={() => openAgent(b.botId)} role="button" tabIndex={0}>
+              <div key={b.botId} className="card card__accent-bar bot-card ag-card" style={{ "--_c": accent, "--bot-accent": accent } as React.CSSProperties} onClick={() => openAgent(b.botId)} role="button" tabIndex={0}>
                 <div className="bot-card__top">
-                  <span className="bot-card__icon ag-card__icon"><Icon.Sparkles size={17} /></span>
-                  <span className={`bot-card__status bot-card__status--${b.status}`}>
+                  <span className="bot-card__icon ag-card__icon" style={{ background: "color-mix(in srgb," + accent + " 15%,var(--bg-1))", color: accent }}><AIcon name="sparkle" size={17} /></span>
+                  <Pill tone={b.status === "active" ? "green" : b.status === "paused" ? "gold" : "outline"} icon={b.status === "active" ? "dot" : undefined}>
                     {b.status === "active" ? "Activo" : b.status === "paused" ? "Pausado" : "Borrador"}
-                  </span>
+                  </Pill>
                 </div>
                 <div className="bot-card__name">{b.name || "Agente sin nombre"}</div>
                 <div className="bot-card__meta" style={{ marginTop: 10 }}>
-                  <span className="bot-card__chip"><Icon.Globe size={12} /> {b.trigger || "WhatsApp"}</span>
-                  {b.agentMeta?.model && <span className="bot-card__chip"><Icon.Sparkles size={12} /> {shortModel(b.agentMeta.model)}</span>}
-                  {!!b.agentMeta?.toolsCount && <span className="bot-card__chip"><Icon.Tag size={12} /> {b.agentMeta.toolsCount} {b.agentMeta.toolsCount === 1 ? "herramienta" : "herramientas"}</span>}
+                  <span className="bot-card__chip"><AIcon name="globe" size={12} /> {b.trigger || "WhatsApp"}</span>
+                  {b.agentMeta?.model && <span className="bot-card__chip"><AIcon name="sparkle" size={12} /> {shortModel(b.agentMeta.model)}</span>}
+                  {!!b.agentMeta?.toolsCount && <span className="bot-card__chip"><AIcon name="tag" size={12} /> {b.agentMeta.toolsCount} {b.agentMeta.toolsCount === 1 ? "herramienta" : "herramientas"}</span>}
                   {cv && cv.total > 0 && <span className="bot-card__chip" title="Conversaciones · % resueltas"><MessageCircle size={12} /> {cv.total} · {Math.round((cv.resolved / cv.total) * 100)}%</span>}
                 </div>
                 {(() => {
@@ -358,7 +367,7 @@ export function AgentePage() {
                 <div className="bot-card__foot">
                   <span>{b.updatedAt ? new Date(b.updatedAt).toLocaleDateString("es-PE", { day: "numeric", month: "short" }) : "—"}</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <button className="btn btn--ghost btn--sm" style={{ padding: "3px 10px", fontSize: 11.5, color: "var(--accent-violet)" }} onClick={(e) => { e.stopPropagation(); openAgent(b.botId); }} title="Probar este agente">
+                    <button className="btn btn--ghost btn--sm" style={{ padding: "3px 10px", fontSize: 11.5, color: "var(--iris)" }} onClick={(e) => { e.stopPropagation(); openAgent(b.botId); }} title="Probar este agente">
                       Probar
                     </button>
                     <button className="bot-card__del" onClick={(e) => duplicate(b.botId, e)} title="Duplicar agente"><Copy size={13} /></button>
@@ -371,11 +380,12 @@ export function AgentePage() {
           </div>
 
           {convs && convs.recent.length > 0 && (
-            <div className="card" style={{ marginTop: 18, padding: 0, overflow: "hidden" }}>
-              <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-1)", fontWeight: 700, fontSize: 13.5, display: "flex", alignItems: "center", gap: 8 }}>
-                <Icon.Sparkles size={15} style={{ color: "var(--accent-violet)" }} /> Conversaciones recientes
-                <span className="muted" style={{ fontWeight: 500, fontSize: 12 }}>· {convs.totals.total} en total · {convs.totals.resolved} resueltas · {convs.totals.handoff} derivadas</span>
-              </div>
+            <Card
+              icon="chats"
+              title={<>Conversaciones recientes <span className="muted" style={{ fontWeight: 500, fontSize: 12 }}>· {convs.totals.total} en total · {convs.totals.resolved} resueltas · {convs.totals.handoff} derivadas</span></>}
+              pad={false}
+              style={{ marginTop: 18, overflow: "hidden" }}
+            >
               {convs.recent.slice(0, 12).map((c) => {
                 const m = OUTCOME_META[c.outcome] || OUTCOME_META.ended;
                 return (
@@ -389,7 +399,7 @@ export function AgentePage() {
                   </div>
                 );
               })}
-            </div>
+            </Card>
           )}
         </>
       )}
@@ -398,9 +408,24 @@ export function AgentePage() {
         <div className="ag-conv-modal" onClick={() => { if (!convLoading) setConvDetail(null); }}>
           <div className="ag-conv-modal__card" onClick={(e) => e.stopPropagation()}>
             <div className="ag-conv-modal__head">
-              <Icon.Sparkles size={15} style={{ color: "var(--accent-violet)" }} />
-              <span style={{ fontWeight: 700 }}>{convDetail?.agentName || "Conversación"}</span>
-              {convDetail && <span className="muted" style={{ fontSize: 12 }}>· {convDetail.turns} turnos · {OUTCOME_META[convDetail.outcome]?.label || convDetail.outcome}{convDetail.source === "playground" ? " · prueba" : ""}</span>}
+              <span className="ag-conv-modal__ico"><AIcon name="sparkle" size={15} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 13.5 }}>{convDetail?.agentName || "Conversación"}</div>
+                {convDetail && (
+                  <div className="muted" style={{ fontSize: 11.5 }}>
+                    {convDetail.turns} turnos{convDetail.source === "playground" ? " · prueba" : ""}
+                  </div>
+                )}
+              </div>
+              {convDetail &&
+                (() => {
+                  const m = OUTCOME_META[convDetail.outcome] || OUTCOME_META.ended;
+                  return (
+                    <span className="ag-conv-outcome" style={{ background: m.soft, color: m.color }}>
+                      {m.label}
+                    </span>
+                  );
+                })()}
               <button className="ag-conv-modal__close" onClick={() => setConvDetail(null)} title="Cerrar">×</button>
             </div>
             <div className="ag-conv-modal__body">
@@ -415,7 +440,16 @@ export function AgentePage() {
               )}
             </div>
             {convDetail && convDetail.toolsUsed?.length > 0 && (
-              <div className="ag-conv-modal__foot"><Wrench size={12} /> Herramientas usadas: {convDetail.toolsUsed.join(", ")}</div>
+              <div className="ag-conv-modal__foot">
+                <span className="muted" style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Wrench size={11} /> Herramientas
+                </span>
+                {convDetail.toolsUsed.map((t) => (
+                  <span key={t} className="ag-tool-badge">
+                    {TOOLS.find((x) => x.key === t)?.label || t}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -435,16 +469,16 @@ function AgentHero({ onCreate }: { onCreate: () => void }) {
   return (
     <>
       <div className="ag-hero">
-        <div className="ag-hero__badge"><Icon.Sparkles size={13} /> Agentes IA de ARIA</div>
+        <div className="ag-hero__badge"><AIcon name="sparkle" size={13} /> Agentes IA de ARIA</div>
         <h2 className="ag-hero__title">Creá un empleado digital que trabaja solo</h2>
         <p className="ag-hero__sub">Dale una persona y un objetivo, elegí el modelo (Claude Opus/Sonnet/Haiku, Amazon Q o Lex), conectá herramientas reales y dejalo conversar hasta resolver o derivar.</p>
-        <button className="btn btn--primary" style={{ marginTop: 20 }} onClick={onCreate}><Icon.Sparkles size={14} /> Crear mi primer agente</button>
+        <Btn variant="primary" icon="sparkle" style={{ marginTop: 20 }} onClick={onCreate}>Crear mi primer agente</Btn>
       </div>
       <div className="bots-grid" style={{ marginTop: 16 }}>
         {FEATURES.map((f, i) => {
           const Icn = f.icon;
           return (
-            <div key={f.title} className="card" style={{ padding: 18, "--bot-accent": botColor(i + 2) } as React.CSSProperties}>
+            <div key={f.title} className="card" style={{ padding: 18, "--bot-accent": agentAccent(i) } as React.CSSProperties}>
               <span className="ag-card__icon" style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center" }}><Icn size={18} /></span>
               <div style={{ fontWeight: 700, fontSize: 14.5, marginTop: 12 }}>{f.title}</div>
               <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55, marginTop: 5 }}>{f.body}</div>
@@ -459,17 +493,16 @@ function AgentHero({ onCreate }: { onCreate: () => void }) {
 /* ── Starter-template picker ──────────────────────────────────────── */
 function AgentPicker({ onPick, onBack }: { onPick: (a: AgentCfg) => void; onBack: () => void }) {
   return (
-    <div className="view">
-      <div className="view__head">
-        <div>
-          <div className="view__crumb"><span>Inteligencia artificial · Nuevo agente</span></div>
-          <h1 className="view__title">Elegí un punto de partida</h1>
-          <div className="view__sub">Empezá con una plantilla lista (persona, objetivo y herramientas) o desde cero — todo es editable.</div>
-        </div>
-        <button className="btn" onClick={onBack}>← Volver</button>
-      </div>
+    <div className="page" style={{ maxWidth: 1320 }}>
+      <HeroBand
+        title="Elegí un punto de partida"
+        chip={<>Empezá con una plantilla lista (persona, objetivo y herramientas) o desde cero — todo es editable.</>}
+        chipIcon="sparkle"
+        chipTone="var(--iris)"
+        right={<Btn variant="ghost" size="sm" icon="chevL" onClick={onBack}>Volver</Btn>}
+      />
       <button className="ag-blank-card" onClick={() => onPick(blankAgent())}>
-        <span className="ag-blank-card__icon"><Icon.Plus size={18} /></span>
+        <span className="ag-blank-card__icon"><AIcon name="plus" size={18} /></span>
         <div>
           <div className="ag-blank-card__h">Comenzar desde cero</div>
           <div className="ag-blank-card__d">Un agente vacío para configurar a tu gusto.</div>
@@ -478,22 +511,23 @@ function AgentPicker({ onPick, onBack }: { onPick: (a: AgentCfg) => void; onBack
       <div className="bots-grid" style={{ marginTop: 14 }}>
         {AGENT_TEMPLATES.map((t, i) => {
           const Icn = t.icon;
+          const accent = agentAccent(i);
           return (
             <button
               key={t.id}
-              className="bot-card ag-card"
-              style={{ "--bot-accent": botColor(i), textAlign: "left", cursor: "pointer" } as React.CSSProperties}
+              className="card card__accent-bar bot-card ag-card"
+              style={{ "--_c": accent, "--bot-accent": accent, textAlign: "left", cursor: "pointer" } as React.CSSProperties}
               onClick={() => onPick(templateToAgent(t))}
             >
               <div className="bot-card__top">
-                <span className="bot-card__icon ag-card__icon"><Icn size={17} /></span>
+                <span className="bot-card__icon ag-card__icon" style={{ background: "color-mix(in srgb," + accent + " 15%,var(--bg-1))", color: accent }}><Icn size={17} /></span>
               </div>
               <div className="bot-card__name">{t.label}</div>
               <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5, marginTop: 6 }}>{t.desc}</div>
               <div className="bot-card__meta" style={{ marginTop: 11 }}>
                 {(t.cfg.tools || []).map((tk) => {
                   const td = TOOLS.find((x) => x.key === tk);
-                  return td ? <span key={tk} className="bot-card__chip"><Icon.Tag size={12} /> {td.label}</span> : null;
+                  return td ? <span key={tk} className="bot-card__chip"><AIcon name="tag" size={12} /> {td.label}</span> : null;
                 })}
               </div>
             </button>
@@ -512,16 +546,12 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
   const toggleTool = (key: string) => setA((s) => ({ ...s, tools: s.tools.includes(key) ? s.tools.filter((t) => t !== key) : [...s.tools, key] }));
   const playBot = useMemo(() => agentToBot(a), [a]);
 
-  const inp: React.CSSProperties = { width: "100%", padding: "8px 10px", fontSize: 13, border: "1px solid var(--border-1)", borderRadius: 8, background: "var(--bg-2)", color: "var(--text-1)", boxSizing: "border-box" };
-  const lbl: React.CSSProperties = { fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 700, display: "block", marginBottom: 5 };
-  const area: React.CSSProperties = { ...inp, resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 };
-
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       {/* Toolbar */}
       <div className="fb-bar">
         <button onClick={onBack} title="Volver a mis agentes" className="fb-bar__back">←</button>
-        <span className="fb-bar__icon ag-bar__icon"><Icon.Sparkles size={16} /></span>
+        <span className="fb-bar__icon ag-bar__icon"><AIcon name="sparkle" size={16} /></span>
         <input value={a.name} onChange={(e) => set({ name: e.target.value })} placeholder="Nombre del agente" className="fb-bar__name" />
         <div className={`fb-status fb-status--${a.status}`}>
           <span className="fb-status__dot" />
@@ -530,8 +560,8 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
           </select>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button className="btn btn--sm" onClick={() => setPlayKey((k) => k + 1)} title="Reiniciar el playground con los cambios"><Icon.Refresh size={13} /> Probar cambios</button>
-          <button className="btn btn--primary btn--sm" onClick={() => onSave(a)} disabled={saving}><Icon.Sparkles size={13} /> {saving ? "Guardando…" : "Guardar"}</button>
+          <Btn variant="ghost" size="sm" icon="refresh" onClick={() => setPlayKey((k) => k + 1)} title="Reiniciar el playground con los cambios">Probar cambios</Btn>
+          <Btn variant="primary" size="sm" icon="sparkle" onClick={() => onSave(a)} disabled={saving}>{saving ? "Guardando…" : "Guardar"}</Btn>
         </div>
       </div>
 
@@ -539,29 +569,29 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
       <div className="ag-build">
         <div className="ag-build__form">
           <AgentReadiness a={a} />
-          <Section title="Identidad" desc="Quién es el agente y cómo se comporta.">
-            <label><span style={lbl}>Modelo</span>
-              <select style={inp} value={a.model} onChange={(e) => set({ model: e.target.value })}>{MODELS.map((m) => <option key={m} value={m}>{m}</option>)}</select>
+          <Section kicker="Quién es" title="Identidad" desc="Quién es el agente y cómo se comporta." icon={Sparkles} accent="var(--iris)">
+            <label><span className="ag-label">Modelo</span>
+              <select className="ag-input" value={a.model} onChange={(e) => set({ model: e.target.value })}>{MODELS.map((m) => <option key={m} value={m}>{m}</option>)}</select>
               {MODEL_HINT[a.model] && <div className="ag-hint">{MODEL_HINT[a.model]}</div>}
             </label>
-            <label><span style={lbl}>Persona / instrucciones</span>
-              <textarea style={area} rows={3} placeholder="Sos un asesor de admisión cordial y conciso. Respondé en español…" value={a.instructions} onChange={(e) => set({ instructions: e.target.value })} />
+            <label><span className="ag-label">Persona / instrucciones</span>
+              <textarea className="ag-area" rows={3} placeholder="Sos un asesor de admisión cordial y conciso. Respondé en español…" value={a.instructions} onChange={(e) => set({ instructions: e.target.value })} />
               <div className="ag-personas">
                 {PERSONAS.map((p) => (
                   <button key={p.label} type="button" className="ag-persona" onClick={() => set({ instructions: p.text })} title="Usar como base">{p.label}</button>
                 ))}
               </div>
             </label>
-            <label><span style={lbl}>Objetivo</span>
-              <textarea style={area} rows={2} placeholder="Resolver dudas de admisión y agendar una cita si hay interés." value={a.objective} onChange={(e) => set({ objective: e.target.value })} />
+            <label><span className="ag-label">Objetivo</span>
+              <textarea className="ag-area" rows={2} placeholder="Resolver dudas de admisión y agendar una cita si hay interés." value={a.objective} onChange={(e) => set({ objective: e.target.value })} />
             </label>
           </Section>
 
-          <Section title="Conocimiento" desc="Datos que el agente puede usar para responder.">
-            <textarea style={area} rows={4} placeholder="Pegá FAQs, precios, horarios, políticas… El agente los usará al responder." value={a.knowledge} onChange={(e) => set({ knowledge: e.target.value })} />
+          <Section kicker="Qué sabe" title="Conocimiento" desc="Datos que el agente puede usar para responder." icon={BookText} accent="var(--cyan)">
+            <textarea className="ag-area" rows={4} placeholder="Pegá FAQs, precios, horarios, políticas… El agente los usará al responder." value={a.knowledge} onChange={(e) => set({ knowledge: e.target.value })} />
           </Section>
 
-          <Section title="Herramientas" desc="Acciones reales que el agente puede ejecutar.">
+          <Section kicker="Qué puede hacer" title="Herramientas" desc="Acciones reales que el agente puede ejecutar." icon={Wrench} accent="var(--green)">
             <div className="ag-tools">
               {TOOLS.map((t) => {
                 const on = a.tools.includes(t.key);
@@ -578,23 +608,23 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
             <div className="ag-note">El agente decide cuándo usar cada herramienta (function-calling de Claude). En el playground ya se ejecutan de verdad; en producción corren con tu cuenta.</div>
           </Section>
 
-          <Section title="Guardrails" desc="Qué NO debe hacer el agente.">
-            <textarea style={area} rows={2} placeholder="No prometas descuentos. No inventes precios. No pidas datos de tarjeta." value={a.guardrails} onChange={(e) => set({ guardrails: e.target.value })} />
+          <Section kicker="Qué no debe hacer" title="Guardrails" desc="Qué NO debe hacer el agente." icon={ShieldAlert} accent="var(--coral)">
+            <textarea className="ag-area" rows={2} placeholder="No prometas descuentos. No inventes precios. No pidas datos de tarjeta." value={a.guardrails} onChange={(e) => set({ guardrails: e.target.value })} />
           </Section>
 
-          <Section title="Canal y derivación" desc="Dónde atiende y cuándo pasa a un humano.">
-            <label><span style={lbl}>Canal / disparador</span>
-              <select style={inp} value={a.channel} onChange={(e) => set({ channel: e.target.value })}>{CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+          <Section kicker="Dónde y cuándo" title="Canal y derivación" desc="Dónde atiende y cuándo pasa a un humano." icon={Radio} accent="var(--gold)">
+            <label><span className="ag-label">Canal / disparador</span>
+              <select className="ag-input" value={a.channel} onChange={(e) => set({ channel: e.target.value })}>{CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}</select>
             </label>
-            <label><span style={lbl}>Derivar a un humano cuando…</span>
-              <input style={inp} placeholder="el cliente lo pida o se frustre" value={a.handoffWhen} onChange={(e) => set({ handoffWhen: e.target.value })} />
+            <label><span className="ag-label">Derivar a un humano cuando…</span>
+              <input className="ag-input" placeholder="el cliente lo pida o se frustre" value={a.handoffWhen} onChange={(e) => set({ handoffWhen: e.target.value })} />
             </label>
             <div className="row" style={{ gap: 10 }}>
-              <label style={{ flex: 1 }}><span style={lbl}>Cola al derivar</span>
-                <input style={inp} placeholder="Admisión" value={a.handoffQueue} onChange={(e) => set({ handoffQueue: e.target.value })} />
+              <label style={{ flex: 1 }}><span className="ag-label">Cola al derivar</span>
+                <input className="ag-input" placeholder="Admisión" value={a.handoffQueue} onChange={(e) => set({ handoffQueue: e.target.value })} />
               </label>
-              <label style={{ width: 160 }}><span style={lbl}>Máx. turnos · {a.maxTurns}</span>
-                <input type="range" min={1} max={12} value={a.maxTurns} onChange={(e) => set({ maxTurns: Number(e.target.value) })} style={{ width: "100%", accentColor: "var(--accent-violet)", marginTop: 7 }} />
+              <label style={{ width: 160 }}><span className="ag-label">Máx. turnos · {a.maxTurns}</span>
+                <input type="range" min={1} max={12} value={a.maxTurns} onChange={(e) => set({ maxTurns: Number(e.target.value) })} style={{ width: "100%", accentColor: "var(--iris)", marginTop: 7 }} />
               </label>
             </div>
           </Section>
@@ -609,10 +639,32 @@ function AgentBuilder({ agent, saving, onSave, onBack }: { agent: AgentCfg; savi
   );
 }
 
-function Section({ title, desc, children }: { title: string; desc: string; children: React.ReactNode }) {
+function Section({
+  kicker,
+  title,
+  desc,
+  icon: Icn,
+  accent,
+  children,
+}: {
+  kicker: string;
+  title: string;
+  desc: string;
+  icon: React.ComponentType<{ size?: number }>;
+  accent: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="ag-sec">
-      <div className="ag-sec__h">{title}</div>
+    <div className="ag-sec" style={{ "--_c": accent } as React.CSSProperties}>
+      <div className="ag-sec__head">
+        <span className="ag-sec__icon">
+          <Icn size={15} />
+        </span>
+        <div>
+          <div className="ag-sec__kicker">{kicker}</div>
+          <div className="ag-sec__h">{title}</div>
+        </div>
+      </div>
       <div className="ag-sec__d">{desc}</div>
       <div style={{ display: "grid", gap: 11 }}>{children}</div>
     </div>

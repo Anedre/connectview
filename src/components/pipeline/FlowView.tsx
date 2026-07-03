@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useDrop } from "react-dnd";
+import { initials } from "@/lib/initials";
 import {
   Phone,
   Headphones,
@@ -95,13 +96,6 @@ function statusMeta(status: string | null): StatusMeta {
     return { label: "Offline", Icon: UserX, dot: "bg-muted-foreground/40" };
   }
   return { label: status || "—", Icon: AlertTriangle, dot: "bg-muted-foreground/40" };
-}
-
-function initials(username: string): string {
-  const parts = username.split(/[-_.\s]+/).filter(Boolean);
-  if (parts.length === 0) return "??";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
 function activeContactToBubble(a: LiveAgent): PipelineContact | null {

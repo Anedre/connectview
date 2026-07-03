@@ -66,16 +66,16 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 // Paleta muteada del handoff Claude Design (--cian/--verde/--violeta/--ambar/--rojo + variantes -2).
 const DATA_PALETTE = [
-  "#0F84A0",
-  "#138354",
-  "#6253CE",
-  "#B8761A",
-  "#C0353A",
-  "#0a6c84",
-  "#0f6e46",
-  "#5141b8",
-  "#9c6314",
-  "#a32a2f",
+  "#0E7C86",
+  "#1F8A5B",
+  "#5B57B8",
+  "#B07D2B",
+  "#C34A43",
+  "#0A626B",
+  "#177049",
+  "#4A46A0",
+  "#8F6420",
+  "#A63A34",
 ];
 
 const CHIP_COLOR: Record<string, string> = {
@@ -100,10 +100,10 @@ function normChannel(c?: string): ChannelKey {
 }
 // Colores del handoff: Positivo=verde · Neutral=gris(text-3) · Mixto=ámbar · Negativo=rojo.
 const SENTIMENT_META: { key: string; label: string; color: string }[] = [
-  { key: "POSITIVE", label: "Positivo", color: "#138354" },
-  { key: "NEUTRAL", label: "Neutral", color: "#7A879F" },
-  { key: "MIXED", label: "Mixto", color: "#B8761A" },
-  { key: "NEGATIVE", label: "Negativo", color: "#C0353A" },
+  { key: "POSITIVE", label: "Positivo", color: "#1F8A5B" },
+  { key: "NEUTRAL", label: "Neutral", color: "#7F8EA4" },
+  { key: "MIXED", label: "Mixto", color: "#B07D2B" },
+  { key: "NEGATIVE", label: "Negativo", color: "#C34A43" },
 ];
 
 const dayMs = 86400000;
@@ -492,7 +492,7 @@ export function InsightsPanel({ metrics, lastRefresh, onRefresh }: InsightsPanel
       sentiment: sentiment.map((s) => ({
         name: s.name,
         value: s.value,
-        color: s.color || "#15485A",
+        color: s.color || "#7F8EA4",
       })),
       agentRank,
       byQueue,

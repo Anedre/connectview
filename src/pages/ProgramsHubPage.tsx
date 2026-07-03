@@ -4,17 +4,15 @@ import { usePrograms, type Program, type ProgramStatus } from "@/hooks/useProgra
 import { useProgram } from "@/context/ProgramContext";
 import { useRoles } from "@/hooks/useRoles";
 import { getApiEndpoints } from "@/lib/api";
+import { Btn, Card, Pill, SegBar, Stat, Num, HeroBand, Icon } from "@/components/aria";
 import {
-  Plus,
   PencilSimple,
   Trash,
   Play,
   Pause,
   CheckCircle,
   Archive,
-  GraduationCap,
   X,
-  ArrowRight,
   type Icon as PhIcon,
 } from "@phosphor-icons/react";
 
@@ -22,17 +20,28 @@ import {
  * ProgramsHubPage (Pilar 1) — hub de programas con tarjetas accionables: salud
  * (leads), ciclo de vida (activar/pausar/cerrar/archivar), crear/editar, y
  * "Entrar" (setea el programa activo global y va a Leads). Ver design/pilar-1-programa.md.
+ *
+ * Re-skin ARIA: HeroBand + strip de Stats + tarjetas premium (Card) preservando
+ * cada hook/query/acción real. Sin datos mock.
  */
 
-const STATUS_META: Record<ProgramStatus, { label: string; fg: string; bg: string }> = {
-  borrador: { label: "Borrador", fg: "var(--text-2)", bg: "var(--bg-3)" },
-  activo: { label: "Activo", fg: "var(--accent-green)", bg: "var(--accent-green-soft)" },
-  pausado: { label: "Pausado", fg: "var(--accent-amber)", bg: "var(--accent-amber-soft)" },
-  cerrado: { label: "Cerrado", fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)" },
-  archivado: { label: "Archivado", fg: "var(--text-3)", bg: "var(--bg-3)" },
+type PillTone = "green" | "gold" | "cyan" | "outline";
+const STATUS_META: Record<ProgramStatus, { label: string; tone: PillTone }> = {
+  borrador: { label: "Borrador", tone: "outline" },
+  activo: { label: "Activo", tone: "green" },
+  pausado: { label: "Pausado", tone: "gold" },
+  cerrado: { label: "Cerrado", tone: "cyan" },
+  archivado: { label: "Archivado", tone: "outline" },
 };
 
-const BAR_COLORS = ["var(--accent-cyan)", "var(--accent-green)", "var(--accent-amber)", "var(--accent-pink)", "var(--accent-red)", "var(--text-3)"];
+const BAR_COLORS = [
+  "var(--cyan)",
+  "var(--green)",
+  "var(--gold)",
+  "var(--iris)",
+  "var(--red)",
+  "var(--text-3)",
+];
 
 const NEXT: Record<ProgramStatus, Array<{ to: ProgramStatus; label: string; Icon: PhIcon }>> = {
   borrador: [{ to: "activo", label: "Activar", Icon: Play }],
@@ -97,6 +106,13 @@ export function ProgramsHubPage() {
       )
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [programs, q, facultyFilter]);
+
+  // Salud agregada (real) para el strip de Stats — sobre lo que se está viendo.
+  const totals = useMemo(() => {
+    const leads = filtered.reduce((s, p) => s + (p.leadCount ?? 0), 0);
+    const activos = filtered.filter((p) => p.status === "activo").length;
+    return { count: filtered.length, leads, activos };
+  }, [filtered]);
 
   async function doSave() {
     if (!editing) return;
@@ -176,71 +192,108 @@ export function ProgramsHubPage() {
   }
 
   return (
-    <div style={{ padding: "18px 22px", height: "100%", overflow: "auto" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Programas</h1>
-          <p style={{ margin: "2px 0 0", color: "var(--text-3)", fontSize: 13 }}>
-            Cada programa es una unidad comercial con su propia salud y ciclo de vida. Elegí uno arriba para scopear toda la app.
-          </p>
-        </div>
-        {canManage && (
-          <button
-            className="tbx__status"
-            style={{ background: "var(--bg-3)", color: "var(--text-1)" }}
-            onClick={() => { setMsg(null); setImportText(""); }}
-            title="Importar programas desde CSV (código,nombre,facultad)"
-          >
-            Importar CSV
-          </button>
-        )}
-        {canManage && (
-          <button
-            className="tbx__status"
-            style={{ background: "var(--accent-green-soft)", color: "var(--accent-green)" }}
-            onClick={() => { setMsg(null); setEditing({ ...EMPTY }); }}
-          >
-            <Plus size={14} weight="bold" /> Nuevo programa
-          </button>
-        )}
+    <div className="page">
+      {/* ARIA hero band — reemplaza el header plano por el lenguaje premium de
+          ARIA sin perder la copia ni las acciones reales. */}
+      <HeroBand
+        title="Programas"
+        chip={<>Cada programa es una unidad comercial con su propia salud y ciclo de vida</>}
+        chipIcon="cap"
+        chipTone="var(--accent)"
+        right={
+          canManage ? (
+            <div className="row gap8">
+              <Btn
+                variant="ghost"
+                size="sm"
+                icon="upload"
+                onClick={() => {
+                  setMsg(null);
+                  setImportText("");
+                }}
+                title="Importar programas desde CSV (código,nombre,facultad)"
+              >
+                Importar CSV
+              </Btn>
+              <Btn
+                variant="primary"
+                size="sm"
+                icon="plus"
+                onClick={() => {
+                  setMsg(null);
+                  setEditing({ ...EMPTY });
+                }}
+              >
+                Nuevo programa
+              </Btn>
+            </div>
+          ) : undefined
+        }
+      />
+
+      {/* Strip de salud agregada — datos reales sobre lo que se ve. */}
+      <div className="grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 16 }}>
+        <Stat icon="cap" color="var(--accent)" label="Programas" value={<Num value={totals.count} />}
+          sub={showArchived ? "incluye archivados" : "en la vista actual"} />
+        <Stat icon="userplus" color="var(--cyan)" label="Leads totales" value={<Num value={totals.leads} />}
+          sub="sumados en la vista" />
+        <Stat icon="target" color="var(--green)" label="Activos" value={<Num value={totals.activos} />}
+          sub="en paralelo" />
       </div>
 
       {!endpointReady && (
-        <div className="chip chip--amber" style={{ marginBottom: 12, display: "block", padding: "8px 12px" }}>
-          El endpoint <code>managePrograms</code> aún no está configurado. Corré{" "}
-          <code>node scripts/create-programs.mjs</code> y pegá la URL en <code>amplify_outputs.json</code>.
-        </div>
+        <Card style={{ marginBottom: 12 }}>
+          <div className="row gap10" style={{ alignItems: "flex-start", fontSize: 13 }}>
+            <Icon name="zap" size={17} style={{ color: "var(--gold)", flex: "0 0 auto", marginTop: 1 }} />
+            <div>
+              El endpoint <code>managePrograms</code> aún no está configurado. Corré{" "}
+              <code>node scripts/create-programs.mjs</code> y pegá la URL en <code>amplify_outputs.json</code>.
+            </div>
+          </div>
+        </Card>
       )}
 
       {msg && (
-        <div
-          className={`chip ${msg.kind === "error" ? "chip--red" : "chip--green"}`}
-          style={{ marginBottom: 12, display: "block", padding: "8px 12px" }}
-        >
-          {msg.text}
+        <div style={{ marginBottom: 12 }}>
+          <Pill tone={msg.kind === "error" ? "red" : "green"} icon={msg.kind === "error" ? "x" : "check"}>
+            {msg.text}
+          </Pill>
         </div>
       )}
 
       {/* Filtros */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por nombre o código…"
-          style={{ flex: 1, minWidth: 200, background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", color: "var(--text-1)", fontSize: 13 }}
-        />
+      <div className="row gap10 wrap" style={{ marginBottom: 16, alignItems: "center" }}>
+        <div
+          className="row gap8"
+          style={{
+            flex: 1,
+            minWidth: 220,
+            background: "var(--bg-2)",
+            border: "1px solid var(--border-1)",
+            borderRadius: "var(--r-md, 10px)",
+            padding: "0 10px",
+            alignItems: "center",
+          }}
+        >
+          <Icon name="search" size={15} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por nombre o código…"
+            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "var(--text-1)", fontSize: 13, padding: "9px 0" }}
+          />
+        </div>
         <select
           value={facultyFilter}
           onChange={(e) => setFacultyFilter(e.target.value)}
-          style={{ background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px", color: "var(--text-1)", fontSize: 13 }}
+          style={{ ...inp, width: "auto", minWidth: 180, cursor: "pointer" }}
         >
           <option value="all">Todas las facultades</option>
           {faculties.map((f) => (
             <option key={f} value={f}>{f}</option>
           ))}
         </select>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
+        <label className="row gap6" style={{ fontSize: 13, color: "var(--text-2)", cursor: "pointer" }}>
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
           Incluir archivados
         </label>
@@ -248,123 +301,120 @@ export function ProgramsHubPage() {
 
       {/* Grid de tarjetas */}
       {loading ? (
-        <div style={{ color: "var(--text-3)", padding: 40, textAlign: "center" }}>Cargando programas…</div>
+        <div className="dim" style={{ padding: 40, textAlign: "center" }}>Cargando programas…</div>
       ) : error ? (
-        <div className="chip chip--red" style={{ display: "block", padding: "10px 12px" }}>Error: {error}</div>
+        <Pill tone="red" icon="x">Error: {error}</Pill>
       ) : filtered.length === 0 ? (
-        <div style={{ color: "var(--text-3)", padding: 40, textAlign: "center" }}>
+        <div className="dim" style={{ padding: 40, textAlign: "center" }}>
           {programs.length === 0 ? "No hay programas todavía." : "Ningún programa coincide con el filtro."}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 14 }}>
+        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
           {filtered.map((p) => {
             const meta = STATUS_META[p.status];
             const dl = daysLeft(p.endDate);
+            const accent = p.color || "var(--accent)";
             return (
-              <div
-                key={p.programId}
-                style={{
-                  background: "var(--bg-1)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  overflow: "hidden",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <div style={{ height: 4, background: p.color || "var(--accent-cyan)" }} />
-                <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 650, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {p.name}
-                      </div>
-                      <div style={{ fontSize: 12, color: "var(--text-3)", display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                        <code>{p.code}</code>
-                        {p.faculty && (
-                          <>
-                            <span>·</span>
-                            <GraduationCap size={12} /> {p.faculty}
-                          </>
-                        )}
-                      </div>
+              <Card key={p.programId} accent={accent} bodyStyle={{ display: "flex", flexDirection: "column", gap: 12, minHeight: 172 }}>
+                <div className="row between" style={{ alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 750, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.name}
                     </div>
-                    <span className="chip" style={{ color: meta.fg, background: meta.bg, whiteSpace: "nowrap" }}>
-                      {meta.label}
-                    </span>
+                    <div className="row gap6 dim" style={{ fontSize: 12, marginTop: 3 }}>
+                      <Pill tone="outline">{p.code}</Pill>
+                      {p.faculty && (
+                        <>
+                          <Icon name="cap" size={12} /> {p.faculty}
+                        </>
+                      )}
+                    </div>
                   </div>
+                  <Pill tone={meta.tone} icon={p.status === "activo" ? "dot" : undefined}>
+                    {meta.label}
+                  </Pill>
+                </div>
 
-                  <div style={{ display: "flex", gap: 16 }}>
+                <div className="row" style={{ gap: 20 }}>
+                  <div>
+                    <div className="tnum" style={{ fontSize: 22, fontWeight: 800, lineHeight: 1 }}>
+                      <Num value={p.leadCount ?? 0} />
+                    </div>
+                    <div className="dim" style={{ fontSize: 11, marginTop: 2 }}>leads</div>
+                  </div>
+                  {dl !== null && (
                     <div>
-                      <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>{p.leadCount ?? 0}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-3)" }}>leads</div>
-                    </div>
-                    {dl !== null && (
-                      <div>
-                        <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1, color: dl < 0 ? "var(--accent-red)" : dl <= 14 ? "var(--accent-amber)" : "var(--text-1)" }}>
-                          {dl < 0 ? "Vencido" : dl}
-                        </div>
-                        <div style={{ fontSize: 11, color: "var(--text-3)" }}>{dl < 0 ? "" : "días restantes"}</div>
+                      <div className="tnum" style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: dl < 0 ? "var(--red)" : dl <= 14 ? "var(--gold)" : "var(--text-1)" }}>
+                        {dl < 0 ? "Vencido" : dl}
                       </div>
-                    )}
-                  </div>
-
-                  {p.health && p.health.leads > 0 && (
-                    <div style={{ display: "flex", height: 6, borderRadius: 3, overflow: "hidden", background: "var(--bg-3)" }} title="Distribución por etapa">
-                      {Object.entries(p.health.byStage).map(([stage, n], i) => (
-                        <div key={stage} title={`${stage}: ${n}`} style={{ width: `${(n / p.health!.leads) * 100}%`, background: BAR_COLORS[i % BAR_COLORS.length] }} />
-                      ))}
+                      <div className="dim" style={{ fontSize: 11, marginTop: 2 }}>{dl < 0 ? "" : "días restantes"}</div>
                     </div>
                   )}
-
-                  <div style={{ flex: 1 }} />
-
-                  {/* Acciones */}
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                    <button
-                      onClick={() => enter(p)}
-                      className="tbx__status"
-                      style={{ background: "var(--bg-3)", color: "var(--text-1)" }}
-                      title="Entrar: setea este programa como activo y abre Leads"
-                    >
-                      Entrar <ArrowRight size={13} />
-                    </button>
-                    {canManage && (
-                      <>
-                        {NEXT[p.status].map(({ to, label, Icon }) => (
-                          <button
-                            key={to}
-                            onClick={() => doTransition(p, to)}
-                            disabled={busy}
-                            className="tbx__status"
-                            style={{ background: "var(--bg-3)", color: "var(--text-2)" }}
-                            title={label}
-                          >
-                            <Icon size={13} /> {label}
-                          </button>
-                        ))}
-                        <button
-                          onClick={() => { setMsg(null); setEditing({ ...p }); }}
-                          className="tbx__status"
-                          style={{ background: "var(--bg-3)", color: "var(--text-2)" }}
-                          title="Editar"
-                        >
-                          <PencilSimple size={13} />
-                        </button>
-                        <button
-                          onClick={() => doDelete(p)}
-                          disabled={busy}
-                          className="tbx__status"
-                          style={{ background: "var(--bg-3)", color: "var(--accent-red)" }}
-                          title="Borrar"
-                        >
-                          <Trash size={13} />
-                        </button>
-                      </>
-                    )}
-                  </div>
                 </div>
-              </div>
+
+                {p.health && p.health.leads > 0 && (
+                  <div title="Distribución por etapa">
+                    <SegBar
+                      segments={Object.entries(p.health.byStage).map(([, n], i) => ({
+                        v: n,
+                        color: BAR_COLORS[i % BAR_COLORS.length],
+                      }))}
+                    />
+                  </div>
+                )}
+
+                <div className="grow" />
+
+                {/* Acciones */}
+                <div className="row gap6 wrap" style={{ alignItems: "center" }}>
+                  <Btn
+                    variant="soft"
+                    size="sm"
+                    iconR="arrowRight"
+                    onClick={() => enter(p)}
+                    title="Entrar: setea este programa como activo y abre Leads"
+                  >
+                    Entrar
+                  </Btn>
+                  {canManage && (
+                    <>
+                      {NEXT[p.status].map(({ to, label, Icon: PhI }) => (
+                        <Btn
+                          key={to}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => doTransition(p, to)}
+                          disabled={busy}
+                          title={label}
+                        >
+                          <PhI size={13} /> {label}
+                        </Btn>
+                      ))}
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setMsg(null);
+                          setEditing({ ...p });
+                        }}
+                        title="Editar"
+                      >
+                        <PencilSimple size={13} />
+                      </Btn>
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => doDelete(p)}
+                        disabled={busy}
+                        title="Borrar"
+                        style={{ color: "var(--red)" }}
+                      >
+                        <Trash size={13} />
+                      </Btn>
+                    </>
+                  )}
+                </div>
+              </Card>
             );
           })}
         </div>
@@ -372,25 +422,31 @@ export function ProgramsHubPage() {
 
       {/* Modal importar CSV (R3) */}
       {importText !== null && (
-        <div onClick={() => setImportText(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--bg-1)", border: "1px solid var(--border)", borderRadius: 14, width: "min(560px, 100%)", padding: 20 }}>
-            <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
-              <h2 style={{ margin: 0, fontSize: 17, flex: 1 }}>Importar programas</h2>
-              <button onClick={() => setImportText(null)} className="tbx__status" style={{ background: "var(--bg-3)" }}><X size={14} /></button>
-            </div>
-            <p style={{ margin: "0 0 10px", color: "var(--text-3)", fontSize: 12 }}>
-              Una línea por programa: <code>código,nombre,facultad</code> (facultad opcional). Exportá tu Excel a CSV y pegá acá.
-            </p>
-            <textarea
-              value={importText}
-              onChange={(e) => setImportText(e.target.value)}
-              rows={8}
-              placeholder={"ded261,Diplomado en Educación 2026-I,Humanidades\ntoefl264,TOEFL Preparación,Idiomas"}
-              style={{ ...inp, resize: "vertical", fontFamily: "monospace" }}
-            />
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
-              <button onClick={() => setImportText(null)} className="tbx__status" style={{ background: "var(--bg-3)", color: "var(--text-2)" }}>Cancelar</button>
-              <button onClick={doImport} disabled={busy} className="tbx__status" style={{ background: "var(--accent-green-soft)", color: "var(--accent-green)" }}>{busy ? "Importando…" : "Importar"}</button>
+        <div onClick={() => setImportText(null)} style={overlay}>
+          <div onClick={(e) => e.stopPropagation()} className="card" style={{ width: "min(560px, 100%)" }}>
+            <div className="card__pad">
+              <div className="row between" style={{ marginBottom: 8 }}>
+                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 750 }}>Importar programas</h2>
+                <Btn variant="ghost" size="sm" onClick={() => setImportText(null)}>
+                  <X size={14} />
+                </Btn>
+              </div>
+              <p className="dim" style={{ margin: "0 0 10px", fontSize: 12 }}>
+                Una línea por programa: <code>código,nombre,facultad</code> (facultad opcional). Exportá tu Excel a CSV y pegá acá.
+              </p>
+              <textarea
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                rows={8}
+                placeholder={"ded261,Diplomado en Educación 2026-I,Humanidades\ntoefl264,TOEFL Preparación,Idiomas"}
+                style={{ ...inp, resize: "vertical", fontFamily: "monospace", padding: "8px 10px" }}
+              />
+              <div className="row gap8" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+                <Btn variant="ghost" size="sm" onClick={() => setImportText(null)}>Cancelar</Btn>
+                <Btn variant="primary" size="sm" icon="upload" onClick={doImport} disabled={busy}>
+                  {busy ? "Importando…" : "Importar"}
+                </Btn>
+              </div>
             </div>
           </div>
         </div>
@@ -398,62 +454,56 @@ export function ProgramsHubPage() {
 
       {/* Modal crear/editar */}
       {editing && (
-        <div
-          onClick={() => setEditing(null)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ background: "var(--bg-1)", border: "1px solid var(--border)", borderRadius: 14, width: "min(560px, 100%)", maxHeight: "90vh", overflow: "auto", padding: 20 }}
-          >
-            <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
-              <h2 style={{ margin: 0, fontSize: 17, flex: 1 }}>{editing.programId ? "Editar programa" : "Nuevo programa"}</h2>
-              <button onClick={() => setEditing(null)} className="tbx__status" style={{ background: "var(--bg-3)" }}>
-                <X size={14} />
-              </button>
-            </div>
+        <div onClick={() => setEditing(null)} style={overlay}>
+          <div onClick={(e) => e.stopPropagation()} className="card" style={{ width: "min(560px, 100%)", maxHeight: "90vh", overflow: "auto" }}>
+            <div className="card__pad">
+              <div className="row between" style={{ marginBottom: 14 }}>
+                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 750 }}>{editing.programId ? "Editar programa" : "Nuevo programa"}</h2>
+                <Btn variant="ghost" size="sm" onClick={() => setEditing(null)}>
+                  <X size={14} />
+                </Btn>
+              </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <Field label="Código *">
-                <input value={editing.code} onChange={(e) => setEditing({ ...editing, code: e.target.value })} placeholder="ej. ded261" style={inp} />
-              </Field>
-              <Field label="Facultad">
-                <input value={editing.faculty || ""} onChange={(e) => setEditing({ ...editing, faculty: e.target.value })} placeholder="ej. Posgrado" style={inp} list="faculties-dl" />
-                <datalist id="faculties-dl">
-                  {faculties.map((f) => <option key={f} value={f} />)}
-                </datalist>
-              </Field>
-              <Field label="Nombre *" full>
-                <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="ej. Diplomado en Educación 2026-I" style={inp} />
-              </Field>
-              <Field label="Descripción" full>
-                <textarea value={editing.description || ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} rows={2} style={{ ...inp, resize: "vertical" }} />
-              </Field>
-              <Field label="Inicio">
-                <input type="date" value={(editing.startDate || "").slice(0, 10)} onChange={(e) => setEditing({ ...editing, startDate: e.target.value })} style={inp} />
-              </Field>
-              <Field label="Fin (auto-archiva)">
-                <input type="date" value={(editing.endDate || "").slice(0, 10)} onChange={(e) => setEditing({ ...editing, endDate: e.target.value })} style={inp} />
-              </Field>
-              <Field label="Estado">
-                <select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value as ProgramStatus })} style={inp}>
-                  {(Object.keys(STATUS_META) as ProgramStatus[]).map((s) => (
-                    <option key={s} value={s}>{STATUS_META[s].label}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Color">
-                <input type="color" value={editing.color || "#22d3ee"} onChange={(e) => setEditing({ ...editing, color: e.target.value })} style={{ ...inp, height: 38, padding: 4 }} />
-              </Field>
-            </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Field label="Código *">
+                  <input value={editing.code} onChange={(e) => setEditing({ ...editing, code: e.target.value })} placeholder="ej. ded261" style={inp} />
+                </Field>
+                <Field label="Facultad">
+                  <input value={editing.faculty || ""} onChange={(e) => setEditing({ ...editing, faculty: e.target.value })} placeholder="ej. Posgrado" style={inp} list="faculties-dl" />
+                  <datalist id="faculties-dl">
+                    {faculties.map((f) => <option key={f} value={f} />)}
+                  </datalist>
+                </Field>
+                <Field label="Nombre *" full>
+                  <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="ej. Diplomado en Educación 2026-I" style={inp} />
+                </Field>
+                <Field label="Descripción" full>
+                  <textarea value={editing.description || ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} rows={2} style={{ ...inp, resize: "vertical" }} />
+                </Field>
+                <Field label="Inicio">
+                  <input type="date" value={(editing.startDate || "").slice(0, 10)} onChange={(e) => setEditing({ ...editing, startDate: e.target.value })} style={inp} />
+                </Field>
+                <Field label="Fin (auto-archiva)">
+                  <input type="date" value={(editing.endDate || "").slice(0, 10)} onChange={(e) => setEditing({ ...editing, endDate: e.target.value })} style={inp} />
+                </Field>
+                <Field label="Estado">
+                  <select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value as ProgramStatus })} style={inp}>
+                    {(Object.keys(STATUS_META) as ProgramStatus[]).map((s) => (
+                      <option key={s} value={s}>{STATUS_META[s].label}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Color">
+                  <input type="color" value={editing.color || "#22d3ee"} onChange={(e) => setEditing({ ...editing, color: e.target.value })} style={{ ...inp, height: 38, padding: 4 }} />
+                </Field>
+              </div>
 
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 18 }}>
-              <button onClick={() => setEditing(null)} className="tbx__status" style={{ background: "var(--bg-3)", color: "var(--text-2)" }}>
-                Cancelar
-              </button>
-              <button onClick={doSave} disabled={busy} className="tbx__status" style={{ background: "var(--accent-green-soft)", color: "var(--accent-green)" }}>
-                {busy ? "Guardando…" : "Guardar"}
-              </button>
+              <div className="row gap8" style={{ justifyContent: "flex-end", marginTop: 18 }}>
+                <Btn variant="ghost" size="sm" onClick={() => setEditing(null)}>Cancelar</Btn>
+                <Btn variant="primary" size="sm" icon="check" onClick={doSave} disabled={busy}>
+                  {busy ? "Guardando…" : "Guardar"}
+                </Btn>
+              </div>
             </div>
           </div>
         </div>
@@ -465,17 +515,28 @@ export function ProgramsHubPage() {
 const inp: React.CSSProperties = {
   width: "100%",
   background: "var(--bg-2)",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
+  border: "1px solid var(--border-1)",
+  borderRadius: "var(--r-md, 10px)",
   padding: "8px 10px",
   color: "var(--text-1)",
   fontSize: 13,
 };
 
+const overlay: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.5)",
+  zIndex: 200,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+};
+
 function Field({ label, full, children }: { label: string; full?: boolean; children: React.ReactNode }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: full ? "1 / -1" : undefined }}>
-      <span style={{ fontSize: 12, color: "var(--text-3)" }}>{label}</span>
+      <span className="dim" style={{ fontSize: 12 }}>{label}</span>
       {children}
     </label>
   );

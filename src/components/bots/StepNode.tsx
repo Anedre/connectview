@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Link2, PhoneCall } from "lucide-react";
+import { Link2, PhoneCall, AlertTriangle } from "lucide-react";
 import {
   NODE_KINDS,
   type NodeKind,
@@ -43,6 +43,9 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
   const Icon = FLOW_ICONS[def.icon] || FLOW_ICONS.message;
   const accent = def.accent;
   const stepNo = builder?.numberOf(id);
+  // Avisos de validación de este paso → badge de alerta + borde teñido.
+  const nodeIssues = builder?.issuesOf(id) ?? [];
+  const hasIssue = nodeIssues.length > 0;
 
   const addButton = (type: ButtonKind) => {
     if (!builder) return;
@@ -79,10 +82,20 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
   const asRows = outlets.length > 0 && (outlets.length > 1 || Boolean(outlets[0].label));
   const bottomOut = outlets.length === 1 && !outlets[0].label ? outlets[0] : null;
 
+  // El borde: seleccionado manda (acento); si no, un aviso lo tiñe de rojo sutil.
+  const rootStyle: React.CSSProperties | undefined = selected
+    ? {
+        borderColor: accent,
+        boxShadow: `0 0 0 2px ${accent}40, 0 12px 26px -14px rgba(0,0,0,0.45)`,
+      }
+    : hasIssue
+      ? { borderColor: "#EF444488", boxShadow: "0 0 0 1px #EF444433" }
+      : undefined;
+
   return (
     <div
-      className={`fb-node ${selected ? "fb-node--sel" : ""}`}
-      style={selected ? { borderColor: accent, boxShadow: `0 0 0 2px ${accent}40, 0 12px 26px -14px rgba(0,0,0,0.45)` } : undefined}
+      className={`fb-node ${selected ? "fb-node--sel" : ""} ${hasIssue ? "fb-node--issue" : ""}`}
+      style={rootStyle}
     >
       {/* Accent top-rail — gives each step a colored identity */}
       <div style={{ height: 3, background: `linear-gradient(90deg, ${accent}, ${accent}88)` }} />
@@ -101,6 +114,11 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
           <Icon size={14} strokeWidth={2.2} />
         </span>
         <span className="fb-node__label">{def.label}</span>
+        {hasIssue && (
+          <span className="fb-node__issue" title={nodeIssues.join("\n")} aria-label={nodeIssues.join(". ")}>
+            <AlertTriangle size={12} strokeWidth={2.4} />
+          </span>
+        )}
         {stepNo !== undefined && <span className="fb-node__no">{stepNo}</span>}
       </div>
 

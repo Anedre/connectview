@@ -16,7 +16,14 @@
  */
 import { evaluateLeadFilter, type FilterRule, type FilterableLead } from "./leadFilter";
 
-export type JourneyNodeKind = "entry" | "send" | "wait" | "branch" | "action" | "exit";
+export type JourneyNodeKind =
+  | "entry"
+  | "send"
+  | "wait"
+  | "branch"
+  | "split"
+  | "action"
+  | "exit";
 
 export interface JourneyNode {
   id: string;
@@ -31,7 +38,8 @@ export interface JourneyNode {
 export interface JourneyEdge {
   from: string;
   to: string;
-  on?: "yes" | "no";
+  /** Salida tomada: branch→"yes"/"no", split A/B→"a"/"b", lineal→undefined. */
+  on?: string;
 }
 
 export interface JourneyDef {
@@ -61,10 +69,10 @@ export interface Enrollment {
   history: { node: string; at: string }[];
 }
 
-/** Efecto a ejecutar por el runner (side effect). */
+/** Efecto a ejecutar por el runner (side effect). `nodeId` = origen (idempotencia). */
 export type JourneyEffect =
-  | { type: "send"; channel: string; params: Record<string, unknown> }
-  | { type: "action"; action: string; params: Record<string, unknown> };
+  | { type: "send"; nodeId: string; channel: string; params: Record<string, unknown> }
+  | { type: "action"; nodeId: string; action: string; params: Record<string, unknown> };
 
 export interface AdvancePlan {
   effects: JourneyEffect[];
@@ -82,10 +90,20 @@ function nodeById(j: JourneyDef, id: string): JourneyNode | undefined {
   return j.nodes.find((n) => n.id === id);
 }
 /** Sucesor por defecto (edge sin `on`, o el primero). */
-function successor(j: JourneyDef, id: string, on?: "yes" | "no"): string | undefined {
+function successor(j: JourneyDef, id: string, on?: string): string | undefined {
   const edges = j.edges.filter((e) => e.from === id);
   if (on) return edges.find((e) => e.on === on)?.to || edges.find((e) => !e.on)?.to;
   return (edges.find((e) => !e.on) || edges[0])?.to;
+}
+
+/** Hash determinístico → bucket 0..99 (para el split A/B estable por lead). */
+function hashPercent(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) % 100;
 }
 
 /**
@@ -122,6 +140,7 @@ export function planAdvance(
       case "send": {
         effects.push({
           type: "send",
+          nodeId: node.id,
           channel: String(node.params?.channel || "whatsapp"),
           params: node.params || {},
         });
@@ -134,6 +153,7 @@ export function planAdvance(
       case "action": {
         effects.push({
           type: "action",
+          nodeId: node.id,
           action: String(node.params?.type || ""),
           params: node.params || {},
         });
@@ -148,6 +168,22 @@ export function planAdvance(
         const match = (node.params?.match as "all" | "any") || "all";
         const yes = evaluateLeadFilter(lead, rules, match);
         const nxt = successor(j, node.id, yes ? "yes" : "no");
+        if (!nxt) return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
+        node = nodeById(j, nxt);
+        break;
+      }
+
+      case "split": {
+        // A/B test: reparte estable por lead. `percent` = % que va a la rama "a".
+        const pct = Math.max(0, Math.min(100, Number(node.params?.percent ?? 50)));
+        const seed =
+          String(
+            (lead as { leadId?: string; phone?: string }).leadId ||
+              (lead as { phone?: string }).phone ||
+              "",
+          ) + node.id;
+        const on = hashPercent(seed) < pct ? "a" : "b";
+        const nxt = successor(j, node.id, on);
         if (!nxt) return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
         node = nodeById(j, nxt);
         break;

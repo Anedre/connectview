@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type CSSProperties } from "react";
+import { useState, useEffect, useCallback, type ReactNode, type CSSProperties } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -21,6 +21,8 @@ import {
   type WhatsAppConn,
   type WhatsAppNumber,
   type SsoConn,
+  type MetaConn,
+  type MetaAccountRef,
 } from "@/hooks/useConnections";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import outputs from "../../../amplify_outputs.json";
@@ -2115,6 +2117,374 @@ function MercadoLibreCard({
   );
 }
 
+/* ── Instagram y Messenger (Meta multi-cuenta · "Conectar con Facebook") ──────
+ * Auto-servicio estilo Chattigo/ManyChat: el tenant hace "Login con Facebook",
+ * tilda cuáles páginas/cuentas traer, y las gestiona acá. Cada página trae
+ * Messenger y, si tiene un Instagram Business Account conectado, también IG DM.
+ * Build-ahead: el OAuth se activa con la App de Meta del cliente
+ * (secret connectview/meta + scripts/create-meta-oauth.mjs). Los page tokens
+ * viven en Secrets Manager, NUNCA tocan el navegador (el callback los guarda como
+ * `pending` y el usuario elige por id). */
+interface MetaPendingPage {
+  pageId: string;
+  pageName?: string;
+  igId?: string;
+  igUsername?: string;
+}
+
+/** Cuentas efectivas del tenant: las de accounts[] + el legacy singular
+ *  (meta.pageId/igId) como una más, espejo de `normalizeMetaAccounts` del backend.
+ *  Así un tenant configurado "por detrás" (singular) también se muestra conectado. */
+function effectiveMetaAccounts(meta: MetaConn): MetaAccountRef[] {
+  const out: MetaAccountRef[] = Array.isArray(meta.accounts) ? [...meta.accounts] : [];
+  if (meta.pageId && !out.some((a) => a.pageId === meta.pageId)) {
+    out.push({ id: meta.pageId, pageId: meta.pageId, pageName: meta.pageName, igId: meta.igId });
+  }
+  return out;
+}
+
+/** Glifo de Instagram (lucide-react en esta versión no trae íconos de marca;
+ *  reusamos el mismo trazo que el chip de canal del inbox). */
+function IgIcon({ size = 20, style }: { size?: number; style?: CSSProperties }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={style}
+    >
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M16.5 7.5h.01" />
+    </svg>
+  );
+}
+
+function InstagramMessengerCard({
+  config,
+  update,
+}: {
+  config: ConnectionsConfig;
+  update: (patch: Partial<ConnectionsConfig>) => void;
+}) {
+  const meta = config.meta || {};
+  const accounts: MetaAccountRef[] = effectiveMetaAccounts(meta);
+  const [open, setOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [pending, setPending] = useState<MetaPendingPage[]>([]);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState(false);
+  const ep = getApiEndpoints();
+  const { confirm, confirmDialog } = useConfirm();
+
+  const tone: Tone = accounts.length ? "ok" : "idle";
+  const statusLabel = accounts.length
+    ? `${accounts.length} cuenta${accounts.length > 1 ? "s" : ""}`
+    : "No conectado";
+
+  // Trae las páginas pendientes de elección (tras el "Login con Facebook"). El
+  // backend las tiene guardadas (con sus page tokens) en el secret del tenant; acá
+  // sólo llegan sin tokens para tildar cuáles traer.
+  const loadPending = useCallback(async () => {
+    if (!ep?.manageConnections) return;
+    try {
+      const r = await authedFetch(ep.manageConnections, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "listMetaAccounts" }),
+      });
+      const j = await r.json();
+      const pend: MetaPendingPage[] = Array.isArray(j?.pending) ? j.pending : [];
+      setPending(pend);
+      setSelected(Object.fromEntries(pend.map((p) => [p.pageId, true])));
+      if (pend.length) {
+        setOpen(true);
+        setModalOpen(true);
+      } else {
+        toast.message("No hay cuentas nuevas para elegir. Volvé a “Conectar con Facebook”.");
+      }
+    } catch {
+      toast.error("No se pudieron cargar las cuentas pendientes.");
+    }
+  }, [ep?.manageConnections]);
+
+  // Al volver del "Login con Facebook" (?meta=connected|err), abrir el selector.
+  // Limpiamos el query param con replaceState para no re-disparar en cada refresh.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const m = sp.get("meta");
+    if (!m) return;
+    const reason = sp.get("reason") || "error";
+    sp.delete("meta");
+    sp.delete("reason");
+    const qs = sp.toString();
+    window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    if (m === "connected") void loadPending();
+    else if (m === "err") toast.error(`No se pudo conectar con Facebook (${reason}).`);
+  }, [loadPending]);
+
+  const onConnect = async () => {
+    if (!ep?.metaOAuthStart) {
+      toast.message(
+        "El “Login con Facebook” se habilita al desplegar el backend + la App de Meta.",
+      );
+      return;
+    }
+    try {
+      const r = await authedFetch(ep.metaOAuthStart);
+      const j = await r.json();
+      if (j.authUrl) {
+        window.location.assign(j.authUrl);
+        return;
+      }
+      toast.error(j.error || "No se obtuvo la URL de autorización de Meta");
+    } catch {
+      toast.error("No se pudo iniciar el Login con Facebook");
+    }
+  };
+
+  const onSaveChosen = async () => {
+    const pageIds = Object.entries(selected)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    if (!pageIds.length) {
+      toast.error("Elegí al menos una cuenta.");
+      return;
+    }
+    if (!ep?.manageConnections) return;
+    setBusy(true);
+    try {
+      const r = await authedFetch(ep.manageConnections, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "saveMetaAccounts", pageIds }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || "No se pudo guardar");
+      update({ meta: { ...meta, accounts: (j.accounts as MetaAccountRef[]) || [] } });
+      setModalOpen(false);
+      setPending([]);
+      const n = pageIds.length;
+      toast.success(`${n} cuenta${n > 1 ? "s" : ""} conectada${n > 1 ? "s" : ""}.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo guardar");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRemove = async (acc: MetaAccountRef) => {
+    if (!ep?.manageConnections) return;
+    const label = acc.pageName || acc.igUsername || acc.pageId;
+    if (
+      !(await confirm({
+        title: `¿Quitar ${label}?`,
+        description: "Dejarás de recibir sus mensajes y comentarios en el inbox.",
+        destructive: true,
+        confirmLabel: "Quitar",
+      }))
+    )
+      return;
+    try {
+      const r = await authedFetch(ep.manageConnections, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "removeMetaAccount", pageId: acc.pageId }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || "No se pudo quitar");
+      update({ meta: { ...meta, accounts: (j.accounts as MetaAccountRef[]) || [] } });
+      toast.success("Cuenta quitada.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo quitar");
+    }
+  };
+
+  const selectedCount = Object.values(selected).filter(Boolean).length;
+
+  return (
+    <ConnCard
+      icon={<IgIcon size={20} style={{ color: "#E4405F" }} />}
+      title="Instagram y Messenger"
+      desc="Conectá tus cuentas de Instagram y Facebook (Messenger) y recibí los mensajes directos y comentarios en el inbox omnicanal. Podés conectar varias cuentas."
+      tone={tone}
+      statusLabel={statusLabel}
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Nota build-ahead: el OAuth requiere la App de Meta configurada. */}
+        {!ep?.metaOAuthStart && (
+          <div
+            style={{
+              fontSize: 12,
+              lineHeight: 1.55,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "color-mix(in srgb, var(--accent-amber) 8%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--accent-amber) 30%, transparent)",
+            }}
+          >
+            El “Login con Facebook” requiere la <b>App de Meta</b> configurada (App ID + Secret). El
+            equipo la activa una vez; después, «Conectar con Facebook» te lleva a elegir tus cuentas.
+          </div>
+        )}
+
+        {/* Botón principal — Conectar con Facebook */}
+        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <button className="btn btn--primary btn--sm" onClick={() => void onConnect()}>
+            <IgIcon size={14} /> Conectar con Facebook
+          </button>
+          {ep?.metaOAuthStart && (
+            <button className="btn btn--sm" onClick={() => void loadPending()}>
+              ¿Ya conectaste? Elegir cuentas
+            </button>
+          )}
+        </div>
+
+        {/* Lista de cuentas conectadas */}
+        {accounts.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={labelStyle}>Cuentas conectadas</span>
+            {accounts.map((a) => (
+              <div
+                key={a.pageId}
+                className="row"
+                style={{
+                  gap: 10,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--border-1)",
+                  alignItems: "center",
+                }}
+              >
+                <IgIcon size={16} style={{ color: "#E4405F", flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{a.pageName || a.pageId}</div>
+                  <div
+                    className="muted"
+                    style={{ fontSize: 11, display: "flex", gap: 6, flexWrap: "wrap" }}
+                  >
+                    <span>Messenger</span>
+                    {a.igId && <span>· Instagram {a.igUsername ? `@${a.igUsername}` : ""}</span>}
+                  </div>
+                </div>
+                <button
+                  className="btn btn--ghost btn--sm"
+                  aria-label={`Quitar ${a.pageName || a.pageId}`}
+                  onClick={() => void onRemove(a)}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Modal: elegir cuáles cuentas traer */}
+      {modalOpen && (
+        <div
+          role="presentation"
+          onClick={() => setModalOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            background: "rgba(0,0,0,.45)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Elegí qué cuentas traer"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(520px, 96vw)",
+              maxHeight: "82vh",
+              overflow: "auto",
+              background: "var(--bg-1)",
+              border: "1px solid var(--border-1)",
+              borderRadius: 14,
+              padding: 20,
+              boxShadow: "0 20px 60px rgba(0,0,0,.35)",
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: 16 }}>Elegí qué cuentas traer</div>
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.5 }}>
+              Tildá las páginas de Facebook / Instagram que querés gestionar en ARIA. Podés cambiarlo
+              después.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: "14px 0" }}>
+              {pending.length === 0 && (
+                <div className="muted" style={{ fontSize: 12.5 }}>
+                  No hay cuentas pendientes.
+                </div>
+              )}
+              {pending.map((p) => {
+                const on = !!selected[p.pageId];
+                return (
+                  <label
+                    key={p.pageId}
+                    className="row"
+                    style={{
+                      gap: 10,
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      cursor: "pointer",
+                      alignItems: "center",
+                      background: on ? "var(--accent-green-soft)" : "var(--bg-2)",
+                      border: `1px solid ${on ? "var(--accent-green)" : "var(--border-1)"}`,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={(e) => setSelected((s) => ({ ...s, [p.pageId]: e.target.checked }))}
+                    />
+                    <IgIcon size={16} style={{ color: "#E4405F", flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{p.pageName || p.pageId}</div>
+                      <div className="muted" style={{ fontSize: 11 }}>
+                        Messenger
+                        {p.igId ? ` · Instagram ${p.igUsername ? `@${p.igUsername}` : ""}` : ""}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
+              <button className="btn btn--sm" onClick={() => setModalOpen(false)}>
+                Cancelar
+              </button>
+              <button
+                className="btn btn--primary btn--sm"
+                onClick={() => void onSaveChosen()}
+                disabled={busy || selectedCount === 0}
+              >
+                {busy
+                  ? "Guardando…"
+                  : `Traer ${selectedCount} cuenta${selectedCount === 1 ? "" : "s"}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmDialog}
+    </ConnCard>
+  );
+}
+
 export function IntegrationsManager() {
   const { config, save, hasBackend, loading, whatsappNumbers } = useConnections();
   const update = (patch: Partial<ConnectionsConfig>) => save({ ...config, ...patch });
@@ -2161,6 +2531,7 @@ export function IntegrationsManager() {
       <AmazonConnectCard config={config} update={update} />
       <SalesforceCard config={config} update={update} />
       <WhatsAppCard config={config} update={update} awsNumbers={whatsappNumbers} />
+      <InstagramMessengerCard config={config} update={update} />
       <MercadoLibreCard config={config} update={update} />
       <SsoCard config={config} update={update} />
       <MessagingCard config={config} update={update} />

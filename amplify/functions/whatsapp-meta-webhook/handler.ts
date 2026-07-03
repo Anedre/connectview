@@ -27,7 +27,16 @@ import {
   removeSuppression,
 } from "../_shared/suppression";
 import { updateHsmStatus, type HsmStatus } from "../_shared/hsmStatus";
-import { appendInbound, appendOutbound, convId } from "../_shared/conversations";
+import {
+  appendInbound,
+  appendOutbound,
+  convId,
+  getConversation,
+  markOutboundRead,
+  patchConversation,
+  setAssignee,
+  wantsHuman,
+} from "../_shared/conversations";
 
 /**
  * whatsapp-meta-webhook — webhook de Meta Cloud API para números de WhatsApp
@@ -164,7 +173,13 @@ async function findTenantByMetaPhone(phoneNumberId: string): Promise<TenantWa | 
   return null;
 }
 
-/** Bot a correr: el configurado (`whatsapp.botId`) o el primer publicado. */
+/**
+ * Bot a correr para este WhatsApp: el linkeado explícitamente (`whatsapp.botId`)
+ * o, si no, el primer bot PUBLICADO/activo del tenant. Si no hay flujo linkeado
+ * NI publicado, devuelve "" → la conversación va DIRECTO a un agente humano (no
+ * auto-respondemos con un borrador que el tenant no eligió). Regla de negocio:
+ * "si linkeás tu WhatsApp a un flujo, se respeta el flujo; si no, va al agente".
+ */
 async function pickBotId(dynamo: DynamoDBClient, configBotId?: string): Promise<string> {
   if (configBotId) return configBotId;
   try {
@@ -175,7 +190,9 @@ async function pickBotId(dynamo: DynamoDBClient, configBotId?: string): Promise<
         (b) =>
           b.botId && !String(b.botId).startsWith("conv#") && !String(b.botId).startsWith("sess#"),
       );
-    const pub = bots.find((b) => b.status === "published" || b.status === "active") || bots[0];
+    // Solo un bot PUBLICADO/activo atiende (sin `|| bots[0]`): un borrador no
+    // responde → sin flujo linkeado ni publicado, la conversación va al agente.
+    const pub = bots.find((b) => b.status === "published" || b.status === "active");
     return pub?.botId || "";
   } catch {
     return "";
@@ -267,7 +284,15 @@ async function handleFlowReply(
   }
 }
 
-async function handleInbound(phoneNumberId: string, from: string, text: string): Promise<void> {
+async function handleInbound(
+  phoneNumberId: string,
+  from: string,
+  text: string,
+  messageId?: string,
+  /** Outlet del flujo si el cliente tocó un botón/lista del bot (b:<id> / r:<id>).
+   *  Cuando viene, es navegación del bot: NO se evalúa la red global de escalado. */
+  choice?: string,
+): Promise<void> {
   const t = await findTenantByMetaPhone(phoneNumberId);
   if (!t || !t.tenantId) return; // número no mapeado a un tenant en modo meta
 
@@ -362,19 +387,100 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
       senderId: from,
       text,
       tenantId: t.tenantId,
+      messageId, // id del inbound → para el read-receipt del agente (markRead)
     });
   } catch (e) {
     console.error("mirror WhatsApp→inbox falló:", e);
   }
-  // Handoff bot↔humano: si un AGENTE ya tomó esta conversación en la bandeja
-  // (assignedAgent != "bot"), el bot se retira y deja que el humano responda.
-  if (mirrored?.assignedAgent && mirrored.assignedAgent !== "bot") {
-    console.log(`WhatsApp ${from}: tomada por ${mirrored.assignedAgent} → bot omitido`);
+
+  // ── Automatizaciones (#15) · trigger message_inbound ──────────────────────
+  // Un mensaje REAL del cliente (texto o tap de botón/lista) dispara la regla.
+  // Los STOP/ALTA ya retornaron arriba → acá nunca entra un opt-out. Es
+  // fire-and-forget (AbortController ~1.5s + catch total en fireAutomation), así
+  // que NO bloquea ni demora la respuesta del bot. El engine resuelve el lead por
+  // teléfono en las acciones que lo necesiten.
+  try {
+    await fireAutomation({
+      type: "message_inbound",
+      tenantId: t.tenantId,
+      lead: { phone: phoneE164 },
+      message: { channel: "whatsapp", text: text || undefined },
+    });
+  } catch {
+    /* el motor es best-effort; el flujo del bot sigue intacto */
+  }
+  // ── Escalado Bot→Agente (guarda GLOBAL) ───────────────────────────────────
+  // El bot SOLO responde cuando la conversación NO está en manos de un humano.
+  // El estado canónico es `assignee` (setAssignee / reply del agente; un inbound
+  // reabre en "bot"). Cuando `assignee` está presente, MANDA él.
+  //   · assignee === "agent" → la atiende un humano → bot omitido.
+  //   · assignee === "bot"   → la atiende el Agente IA → el bot procesa.
+  // El legacy `assignedAgent` (username del último humano que respondió) SOLO se
+  // usa como respaldo para conversaciones viejas SIN `assignee`; si no, cortaba
+  // el bot para siempre (ese campo nunca se limpia) aun tras reabrir/Devolver a
+  // la IA con assignee="bot".
+  const convChannelId = convId("whatsapp", from);
+  const takenByHuman =
+    mirrored?.assignee === "agent" ||
+    (mirrored?.assignee == null &&
+      !!mirrored?.assignedAgent &&
+      mirrored.assignedAgent !== "bot");
+  if (takenByHuman) {
+    console.log(`WhatsApp ${from}: en manos de un humano → bot omitido`);
     return;
   }
 
+  // Detección de intención "quiero un humano" (keywords robustos a tildes/mayús).
+  // Si el cliente lo pide, escalamos ANTES de que el bot IA genere su respuesta:
+  //  1) pasamos la conversación a assignee="agent" (el humano toma el hilo),
+  //  2) el bot NO contesta su respuesta RAG normal — manda UN aviso de traspaso,
+  //  3) marcamos unread (necesita atención del equipo) — patrón de appendInbound.
+  // Nota: si integrás auto-respuesta del bot en OTROS canales del inbox
+  // (meta-messaging-webhook, mercadolibre-webhook), replicá esta misma guarda +
+  // detección allí (wantsHuman + setAssignee) usando su propio convId/canal.
+  if (!choice && wantsHuman(text)) {
+    console.log(`WhatsApp ${from}: pidió humano → escalando a agente`);
+    try {
+      await setAssignee(legacyDynamo, convChannelId, "agent");
+      // "necesita atención": elevamos unread como hace un inbound (no lo pisamos a 0).
+      const cur = mirrored || (await getConversation(legacyDynamo, convChannelId));
+      await patchConversation(legacyDynamo, convChannelId, {
+        unread: Math.max(1, (cur?.unread || 0) + 1),
+      });
+    } catch (e) {
+      console.error("escalado a agente (setAssignee) falló:", e);
+    }
+    const HANDOFF_TEXT =
+      "¡Claro! Te comunico con un asesor humano. En un momento te atienden 🙂";
+    try {
+      await sendWhatsApp(
+        { mode: "meta" as const, metaPhoneNumberId: phoneNumberId, tenantId: t.tenantId },
+        buildMetaMessage(from, { kind: "bot", text: HANDOFF_TEXT }),
+      );
+      // Espejo del aviso al inbox como saliente del bot (best-effort). OJO:
+      // appendOutbound resetea unread a 0; por eso re-marcamos unread después.
+      try {
+        await appendOutbound(legacyDynamo, convChannelId, HANDOFF_TEXT, "bot");
+        await patchConversation(legacyDynamo, convChannelId, { unread: 1 });
+      } catch {
+        /* mirror best-effort */
+      }
+    } catch (e) {
+      console.error("aviso de traspaso a WhatsApp falló:", e);
+    }
+    return; // el bot NO genera su respuesta RAG: el humano atiende
+  }
+
   const botId = await pickBotId(dynamo, t.whatsapp?.botId);
-  if (!botId) return; // sin bot configurado → no respondemos (evita loops)
+  if (!botId) {
+    // Sin flujo linkeado ni publicado → NO auto-respondemos con un bot: la
+    // conversación va DIRECTO a un agente humano. La dejamos en estado "Agente"
+    // para que aparezca en la cola del inbox y un humano la tome. (En el próximo
+    // inbound la guarda global de arriba corta, así no la re-tocamos.)
+    await setAssignee(legacyDynamo, convChannelId, "agent");
+    console.log(`WhatsApp ${from}: sin flujo linkeado → directo a agente`);
+    return;
+  }
 
   const sessKey = "sess#wa#" + from;
 
@@ -404,7 +510,7 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
         body: JSON.stringify({
           botId,
           state,
-          input: text ? { text } : undefined,
+          input: choice ? { choice } : text ? { text } : undefined,
           source: "whatsapp",
         }),
       });
@@ -445,13 +551,31 @@ async function handleInbound(phoneNumberId: string, from: string, text: string):
       // Espejo de la respuesta del bot al inbox (best-effort).
       if (m.text) {
         try {
-          await appendOutbound(legacyDynamo, convId("whatsapp", from), m.text, "bot");
+          await appendOutbound(legacyDynamo, convChannelId, m.text, "bot");
         } catch {
           /* mirror best-effort */
         }
       }
     } catch (e) {
       console.error("reply Meta falló:", e);
+    }
+  }
+
+  // Escalado Bot→Agente (señal del PROPIO bot-runtime): si su flujo derivó a un
+  // humano (nodo handoff, confianza baja o max turns → devuelve handoff:true), lo
+  // reflejamos en el inbox pasando la conversación a assignee="agent" + unread. Los
+  // mensajes del bot ya salieron arriba (incluido el aviso de derivación del flujo),
+  // así que acá solo cambiamos de manos. En el próximo inbound la guarda global corta.
+  if (d.handoff === true || d.handoff === "true") {
+    console.log(`WhatsApp ${from}: bot-runtime derivó (handoff) → assignee=agent`);
+    try {
+      await setAssignee(legacyDynamo, convChannelId, "agent");
+      const cur = await getConversation(legacyDynamo, convChannelId);
+      await patchConversation(legacyDynamo, convChannelId, {
+        unread: Math.max(1, (cur?.unread || 0) + 1),
+      });
+    } catch (e) {
+      console.error("escalado por handoff del bot (setAssignee) falló:", e);
     }
   }
 }
@@ -484,6 +608,19 @@ async function handleStatus(
       /* sin rol → pooled */
     }
   }
+  // ── Pilar 6 · recibo de LECTURA entrante → "visto ✓✓" en la bandeja ──────────
+  // Cuando el cliente lee nuestros mensajes, Meta manda statuses[].status==="read".
+  // Marcamos los salientes de esa conversación como leídos. La conversación espejo
+  // vive en la tabla pooled (legacyDynamo), igual que el mirror del inbound.
+  // Best-effort: independiente del tracking de HSM (que sí usa el dynamo del tenant).
+  if (st.status === "read" && st.recipient_id) {
+    try {
+      await markOutboundRead(legacyDynamo, convId("whatsapp", st.recipient_id));
+    } catch (e) {
+      console.warn("mark read (inbox) falló:", (e as Error).message);
+    }
+  }
+
   const res = await updateHsmStatus(dynamo, st.id, st.status as HsmStatus, { errors: st.errors });
   if (res.isPermanentFailure && st.recipient_id) {
     const phone = st.recipient_id.startsWith("+") ? st.recipient_id : `+${st.recipient_id}`;
@@ -540,13 +677,21 @@ export const handler: Handler = async (event: any) => {
             await handleFlowReply(phoneNumberId, from, nfm);
             continue;
           }
+          // Botón/lista tappable → `choice` = outlet del flujo del bot (b:<id> /
+          // r:<id>). Es navegación del bot, NO texto libre: el runtime avanza por
+          // esa rama y NO lo evalúa la red global de escalado (wantsHuman). El
+          // `text` legible (el título) se espeja al inbox.
+          const br = msg.interactive?.button_reply;
+          const lr = msg.interactive?.list_reply;
+          const choice = br?.id ? `b:${br.id}` : lr?.id ? `r:${lr.id}` : undefined;
           const text =
             msg.text?.body ||
-            msg.interactive?.button_reply?.id ||
-            msg.interactive?.list_reply?.id ||
+            br?.title ||
+            lr?.title ||
             msg.button?.text ||
             "";
-          if (phoneNumberId && from) await handleInbound(phoneNumberId, from, text);
+          if (phoneNumberId && from)
+            await handleInbound(phoneNumberId, from, text, msg.id, choice);
         }
         // Pilar 4 — recibos de entrega (delivered/read/failed) llegan en el mismo
         // webhook, en value.statuses[]. Avanzan el estado del HSM + cuarentena.

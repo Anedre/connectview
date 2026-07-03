@@ -23,6 +23,7 @@ import { WhatsAppTemplateSummary } from "@/components/campaigns/WhatsAppTemplate
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { Btn, Pill, Num, HeroBand } from "@/components/aria";
 
 // UUID heuristic — matches the v4 ARN-suffix form Connect emits. Used in
 // the contacts table to detect legacy rows where agentUsername was written
@@ -41,20 +42,21 @@ const STATUS_CHIP: Record<string, string> = {
   failed: "chip chip--red",
 };
 
-const CAMPAIGN_STATUS_CHIP: Record<string, string> = {
-  DRAFT: "chip",
-  RUNNING: "chip chip--green",
-  PAUSED: "chip chip--amber",
-  COMPLETED: "chip chip--cyan",
-  CANCELLED: "chip chip--red",
-};
-
 const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
   DRAFT: "Borrador",
   RUNNING: "En curso",
   PAUSED: "Pausada",
   COMPLETED: "Terminada",
   CANCELLED: "Cancelada",
+};
+
+// Campaign status → ARIA Pill tone (matches the CampaignsPage list).
+const CAMPAIGN_STATUS_TONE: Record<string, "green" | "gold" | "cyan" | "red" | "outline"> = {
+  DRAFT: "outline",
+  RUNNING: "green",
+  PAUSED: "gold",
+  COMPLETED: "cyan",
+  CANCELLED: "red",
 };
 
 export function CampaignDetailPage() {
@@ -218,26 +220,17 @@ export function CampaignDetailPage() {
     // structured skeleton so the user gets an immediate visual hint
     // that the detail view is mounting (vs. the lingering list view).
     return (
-      <div className="view">
-        <div className="view__head">
-          <div>
-            <div className="view__crumb">
-              <span>Crecimiento</span>
-            </div>
-            <h1 className="view__title skel skel--text" style={{ width: 320, height: 28 }} />
-            <div
-              className="view__sub skel skel--text"
-              style={{ width: 220, height: 14, marginTop: 6 }}
-            />
-          </div>
+      <div className="page" style={{ maxWidth: 1320 }}>
+        <div className="row gap10" style={{ marginBottom: 16 }}>
+          <div className="skel skel--text" style={{ width: 240, height: 26 }} />
+          <div className="skel skel--text" style={{ width: 90, height: 22, borderRadius: 999 }} />
         </div>
-        <div className="kpi-grid">
+        <div className="grid" style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 20 }}>
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="kpi skel" style={{ minHeight: 86 }} />
+            <div key={i} className="card skel" style={{ minHeight: 116 }} />
           ))}
         </div>
-        <div style={{ height: 16 }} />
-        <div className="grid-2" style={{ gap: 16 }}>
+        <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <div className="card skel" style={{ minHeight: 220 }} />
           <div className="card skel" style={{ minHeight: 220 }} />
         </div>
@@ -249,13 +242,13 @@ export function CampaignDetailPage() {
   }
   if (error && !data) {
     return (
-      <div className="view">
+      <div className="page" style={{ maxWidth: 1320 }}>
         <div
           style={{
             padding: 16,
-            borderRadius: 8,
-            background: "var(--accent-red-soft)",
-            color: "var(--accent-red)",
+            borderRadius: 12,
+            background: "var(--red-soft)",
+            color: "var(--red-2)",
             fontSize: 12.5,
           }}
         >
@@ -507,176 +500,140 @@ export function CampaignDetailPage() {
     ? [
         // WhatsApp: sin agentes ni "conectado/sin contestar" — sólo el ciclo de envío.
         { key: "pending", label: "Pendientes", Icn: Icon.Clock, color: "var(--text-3)" },
-        { key: "dialing", label: "Enviando", Icn: Icon.WhatsApp, color: "var(--accent-cyan)" },
-        { key: "done", label: "Enviados", Icn: Icon.Check, color: "var(--accent-green)" },
-        { key: "failed", label: "Fallidos", Icn: Icon.Close, color: "var(--accent-red)" },
+        { key: "dialing", label: "Enviando", Icn: Icon.WhatsApp, color: "var(--cyan)" },
+        { key: "done", label: "Enviados", Icn: Icon.Check, color: "var(--green)" },
+        { key: "failed", label: "Fallidos", Icn: Icon.Close, color: "var(--red)" },
       ]
     : [
         { key: "pending", label: "Pendientes", Icn: Icon.Clock, color: "var(--text-3)" },
-        { key: "dialing", label: "Marcando", Icn: Icon.Phone, color: "var(--accent-cyan)" },
-        { key: "connected", label: "Conectados", Icn: Icon.PhoneIn, color: "var(--accent-green)" },
-        { key: "done", label: "Completados", Icn: Icon.Check, color: "var(--accent-green)" },
-        { key: "no_answer", label: "Sin contestar", Icn: Icon.Phone, color: "var(--accent-amber)" },
-        { key: "failed", label: "Fallidos", Icn: Icon.Close, color: "var(--accent-red)" },
+        { key: "dialing", label: "Marcando", Icn: Icon.Phone, color: "var(--cyan)" },
+        { key: "connected", label: "Conectados", Icn: Icon.PhoneIn, color: "var(--green)" },
+        { key: "done", label: "Completados", Icn: Icon.Check, color: "var(--green)" },
+        { key: "no_answer", label: "Sin contestar", Icn: Icon.Phone, color: "var(--gold)" },
+        { key: "failed", label: "Fallidos", Icn: Icon.Close, color: "var(--red)" },
       ];
 
   return (
-    <div className="view">
-      {/* ── Header ───────────────────────────────────────────────── */}
-      <div className="view__header" style={{ alignItems: "flex-start" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: 1, minWidth: 0 }}>
-          <button
-            className="btn btn--ghost btn--sm btn--icon"
-            onClick={() => navigate("/campaigns")}
-            title="Volver a campañas"
-          >
-            <Icon.ArrowLeft size={14} />
-          </button>
-          <div
-            style={{
-              display: "grid",
-              placeItems: "center",
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              background: "linear-gradient(135deg, var(--accent-amber), var(--accent-pink) 70%)",
-              color: "#0B0F1A",
-              flexShrink: 0,
-            }}
-          >
-            <Icon.Megaphone size={18} />
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
-              <h1 className="view__title" style={{ margin: 0 }}>
-                {c.name}
-              </h1>
-              <span className={CAMPAIGN_STATUS_CHIP[c.status] || "chip"}>
-                <span className="dot" />
-                {CAMPAIGN_STATUS_LABEL[c.status] || c.status}
-              </span>
-            </div>
-            {c.description && (
-              <div className="view__sub" style={{ marginTop: 2 }}>
-                {c.description}
-              </div>
-            )}
-            <div
-              className="muted mono"
-              style={{
-                marginTop: 6,
-                fontSize: 11.5,
-                display: "flex",
-                gap: 6,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
-              <span>{c.sourcePhoneNumber}</span>
-              <span>·</span>
-              {isWa ? (
-                <>
-                  <span className="row" style={{ gap: 4 }}>
-                    <Icon.WhatsApp size={12} /> WhatsApp
-                  </span>
-                  {(c as unknown as { templateName?: string }).templateName && (
-                    <>
-                      <span>·</span>
-                      <span>
-                        {(c as unknown as { templateName?: string }).templateName}
-                        {(c as unknown as { templateLanguage?: string }).templateLanguage
-                          ? ` (${(c as unknown as { templateLanguage?: string }).templateLanguage})`
-                          : ""}
-                      </span>
-                    </>
-                  )}
-                </>
-              ) : (
-                <>
-                  <span>{c.dialMode}</span>
-                  <span>·</span>
-                  <span>concurrencia {c.concurrency}</span>
-                </>
-              )}
-              {c.createdAt && (
-                <>
-                  <span>·</span>
-                  <span>
-                    creada {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="view__actions" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {/* Edit — only while still editable */}
-          {(c.status === "DRAFT" || c.status === "RUNNING" || c.status === "PAUSED") && (
-            <button className="btn" onClick={() => setEditOpen(true)} disabled={controlling}>
-              <Icon.Pencil size={13} /> Editar
-            </button>
-          )}
-
-          {/* Clone — always available */}
-          <button className="btn" onClick={handleClone} disabled={mutations.pending}>
-            <Icon.Copy size={13} /> Clonar
-          </button>
-
-          {/* Relaunch — only for terminal states */}
-          {(c.status === "COMPLETED" || c.status === "CANCELLED") && (
-            <>
-              <button
-                className="btn"
-                onClick={() => handleRelaunch("failed")}
-                disabled={mutations.pending}
-              >
-                <Icon.Refresh size={13} /> Relanzar fallidos
-              </button>
-              <button
-                className="btn btn--primary"
-                onClick={() => handleRelaunch("all")}
-                disabled={mutations.pending}
-              >
-                <Icon.Refresh size={13} /> Relanzar todos
-              </button>
-            </>
-          )}
-
-          {/* DRAFT → Start */}
-          {c.status === "DRAFT" && (
-            <button
-              className="btn btn--primary"
-              onClick={() => handleControl("start")}
-              disabled={controlling}
-            >
-              <Icon.Play size={13} /> Iniciar
-            </button>
-          )}
-          {c.status === "RUNNING" && (
-            <>
-              <button className="btn" onClick={() => handleControl("pause")} disabled={controlling}>
-                <Icon.Pause size={13} /> Pausar
-              </button>
-              <button
-                className="btn btn--danger"
-                onClick={() => handleControl("cancel")}
-                disabled={controlling}
-              >
-                <Icon.Stop size={13} /> Cancelar
-              </button>
-            </>
-          )}
-          {c.status === "PAUSED" && (
-            <button
-              className="btn btn--primary"
-              onClick={() => handleControl("resume")}
-              disabled={controlling}
-            >
-              <Icon.Play size={13} /> Reanudar
-            </button>
-          )}
-        </div>
+    <div className="page" style={{ maxWidth: 1320 }}>
+      {/* Header de detalle (liviano): back + nombre + estado + meta. Las
+           acciones (editar/clonar/iniciar/pausar/…) las sube HeroBand al topbar
+           — el bloque hero se retiró de todas las secciones. */}
+      <div className="row gap10" style={{ marginBottom: 14, flexWrap: "wrap", minWidth: 0 }}>
+        <Btn variant="ghost" size="sm" icon="chevL" onClick={() => navigate("/campaigns")} title="Volver a campañas" />
+        <h1 style={{ fontSize: 21, fontWeight: 800, letterSpacing: "-.02em", margin: 0, minWidth: 0 }}>{c.name}</h1>
+        <Pill tone={CAMPAIGN_STATUS_TONE[c.status] || "outline"} icon="dot">
+          {CAMPAIGN_STATUS_LABEL[c.status] || c.status}
+        </Pill>
+        <span className="dim mono" style={{ fontSize: 12 }}>
+          {c.sourcePhoneNumber} · {isWa ? "WhatsApp" : c.dialMode}
+          {c.createdAt ? ` · creada ${formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}` : ""}
+        </span>
       </div>
+      <HeroBand
+        title={
+          <span className="row gap10" style={{ flexWrap: "wrap" }}>
+            <Btn variant="ghost" size="sm" icon="chevL" onClick={() => navigate("/campaigns")} title="Volver a campañas" />
+            <span style={{ minWidth: 0 }}>{c.name}</span>
+            <Pill tone={CAMPAIGN_STATUS_TONE[c.status] || "outline"} icon="dot">
+              {CAMPAIGN_STATUS_LABEL[c.status] || c.status}
+            </Pill>
+          </span>
+        }
+        chip={
+          <span className="row gap6 mono" style={{ flexWrap: "wrap" }}>
+            <span>{c.sourcePhoneNumber}</span>
+            <span>·</span>
+            {isWa ? (
+              <>
+                <span className="row" style={{ gap: 4 }}>
+                  <Icon.WhatsApp size={12} /> WhatsApp
+                </span>
+                {(c as unknown as { templateName?: string }).templateName && (
+                  <>
+                    <span>·</span>
+                    <span>
+                      {(c as unknown as { templateName?: string }).templateName}
+                      {(c as unknown as { templateLanguage?: string }).templateLanguage
+                        ? ` (${(c as unknown as { templateLanguage?: string }).templateLanguage})`
+                        : ""}
+                    </span>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <span>{c.dialMode}</span>
+                <span>·</span>
+                <span>concurrencia {c.concurrency}</span>
+              </>
+            )}
+            {c.createdAt && (
+              <>
+                <span>·</span>
+                <span>creada {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}</span>
+              </>
+            )}
+          </span>
+        }
+        chipIcon={isWa ? "wa" : "megaphone"}
+        chipTone={isWa ? "var(--green)" : "var(--accent)"}
+        right={
+          <div className="row gap8" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {/* Edit — only while still editable */}
+            {(c.status === "DRAFT" || c.status === "RUNNING" || c.status === "PAUSED") && (
+              <Btn variant="ghost" size="sm" icon="settings" onClick={() => setEditOpen(true)} disabled={controlling}>
+                Editar
+              </Btn>
+            )}
+
+            {/* Clone — always available */}
+            <Btn variant="ghost" size="sm" icon="copy" onClick={handleClone} disabled={mutations.pending}>
+              Clonar
+            </Btn>
+
+            {/* Relaunch — only for terminal states */}
+            {(c.status === "COMPLETED" || c.status === "CANCELLED") && (
+              <>
+                <Btn variant="ghost" size="sm" icon="refresh" onClick={() => handleRelaunch("failed")} disabled={mutations.pending}>
+                  Relanzar fallidos
+                </Btn>
+                <Btn variant="primary" size="sm" icon="refresh" onClick={() => handleRelaunch("all")} disabled={mutations.pending}>
+                  Relanzar todos
+                </Btn>
+              </>
+            )}
+
+            {/* DRAFT → Start */}
+            {c.status === "DRAFT" && (
+              <Btn variant="primary" size="sm" icon="play" onClick={() => handleControl("start")} disabled={controlling}>
+                Iniciar
+              </Btn>
+            )}
+            {c.status === "RUNNING" && (
+              <>
+                <Btn variant="ghost" size="sm" icon="pause" onClick={() => handleControl("pause")} disabled={controlling}>
+                  Pausar
+                </Btn>
+                <Btn variant="ghost" size="sm" icon="x" onClick={() => handleControl("cancel")} disabled={controlling}
+                  style={{ color: "var(--red)", borderColor: "color-mix(in srgb,var(--red) 40%,var(--border-1))" }}>
+                  Cancelar
+                </Btn>
+              </>
+            )}
+            {c.status === "PAUSED" && (
+              <Btn variant="primary" size="sm" icon="play" onClick={() => handleControl("resume")} disabled={controlling}>
+                Reanudar
+              </Btn>
+            )}
+          </div>
+        }
+      />
+
+      {c.description && (
+        <div className="muted" style={{ margin: "-8px 0 16px", fontSize: 13 }}>
+          {c.description}
+        </div>
+      )}
 
       {/* ── Aviso de ventana fuera de horario (no está "colgada", solo esperando) ── */}
       {dialingBlocked && (
@@ -688,13 +645,13 @@ export function CampaignDetailPage() {
             flexWrap: "wrap",
             padding: "12px 16px",
             borderRadius: 14,
-            border: "1px solid color-mix(in srgb, var(--accent-amber) 40%, transparent)",
-            background: "color-mix(in srgb, var(--accent-amber) 12%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--gold) 40%, transparent)",
+            background: "var(--gold-soft)",
           }}
         >
-          <Icon.Clock size={18} style={{ color: "var(--accent-amber)", flexShrink: 0 }} />
+          <Icon.Clock size={18} style={{ color: "var(--gold-2)", flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+            <div style={{ fontWeight: 700, fontSize: 13.5 }}>
               Fuera de la ventana de {isWa ? "envío" : "llamadas"} (
               {String(win.start).padStart(2, "0")}:00–{String(win.end).padStart(2, "0")}:00)
             </div>
@@ -704,9 +661,9 @@ export function CampaignDetailPage() {
               forzar ahora.
             </div>
           </div>
-          <button className="btn btn--primary btn--sm" onClick={dialNow} disabled={controlling}>
-            <Icon.Play size={13} /> {isWa ? "Enviar ahora (24h)" : "Discar ahora (24h)"}
-          </button>
+          <Btn variant="primary" size="sm" icon="play" onClick={dialNow} disabled={controlling}>
+            {isWa ? "Enviar ahora (24h)" : "Discar ahora (24h)"}
+          </Btn>
         </div>
       )}
 
@@ -720,11 +677,11 @@ export function CampaignDetailPage() {
             flexWrap: "wrap",
             padding: "10px 14px",
             borderRadius: 14,
-            border: "1px solid color-mix(in srgb, var(--accent-cyan) 30%, transparent)",
-            background: "color-mix(in srgb, var(--accent-cyan) 10%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--cyan) 30%, transparent)",
+            background: "var(--cyan-soft)",
           }}
         >
-          <Icon.PhoneIn size={16} style={{ color: "var(--accent-cyan)", flexShrink: 0 }} />
+          <Icon.PhoneIn size={16} style={{ color: "var(--cyan-2)", flexShrink: 0 }} />
           <div className="muted" style={{ fontSize: 12 }}>
             En horario y con {counts.pending} pendiente{counts.pending === 1 ? "" : "s"}, pero
             todavía no hay llamadas en curso. En modo progresivo el discador espera a que haya un
@@ -733,22 +690,22 @@ export function CampaignDetailPage() {
         </div>
       )}
 
-      {/* ── Progress banner ──────────────────────────────────────── */}
-      <Card>
+      {/* ── Progress banner · ARIA accent-bar Card ───────────────── */}
+      <Card className="card__accent-bar" style={{ ["--_c" as string]: isWa ? "var(--green)" : "var(--accent)" }}>
         <CardBody>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
             <div>
               <div
+                className="tnum"
                 style={{
                   fontSize: 32,
-                  fontWeight: 700,
-                  letterSpacing: "-0.02em",
+                  fontWeight: 800,
+                  letterSpacing: "-0.03em",
                   lineHeight: 1.1,
                   color: "var(--text-1)",
-                  fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {completed}
+                <Num value={completed} />
                 <span style={{ fontSize: 18, color: "var(--text-3)", fontWeight: 400 }}>
                   {" "}
                   / {total}
@@ -769,7 +726,7 @@ export function CampaignDetailPage() {
                       border: "1px solid var(--border-1)",
                       cursor: "pointer",
                       background:
-                        filterStatus === "pending" ? "var(--accent-amber-soft)" : "transparent",
+                        filterStatus === "pending" ? "var(--gold-soft)" : "transparent",
                     }}
                     title="Filtrar pendientes"
                   >
@@ -795,7 +752,7 @@ export function CampaignDetailPage() {
                         style={{
                           cursor: "pointer",
                           outline:
-                            filterStatus === "done" ? "2px solid var(--accent-green)" : "none",
+                            filterStatus === "done" ? "2px solid var(--green)" : "none",
                         }}
                         title="Filtrar completados"
                       >
@@ -811,7 +768,7 @@ export function CampaignDetailPage() {
                         style={{
                           cursor: "pointer",
                           outline:
-                            filterStatus === "no_answer" ? "2px solid var(--accent-amber)" : "none",
+                            filterStatus === "no_answer" ? "2px solid var(--gold)" : "none",
                         }}
                         title="Filtrar sin contestar"
                       >
@@ -825,7 +782,7 @@ export function CampaignDetailPage() {
                         style={{
                           cursor: "pointer",
                           outline:
-                            filterStatus === "failed" ? "2px solid var(--accent-red)" : "none",
+                            filterStatus === "failed" ? "2px solid var(--red)" : "none",
                         }}
                         title="Filtrar fallidos"
                       >
@@ -842,22 +799,11 @@ export function CampaignDetailPage() {
               )}
             </div>
           </div>
-          <div
-            style={{
-              marginTop: 14,
-              height: 10,
-              width: "100%",
-              overflow: "hidden",
-              borderRadius: 999,
-              background: "var(--bg-2)",
-              border: "1px solid var(--border-1)",
-            }}
-          >
-            <div
+          <div className="bar" style={{ marginTop: 14, height: 10 }}>
+            <span
               style={{
-                height: "100%",
                 width: `${pct}%`,
-                background: "linear-gradient(90deg, var(--accent-amber), var(--accent-pink))",
+                background: isWa ? "var(--green)" : "var(--accent)",
                 transition: "width 0.3s ease",
               }}
             />
@@ -935,7 +881,7 @@ export function CampaignDetailPage() {
           style={{
             display: "flex",
             flexWrap: "wrap",
-            gap: 10,
+            gap: 12,
           }}
         >
           {statusCards.map((s) => {
@@ -944,70 +890,27 @@ export function CampaignDetailPage() {
             return (
               <button
                 key={s.key}
+                className="stat"
                 onClick={() => setFilterStatus(active ? null : s.key)}
                 style={{
-                  all: "unset",
+                  ["--_c" as string]: s.color,
                   cursor: "pointer",
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: active ? `1px solid ${s.color}` : "1px solid var(--border-1)",
-                  background: active ? "var(--bg-2)" : "var(--bg-1)",
                   textAlign: "left",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  transition: "border-color 0.15s ease, background 0.15s ease",
-                  boxShadow: active ? `0 0 0 3px ${s.color}22 inset` : "none",
                   flex: "1 1 160px",
                   maxWidth: 240,
                   minWidth: 160,
+                  borderColor: active ? s.color : undefined,
+                  boxShadow: active ? `0 0 0 3px color-mix(in srgb, ${s.color} 16%, transparent) inset` : undefined,
                 }}
                 title={`Filtrar por ${s.label.toLowerCase()}`}
               >
-                <span
-                  style={{
-                    display: "grid",
-                    placeItems: "center",
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
-                    background: `${s.color}1a`,
-                    color: s.color,
-                    flexShrink: 0,
-                  }}
-                >
-                  <Icn size={13} />
-                </span>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    minWidth: 0,
-                    lineHeight: 1.15,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 700,
-                      color: "var(--text-1)",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
-                    {counts[s.key]}
+                <div className="stat__top">
+                  <div className="stat__ico">
+                    <Icn size={15} />
                   </div>
-                  <div
-                    className="muted"
-                    style={{
-                      fontSize: 10.5,
-                      letterSpacing: "0.04em",
-                      textTransform: "uppercase",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {s.label}
-                  </div>
+                  <div className="stat__label">{s.label}</div>
                 </div>
+                <div className="stat__val tnum">{counts[s.key]}</div>
               </button>
             );
           })}
@@ -1070,7 +973,9 @@ export function CampaignDetailPage() {
       {/* ── Contacts table ───────────────────────────────────────── */}
       <Card>
         <div className="card__head" style={{ flexWrap: "wrap", gap: 8 }}>
-          <div className="card__title">Contactos</div>
+          <div className="card__title">
+            <Icon.Users size={17} /> Contactos
+          </div>
           {filterStatus && (
             <span className="chip chip--amber" style={{ fontSize: 10.5 }}>
               filtro: {filterStatus}
@@ -1108,18 +1013,20 @@ export function CampaignDetailPage() {
           <span className="card__sub">
             {visibleContacts.length}/{contacts.length}
           </span>
-          <button
-            className="btn btn--sm"
+          <Btn
+            variant="ghost"
+            size="sm"
+            icon="download"
             onClick={handleExportCSV}
             disabled={visibleContacts.length === 0}
             title="Exportar contactos como CSV"
           >
-            <Icon.Download size={11} /> CSV
-          </button>
+            CSV
+          </Btn>
           {c.status !== "COMPLETED" && c.status !== "CANCELLED" && (
-            <button className="btn btn--sm" onClick={() => setAddContactsOpen(true)}>
-              <Icon.Plus size={11} /> Agregar
-            </button>
+            <Btn variant="ghost" size="sm" icon="plus" onClick={() => setAddContactsOpen(true)}>
+              Agregar
+            </Btn>
           )}
         </div>
 
@@ -1130,13 +1037,13 @@ export function CampaignDetailPage() {
             style={{
               padding: "8px 14px",
               borderBottom: "1px solid var(--border-1)",
-              background: "var(--accent-amber-soft)",
+              background: "var(--gold-soft)",
               gap: 10,
               fontSize: 12,
             }}
           >
-            <Icon.Check size={13} style={{ color: "var(--accent-amber)" }} />
-            <span style={{ fontWeight: 500, color: "var(--text-1)" }}>
+            <Icon.Check size={13} style={{ color: "var(--gold-2)" }} />
+            <span style={{ fontWeight: 600, color: "var(--text-1)" }}>
               {selectedRowIds.size} seleccionado
               {selectedRowIds.size === 1 ? "" : "s"}
             </span>
@@ -1146,22 +1053,23 @@ export function CampaignDetailPage() {
                 activa)
               </span>
             )}
-            <button
-              className="btn btn--sm"
+            <Btn
+              variant="ghost"
+              size="sm"
               style={{
                 marginLeft: "auto",
-                color: "var(--accent-red)",
-                borderColor: "var(--accent-red)",
+                color: "var(--red)",
+                borderColor: "color-mix(in srgb,var(--red) 40%,var(--border-1))",
               }}
               onClick={handleBulkDelete}
               disabled={contactMutations.pending || lockedRowCount === selectedRowIds.size}
             >
-              <Icon.Trash size={11} />
+              <Icon.Trash size={13} />
               Eliminar {selectedRowIds.size - lockedRowCount}
-            </button>
-            <button className="btn btn--ghost btn--sm" onClick={() => setSelectedRowIds(new Set())}>
+            </Btn>
+            <Btn variant="quiet" size="sm" onClick={() => setSelectedRowIds(new Set())}>
               Limpiar
-            </button>
+            </Btn>
           </div>
         )}
         <CardBody flush>
@@ -1262,7 +1170,7 @@ export function CampaignDetailPage() {
                       key={row.rowId}
                       style={{
                         borderTop: "1px solid var(--border-1)",
-                        background: isSelected ? "var(--accent-amber-soft)" : undefined,
+                        background: isSelected ? "var(--gold-soft)" : undefined,
                         transition: "background 0.12s ease",
                       }}
                     >
@@ -1399,7 +1307,7 @@ export function CampaignDetailPage() {
                             disabled={locked || contactMutations.pending}
                             title={locked ? "No se puede eliminar llamada activa" : "Eliminar"}
                             style={{
-                              color: locked ? undefined : "var(--accent-red)",
+                              color: locked ? undefined : "var(--red)",
                             }}
                           >
                             <Icon.Trash size={12} />

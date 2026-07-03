@@ -174,17 +174,19 @@ function ExecInsightStrip({
 }
 
 function ExecSkeleton() {
+  // Refleja el layout REAL (sin bloque hero): barra de período + tira en vivo,
+  // franja de insights, KPIs y charts. Antes dibujaba un .exec-head con título
+  // grande + pill que parecía el bloque hero que ya se retiró.
   return (
     <div className="exec">
-      <div className="exec-head">
-        <div>
-          <div className="exec-skel" style={{ width: 60, height: 12, marginBottom: 10 }} />
-          <div className="exec-skel" style={{ width: 240, height: 30 }} />
-          <div className="exec-skel" style={{ width: 320, height: 13, marginTop: 10 }} />
-        </div>
-        <div className="exec-skel" style={{ width: 200, height: 32, borderRadius: 999 }} />
+      <div className="exec-bar" style={{ marginBottom: 18 }}>
+        <div className="exec-skel" style={{ width: 280, height: 40, borderRadius: 12 }} />
+        <div className="exec-skel" style={{ flex: 1, maxWidth: 420, height: 22, borderRadius: 999, marginLeft: "auto" }} />
       </div>
-      <div className="exec-skel" style={{ width: 280, height: 38, borderRadius: 11, marginBottom: 22 }} />
+      <div className="exec-row exec-row--main" style={{ marginBottom: 18 }}>
+        <div className="exec-skel" style={{ height: 84, borderRadius: 16 }} />
+        <div className="exec-skel" style={{ height: 84, borderRadius: 16 }} />
+      </div>
       <div className="exec-kpis">
         {Array.from({ length: 7 }).map((_, i) => (
           <div key={i} className="exec-skel" style={{ height: 116, borderRadius: 14 }} />
@@ -476,7 +478,7 @@ export function ExecutiveView({
           {data.csat.encuestas > 0 ? (
             <div style={{ display: "grid", placeItems: "center", padding: "6px 0" }}>
               <div style={{ width: "100%", maxWidth: 220 }}>
-                <ExecGaugeEChart value={data.csat.value} label="satisfacción" color="#138354" />
+                <ExecGaugeEChart value={data.csat.value} label="satisfacción" color="#1F8A5B" />
               </div>
               <div className="exec-gauge-meta">
                 Meta {data.csat.meta}% ·{" "}

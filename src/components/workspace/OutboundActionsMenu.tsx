@@ -1,30 +1,42 @@
 import { useState } from "react";
 import { useCCP } from "@/hooks/useCCP";
-import { SoftphoneDialer } from "@/components/vox/SoftphoneDialer";
 import { QuickConnectsList } from "./QuickConnectsList";
 import { CreateTaskForm } from "./CreateTaskForm";
 import { NewEmailForm } from "./NewEmailForm";
 import { QuickCaptureLeadForm } from "./QuickCaptureLeadForm";
-import * as Icon from "@/components/vox/primitives";
+import { Icon } from "@/components/aria";
 
-type View = "menu" | "number-pad" | "quick-connects" | "create-task" | "new-email" | "capture-lead";
+type View = "menu" | "quick-connects" | "create-task" | "new-email" | "capture-lead";
 
 /**
- * Outbound actions menu — vertical stack of 4 pill-shaped buttons
- * modeled on the native Amazon Connect CCP. Selecting a pill expands
- * the corresponding sub-view IN-PLACE inside the same softphone column
- * (no modals, no overlays). The agent always sees:
+ * Outbound actions menu — tiles al estilo de la "Vista demo" (StartContact
+ * del aria-cockpit): cuadrícula 2-col sobre `.card` con ícono en cuadrito de
+ * color (`.tl__ico`) + título + subtítulo. Al elegir un tile se expande su
+ * sub-vista IN-PLACE dentro de la misma columna (sin modales ni overlays):
  *
- *   [< Atrás · Title]   ← back row when sub-view active
- *   [sub-view body]
+ *   [< Volver · Título]   ← fila de retorno con la sub-vista activa
+ *   [cuerpo de la sub-vista]
  *
- * Sub-views:
- *   - Number pad     → embedded SoftphoneDialer
- *   - Quick connects → embedded QuickConnectsList
- *   - Create Task    → "Próximamente" panel (needs backend wiring)
- *   - New Email      → "Próximamente" panel (needs Connect Email)
+ * El tile "Marcador" se omite a propósito: el Dialer que envuelve este menú
+ * ya expone su propia pestaña "Marcador". Sub-vistas reales preservadas:
+ *   - Quick connects → QuickConnectsList embebido (Amazon Connect)
+ *   - Capturar lead  → QuickCaptureLeadForm
+ *   - Tarea          → CreateTaskForm
+ *   - Email          → NewEmailForm
  */
-export function OutboundActionsMenu() {
+export function OutboundActionsMenu({
+  hideTitle = false,
+  variant = "tiles",
+}: {
+  /** Oculta el encabezado "Iniciar contacto" del menú — útil cuando el
+   *  componente se embebe dentro de una Card que ya lleva ese título
+   *  (p.ej. la pestaña "Más acciones" del cockpit idle). Sin la prop,
+   *  el título se muestra (comportamiento original del softphone .call). */
+  hideTitle?: boolean;
+  /** "tiles" = grid 2-col; "rail" = columna flotante al costado del
+   *  marcador (aprovecha el espacio lateral del tab Marcador). */
+  variant?: "tiles" | "rail";
+} = {}) {
   const { agentState } = useCCP();
   const [view, setView] = useState<View>("menu");
 
@@ -36,39 +48,17 @@ export function OutboundActionsMenu() {
   // ───────────────────────── Sub-view router ─────────────────────
   if (view !== "menu") {
     const TITLES: Record<Exclude<View, "menu">, string> = {
-      "number-pad": "Marcador",
       "quick-connects": "Quick connects",
       "create-task": "Crear tarea",
       "new-email": "Nuevo email",
       "capture-lead": "Capturar lead",
     };
-    const ICONS: Record<Exclude<View, "menu">, React.ReactNode> = {
-      "number-pad": <Icon.Pad size={14} />,
-      "quick-connects": <Icon.User size={14} />,
-      "create-task": <Icon.Note size={14} />,
-      "new-email": <Icon.Mail size={14} />,
-      "capture-lead": <Icon.User size={14} />,
-    };
 
     return (
-      <div
-        style={{
-          padding: "14px 14px 18px",
-          borderTop: "1px solid var(--border-1)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        {/* Back row — replaces the section header so the column stays
-            compact and the agent always knows how to return. */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
+      <div>
+        {/* Fila "Volver" — estilo demo (SubHeader del StartContact):
+            botón fantasma pequeño + título de la sub-vista. */}
+        <div className="row gap8" style={{ marginBottom: 12 }}>
           <button
             type="button"
             onClick={() => setView("menu")}
@@ -76,46 +66,22 @@ export function OutboundActionsMenu() {
             aria-label="Volver al menú"
             title="Volver al menú"
           >
-            <Icon.ArrowLeft size={14} />
+            <Icon name="chevL" size={14} />
           </button>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 12.5,
-              fontWeight: 600,
-              color: "var(--text-1)",
-            }}
-          >
-            {ICONS[view]}
-            {TITLES[view]}
-          </span>
+          <b style={{ fontSize: 13 }}>{TITLES[view]}</b>
         </div>
 
-        {/* Sub-view body. The SoftphoneDialer & QuickConnectsList own
-            their own internal layout; we just give them the column. */}
-        {view === "number-pad" && (
-          <div style={{ margin: "0 -14px -18px" }}>
-            {/* Negative margins cancel the parent padding so the dialer's
-                own internal padding (14px) lines up flush with the column
-                edges, matching how it looked before this refactor. */}
-            <SoftphoneDialer />
-          </div>
-        )}
-
+        {/* Cuerpo de la sub-vista. QuickConnectsList / los formularios
+            manejan su propio layout interno; aquí sólo les damos la columna. */}
         {view === "quick-connects" && (
           <QuickConnectsList onConnected={() => setView("menu")} />
         )}
-
         {view === "create-task" && (
           <CreateTaskForm onCreated={() => setView("menu")} />
         )}
-
         {view === "new-email" && (
           <NewEmailForm onSent={() => setView("menu")} />
         )}
-
         {view === "capture-lead" && (
           <QuickCaptureLeadForm onCreated={() => setView("menu")} />
         )}
@@ -124,84 +90,121 @@ export function OutboundActionsMenu() {
   }
 
   // ───────────────────────── Menu (default) ──────────────────────
-  const cards: Array<{
+  // Tiles al estilo demo: ícono en `.tl__ico` de color + label + sub.
+  const tiles: Array<{
     key: Exclude<View, "menu">;
     label: string;
     sub: string;
     color: string;
-    icon: React.ReactNode;
+    icon: string;
   }> = [
-    {
-      key: "number-pad",
-      label: "Marcador",
-      sub: "Llamar a un número",
-      color: "var(--accent-green)",
-      icon: <Icon.Pad size={16} />,
-    },
     {
       key: "quick-connects",
       label: "Quick connects",
       sub: "Colas y agentes",
-      color: "var(--accent-cyan)",
-      icon: <Icon.User size={16} />,
-    },
-    {
-      key: "create-task",
-      label: "Tarea",
-      sub: "Crear seguimiento",
-      color: "var(--accent-violet)",
-      icon: <Icon.Note size={16} />,
-    },
-    {
-      key: "new-email",
-      label: "Email",
-      sub: "Enviar correo",
-      color: "var(--accent-amber)",
-      icon: <Icon.Mail size={16} />,
+      color: "var(--cyan)",
+      icon: "users",
     },
     {
       key: "capture-lead",
       label: "Capturar lead",
       sub: "Referido / nuevo nº",
-      color: "var(--accent-green)",
-      icon: <Icon.User size={16} />,
+      color: "var(--green)",
+      icon: "userplus",
+    },
+    {
+      key: "create-task",
+      label: "Tarea",
+      sub: "Crear seguimiento",
+      color: "var(--iris)",
+      icon: "check",
+    },
+    {
+      key: "new-email",
+      label: "Email",
+      sub: "Enviar correo",
+      color: "var(--gold)",
+      icon: "mail",
     },
   ];
 
-  return (
-    <div className="vox-start">
-      <div className="vox-start__title">Iniciar contacto</div>
-      <div className="vox-start__grid">
-        {cards.map((c) => (
+  const outboundHint = !canOutbound ? (
+    <div
+      className="dim"
+      style={{
+        fontSize: 11,
+        textAlign: "center",
+        lineHeight: 1.5,
+        padding: "10px 0 2px",
+      }}
+    >
+      Cambia tu estado a Available para Quick connects
+    </div>
+  ) : null;
+
+  // Rail: columna vertical de botones flotantes al costado del marcador.
+  if (variant === "rail") {
+    return (
+      <div className="actrail">
+        <div className="actrail__hd">Más acciones</div>
+        {tiles.map((t) => (
           <button
-            key={c.key}
+            key={t.key}
             type="button"
-            onClick={() => setView(c.key)}
-            className="vox-start__card"
-            style={{ ["--vsa" as string]: c.color }}
+            className="actrail__btn"
+            onClick={() => setView(t.key)}
           >
-            <span className="vox-start__card-icon">{c.icon}</span>
+            <div className="tl__ico" style={{ ["--_c" as string]: t.color }}>
+              <Icon name={t.icon} size={16} />
+            </div>
+            <div className="grow" style={{ minWidth: 0 }}>
+              <div className="actrail__lbl">{t.label}</div>
+              <div className="dim actrail__sub">{t.sub}</div>
+            </div>
+            <Icon name="chevR" size={15} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
+          </button>
+        ))}
+        {outboundHint}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {!hideTitle && (
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
+          Iniciar contacto
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {tiles.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setView(t.key)}
+            className="card card__pad"
+            style={{
+              textAlign: "left",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              alignItems: "flex-start",
+            }}
+          >
+            <div className="tl__ico" style={{ ["--_c" as string]: t.color }}>
+              <Icon name={t.icon} size={16} />
+            </div>
             <div>
-              <div className="vox-start__card-label">{c.label}</div>
-              <div className="vox-start__card-sub">{c.sub}</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{t.label}</div>
+              <div className="dim" style={{ fontSize: 11 }}>
+                {t.sub}
+              </div>
             </div>
           </button>
         ))}
       </div>
-      {!canOutbound && (
-        <div
-          className="muted"
-          style={{
-            fontSize: 11,
-            textAlign: "center",
-            lineHeight: 1.5,
-            padding: "6px 0 2px",
-          }}
-        >
-          Cambia tu estado a Available para Quick connects
-        </div>
-      )}
+      {outboundHint}
     </div>
   );
 }
-

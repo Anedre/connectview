@@ -1,10 +1,38 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Sun, Moon, Bell, Question, ChatsCircle, Stack } from "@phosphor-icons/react";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useCCP, type ConnectAgentState } from "@/hooks/useCCP";
 import { useTopBarSlot } from "@/components/layout/TopBarSlot";
+import { useTheme } from "@/context/ThemeContext";
 import * as Icon from "@/components/vox/primitives";
 import { ProgramSwitcher } from "@/components/layout/ProgramSwitcher";
+import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
+
+/** ARIA sun/moon segmented theme toggle, wired to the real ThemeContext. */
+function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme();
+  return (
+    <div className="theme-tog" role="group" aria-label="Tema">
+      <button
+        type="button"
+        aria-pressed={resolvedTheme === "light"}
+        onClick={() => setTheme("light")}
+        title="Claro"
+      >
+        <Sun size={15} />
+      </button>
+      <button
+        type="button"
+        aria-pressed={resolvedTheme === "dark"}
+        onClick={() => setTheme("dark")}
+        title="Oscuro"
+      >
+        <Moon size={15} />
+      </button>
+    </div>
+  );
+}
 
 /**
  * AppTopBar — la barra superior unificada con el sidebar (chrome en "L"): el
@@ -73,11 +101,14 @@ function crumbFor(path: string): { section: string; label: string } {
 
 export function AppTopBar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const crumb = crumbFor(location.pathname);
   const { isOnboarding } = useConnectAuth();
   const { agentState, availableStates, changeAgentState, error } = useCCP();
   const pageActions = useTopBarSlot();
   const [statusOpen, setStatusOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   const ccpError = isOnboarding ? null : error;
   const current =
@@ -87,19 +118,23 @@ export function AppTopBar() {
   const selectable = availableStates.filter((s) => s.type !== "system");
 
   return (
-    <header className="app__topbar">
-      <nav className="tbx__crumb" aria-label="Ruta">
-        <span className="tbx__crumb-section">{crumb.section}</span>
+    <header className="tb">
+      <nav className="tb__crumb" aria-label="Ruta">
+        <span>{crumb.section}</span>
         {crumb.label && (
           <>
             <Icon.ChevRight size={13} />
-            <span className="tbx__crumb-page">{crumb.label}</span>
+            <b>{crumb.label}</b>
           </>
         )}
       </nav>
 
+      <ProgramSwitcher />
+
+      <div className="tb__spacer" />
+
       <div className="tbx__right">
-        <ProgramSwitcher />
+        <ThemeToggle />
 
         {ccpError && (
           <span className="chip chip--red" role="alert" title={ccpError} style={{ maxWidth: 240 }}>
@@ -173,6 +208,66 @@ export function AppTopBar() {
 
         {pageActions && <div className="tbx__pageactions">{pageActions}</div>}
 
+        <button
+          type="button"
+          className="tb__ico"
+          title="Atajos de teclado"
+          onClick={() => setHelpOpen(true)}
+        >
+          <Question size={18} />
+        </button>
+
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            className="tb__ico"
+            title="Notificaciones"
+            aria-expanded={notifOpen}
+            onClick={() => setNotifOpen((o) => !o)}
+          >
+            <Bell size={18} />
+          </button>
+          {notifOpen && (
+            <>
+              <div
+                onClick={() => setNotifOpen(false)}
+                style={{ position: "fixed", inset: 0, zIndex: 150 }}
+              />
+              <div
+                className="tbx__menu"
+                style={{ width: 320, right: 0, left: "auto", zIndex: 151 }}
+              >
+                <div className="tbx__menu-head">Notificaciones</div>
+                <div style={{ padding: "26px 20px", textAlign: "center" }}>
+                  <Bell size={24} style={{ color: "var(--text-3)", opacity: 0.5 }} />
+                  <div style={{ marginTop: 10, fontSize: 13.5, fontWeight: 700, color: "var(--text-1)" }}>
+                    Estás al día
+                  </div>
+                  <div style={{ marginTop: 3, fontSize: 12, color: "var(--text-3)" }}>
+                    No hay notificaciones nuevas.
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, padding: 10, borderTop: "1px solid var(--border-1)" }}>
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    style={{ flex: 1 }}
+                    onClick={() => { setNotifOpen(false); navigate("/inbox"); }}
+                  >
+                    <ChatsCircle size={15} /> Conversaciones
+                  </button>
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    style={{ flex: 1 }}
+                    onClick={() => { setNotifOpen(false); navigate("/queue"); }}
+                  >
+                    <Stack size={15} /> Cola en vivo
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
         {statusOpen && (
           <div
             onClick={() => setStatusOpen(false)}
@@ -180,6 +275,9 @@ export function AppTopBar() {
           />
         )}
       </div>
+
+      {/* Ayuda → atajos de teclado (controlado por el botón "?"). */}
+      <ShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </header>
   );
 }

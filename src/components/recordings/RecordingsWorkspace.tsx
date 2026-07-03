@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Phone, MessageCircle, Mail, Paperclip, History, Search, Sparkles,
-  ChevronDown, ArrowRight, LayoutGrid, X, Share2, Download, RefreshCw,
+  Phone, MessageCircle, Mail, Search, Sparkles,
+  X, Share2, Download, RefreshCw,
 } from "lucide-react";
+import { Icon, Btn, Card, Pill, Av } from "@/components/aria";
+import type { IconName } from "@/components/aria";
 import { getApiEndpoints } from "@/lib/api";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useLeadOverview, type LeadOverview } from "@/hooks/useLeadOverview";
@@ -31,16 +33,15 @@ type Lens = "resumen" | "calls" | "whatsapp" | "emails" | "files" | "history";
 interface ChannelDef {
   id: Exclude<Lens, "resumen">;
   label: string;
-  icon: React.ElementType;
+  icon: IconName;
   tone: string;
-  soft: string;
 }
 const CHANNELS: ChannelDef[] = [
-  { id: "calls", label: "Llamadas", icon: Phone, tone: "var(--cian)", soft: "var(--cian-soft)" },
-  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle, tone: "var(--verde)", soft: "var(--verde-soft)" },
-  { id: "emails", label: "Emails", icon: Mail, tone: "var(--ambar)", soft: "var(--ambar-soft)" },
-  { id: "files", label: "Archivos", icon: Paperclip, tone: "var(--violeta)", soft: "var(--violeta-soft)" },
-  { id: "history", label: "Actividad", icon: History, tone: "var(--text-2)", soft: "var(--bg-3)" },
+  { id: "calls", label: "Llamadas", icon: "phone", tone: "var(--cyan)" },
+  { id: "whatsapp", label: "WhatsApp", icon: "wa", tone: "var(--green)" },
+  { id: "emails", label: "Emails", icon: "mail", tone: "var(--gold)" },
+  { id: "files", label: "Archivos", icon: "paperclip", tone: "var(--iris)" },
+  { id: "history", label: "Actividad", icon: "history", tone: "var(--text-2)" },
 ];
 
 function originTone(src?: string): { label: string; bg: string } {
@@ -104,18 +105,49 @@ function mapLead(l: Record<string, unknown>): RecentLead {
 const MES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+/** Sentimiento → color / etiqueta del heatmap (severidad-first en empate). */
+const SENT_COLOR: Record<string, string> = {
+  POSITIVE: "var(--green)",
+  NEGATIVE: "var(--red)",
+  MIXED: "var(--gold)",
+  NEUTRAL: "var(--text-3)",
+};
+const SENT_LABEL: Record<string, string> = {
+  POSITIVE: "positivo",
+  NEGATIVE: "negativo",
+  MIXED: "mixto",
+  NEUTRAL: "neutral",
+};
+function dominantSentiment(s: Record<string, number>): string {
+  let best = "";
+  let bestN = 0;
+  for (const k of ["NEGATIVE", "MIXED", "POSITIVE", "NEUTRAL"]) {
+    const n = s[k] || 0;
+    if (n > bestN) {
+      best = k;
+      bestN = n;
+    }
+  }
+  return best;
+}
+
 /** Mapa de actividad anual (estilo contribuciones): una celda por día de los
- *  últimos ~6 meses, intensidad por nº de llamadas. Click → pestaña Llamadas. */
+ *  últimos ~6 meses, coloreada por el TONO dominante del día (verde/ámbar/rojo/
+ *  gris) con intensidad por volumen. Click → pestaña Llamadas. */
 function ActivityHeatmap({ phone, onGoto }: { phone: string; onGoto: (l: Lens) => void }) {
   const { rows, loading } = useCallHistory(phone);
   const byDay = useMemo(() => {
-    const m: Record<string, number> = {};
+    const m: Record<string, { n: number; s: Record<string, number> }> = {};
     for (const r of rows) {
       const ch = (r.channel || "").toUpperCase();
       if (ch !== "VOICE" && ch !== "TELEPHONY") continue;
       const d = new Date(r.initiationTimestamp);
       if (Number.isNaN(d.getTime())) continue;
-      m[dayKey(d)] = (m[dayKey(d)] || 0) + 1;
+      const k = dayKey(d);
+      if (!m[k]) m[k] = { n: 0, s: {} };
+      m[k].n += 1;
+      const sent = String(r.sentiment || "").toUpperCase();
+      if (sent) m[k].s[sent] = (m[k].s[sent] || 0) + 1;
     }
     return m;
   }, [rows]);
@@ -126,14 +158,15 @@ function ActivityHeatmap({ phone, onGoto }: { phone: string; onGoto: (l: Lens) =
     const start = new Date(today);
     start.setDate(start.getDate() - (WEEKS * 7 - 1));
     start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); // alinear a lunes
-    const grid: { date: Date; n: number; future: boolean }[][] = [];
+    const grid: { date: Date; n: number; sent: string; future: boolean }[][] = [];
     const labels: { col: number; label: string }[] = [];
     const cur = new Date(start);
     let lastMonth = -1;
     for (let w = 0; w < WEEKS; w++) {
-      const col: { date: Date; n: number; future: boolean }[] = [];
+      const col: { date: Date; n: number; sent: string; future: boolean }[] = [];
       for (let d = 0; d < 7; d++) {
-        col.push({ date: new Date(cur), n: byDay[dayKey(cur)] || 0, future: cur > today });
+        const cd = byDay[dayKey(cur)];
+        col.push({ date: new Date(cur), n: cd?.n || 0, sent: cd ? dominantSentiment(cd.s) : "", future: cur > today });
         if (d === 0 && cur.getMonth() !== lastMonth) { labels.push({ col: w, label: MES[cur.getMonth()] }); lastMonth = cur.getMonth(); }
         cur.setDate(cur.getDate() + 1);
       }
@@ -145,11 +178,15 @@ function ActivityHeatmap({ phone, onGoto }: { phone: string; onGoto: (l: Lens) =
   const intensity = (n: number) => (n <= 0 ? 0 : n === 1 ? 0.34 : n <= 3 ? 0.55 : n <= 5 ? 0.78 : 1);
 
   return (
-    <div className="hg-card" style={{ padding: "18px 20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12 }}>
-        <div style={{ fontWeight: 800, fontSize: 15 }}>Mapa de actividad</div>
-        <button className="hg-fchip" onClick={() => onGoto("calls")}>Ver llamadas <ArrowRight size={13} style={{ verticalAlign: -2 }} /></button>
-      </div>
+    <Card
+      title="Mapa de actividad"
+      icon="calendar"
+      extra={
+        <Btn variant="ghost" size="sm" iconR="arrowRight" onClick={() => onGoto("calls")}>
+          Ver llamadas
+        </Btn>
+      }
+    >
       {loading ? (
         <div className="hg-heat" aria-label="Cargando actividad">
           {Array.from({ length: 26 }).map((_, w) => (
@@ -172,10 +209,10 @@ function ActivityHeatmap({ phone, onGoto }: { phone: string; onGoto: (l: Lens) =
                   <span
                     key={d}
                     className="hg-heat-cell"
-                    title={cell.future ? "" : `${cell.date.getDate()} ${MES[cell.date.getMonth()]} · ${cell.n} llamada${cell.n === 1 ? "" : "s"}`}
+                    title={cell.future ? "" : `${cell.date.getDate()} ${MES[cell.date.getMonth()]} · ${cell.n} llamada${cell.n === 1 ? "" : "s"}${cell.sent ? ` · ${SENT_LABEL[cell.sent] || ""}` : ""}`}
                     onClick={() => cell.n > 0 && onGoto("calls")}
                     style={{
-                      background: cell.n > 0 ? "var(--cian)" : "var(--bg-3)",
+                      background: cell.n > 0 ? SENT_COLOR[cell.sent] || "var(--cyan)" : "var(--bg-3)",
                       opacity: cell.future ? 0 : cell.n > 0 ? intensity(cell.n) : 1,
                       cursor: cell.n > 0 ? "pointer" : "default",
                     }}
@@ -185,27 +222,28 @@ function ActivityHeatmap({ phone, onGoto }: { phone: string; onGoto: (l: Lens) =
             ))}
           </div>
           <div className="hg-heat-legend">
-            <span>Menos</span>
-            <span className="hg-heat-cell" style={{ background: "var(--bg-3)" }} />
-            <span className="hg-heat-cell" style={{ background: "var(--cian)", opacity: 0.34 }} />
-            <span className="hg-heat-cell" style={{ background: "var(--cian)", opacity: 0.55 }} />
-            <span className="hg-heat-cell" style={{ background: "var(--cian)", opacity: 0.78 }} />
-            <span className="hg-heat-cell" style={{ background: "var(--cian)", opacity: 1 }} />
-            <span>Más</span>
+            <span className="hg-heat-cell" style={{ background: "var(--green)" }} title="Día positivo" />
+            <span style={{ marginRight: 10 }}>positivo</span>
+            <span className="hg-heat-cell" style={{ background: "var(--gold)" }} title="Día mixto" />
+            <span style={{ marginRight: 10 }}>mixto</span>
+            <span className="hg-heat-cell" style={{ background: "var(--red)" }} title="Día negativo" />
+            <span style={{ marginRight: 10 }}>negativo</span>
+            <span className="hg-heat-cell" style={{ background: "var(--text-3)" }} title="Neutral o sin dato" />
+            <span>neutral · intensidad = volumen</span>
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
 /** Foto de la relación a partir de los conteos por canal de useLeadOverview. */
 function relationSummary(ov: LeadOverview) {
   const ch = [
-    { key: "calls", label: "Llamadas", count: ov.calls?.count ?? 0, lastTs: ov.calls?.lastTs, tone: "--cian" },
-    { key: "whatsapp", label: "WhatsApp", count: ov.whatsapp?.count ?? 0, lastTs: ov.whatsapp?.lastTs, tone: "--verde" },
-    { key: "emails", label: "Emails", count: ov.emails?.count ?? 0, lastTs: ov.emails?.lastTs, tone: "--ambar" },
-    { key: "files", label: "Archivos", count: ov.files?.count ?? 0, lastTs: undefined as string | undefined, tone: "--violeta" },
+    { key: "calls", label: "Llamadas", count: ov.calls?.count ?? 0, lastTs: ov.calls?.lastTs, tone: "--cyan" },
+    { key: "whatsapp", label: "WhatsApp", count: ov.whatsapp?.count ?? 0, lastTs: ov.whatsapp?.lastTs, tone: "--green" },
+    { key: "emails", label: "Emails", count: ov.emails?.count ?? 0, lastTs: ov.emails?.lastTs, tone: "--gold" },
+    { key: "files", label: "Archivos", count: ov.files?.count ?? 0, lastTs: undefined as string | undefined, tone: "--iris" },
   ];
   const total = ch.reduce((a, c) => a + c.count, 0);
   const last = ch.filter((c) => c.lastTs).sort((a, b) => (a.lastTs! < b.lastTs! ? 1 : -1))[0];
@@ -332,26 +370,49 @@ function Hero({ lead, ov, stageLabel, onSwitch, onOpenAI }: {
   const { last } = relationSummary(ov);
   const digits = (lead.phone || "").replace(/\D/g, "");
   return (
-    <div className="hg-card hg-hero">
-      <div className="hg-hero__av">{initials(name)}</div>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <button className="hg-hero__switch" onClick={onSwitch} title="Cambiar de contacto (⌘K)">
-          <span className="hg-hero__name">{name}</span>
-          <ChevronDown size={18} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
-        </button>
-        <div className="hg-hero__meta">
-          <span className="hg-chip" style={{ background: origin.bg, color: "#fff" }}>{origin.label}</span>
-          {stageLabel && <span className="hg-chip">{stageLabel}</span>}
-          {lead.company && <span className="hg-chip">{lead.company}</span>}
-          {lead.phone && <span className="hg-chip mono">{lead.phone}</span>}
-          {last && <span className="hg-chip" style={{ background: "var(--cian-soft)", color: "var(--cian-2)" }}>Activo · {relTime(last.lastTs)}</span>}
+    <div className="card card__pad" style={{ marginBottom: 14 }}>
+      <div className="row between wrap gap12">
+        <div className="row gap14" style={{ minWidth: 0 }}>
+          <Av name={name} size={52} radius={15} color="var(--cyan)" style={{ flex: "0 0 auto" }} />
+          <div style={{ minWidth: 0 }}>
+            <button
+              className="row gap6"
+              onClick={onSwitch}
+              title="Cambiar de contacto (⌘K)"
+              style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", maxWidth: "100%" }}
+            >
+              <span style={{ fontSize: 18, fontWeight: 800, color: "var(--text-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>
+              <Icon name="chevD" size={18} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
+            </button>
+            <div className="row gap8 wrap" style={{ marginTop: 5 }}>
+              <span className="pill" style={{ background: origin.bg, color: "#fff" }}>{origin.label}</span>
+              {stageLabel && <Pill tone="accent">{stageLabel}</Pill>}
+              {lead.company && <Pill icon="building">{lead.company}</Pill>}
+              {lead.phone && <Pill icon="phone" className="mono">{lead.phone}</Pill>}
+              {last && <Pill tone="cyan">Activo · {relTime(last.lastTs)}</Pill>}
+            </div>
+          </div>
         </div>
-      </div>
-      <div className="hg-hero__actions">
-        {lead.phone && <a className="hg-act" href={`tel:${lead.phone}`} title="Llamar" style={{ color: "var(--cian)" }}><Phone size={17} /></a>}
-        {digits && <a className="hg-act" href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer" title="WhatsApp" style={{ color: "var(--verde)" }}><MessageCircle size={17} /></a>}
-        {lead.email && <a className="hg-act" href={`mailto:${lead.email}`} title="Email" style={{ color: "var(--ambar)" }}><Mail size={17} /></a>}
-        <button className="hg-btn hg-btn--primary" onClick={onOpenAI} style={{ background: "var(--violeta)" }}><Sparkles size={15} /> Resumen IA</button>
+        <div className="row gap6">
+          {lead.phone && (
+            <a href={`tel:${lead.phone}`} title="Llamar" className="btn btn--ghost btn--sm btn--icon" style={{ color: "var(--cyan)" }}>
+              <Phone size={16} />
+            </a>
+          )}
+          {digits && (
+            <a href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer" title="WhatsApp" className="btn btn--ghost btn--sm btn--icon" style={{ color: "var(--green)" }}>
+              <MessageCircle size={16} />
+            </a>
+          )}
+          {lead.email && (
+            <a href={`mailto:${lead.email}`} title="Email" className="btn btn--ghost btn--sm btn--icon" style={{ color: "var(--gold)" }}>
+              <Mail size={16} />
+            </a>
+          )}
+          <Btn variant="primary" size="sm" icon="sparkle" onClick={onOpenAI}>
+            Resumen IA
+          </Btn>
+        </div>
       </div>
     </div>
   );
@@ -361,38 +422,33 @@ function Hero({ lead, ov, stageLabel, onSwitch, onOpenAI }: {
 function ChannelNav({ active, onChange, counts }: {
   active: Lens; onChange: (l: Lens) => void; counts: Record<string, number | undefined>;
 }) {
-  const resumenOn = active === "resumen";
+  const tabs: { id: Lens; label: string; icon: IconName }[] = [
+    { id: "resumen", label: "Resumen", icon: "eye" },
+    ...CHANNELS.map((c) => ({ id: c.id as Lens, label: c.label, icon: c.icon })),
+  ];
   return (
-    <nav className="hg-chnav" aria-label="Canales">
-      <button
-        className={`hg-chnav__btn ${resumenOn ? "hg-chnav__btn--on" : ""}`}
-        onClick={() => onChange("resumen")}
-        style={resumenOn ? { background: "var(--bg-1)", boxShadow: "var(--sh-2)" } : undefined}
-      >
-        <span className="hg-chnav__chip" style={{ background: "var(--bg-3)", color: "var(--text-1)" }}><LayoutGrid size={17} /></span>
-        <span className="hg-chnav__col">
-          <span className="hg-chnav__label" style={{ fontWeight: 800, fontSize: 13, color: "var(--text-1)" }}>Resumen</span>
-          <span style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 600 }}>Vista general</span>
-        </span>
-      </button>
-      <span className="hg-chnav__div" />
-      {CHANNELS.map((c) => {
-        const on = active === c.id;
-        const n = counts[c.id];
+    <nav className="row gap8 wrap" aria-label="Canales" style={{ marginBottom: 16 }}>
+      {tabs.map((t) => {
+        const on = active === t.id;
+        const n = t.id === "resumen" ? undefined : counts[t.id];
         return (
           <button
-            key={c.id}
-            className={`hg-chnav__btn hg-chnav__btn--flex ${on ? "hg-chnav__btn--on" : ""}`}
-            onClick={() => onChange(c.id)}
-            style={on ? { background: c.tone, boxShadow: "var(--sh-2)" } : undefined}
+            key={t.id}
+            onClick={() => onChange(t.id)}
+            className="card"
+            style={{
+              padding: "10px 15px",
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              cursor: "pointer",
+              border: on ? "1.5px solid var(--accent)" : "1px solid var(--border-1)",
+              background: on ? "var(--accent-soft)" : "var(--bg-1)",
+            }}
           >
-            <span className="hg-chnav__chip" style={{ background: on ? "rgba(255,255,255,.22)" : c.soft, color: on ? "#fff" : c.tone }}>
-              <c.icon size={17} />
-            </span>
-            <span className="hg-chnav__col">
-              <span className="hg-chnav__label" style={{ color: on ? "rgba(255,255,255,.88)" : "var(--text-3)" }}>{c.label}</span>
-              <span className="hg-chnav__count" style={{ color: on ? "#fff" : "var(--text-1)" }}>{typeof n === "number" ? n : "·"}</span>
-            </span>
+            <Icon name={t.icon} size={16} style={{ color: on ? "var(--accent)" : "var(--text-3)" }} />
+            <span style={{ fontWeight: 700, fontSize: 13, color: on ? "var(--accent)" : "var(--text-1)" }}>{t.label}</span>
+            {typeof n === "number" && <span className="sb__count tnum">{n}</span>}
           </button>
         );
       })}
@@ -411,54 +467,53 @@ function OverviewView({ lead, ov, onGoto, onOpenAI }: {
     <div className="hg-ov">
       <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
         {lead.phone && <ActivityHeatmap phone={lead.phone} onGoto={onGoto} />}
-        <div className="hg-card" style={{ padding: "20px 22px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 12 }}>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>Línea de tiempo · todos los canales</div>
-            <span style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 700, flex: "0 0 auto" }}>{total} interaccion{total === 1 ? "" : "es"}</span>
-          </div>
+        <Card
+          title="Línea de tiempo · todos los canales"
+          icon="history"
+          extra={<span className="dim tnum" style={{ fontSize: 12, fontWeight: 700 }}>{total} interaccion{total === 1 ? "" : "es"}</span>}
+        >
           <ConversationCanvas phone={lead.phone} name={name} />
-        </div>
+        </Card>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-        <div className="hg-card" style={{ padding: "18px 20px" }}>
-          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12 }}>Resumen del cliente</div>
-          <div className="hg-row"><span style={{ color: "var(--text-3)", fontWeight: 600 }}>Última interacción</span><b>{last ? `${last.label} · ${relTime(last.lastTs)}` : "—"}</b></div>
-          <div className="hg-row"><span style={{ color: "var(--text-3)", fontWeight: 600 }}>Canal principal</span><b>{primary.count ? primary.label : "—"}</b></div>
-          <div className="hg-row"><span style={{ color: "var(--text-3)", fontWeight: 600 }}>Total interacciones</span><b className="mono">{total}</b></div>
+        <Card title="Resumen del cliente" icon="user">
+          <div className="row between" style={{ padding: "7px 0" }}><span className="muted" style={{ fontWeight: 600 }}>Última interacción</span><b>{last ? `${last.label} · ${relTime(last.lastTs)}` : "—"}</b></div>
+          <div className="row between" style={{ padding: "7px 0" }}><span className="muted" style={{ fontWeight: 600 }}>Canal principal</span><b>{primary.count ? primary.label : "—"}</b></div>
+          <div className="row between" style={{ padding: "7px 0" }}><span className="muted" style={{ fontWeight: 600 }}>Total interacciones</span><b className="tnum">{total}</b></div>
           {total > 0 && (
             <>
               <div style={{ margin: "12px 0 8px", fontSize: 12, fontWeight: 700, color: "var(--text-3)" }}>Mezcla de canales</div>
               <div style={{ display: "flex", gap: 2, height: 10 }}>
                 {mix.map((c) => <div key={c.key} title={`${c.label}: ${c.count}`} style={{ flex: c.count, background: `var(${c.tone})`, borderRadius: 99 }} />)}
               </div>
-              <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 11.5, color: "var(--text-3)", fontWeight: 700, flexWrap: "wrap" }}>
+              <div className="row wrap gap14" style={{ marginTop: 10, fontSize: 11.5, color: "var(--text-3)", fontWeight: 700 }}>
                 {mix.map((c) => (
-                  <span key={c.key} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                  <span key={c.key} className="row gap4" style={{ alignItems: "center" }}>
                     <span style={{ width: 8, height: 8, borderRadius: 99, background: `var(${c.tone})` }} /> {c.label} {c.count}
                   </span>
                 ))}
               </div>
             </>
           )}
-        </div>
+        </Card>
 
         {nba && (
           <button
             onClick={onOpenAI}
-            className="hg-card hg-lift"
-            style={{ padding: "18px 20px", textAlign: "left", cursor: "pointer", background: "linear-gradient(135deg,var(--violeta-soft),var(--bg-1))", border: "1px solid var(--violeta-soft)" }}
+            className="card card__accent-bar hg-lift"
+            style={{ "--_c": "var(--iris)", padding: "18px 20px", textAlign: "left", cursor: "pointer", background: "linear-gradient(135deg,var(--iris-soft),var(--bg-1))" } as React.CSSProperties}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
-              <span style={{ width: 28, height: 28, borderRadius: 9, background: "var(--violeta)", color: "#fff", display: "grid", placeItems: "center" }}><Sparkles size={16} /></span>
-              <span style={{ fontWeight: 800, fontSize: 14, color: "var(--violeta-2)" }}>Sugerencia IA</span>
+            <div className="row gap8" style={{ alignItems: "center", marginBottom: 8 }}>
+              <span style={{ width: 28, height: 28, borderRadius: 9, background: "var(--iris)", color: "#fff", display: "grid", placeItems: "center" }}><Icon name="sparkle" size={16} /></span>
+              <span style={{ fontWeight: 800, fontSize: 14, color: "var(--iris)" }}>Sugerencia IA</span>
             </div>
             <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.55 }}>{nba}</div>
-            <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 800, color: "var(--violeta)", display: "flex", gap: 5, alignItems: "center" }}>Ver resumen IA <ArrowRight size={14} /></div>
+            <div className="row gap4" style={{ marginTop: 10, fontSize: 12.5, fontWeight: 800, color: "var(--iris)", alignItems: "center" }}>Ver resumen IA <Icon name="arrowRight" size={14} /></div>
           </button>
         )}
 
-        <button className="hg-fchip" style={{ alignSelf: "flex-start" }} onClick={() => onGoto("calls")}>Ver todas las llamadas <ArrowRight size={13} style={{ verticalAlign: -2 }} /></button>
+        <Btn variant="ghost" size="sm" iconR="arrowRight" style={{ alignSelf: "flex-start" }} onClick={() => onGoto("calls")}>Ver todas las llamadas</Btn>
       </div>
     </div>
   );
@@ -485,7 +540,7 @@ function AISlideOver({ lead, ov, activeCall, onClose }: {
       <div className="hg-ai-scrim" onClick={onClose} />
       <div className="hg-ai" role="dialog" aria-label="Resumen IA">
         <div style={{ padding: "20px 22px", borderBottom: "1px solid var(--border-1)", display: "flex", alignItems: "center", gap: 11, position: "sticky", top: 0, background: "var(--bg-1)", zIndex: 2 }}>
-          <span style={{ width: 34, height: 34, borderRadius: 10, background: "var(--violeta)", color: "#fff", display: "grid", placeItems: "center", flex: "0 0 34px" }}><Sparkles size={18} /></span>
+          <span style={{ width: 34, height: 34, borderRadius: 10, background: "var(--iris)", color: "#fff", display: "grid", placeItems: "center", flex: "0 0 34px" }}><Sparkles size={18} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>Resumen IA</div>
             <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{lead?.name || lead?.phone || ""} · Amazon Bedrock</div>
@@ -510,14 +565,14 @@ function AISlideOver({ lead, ov, activeCall, onClose }: {
                 <div>
                   {lbl("Sentimiento (Contact Lens)")}
                   <div className="rec-sent__bar">
-                    {seg(s.positive, "var(--verde)")}
+                    {seg(s.positive, "var(--green)")}
                     {seg(s.neutral, "var(--bg-3)")}
-                    {seg(s.mixed, "var(--ambar)")}
-                    {seg(s.negative, "var(--rojo)")}
+                    {seg(s.mixed, "var(--gold)")}
+                    {seg(s.negative, "var(--red)")}
                   </div>
                   <div className="rec-sent__legend" style={{ marginTop: 10 }}>
-                    <span><span className="rec-sent__dot" style={{ background: "var(--verde)" }} /> {s.positive} positivo{s.positive === 1 ? "" : "s"}</span>
-                    <span><span className="rec-sent__dot" style={{ background: "var(--rojo)" }} /> {s.negative} negativo{s.negative === 1 ? "" : "s"}</span>
+                    <span><span className="rec-sent__dot" style={{ background: "var(--green)" }} /> {s.positive} positivo{s.positive === 1 ? "" : "s"}</span>
+                    <span><span className="rec-sent__dot" style={{ background: "var(--red)" }} /> {s.negative} negativo{s.negative === 1 ? "" : "s"}</span>
                   </div>
                 </div>
               )}
@@ -528,7 +583,7 @@ function AISlideOver({ lead, ov, activeCall, onClose }: {
                     {activeCall.moments.map((m, i) => (
                       <div key={i} className="hg-card2" style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 13px" }}>
                         <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)" }}>{mmss(m.sec)}</span>
-                        <span style={{ width: 8, height: 8, borderRadius: 99, flex: "0 0 8px", background: m.tone === "pos" ? "var(--verde)" : "var(--rojo)" }} />
+                        <span style={{ width: 8, height: 8, borderRadius: 99, flex: "0 0 8px", background: m.tone === "pos" ? "var(--green)" : "var(--red)" }} />
                         <span style={{ fontSize: 13, fontWeight: 600 }}>{m.label}</span>
                       </div>
                     ))}
@@ -545,7 +600,7 @@ function AISlideOver({ lead, ov, activeCall, onClose }: {
                 <div className="hg-row"><span style={{ color: "var(--text-3)", fontWeight: 600 }}>Total interacciones</span><b className="mono">{total}</b></div>
               </div>
               {nba && (
-                <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--violeta-soft)", color: "var(--violeta-2)", fontSize: 13, fontWeight: 600, display: "flex", gap: 9, lineHeight: 1.55 }}>
+                <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--iris-soft)", color: "var(--iris-2)", fontSize: 13, fontWeight: 600, display: "flex", gap: 9, lineHeight: 1.55 }}>
                   <Sparkles size={16} style={{ flex: "0 0 16px", marginTop: 1 }} /> {nba}
                 </div>
               )}
@@ -562,11 +617,14 @@ function AISlideOver({ lead, ov, activeCall, onClose }: {
 function EmptyState({ onOpen }: { onOpen: () => void }) {
   return (
     <div style={{ height: "100%", display: "grid", placeItems: "center", padding: 24 }}>
-      <div className="hg-card" style={{ padding: "36px 40px", textAlign: "center", maxWidth: 460 }}>
-        <div style={{ width: 52, height: 52, borderRadius: 16, background: "var(--cian-soft)", color: "var(--cian)", display: "grid", placeItems: "center", margin: "0 auto 16px" }}><Search size={26} /></div>
+      <div className="card card__pad" style={{ padding: "36px 40px", textAlign: "center", maxWidth: 460 }}>
+        <div style={{ width: 52, height: 52, borderRadius: 16, background: "var(--cyan-soft)", color: "var(--cyan)", display: "grid", placeItems: "center", margin: "0 auto 16px" }}><Icon name="search" size={26} /></div>
         <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Elegí un contacto</div>
         <div className="muted" style={{ fontSize: 13.5, lineHeight: 1.6, marginBottom: 18 }}>Su historial, llamadas con audio y transcripción, WhatsApp, emails y archivos aparecen acá — todo en una sola historia.</div>
-        <button className="hg-btn hg-btn--primary" onClick={onOpen} style={{ margin: "0 auto" }}><Search size={15} /> Buscar contacto <span className="hg-chip" style={{ background: "rgba(255,255,255,.2)", color: "#fff" }}>⌘K</span></button>
+        <Btn variant="primary" icon="search" onClick={onOpen} style={{ margin: "0 auto" }}>
+          Buscar contacto
+          <span className="pill" style={{ background: "rgba(255,255,255,.2)", color: "#fff", height: 20 }}>⌘K</span>
+        </Btn>
       </div>
     </div>
   );
@@ -625,7 +683,10 @@ export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead 
 
   return (
     <div className="hg hg--flow">
-      <div className="hg-inner">
+      {/* En la página ARIA, el contenedor `.page` ya aporta ancho/padding; anulamos
+          el padding/max-width propio de `.hg-inner` para no duplicarlos. En el
+          modo embebido (demo) hereda el ancho del contenedor igual. */}
+      <div className="hg-inner" style={{ maxWidth: "none", padding: 0 }}>
         {lead ? (
           <>
             <Hero lead={lead} ov={ov} stageLabel={stageLabel} onSwitch={() => setCmdOpen(true)} onOpenAI={() => setAiOpen(true)} />

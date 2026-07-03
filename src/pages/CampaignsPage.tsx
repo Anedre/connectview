@@ -4,20 +4,18 @@ import { toast } from "sonner";
 import { useCampaigns, type Campaign } from "@/hooks/useCampaigns";
 import { useCampaignMutations } from "@/hooks/useCampaignMutations";
 import { formatDistanceToNow } from "date-fns";
-import * as Icon from "@/components/vox/primitives";
-import { Avatar, Card, CardBody, Kpi } from "@/components/vox/primitives";
-import { PageHeader } from "@/components/vox/PageHeader";
 import { NotIntegrated } from "@/components/vox/NotIntegrated";
 import { CampaignBlendBoard } from "@/components/campaigns/CampaignBlendBoard";
 import { useConnections } from "@/hooks/useConnections";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { Btn, Card, Stat, Pill, Av, HeroBand, Num, Icon } from "@/components/aria";
 
-const STATUS_CHIP: Record<string, string> = {
-  DRAFT: "",
-  RUNNING: "chip--green",
-  PAUSED: "chip--amber",
-  COMPLETED: "chip--cyan",
-  CANCELLED: "chip--red",
+const STATUS_TONE: Record<string, "green" | "gold" | "cyan" | "red" | "outline"> = {
+  DRAFT: "outline",
+  RUNNING: "green",
+  PAUSED: "gold",
+  COMPLETED: "cyan",
+  CANCELLED: "red",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -42,6 +40,26 @@ function progressPct(c: Campaign): number {
   if (!total) return 0;
   const done = Number(c.doneCount || 0) + Number(c.failedCount || 0);
   return Math.round((done / total) * 100);
+}
+
+function Metric({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 10.5,
+          color: "var(--text-3)",
+          textTransform: "uppercase",
+          letterSpacing: ".05em",
+        }}
+      >
+        {label}
+      </div>
+      <div className="tnum" style={{ fontSize: 15, fontWeight: 750, marginTop: 2, color: tone || "var(--text-1)" }}>
+        {value}
+      </div>
+    </div>
+  );
 }
 
 export function CampaignsPage() {
@@ -136,306 +154,286 @@ export function CampaignsPage() {
     0,
   );
 
+  const progressRate = totalContacts ? Math.round((totalReached / totalContacts) * 100) : 0;
+
   return (
-    <div className="view">
-      <PageHeader
-        crumb="Crecimiento"
+    <div className="page" style={{ maxWidth: 1320 }}>
+      {/* ARIA hero — reemplaza el PageHeader por el lenguaje premium de ARIA
+          sin perder el reporting real que vive debajo. */}
+      <HeroBand
         title="Campañas outbound"
-        filterPill="Todos"
-        count={`${campaigns.length} campañas`}
-        sub={
-          <>
-            {tabCounts.active} activas · {totalReached.toLocaleString()} contactos alcanzados
-          </>
+        chip={
+          live > 0 ? (
+            <>
+              <span className="dot dot--live" /> En vivo · {live} conectados/marcando
+            </>
+          ) : (
+            <>
+              {tabCounts.active} activas · {totalReached.toLocaleString()} contactos alcanzados
+            </>
+          )
         }
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Buscar campaña…",
-        }}
-        actions={
-          <>
-            <button className="btn">
-              <Icon.Megaphone size={14} /> Plantillas
-            </button>
-            <button className="btn btn--primary" onClick={() => navigate("/campaigns/nueva")}>
-              <Icon.Plus size={14} /> Nueva campaña
-            </button>
-          </>
+        chipIcon={live > 0 ? "live" : "megaphone"}
+        chipTone={live > 0 ? "var(--green)" : "var(--accent)"}
+        right={
+          <div className="row gap10">
+            <Btn variant="ghost" size="sm" icon="refresh" onClick={() => refresh()}>
+              Actualizar
+            </Btn>
+            <Btn variant="ghost" size="sm" icon="megaphone">
+              Plantillas
+            </Btn>
+            <Btn variant="primary" size="sm" icon="plus" onClick={() => navigate("/campaigns/nueva")}>
+              Nueva campaña
+            </Btn>
+          </div>
         }
       />
 
-      <div className="kpi-grid">
-        <Kpi
+      {/* KPI strip — métricas reales agregadas de las campañas. */}
+      <div className="grid" style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 20 }}>
+        <Stat
+          icon="megaphone"
+          color="var(--accent)"
           label="Total campañas"
-          value={String(tabCounts.all)}
-          delta={
+          value={<Num value={tabCounts.all} />}
+          sub={
             tabCounts.active > 0
               ? `${tabCounts.active} ${tabCounts.active === 1 ? "activa" : "activas"}`
               : "ninguna activa"
           }
-          // Bug #21 — only show an up-arrow when there's actually
-          // something trending up. With 0 activas the arrow is noise.
-          deltaDir={tabCounts.active > 0 ? "up" : "flat"}
         />
-        <Kpi
+        <Stat
+          icon="phone"
+          color="var(--cyan)"
           label="Alcance acumulado"
-          value={totalReached.toLocaleString()}
-          delta={`de ${totalContacts.toLocaleString()} contactos`}
-          deltaDir="flat"
+          value={<Num value={totalReached} />}
+          sub={`de ${totalContacts.toLocaleString()} contactos`}
         />
-        <Kpi
+        <Stat
+          icon="handshake"
+          color="var(--green)"
           label="En vivo ahora"
-          value={String(live)}
-          delta={live > 0 ? "conectados/marcando" : "sin actividad en vivo"}
-          deltaDir={live > 0 ? "up" : "flat"}
-          color="var(--accent-green)"
+          value={<Num value={live} />}
+          sub={live > 0 ? "conectados/marcando" : "sin actividad en vivo"}
         />
-        <Kpi
+        <Stat
+          icon="target"
+          color="var(--gold)"
           label="Tasa de progreso"
-          value={`${totalContacts ? Math.round((totalReached / totalContacts) * 100) : 0}%`}
-          delta="acumulado"
-          deltaDir="flat"
+          value={<Num value={progressRate} suffix="%" />}
+          sub="acumulado"
         />
       </div>
-
-      <div style={{ height: 16 }} />
 
       {/* Pilar 7 · Fase B — tablero blend en vivo (solo si hay voz activa). */}
       <CampaignBlendBoard />
 
-      <Card>
-        <div className="card__head" style={{ flexWrap: "wrap" }}>
-          <div className="row" style={{ gap: 6 }}>
+      <Card
+        title={
+          <div className="row gap6">
             {TABS.map((t) => (
               <button
                 key={t.id}
-                className={`btn btn--sm ${activeTab === t.id ? "" : "btn--ghost"}`}
+                className={`btn btn--sm ${activeTab === t.id ? "btn--soft" : "btn--ghost"}`}
                 onClick={() => setActiveTab(t.id)}
               >
                 {t.label}
-                <span className="mono" style={{ fontSize: 10.5, marginLeft: 4, opacity: 0.7 }}>
+                <span className="tnum" style={{ fontSize: 10.5, marginLeft: 4, opacity: 0.7 }}>
                   {tabCounts[t.id]}
                 </span>
               </button>
             ))}
           </div>
-          <div className="tb__search" style={{ maxWidth: 280, height: 30, marginLeft: "auto" }}>
-            <Icon.Search size={13} />
+        }
+        extra={
+          <div className="tb__search" style={{ maxWidth: 280, height: 30 }}>
+            <Icon name="search" size={13} />
             <input
               placeholder="Buscar campañas…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-        </div>
+        }
+        pad={false}
+      >
+        {loading && campaigns.length === 0 && (
+          <div style={{ padding: 32, textAlign: "center", color: "var(--text-3)", fontSize: 12.5 }}>
+            Cargando campañas…
+          </div>
+        )}
 
-        <CardBody flush>
-          {loading && campaigns.length === 0 && (
-            <div
-              style={{
-                padding: 32,
-                textAlign: "center",
-                color: "var(--text-3)",
-                fontSize: 12.5,
-              }}
-            >
-              Cargando campañas…
-            </div>
-          )}
+        {error && campaigns.length === 0 && (
+          <div
+            style={{
+              margin: 16,
+              padding: 16,
+              borderRadius: 12,
+              background: "color-mix(in srgb,var(--red) 12%,var(--bg-1))",
+              color: "var(--red)",
+              fontSize: 12.5,
+            }}
+          >
+            {error}
+          </div>
+        )}
 
-          {error && campaigns.length === 0 && (
-            <div
-              style={{
-                padding: 16,
-                background: "var(--accent-red-soft)",
-                color: "var(--accent-red)",
-                fontSize: 12.5,
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          {!loading &&
-            !error &&
-            visibleCampaigns.length === 0 &&
-            (campaigns.length === 0 && !dataPlaneEnabled ? (
-              <NotIntegrated
-                title="Todavía no integraste tu base de datos"
-                message="Tus campañas y sus contactos se guardan en TU cuenta AWS (BYO Data Plane). Activala en Integraciones para crear y correr campañas."
-                ctaLabel="Conectar base de datos"
-                icon={<Icon.Megaphone size={26} />}
-              />
-            ) : (
-              <div
-                style={{
-                  padding: 48,
-                  textAlign: "center",
-                  color: "var(--text-3)",
-                }}
-              >
-                <Icon.Megaphone size={32} style={{ opacity: 0.4 }} />
-                <div style={{ marginTop: 12, fontSize: 13 }}>
-                  {query
-                    ? `No hay campañas que coincidan con "${query}".`
-                    : campaigns.length === 0
-                      ? "Sin campañas todavía. Crea la primera para empezar."
-                      : "No hay campañas en este tab."}
-                </div>
-                {campaigns.length === 0 && (
-                  <button
-                    className="btn btn--primary"
-                    style={{ marginTop: 16 }}
-                    onClick={() => navigate("/campaigns/nueva")}
-                  >
-                    <Icon.Plus size={14} /> Crear primera campaña
-                  </button>
-                )}
+        {!loading &&
+          !error &&
+          visibleCampaigns.length === 0 &&
+          (campaigns.length === 0 && !dataPlaneEnabled ? (
+            <NotIntegrated
+              title="Todavía no integraste tu base de datos"
+              message="Tus campañas y sus contactos se guardan en TU cuenta AWS (BYO Data Plane). Activala en Integraciones para crear y correr campañas."
+              ctaLabel="Conectar base de datos"
+              icon={<Icon name="megaphone" size={26} />}
+            />
+          ) : (
+            <div style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
+              <Icon name="megaphone" size={32} style={{ opacity: 0.4 }} />
+              <div style={{ marginTop: 12, fontSize: 13 }}>
+                {query
+                  ? `No hay campañas que coincidan con "${query}".`
+                  : campaigns.length === 0
+                    ? "Sin campañas todavía. Crea la primera para empezar."
+                    : "No hay campañas en este tab."}
               </div>
-            ))}
+              {campaigns.length === 0 && (
+                <div className="row" style={{ justifyContent: "center", marginTop: 16 }}>
+                  <Btn variant="primary" icon="plus" onClick={() => navigate("/campaigns/nueva")}>
+                    Crear primera campaña
+                  </Btn>
+                </div>
+              )}
+            </div>
+          ))}
 
-          {visibleCampaigns.map((c) => {
-            const pct = progressPct(c);
-            const liveCount = (c.dialingCount || 0) + (c.connectedCount || 0);
-            const completed = c.doneCount || 0;
-            const failed = (c.failedCount || 0) + (c.noAnswerCount || 0);
-            return (
-              <div
-                key={c.campaignId}
-                className="row-clickable"
-                style={{
-                  padding: "14px 18px",
-                  borderBottom: "1px solid var(--border-1)",
-                }}
-                onClick={() => navigate(`/campaigns/${c.campaignId}`)}
-              >
-                <div className="spread" style={{ marginBottom: 8 }}>
-                  <div className="row" style={{ gap: 10, minWidth: 0, flex: 1 }}>
-                    <span
-                      className={`chip ${STATUS_CHIP[c.status] || ""}`}
-                      style={{ minWidth: 84, justifyContent: "center" }}
-                    >
-                      <span className="dot" />
-                      {STATUS_LABEL[c.status] || c.status}
-                    </span>
-                    <div style={{ minWidth: 0, flex: 1 }}>
+        {visibleCampaigns.length > 0 && (
+          <div className="col gap12" style={{ padding: 16 }}>
+            {visibleCampaigns.map((c) => {
+              const pct = progressPct(c);
+              const liveCount = (c.dialingCount || 0) + (c.connectedCount || 0);
+              const completed = c.doneCount || 0;
+              const failed = (c.failedCount || 0) + (c.noAnswerCount || 0);
+              const barColor = c.status === "PAUSED" ? "var(--gold)" : "var(--cyan)";
+              const isFinished = c.status === "COMPLETED" || c.status === "CANCELLED";
+              return (
+                <div
+                  key={c.campaignId}
+                  className="card card__pad row-clickable"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => navigate(`/campaigns/${c.campaignId}`)}
+                >
+                  <div className="row between" style={{ marginBottom: 12 }}>
+                    <div className="row gap12" style={{ minWidth: 0, flex: 1 }}>
                       <div
-                        className="truncate"
-                        style={{ fontSize: 13.5, fontWeight: 500, color: "var(--text-1)" }}
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 11,
+                          display: "grid",
+                          placeItems: "center",
+                          background: "color-mix(in srgb," + barColor + " 15%,var(--bg-1))",
+                          color: barColor,
+                          flex: "0 0 auto",
+                        }}
                       >
-                        {c.name}
+                        <Icon name="megaphone" size={18} />
                       </div>
-                      <div
-                        className="muted mono"
-                        style={{ fontSize: 11, display: "flex", gap: 10 }}
-                      >
-                        <span>
-                          {completed + failed} / {c.totalContacts}
-                        </span>
-                        {c.sourcePhoneNumber && <span>{c.sourcePhoneNumber}</span>}
-                        {c.createdAt && (
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          className="trunc"
+                          style={{ fontSize: 14, fontWeight: 750, color: "var(--text-1)" }}
+                        >
+                          {c.name}
+                        </div>
+                        <div className="dim tnum row gap12" style={{ fontSize: 11, marginTop: 3 }}>
                           <span>
-                            {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
+                            {completed + failed} / {c.totalContacts}
                           </span>
-                        )}
+                          {c.sourcePhoneNumber && <span>{c.sourcePhoneNumber}</span>}
+                          {c.createdAt && (
+                            <span>{formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="row" style={{ gap: 12 }}>
-                    {liveCount > 0 && (
-                      <span className="chip chip--green">
-                        <span
-                          className="pulse"
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            background: "currentColor",
-                          }}
-                        />
-                        {liveCount} en vivo
-                      </span>
-                    )}
-                    <button
-                      className="btn btn--ghost btn--sm btn--icon"
-                      onClick={(e) => handleClone(e, c)}
-                      disabled={mutations.pending}
-                      title="Clonar"
-                    >
-                      <Icon.Plus size={14} />
-                    </button>
-                    {(c.status === "COMPLETED" || c.status === "CANCELLED") && (
-                      <button
-                        className="btn btn--ghost btn--sm btn--icon"
-                        onClick={(e) => handleRelaunch(e, c)}
+                    <div className="row gap8" style={{ flex: "0 0 auto" }}>
+                      {liveCount > 0 && (
+                        <Pill tone="green" icon="live">
+                          {liveCount} en vivo
+                        </Pill>
+                      )}
+                      <Pill tone={STATUS_TONE[c.status] || "outline"}>
+                        {STATUS_LABEL[c.status] || c.status}
+                      </Pill>
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        icon="plus"
+                        onClick={(e) => handleClone(e, c)}
                         disabled={mutations.pending}
-                        title="Relanzar"
-                      >
-                        <Icon.Refresh size={14} />
-                      </button>
-                    )}
-                    <button
-                      className="btn btn--ghost btn--sm btn--icon"
-                      title="Más"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Icon.More size={14} />
-                    </button>
+                        title="Clonar"
+                      />
+                      {isFinished && (
+                        <Btn
+                          variant="ghost"
+                          size="sm"
+                          icon="refresh"
+                          onClick={(e) => handleRelaunch(e, c)}
+                          disabled={mutations.pending}
+                          title="Relanzar"
+                        />
+                      )}
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        icon="more"
+                        title="Más"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="bar">
+
                   <div
-                    style={{
-                      width: `${pct}%`,
-                      background:
-                        c.status === "PAUSED" ? "var(--accent-amber)" : "var(--accent-cyan)",
-                    }}
-                  />
-                </div>
-                <div
-                  className="row"
-                  style={{ justifyContent: "space-between", marginTop: 8, fontSize: 11 }}
-                >
-                  <span
-                    className="muted"
-                    title={
-                      c.status === "COMPLETED" || c.status === "CANCELLED"
-                        ? "Tasa de éxito final (Completados / total)"
-                        : "Avance: cuántos contactos ya se procesaron"
-                    }
+                    className="row between"
+                    style={{ fontSize: 11.5, marginBottom: 5 }}
                   >
                     {/* Bug #22/#23 — for finished campaigns "Avance" is
                         misleading; it's really the success rate. */}
-                    {c.status === "COMPLETED" || c.status === "CANCELLED" ? "Tasa éxito" : "Avance"}{" "}
-                    <span className="mono" style={{ color: "var(--text-1)" }}>
-                      {pct}%
+                    <span
+                      className="dim"
+                      title={
+                        isFinished
+                          ? "Tasa de éxito final (Completados / total)"
+                          : "Avance: cuántos contactos ya se procesaron"
+                      }
+                    >
+                      {isFinished ? "Tasa éxito" : "Avance"}
                     </span>
-                  </span>
-                  <span className="muted">
-                    Completados{" "}
-                    <span className="mono" style={{ color: "var(--accent-green)" }}>
-                      {completed}
-                    </span>
-                  </span>
-                  <span className="muted">
-                    Fallidos{" "}
-                    <span className="mono" style={{ color: "var(--accent-red)" }}>
-                      {failed}
-                    </span>
-                  </span>
-                  <span className="muted">
-                    Pendientes{" "}
-                    <span className="mono" style={{ color: "var(--text-1)" }}>
-                      {Math.max(0, (c.totalContacts || 0) - completed - failed)}
-                    </span>
-                  </span>
-                  <Avatar name={c.createdBy ?? "—"} size="sm" />
+                    <b className="tnum">{pct}%</b>
+                  </div>
+                  <div className="bar" style={{ marginBottom: 12 }}>
+                    <span style={{ width: `${pct}%`, background: barColor }} />
+                  </div>
+
+                  <div className="row between wrap gap12">
+                    <div className="row gap20">
+                      <Metric label="Completados" value={completed} tone="var(--green)" />
+                      <Metric label="Fallidos" value={failed} tone="var(--red)" />
+                      <Metric
+                        label="Pendientes"
+                        value={Math.max(0, (c.totalContacts || 0) - completed - failed)}
+                      />
+                    </div>
+                    <Av name={c.createdBy ?? "—"} size={26} />
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </CardBody>
+              );
+            })}
+          </div>
+        )}
       </Card>
 
       {confirmDialog}

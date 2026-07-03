@@ -25,6 +25,8 @@ export interface CallHistoryRow {
   initiationMethod?: string;
   disconnectReason?: string;
   hasRecording: boolean;
+  /** Sentimiento de Contact Lens (POSITIVE/NEGATIVE/MIXED/NEUTRAL) — para el heatmap por tono. */
+  sentiment?: string;
 }
 
 const TTL_MS = 60_000;

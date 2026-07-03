@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { EChartsOption } from "echarts";
-import { Activity, Download, Headphones, Timer, TrendingUp, CalendarClock } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ScheduledExportsPanel } from "@/components/reports/ScheduledExportsPanel";
 import { useContacts } from "@/hooks/useContacts";
+import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { ContactFilters } from "@/components/reports/ContactFilters";
 import { SentimentChart } from "@/components/reports/SentimentChart";
 import { AgentPerformanceReport } from "@/components/reports/AgentPerformanceReport";
@@ -16,22 +17,19 @@ import { BotAnalyticsReport } from "@/components/reports/BotAnalyticsReport";
 import { ContactsTable } from "@/components/reports/ContactsTable";
 import { FeatureNotice } from "@/components/vox/FeatureNotice";
 import { formatDurationSec } from "@/lib/utils";
-import * as Icon from "@/components/vox/primitives";
-import { PageHeader } from "@/components/vox/PageHeader";
-import { ExecStat } from "@/components/dashboard/exec/ExecStat";
 import { ExecBarsEChart } from "@/components/dashboard/exec/ExecEcharts";
 import type { ExecChannelDay } from "@/components/dashboard/exec/execMock";
 import { EChart, useChartTokens } from "@/components/charts/EChart";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { ContactRecord } from "@/types/monitoring";
-import "@/styles/exec.css";
+import { Icon, Btn, Card, Stat, MiniBars, HeroBand, Num, type IconName } from "@/components/aria";
 
 /**
  * ReportsPage — analítica histórica sobre los contactos reales (queryContacts
- * + Contact Lens), al nivel del dashboard ejecutivo: misma familia visual
- * (exec-vars: paneles, KPI tiles con count-up, skeleton shimmer) y un solo
- * motor de charts (ECharts, paleta diversa). El período es REAL (segmented
- * 7/14/30 días re-consulta; los filtros finos siguen abajo).
+ * + Contact Lens), re-skinneada al sistema ARIA: HeroBand premium, KPIs con
+ * Stat + count-up, paneles como Card. El período es REAL (segmented 7/14/30
+ * días re-consulta; los filtros finos siguen abajo). Los charts (ECharts) y
+ * todos los sub-reportes reales quedan intactos.
  */
 
 type ChannelKey = "voz" | "wa" | "chat" | "email" | "sms";
@@ -50,34 +48,6 @@ function normalizeChannel(c?: string): ChannelKey {
 function dayKey(iso: string): string {
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** Panel con el chrome del dashboard (título con rail de acento + hint). */
-function Panel({
-  title,
-  hint,
-  flush,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  flush?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="exec-panel" style={flush ? { padding: "18px 0 0" } : undefined}>
-      <div className="exec-panel__head" style={flush ? { padding: "0 20px" } : undefined}>
-        <div className="exec-panel__title">{title}</div>
-        {hint && (
-          <>
-            <div className="exec-panel__spacer" />
-            <span className="exec-panel__hint">{hint}</span>
-          </>
-        )}
-      </div>
-      {children}
-    </div>
-  );
 }
 
 /** Histograma de duración (AHT) en ECharts — barras cyan con mediana. */
@@ -107,7 +77,7 @@ function AhtHistogramEChart({ contacts }: { contacts: ContactRecord[] }) {
   if (counts.every((c) => c === 0)) {
     return (
       <EmptyState
-        icon={<Timer />}
+        icon={<Icon name="clock" />}
         title="Sin datos de duración"
         description="Aparece al obtener contactos con duración registrada."
       />
@@ -168,9 +138,9 @@ function AhtHistogramEChart({ contacts }: { contacts: ContactRecord[] }) {
   return (
     <div>
       <EChart option={option} height={240} />
-      <div style={{ fontSize: 11.5, color: "var(--e-t3)", marginTop: 6 }}>
+      <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 6 }}>
         Mediana:{" "}
-        <span style={{ color: "var(--e-t1)", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+        <span style={{ color: "var(--text-1)", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
           {median}
         </span>{" "}
         min
@@ -228,12 +198,98 @@ const PERIODS = [
 ] as const;
 type PeriodId = (typeof PERIODS)[number]["id"];
 
+/** Categorías para segmentar los reportes en tabs por dominio (antes: una página larga). */
+type ReportTab = "operacion" | "crecimiento" | "whatsapp" | "bot" | "descargas";
+const REPORT_TABS: { id: ReportTab; label: string; icon: IconName; color: string; hint: string }[] = [
+  {
+    id: "operacion",
+    label: "Operación",
+    icon: "headset",
+    color: "var(--accent)",
+    hint: "Volumen, tiempos (AHT), rendimiento por agente y sentiment del contact center.",
+  },
+  {
+    id: "crecimiento",
+    label: "Crecimiento",
+    icon: "trending",
+    color: "var(--green)",
+    hint: "Embudo y conversión por programa, y atribución de los golpes al cierre.",
+  },
+  {
+    id: "whatsapp",
+    label: "WhatsApp",
+    icon: "wa",
+    color: "var(--cyan)",
+    hint: "Entrega de plantillas HSM y analítica directa de la Cloud API de Meta.",
+  },
+  {
+    id: "bot",
+    label: "Agente IA",
+    icon: "sparkle",
+    color: "var(--iris)",
+    hint: "Resolución, derivación, confianza y herramientas del agente de IA.",
+  },
+  {
+    id: "descargas",
+    label: "Descargas",
+    icon: "download",
+    color: "var(--gold)",
+    hint: "Exportá el detalle de conversaciones (Chat detail) y programá reportes por email.",
+  },
+];
+
+/** KPIs del período (puro) — reusado para el período actual y el previo (comparación). */
+function computeKpis(contacts: ContactRecord[]) {
+  const total = contacts.length;
+  const durations = contacts
+    .filter((c) => {
+      const ch = (c.channel || "").toUpperCase();
+      return ch === "VOICE" || ch === "TELEPHONY" || ch === "CHAT";
+    })
+    .map((c) => c.duration)
+    .filter((d): d is number => typeof d === "number" && d > 0);
+  const avgAht = durations.length
+    ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+    : 0;
+  const sortedDur = durations.slice().sort((a, b) => a - b);
+  const medianAht = sortedDur.length ? sortedDur[Math.floor(sortedDur.length / 2)] : 0;
+  const pos = contacts.filter((c) => c.sentiment === "POSITIVE").length;
+  const neg = contacts.filter((c) => c.sentiment === "NEGATIVE").length;
+  return {
+    total,
+    avgAht,
+    medianAht,
+    posPct: total ? Math.round((pos / total) * 100) : 0,
+    score: total ? Math.round(((pos - neg) / total) * 100) : 0,
+  };
+}
+
+/** Chip ▲/▼ de comparación vs. el período previo. `invert` = subir es malo (AHT). */
+function DeltaChip({ curr, prev, invert }: { curr: number; prev?: number; invert?: boolean }) {
+  if (prev == null || prev === 0) return null;
+  const pct = Math.round(((curr - prev) / Math.abs(prev)) * 100);
+  if (pct === 0)
+    return (
+      <span style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 600 }}>= vs. previo</span>
+    );
+  const good = invert ? pct < 0 : pct > 0;
+  const color = good ? "var(--green)" : "var(--coral)";
+  return (
+    <span
+      style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 700, color }}
+      title="Comparado con el período inmediatamente anterior del mismo largo"
+    >
+      {pct > 0 ? "▲" : "▼"} {Math.abs(pct)}%
+      <span style={{ color: "var(--text-3)", fontWeight: 500 }}>vs. previo</span>
+    </span>
+  );
+}
+
 export function ReportsPage() {
   const { contacts, loading, searchContacts } = useContacts();
   const [period, setPeriod] = useState<PeriodId>("7d");
+  const [tab, setTab] = useState<ReportTab>("operacion");
   const [showSchedule, setShowSchedule] = useState(false);
-  const segRef = useRef<HTMLDivElement>(null);
-  const [thumb, setThumb] = useState({ left: 4, width: 0 });
 
   // El segmented re-consulta el rango REAL (antes el botón era decorativo).
   useEffect(() => {
@@ -242,36 +298,33 @@ export function ReportsPage() {
     searchContacts({ startDate: start, endDate: new Date().toISOString() });
   }, [period, searchContacts]);
 
-  useEffect(() => {
-    if (!segRef.current) return;
-    const active = segRef.current.querySelector<HTMLElement>(".exec-seg__opt--active");
-    if (active) setThumb({ left: active.offsetLeft, width: active.offsetWidth });
-  }, [period]);
+  const kpis = useMemo(() => computeKpis(contacts), [contacts]);
 
-  const kpis = useMemo(() => {
-    const total = contacts.length;
-    const durations = contacts
-      .filter((c) => {
-        const ch = (c.channel || "").toUpperCase();
-        return ch === "VOICE" || ch === "TELEPHONY" || ch === "CHAT";
+  // Comparación vs. período previo: trae los contactos del rango inmediatamente
+  // anterior (mismo largo) y calcula sus KPIs para los deltas ▲/▼ de los Stats.
+  const [prevKpis, setPrevKpis] = useState<ReturnType<typeof computeKpis> | null>(null);
+  useEffect(() => {
+    const ep = getApiEndpoints();
+    if (!ep?.queryContacts) return; // sin endpoint no hay comparación (prevKpis queda null)
+    const days = PERIODS.find((p) => p.id === period)?.days ?? 7;
+    const now = Date.now();
+    const prevStart = new Date(now - 2 * days * 86400000).toISOString();
+    const prevEnd = new Date(now - days * 86400000).toISOString();
+    let cancelled = false;
+    authedFetch(
+      `${ep.queryContacts}?startDate=${encodeURIComponent(prevStart)}&endDate=${encodeURIComponent(prevEnd)}`,
+    )
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setPrevKpis(computeKpis((d.contacts as ContactRecord[]) || []));
       })
-      .map((c) => c.duration)
-      .filter((d): d is number => typeof d === "number" && d > 0);
-    const avgAht = durations.length
-      ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
-      : 0;
-    const sortedDur = durations.slice().sort((a, b) => a - b);
-    const medianAht = sortedDur.length ? sortedDur[Math.floor(sortedDur.length / 2)] : 0;
-    const pos = contacts.filter((c) => c.sentiment === "POSITIVE").length;
-    const neg = contacts.filter((c) => c.sentiment === "NEGATIVE").length;
-    return {
-      total,
-      avgAht,
-      medianAht,
-      posPct: total ? Math.round((pos / total) * 100) : 0,
-      score: total ? Math.round(((pos - neg) / total) * 100) : 0,
+      .catch(() => {
+        if (!cancelled) setPrevKpis(null);
+      });
+    return () => {
+      cancelled = true;
     };
-  }, [contacts]);
+  }, [period]);
 
   // Spark del KPI de volumen + barras por canal: misma agregación diaria.
   const { volumeSpark, volumeByChannel } = useMemo(() => {
@@ -302,22 +355,29 @@ export function ReportsPage() {
   const initialLoading = loading && contacts.length === 0;
 
   return (
-    <div className="view exec-vars">
-      <PageHeader
-        crumb="Crecimiento"
+    <div className="page" style={{ maxWidth: 1320 }}>
+      {/* ARIA hero band — reemplaza el PageHeader por el lenguaje premium de
+          ARIA sin perder el reporting real que vive debajo. */}
+      <HeroBand
         title="Reportes"
-        sub={`Contact Lens · ${contacts.length} contactos en el período`}
-        actions={
-          <>
-            <button
-              className="btn"
+        chip={<>Contact Lens · {contacts.length} contactos en el período</>}
+        chipIcon="chart"
+        chipTone="var(--cyan)"
+        right={
+          <div className="row gap10">
+            <Btn
+              variant="ghost"
+              size="sm"
+              icon="calendar"
               onClick={() => setShowSchedule(true)}
               title="Programar el envío automático de un reporte por email (XLSX)"
             >
-              <CalendarClock size={14} /> Programar
-            </button>
-            <button
-              className="btn"
+              Programar
+            </Btn>
+            <Btn
+              variant="primary"
+              size="sm"
+              icon="download"
               disabled={contacts.length === 0}
               onClick={() => exportContactsToCsv(contacts)}
               title={
@@ -326,9 +386,9 @@ export function ReportsPage() {
                   : `Descargar ${contacts.length} contactos como CSV`
               }
             >
-              <Download size={14} /> Exportar
-            </button>
-          </>
+              Exportar
+            </Btn>
+          </div>
         }
       />
 
@@ -346,91 +406,114 @@ export function ReportsPage() {
 
       <FeatureNotice feature="contactLens" />
 
-      {/* Período (REAL: re-consulta queryContacts) */}
-      <div
-        className="exec-seg"
-        ref={segRef}
-        role="tablist"
-        aria-label="Período"
-        style={{ marginBottom: 16 }}
-      >
-        <div className="exec-seg__thumb" style={{ left: thumb.left, width: thumb.width }} />
-        {PERIODS.map((p) => (
-          <button
-            key={p.id}
-            role="tab"
-            aria-selected={period === p.id}
-            className={`exec-seg__opt ${period === p.id ? "exec-seg__opt--active" : ""}`}
-            onClick={() => setPeriod(p.id)}
-          >
-            {p.label}
-          </button>
-        ))}
+      {/* Período (REAL: re-consulta queryContacts) — pills estilo ARIA. */}
+      <div className="row gap8" role="tablist" aria-label="Período" style={{ marginBottom: 16 }}>
+        {PERIODS.map((p) => {
+          const active = period === p.id;
+          return (
+            <button
+              key={p.id}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setPeriod(p.id)}
+              className="card"
+              style={{
+                padding: "9px 16px",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                cursor: "pointer",
+                border: active ? "1.5px solid var(--accent)" : "1px solid var(--border-1)",
+                background: active ? "var(--accent-soft)" : "var(--bg-1)",
+              }}
+            >
+              <Icon name="calendar" size={15} style={{ color: active ? "var(--accent)" : "var(--text-3)" }} />
+              <span style={{ fontWeight: 700, fontSize: 13, color: active ? "var(--accent)" : "var(--text-1)" }}>
+                {p.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* KPIs (familia del dashboard: count-up + sparkline + tabular) */}
+      {/* KPIs — familia ARIA (Stat + count-up). */}
       {initialLoading ? (
         <div
+          className="grid"
           style={{
-            display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 12,
-            marginBottom: 14,
+            gap: 16,
+            marginBottom: 20,
           }}
         >
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="exec-skel" style={{ height: 116, borderRadius: 14 }} />
+            <div key={i} className="card" style={{ height: 116 }} />
           ))}
         </div>
       ) : (
         <div
+          className="grid"
           style={{
-            display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 12,
-            marginBottom: 14,
+            gap: 16,
+            marginBottom: 20,
           }}
         >
-          <ExecStat
-            index={0}
-            period={period}
+          <Stat
+            icon="headset"
+            color="var(--cyan)"
             label="Volumen total"
-            icon={Headphones}
-            accent="#2BC6E6"
-            value={kpis.total}
-            note="contactos en el período"
-            spark={volumeSpark.length > 1 ? volumeSpark : undefined}
-            sparkColor="#2BC6E6"
+            value={<Num value={kpis.total} />}
+            sub={
+              <>
+                <DeltaChip curr={kpis.total} prev={prevKpis?.total} />
+                {volumeSpark.length > 1 ? (
+                  <div style={{ marginTop: 6 }}>
+                    <MiniBars data={volumeSpark} color="var(--cyan)" h={26} />
+                  </div>
+                ) : (
+                  <div style={{ color: "var(--text-3)" }}>contactos en el período</div>
+                )}
+              </>
+            }
           />
-          <ExecStat
-            index={1}
-            period={period}
+          <Stat
+            icon="clock"
+            color="var(--gold)"
             label="AHT promedio"
-            icon={Timer}
-            accent="#F5A524"
-            value={kpis.avgAht}
-            formatter={(n) => (n ? formatDurationSec(Math.round(n)) : "—")}
-            note={kpis.medianAht ? `mediana ${formatDurationSec(kpis.medianAht)}` : "sin datos"}
+            value={kpis.avgAht ? formatDurationSec(Math.round(kpis.avgAht)) : "—"}
+            sub={
+              <>
+                <DeltaChip curr={kpis.avgAht} prev={prevKpis?.avgAht} invert />
+                <div style={{ color: "var(--text-3)" }}>
+                  {kpis.medianAht ? `mediana ${formatDurationSec(kpis.medianAht)}` : "sin datos"}
+                </div>
+              </>
+            }
           />
-          <ExecStat
-            index={2}
-            period={period}
+          <Stat
+            icon="gauge"
+            color="var(--green)"
             label="Sentiment positivo"
-            icon={Activity}
-            accent="#25B873"
-            value={kpis.posPct}
-            unit="%"
-            note="de los contactos analizados"
+            value={<Num value={kpis.posPct} suffix="%" />}
+            sub={
+              <>
+                <DeltaChip curr={kpis.posPct} prev={prevKpis?.posPct} />
+                <div style={{ color: "var(--text-3)" }}>de los contactos analizados</div>
+              </>
+            }
           />
-          <ExecStat
-            index={3}
-            period={period}
+          <Stat
+            icon="trending"
+            color="var(--iris)"
             label="Score neto"
-            icon={TrendingUp}
-            accent="#9B8CF0"
-            value={kpis.score}
-            formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n)}`}
-            note="(positivos − negativos) / total"
+            value={`${kpis.score >= 0 ? "+" : ""}${Math.round(kpis.score)}`}
+            sub={
+              <>
+                <DeltaChip curr={kpis.score} prev={prevKpis?.score} />
+                <div style={{ color: "var(--text-3)" }}>(positivos − negativos) / total</div>
+              </>
+            }
           />
         </div>
       )}
@@ -440,75 +523,155 @@ export function ReportsPage() {
         <ContactFilters onSearch={searchContacts} loading={loading} />
       </div>
 
-      {initialLoading ? (
-        <div className="grid-2" style={{ marginBottom: 16 }}>
-          <div className="exec-skel" style={{ height: 300, borderRadius: 16 }} />
-          <div className="exec-skel" style={{ height: 300, borderRadius: 16 }} />
-        </div>
-      ) : (
-        <div className="grid-2" style={{ marginBottom: 16 }}>
-          <Panel title="Volumen por canal" hint={`${contacts.length} contactos`}>
-            {volumeByChannel.length === 0 ? (
-              <EmptyState
-                icon={<Icon.Chart size={20} />}
-                title="Sin contactos en el rango"
-                description="Ajustá el período o los filtros para ver volumen por canal."
-              />
-            ) : (
-              <ExecBarsEChart data={volumeByChannel} height={264} />
-            )}
-          </Panel>
-          <Panel title="Distribución de AHT" hint="minutos">
-            <AhtHistogramEChart contacts={contacts} />
-          </Panel>
+      {/* Tab bar de categorías — segmenta los reportes por dominio (Operación,
+          Crecimiento, WhatsApp, Agente IA) en vez de una página larga apilada. */}
+      <div className="row gap8 wrap" role="tablist" aria-label="Categoría de reportes" style={{ marginBottom: 6 }}>
+        {REPORT_TABS.map((t) => {
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(t.id)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "9px 15px",
+                borderRadius: 10,
+                cursor: "pointer",
+                border: active ? `1.5px solid ${t.color}` : "1px solid var(--border-1)",
+                background: active ? `color-mix(in srgb, ${t.color} 12%, var(--bg-1))` : "var(--bg-1)",
+                color: active ? t.color : "var(--text-2)",
+                fontWeight: active ? 750 : 600,
+                fontSize: 13,
+                transition: "border-color .12s, background .12s, color .12s",
+              }}
+            >
+              <Icon name={t.icon} size={16} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="dim" style={{ fontSize: 12.5, marginBottom: 16, lineHeight: 1.5 }}>
+        {REPORT_TABS.find((t) => t.id === tab)?.hint}
+      </div>
+
+      {/* ── OPERACIÓN · contact center ── */}
+      {tab === "operacion" && (
+        <>
+          {initialLoading ? (
+            <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+              <div className="card" style={{ height: 300 }} />
+              <div className="card" style={{ height: 300 }} />
+            </div>
+          ) : (
+            <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+              <Card title="Volumen por canal" icon="layers" extra={<span className="dim" style={{ fontSize: 12 }}>{contacts.length} contactos</span>}>
+                {volumeByChannel.length === 0 ? (
+                  <EmptyState
+                    icon={<Icon name="chart" size={20} />}
+                    title="Sin contactos en el rango"
+                    description="Ajustá el período o los filtros para ver volumen por canal."
+                  />
+                ) : (
+                  <ExecBarsEChart data={volumeByChannel} height={264} />
+                )}
+              </Card>
+              <Card title="Distribución de AHT" icon="clock" extra={<span className="dim" style={{ fontSize: 12 }}>minutos</span>}>
+                <AhtHistogramEChart contacts={contacts} />
+              </Card>
+            </div>
+          )}
+
+          <div style={{ marginBottom: 16 }}>
+            <Card title="Sentiment por día · Contact Lens" icon="gauge">
+              {initialLoading ? (
+                <div className="card" style={{ height: 280 }} />
+              ) : (
+                <SentimentChart contacts={contacts} />
+              )}
+            </Card>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <Card title="Rendimiento de agente" icon="users" extra={<span className="dim" style={{ fontSize: 12 }}>click en columna para ordenar</span>} pad={false}>
+              <AgentPerformanceReport contacts={contacts} />
+            </Card>
+          </div>
+
+          <Card title="Historial de contactos" icon="fileText" extra={<span className="dim" style={{ fontSize: 12 }}>{contacts.length} contactos</span>} pad={false}>
+            <ContactsTable contacts={contacts} />
+          </Card>
+        </>
+      )}
+
+      {/* ── CRECIMIENTO · leads (Pilar 1 + Pilar 2) ── */}
+      {tab === "crecimiento" && (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <ProgramReport />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <AttributionReport />
+          </div>
+        </>
+      )}
+
+      {/* ── WHATSAPP · outbound (Pilar 9C + Pilar 4C) ── */}
+      {tab === "whatsapp" && (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <Card title="WhatsApp · Plantillas (HSM Outbound)" icon="wa">
+              <HsmOutboundReport />
+            </Card>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <Card title="WhatsApp · Entrega directo de Meta (Cloud API)" icon="wa">
+              <WhatsAppAnalyticsPanel />
+            </Card>
+          </div>
+        </>
+      )}
+
+      {/* ── AGENTE IA · bot (Pilar 9B) ── */}
+      {tab === "bot" && (
+        <div style={{ marginBottom: 16 }}>
+          <BotAnalyticsReport />
         </div>
       )}
 
-      {/* Pilar 9 — Dashboard por Programa (centerpiece, scopeado al switcher). */}
-      <div style={{ marginBottom: 16 }}>
-        <ProgramReport />
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <Panel title="Sentiment por día · Contact Lens">
-          {initialLoading ? (
-            <div className="exec-skel" style={{ height: 280, borderRadius: 12 }} />
-          ) : (
-            <SentimentChart contacts={contacts} />
-          )}
-        </Panel>
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <Panel title="Rendimiento de agente" hint="click en columna para ordenar" flush>
-          <AgentPerformanceReport contacts={contacts} />
-        </Panel>
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <Panel title="WhatsApp · Plantillas (HSM Outbound)">
-          <HsmOutboundReport />
-        </Panel>
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <Panel title="WhatsApp · Entrega directo de Meta (Cloud API)">
-          <WhatsAppAnalyticsPanel />
-        </Panel>
-      </div>
-
-      {/* Pilar 9 — Reporte del Agente IA (conv# del bot-runtime). */}
-      <div style={{ marginBottom: 16 }}>
-        <BotAnalyticsReport />
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <AttributionReport />
-      </div>
-
-      <Panel title="Historial de contactos" hint={`${contacts.length} contactos`} flush>
-        <ContactsTable contacts={contacts} />
-      </Panel>
+      {/* ── DESCARGAS · exports (Chat detail + programados, estilo Chattigo) ── */}
+      {tab === "descargas" && (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <Card
+              title="Detalle de conversaciones · Chat detail"
+              icon="fileText"
+              extra={<span className="dim" style={{ fontSize: 12 }}>{contacts.length} conversaciones</span>}
+            >
+              <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 14 }}>
+                Exporta fila por conversación con todos los campos: agente, cola, canal, duración,
+                sentiment, categorías, estado y motivo de cierre — sobre tus contactos reales del
+                período seleccionado. Es el reporte que en Chattigo se descarga como «Chat detail».
+              </div>
+              <Btn
+                variant="primary"
+                size="sm"
+                icon="download"
+                disabled={contacts.length === 0}
+                onClick={() => exportContactsToCsv(contacts)}
+              >
+                Descargar CSV · {contacts.length} conversaciones
+              </Btn>
+            </Card>
+          </div>
+          <Card title="Exports programados · XLSX por email" icon="calendar">
+            <ScheduledExportsPanel />
+          </Card>
+        </>
+      )}
     </div>
   );
 }

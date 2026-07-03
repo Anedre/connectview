@@ -176,17 +176,8 @@ export function EmailThreadPanel({
             )}
           </div>
           <span
-            className="chip"
-            style={{
-              fontSize: 10.5,
-              background: "var(--accent-amber-soft)",
-              color: "var(--accent-amber)",
-              borderColor: "transparent",
-              flexShrink: 0,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
+            className="pill pill--gold"
+            style={{ fontSize: 10.5, height: 22, flexShrink: 0 }}
           >
             <Mail size={12} /> Email
           </span>
@@ -325,33 +316,31 @@ export function EmailThreadPanel({
           }}
         >
           <div
-            className="muted"
+            className="dim"
             style={{
               fontSize: 10.5,
-              fontWeight: 600,
+              fontWeight: 700,
               textTransform: "uppercase",
-              letterSpacing: "0.06em",
+              letterSpacing: ".06em",
               marginBottom: 6,
             }}
           >
             {detail?.attachments?.length} adjunto
             {(detail?.attachments?.length || 0) === 1 ? "" : "s"}
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div className="row wrap gap6">
             {(detail?.attachments || []).map((a) => (
               <a
                 key={a.fileId}
                 href={a.url || "#"}
                 target="_blank"
                 rel="noopener noreferrer"
+                className="row gap6"
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
                   padding: "6px 10px",
                   background: "var(--bg-2)",
                   border: "1px solid var(--border-1)",
-                  borderRadius: 6,
+                  borderRadius: "var(--r-sm)",
                   fontSize: 11.5,
                   color: "var(--text-1)",
                   textDecoration: "none",
@@ -361,25 +350,14 @@ export function EmailThreadPanel({
                 }}
               >
                 <Paperclip size={13} style={{ flexShrink: 0 }} />
-                <span
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    maxWidth: 180,
-                  }}
-                  title={a.fileName || a.fileId}
-                >
+                <span className="trunc" style={{ maxWidth: 180 }} title={a.fileName || a.fileId}>
                   {a.fileName || a.fileId}
                 </span>
-                <span className="muted" style={{ fontSize: 10 }}>
+                <span className="dim" style={{ fontSize: 10 }}>
                   {fmtFileSize(a.fileSizeBytes) || a.fileStatus || ""}
                 </span>
                 {a.url && (
-                  <Icon.Download
-                    size={11}
-                    style={{ color: "var(--accent-cyan)" }}
-                  />
+                  <Icon.Download size={11} style={{ color: "var(--accent)" }} />
                 )}
               </a>
             ))}
@@ -387,74 +365,59 @@ export function EmailThreadPanel({
         </div>
       )}
 
-      {/* Compose footer — collapsed by default */}
-      <div
-        style={{
-          padding: "10px 18px",
-          borderTop: "1px solid var(--border-1)",
-          background: "var(--bg-1)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
-      >
+      {/* Compose footer — colapsado por defecto. Envoltura .composer. */}
+      <div className="composer">
         {replyOpen ? (
-          <>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <Icon.Mail size={13} style={{ color: "var(--accent-amber)" }} />
-              <span style={{ fontSize: 12.5, fontWeight: 500 }}>
+          <div className="col gap8">
+            <div className="row between">
+              <span className="row gap8" style={{ fontSize: 12.5, fontWeight: 600 }}>
+                <Icon.Mail size={13} style={{ color: "var(--gold-2)" }} />
                 Responder a {from || customerName}
               </span>
               <button
-                className="btn btn--ghost btn--sm btn--icon"
+                type="button"
+                className="ctab__x"
                 onClick={() => setReplyOpen(false)}
-                style={{ marginLeft: "auto" }}
                 title="Cerrar"
               >
-                <Icon.Close size={11} />
+                <Icon.Close size={13} />
               </button>
             </div>
             <textarea
               placeholder="Escribe tu respuesta…"
+              rows={4}
               style={{
                 width: "100%",
-                minHeight: 80,
+                resize: "vertical",
                 background: "var(--bg-2)",
                 border: "1px solid var(--border-1)",
-                borderRadius: 6,
-                padding: 10,
+                borderRadius: "var(--r-md)",
+                padding: "10px 12px",
                 fontFamily: "inherit",
-                fontSize: 12.5,
+                fontSize: 13,
                 color: "var(--text-1)",
-                resize: "vertical",
                 outline: "none",
               }}
             />
-            <div className="row" style={{ gap: 6 }}>
+            <div className="row gap8">
               <button
                 type="button"
                 className="btn btn--primary btn--sm"
                 disabled
                 title="Pendiente — necesita wiring a Connect SendEmail"
               >
-                Enviar
+                <Icon.Send size={12} /> Enviar respuesta
               </button>
-              <span className="muted" style={{ fontSize: 11 }}>
+              <span className="dim" style={{ fontSize: 11 }}>
                 Próximamente · necesita Connect SendEmail Lambda
               </span>
             </div>
-          </>
+          </div>
         ) : (
-          <div style={{ display: "flex", gap: 6 }}>
+          <div className="row gap6">
             <button
               type="button"
-              className="btn btn--ghost btn--sm"
+              className="btn btn--soft btn--sm"
               onClick={() => setReplyOpen(true)}
             >
               <Icon.Mail size={11} /> Responder

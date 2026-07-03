@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
-import * as Icon from "@/components/vox/primitives";
-import { Avatar, Card, CardBody, CardHead, Kpi, StatusPill } from "@/components/vox/primitives";
+import { Avatar, Card, CardBody, CardHead, StatusPill } from "@/components/vox/primitives";
 import { TaxonomyEditor } from "@/components/admin/TaxonomyEditor";
 import { CatalogEditor } from "@/components/admin/CatalogEditor";
 import { KnowledgeEditor } from "@/components/admin/KnowledgeEditor";
@@ -14,11 +13,13 @@ import { SegmentsManager } from "@/components/admin/SegmentsManager";
 import { AiContactLensManager } from "@/components/admin/AiContactLensManager";
 import { SecurityManager } from "@/components/admin/SecurityManager";
 import { IntegrationsManager } from "@/components/admin/IntegrationsManager";
+import { ConsumptionManager } from "@/components/admin/ConsumptionManager";
 import { QueuesPanel } from "@/components/admin/QueuesPanel";
 import { TeamManager } from "@/components/admin/TeamManager";
-import { PageHeader } from "@/components/vox/PageHeader";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { ConnectUserRoleModal } from "@/components/admin/ConnectUserRoleModal";
+import { Icon, Btn, Stat, HeroBand, Num } from "@/components/aria";
+import type { IconName } from "@/components/aria";
 
 interface ConnectUser {
   userId: string;
@@ -114,70 +115,65 @@ export function AdminPage() {
     agents: users.filter((u) => u.groups.includes("Agent")).length,
   };
 
-  const sections = [
-    { id: "users", label: "Usuarios y roles", icon: Icon.Users },
-    { id: "tipificacion", label: "Tipificación", icon: Icon.Tag },
-    { id: "catalogos", label: "Catálogos", icon: Icon.Pad },
-    { id: "knowledge", label: "Base de conocimiento", icon: Icon.Knowledge },
-    { id: "channels", label: "Canales", icon: Icon.Globe },
-    { id: "watemplates", label: "Plantillas WhatsApp", icon: Icon.Chat },
-    { id: "suppression", label: "Supresión", icon: Icon.Stop },
-    { id: "segments", label: "Segmentos", icon: Icon.Ticket },
-    { id: "queues", label: "Colas", icon: Icon.Queue },
-    { id: "integrations", label: "Integraciones", icon: Icon.Lightning },
-    { id: "ai", label: "IA y Contact Lens", icon: Icon.Sparkles },
-    { id: "security", label: "Seguridad", icon: Icon.Shield },
+  const sections: { id: string; label: string; icon: IconName }[] = [
+    { id: "users", label: "Usuarios y roles", icon: "users" },
+    { id: "tipificacion", label: "Tipificación", icon: "tag" },
+    { id: "catalogos", label: "Catálogos", icon: "layers" },
+    { id: "knowledge", label: "Base de conocimiento", icon: "book" },
+    { id: "channels", label: "Canales", icon: "globe" },
+    { id: "watemplates", label: "Plantillas WhatsApp", icon: "wa" },
+    { id: "suppression", label: "Supresión", icon: "shield" },
+    { id: "segments", label: "Segmentos", icon: "filter" },
+    { id: "queues", label: "Colas", icon: "layers" },
+    { id: "integrations", label: "Integraciones", icon: "external" },
+    { id: "consumo", label: "Consumo", icon: "chart" },
+    { id: "ai", label: "IA y Contact Lens", icon: "sparkle" },
+    { id: "security", label: "Seguridad", icon: "lock" },
   ];
 
   return (
-    <div className="view">
-      <PageHeader
-        crumb="Sistema"
+    <div className="page" style={{ maxWidth: 1320 }}>
+      {/* ARIA hero band — reemplaza el PageHeader por el lenguaje premium de
+          ARIA. La navegación master-detail de settings vive intacta debajo. */}
+      <HeroBand
         title="Configuración"
-        filterPill="Todos"
-        sub={
-          <>
-            {/* Inconsistencia cross-página: el resto de subtítulos están
-                en español puro, este mezclaba "Workspace · Connect users". */}
-            Sistema · Usuarios de Connect · {stats.total} en total
-          </>
-        }
-        actions={
-          <>
-            <button
-              className="btn"
+        chip={<>Sistema · Usuarios de Connect · {stats.total} en total</>}
+        chipIcon="settings"
+        chipTone="var(--iris)"
+        right={
+          <div className="row gap10">
+            <Btn
+              variant="ghost"
+              size="sm"
+              icon="external"
               onClick={() => window.open(`${instanceUrl}/connect/users`, "_blank")}
             >
               Abrir en Connect
-            </button>
-            <button className="btn" onClick={() => fetchUsers()} disabled={loading}>
-              <Icon.Refresh size={14} /> Actualizar
-            </button>
-          </>
+            </Btn>
+            <Btn variant="primary" size="sm" icon="refresh" onClick={() => fetchUsers()} disabled={loading}>
+              Actualizar
+            </Btn>
+          </div>
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 18 }}>
-        <Card style={{ height: "fit-content" }}>
-          <CardBody style={{ padding: 8 }}>
-            {sections.map((s) => {
-              const Icn = s.icon;
-              return (
-                <div
-                  key={s.id}
-                  className={`sb__item ${section === s.id ? "sb__item--active" : ""}`}
-                  onClick={() => setSection(s.id)}
-                  style={{ margin: 0 }}
-                >
-                  <Icn className="sb__icon" size={16} />
-                  <div className="sb__label">{s.label}</div>
-                </div>
-              );
-            })}
-          </CardBody>
-        </Card>
+      {/* Master-detail ARIA (.setg) — nav a la izquierda, contenido real a la
+          derecha. Cada panel manage-* se renderiza sin tocar su interior. */}
+      <div className="setg">
+        <div className="setg__nav">
+          {sections.map((s) => (
+            <button
+              key={s.id}
+              className={"setg__item" + (section === s.id ? " setg__item--on" : "")}
+              onClick={() => setSection(s.id)}
+            >
+              <Icon name={s.icon} size={16} />
+              {s.label}
+            </button>
+          ))}
+        </div>
 
-        <div>
+        <div className="setg__body">
           {section === "users" && (
             <div className="col" style={{ gap: 16 }}>
               {/* Equipo de Vox (Cognito) — la gente que se loguea a la app +
@@ -197,14 +193,17 @@ export function AdminPage() {
                 </div>
               </div>
 
-              <div className="kpi-grid">
-                <Kpi label="Usuarios totales" value={String(stats.total)} deltaDir="flat" />
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 16 }}
+              >
+                <Stat icon="users" color="var(--accent)" label="Usuarios totales" value={<Num value={stats.total} />} sub="en Amazon Connect" />
                 {/* Mantenemos el español puro para alinear con el resto
                     de la app. "Managers" → "Supervisores" para reflejar el
                     rol CallCenterManager del Connect security profile. */}
-                <Kpi label="Administradores" value={String(stats.admins)} deltaDir="flat" />
-                <Kpi label="Supervisores" value={String(stats.managers)} deltaDir="flat" />
-                <Kpi label="Agentes" value={String(stats.agents)} deltaDir="flat" />
+                <Stat icon="shield" color="var(--coral)" label="Administradores" value={<Num value={stats.admins} />} sub="perfil Admin" />
+                <Stat icon="headset" color="var(--cyan)" label="Supervisores" value={<Num value={stats.managers} />} sub="CallCenterManager" />
+                <Stat icon="phone" color="var(--green)" label="Agentes" value={<Num value={stats.agents} />} sub="perfil Agent" />
               </div>
               <div className="muted" style={{ fontSize: 11.5, marginTop: -4 }}>
                 Un mismo usuario puede tener varios perfiles, por lo que la suma de
@@ -235,7 +234,7 @@ export function AdminPage() {
                         window.open(`${instanceUrl}/connect/users`, "_blank", "noopener")
                       }
                     >
-                      Gestionar en Connect <Icon.ChevRight size={12} />
+                      Gestionar en Connect <Icon name="arrowRight" size={12} />
                     </button>
                   }
                 />
@@ -343,6 +342,7 @@ export function AdminPage() {
           {section === "suppression" && <SuppressionManager />}
           {section === "segments" && <SegmentsManager />}
           {section === "integrations" && <IntegrationsManager />}
+          {section === "consumo" && <ConsumptionManager />}
           {section === "queues" && <QueuesPanel />}
           {section === "ai" && <AiContactLensManager />}
           {section === "security" && <SecurityManager />}
@@ -356,6 +356,7 @@ export function AdminPage() {
             section !== "suppression" &&
             section !== "security" &&
             section !== "integrations" &&
+            section !== "consumo" &&
             section !== "queues" &&
             section !== "ai" && (
               <Card>
@@ -366,7 +367,7 @@ export function AdminPage() {
                     color: "var(--text-3)",
                   }}
                 >
-                  <Icon.Sparkles size={32} style={{ opacity: 0.4 }} />
+                  <Icon name="sparkle" size={32} style={{ opacity: 0.4 }} />
                   <div style={{ marginTop: 12, fontSize: 14 }}>
                     Próximamente · {sections.find((s) => s.id === section)?.label}
                   </div>
@@ -378,7 +379,7 @@ export function AdminPage() {
                     style={{ marginTop: 14 }}
                     onClick={() => window.open(`${instanceUrl}/connect`, "_blank", "noopener")}
                   >
-                    Abrir consola de Connect <Icon.ChevRight size={12} />
+                    Abrir consola de Connect <Icon name="arrowRight" size={12} />
                   </button>
                 </CardBody>
               </Card>

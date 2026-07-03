@@ -9,6 +9,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
+import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { randomUUID } from "node:crypto";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { isLegacyTenant } from "../_shared/cognitoAuth";
@@ -22,6 +23,8 @@ import {
   stageIdToLabel,
 } from "../_shared/leadSync";
 import { setActiveTenant } from "../_shared/salesforceClient";
+import { evaluateSend } from "../_shared/suppression";
+import { entryNodeId, type JourneyDef } from "../_shared/journeys";
 
 /**
  * automation-engine — el motor de reglas (#15, "Digital Pipeline" de ARIA):
@@ -48,12 +51,20 @@ import { setActiveTenant } from "../_shared/salesforceClient";
 const RULES_TABLE = process.env.RULES_TABLE || "connectview-automation-rules";
 const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
 const CALLBACKS_TABLE = process.env.CALLBACKS_TABLE || "connectview-callbacks";
+const JOURNEYS_TABLE = process.env.JOURNEYS_TABLE || "connectview-journeys";
+const JOURNEY_ENROLLMENTS_TABLE =
+  process.env.JOURNEY_ENROLLMENTS_TABLE || "connectview-journey-enrollments";
 const SEND_WA_URL = process.env.SEND_WHATSAPP_TEMPLATE_URL || "";
 const INTERNAL_SECRET = process.env.VOX_INTERNAL_SECRET || "";
 // #17: cola de entrega durable de webhooks. Si está vacía, actWebhook cae al
 // intento único legacy (rollout seguro: sin la cola, el comportamiento no cambia).
 const WEBHOOK_QUEUE_URL = process.env.WEBHOOK_QUEUE_URL || "";
 const sqs = new SQSClient({});
+// send_email: SES v2 (mismo cliente/patrón que journey-runner). From verificado
+// del proyecto (novasys.com.pe en producción). Si SES fallara, la acción registra
+// el error y la regla sigue con la próxima acción (retry envuelve la llamada).
+const ses = new SESv2Client({});
+const FROM_EMAIL = process.env.FROM_EMAIL || "ARIA <notificaciones@novasys.com.pe>";
 const RUN_TTL_DAYS = Number(process.env.RUN_TTL_DAYS || 60);
 /** Tope de disparos por regla por tick (paracaídas anti-blast de WhatsApp). */
 const MAX_FIRES_PER_TICK = Number(process.env.MAX_FIRES_PER_TICK || 25);
@@ -74,8 +85,20 @@ type TriggerType =
   | "lead_stage_changed"
   | "lead_inactive"
   | "wrapup_saved"
-  | "whatsapp_flow_completed";
-type ActionType = "send_whatsapp_template" | "move_stage" | "schedule_callback" | "webhook";
+  | "whatsapp_flow_completed"
+  | "message_inbound"
+  | "appointment_scheduled"
+  | "tag_applied";
+type ActionType =
+  | "send_whatsapp_template"
+  | "move_stage"
+  | "schedule_callback"
+  | "webhook"
+  | "send_email"
+  | "apply_tag"
+  | "apply_attribute"
+  | "notify_agent"
+  | "start_journey";
 
 interface Rule {
   tenantId: string;
@@ -95,6 +118,7 @@ export interface AutomationEvent {
     leadId?: string;
     phone?: string;
     name?: string;
+    email?: string;
     stageId?: string;
     source?: string;
   };
@@ -108,6 +132,10 @@ export interface AutomationEvent {
   };
   /** Para whatsapp_flow_completed (#10): nombre del Flow de Meta. */
   flow?: { name?: string };
+  /** Para message_inbound (#15): canal del mensaje entrante. */
+  message?: { channel?: string; text?: string };
+  /** Para tag_applied (#15): la etiqueta que se aplicó. */
+  tag?: string;
 }
 
 /** Contexto normalizado sobre el que corren condiciones y acciones. */
@@ -117,17 +145,21 @@ interface Ctx {
   contactId?: string;
   phone?: string;
   name?: string;
+  email?: string;
   stageId?: string;
   source?: string;
   valoracion?: string;
   channel?: string;
   flowName?: string;
+  /** tag_applied: la etiqueta del evento (para matchear condiciones/trigger). */
+  tag?: string;
 }
 
 interface LeadItem {
   leadId: string;
   phone?: string;
   name?: string;
+  email?: string;
   stageId?: string;
   source?: string;
   attributes?: Record<string, string>;
@@ -220,15 +252,26 @@ async function setupTenant(tenantId: string, strict = true): Promise<void> {
 }
 
 function matchesConditions(rule: Rule, ctx: Ctx): boolean {
+  return firstFailedCondition(rule, ctx) === null;
+}
+
+/** Igual que matchesConditions pero devuelve la PRIMERA condición que falla (o
+ *  null si todas pasan) — para el detalle de debug del run "skipped". */
+function firstFailedCondition(
+  rule: Rule,
+  ctx: Ctx,
+): { field: string; op: string; value: string; actual: string } | null {
   for (const c of rule.conditions || []) {
     const actual = String(
       (ctx as unknown as Record<string, unknown>)[c.field] ?? ""
     ).toLowerCase();
     const expected = String(c.value ?? "").toLowerCase();
-    if (c.op === "eq" && actual !== expected) return false;
-    if (c.op === "neq" && actual === expected) return false;
+    if (c.op === "eq" && actual !== expected)
+      return { field: c.field, op: c.op, value: c.value, actual };
+    if (c.op === "neq" && actual === expected)
+      return { field: c.field, op: c.op, value: c.value, actual };
   }
-  return true;
+  return null;
 }
 
 function matchesTrigger(rule: Rule, ev: AutomationEvent): boolean {
@@ -243,6 +286,17 @@ function matchesTrigger(rule: Rule, ev: AutomationEvent): boolean {
     const want = String(rule.trigger.params?.flowName || "").toLowerCase();
     if (want && want !== String(ev.flow?.name || "").toLowerCase()) return false;
   }
+  // message_inbound admite filtrar por canal (whatsapp/instagram/messenger).
+  if (ev.type === "message_inbound") {
+    const want = String(rule.trigger.params?.channel || "").toLowerCase();
+    if (want && want !== String(ev.message?.channel || "").toLowerCase()) return false;
+  }
+  // tag_applied admite filtrar por la etiqueta específica.
+  if (ev.type === "tag_applied") {
+    const want = String(rule.trigger.params?.tag || "").toLowerCase();
+    if (want && want !== String(ev.tag || "").toLowerCase()) return false;
+  }
+  // appointment_scheduled: sin params → siempre matchea si el type coincide.
   return true;
 }
 
@@ -263,18 +317,23 @@ function ctxFromEvent(ev: AutomationEvent): Ctx {
     leadId: ev.lead?.leadId,
     phone: ev.lead?.phone,
     name: ev.lead?.name,
+    email: ev.lead?.email,
     stageId: ev.lead?.stageId,
     source: ev.lead?.source,
     flowName: ev.flow?.name,
+    // message_inbound: el canal del mensaje entra como `channel` (matcheable).
+    channel: ev.message?.channel || undefined,
+    tag: ev.tag || undefined,
   };
 }
 
-/** Tokens {{name}}/{{phone}}/{{stage}} en variables de plantilla y notas. */
+/** Tokens {{name}}/{{phone}}/{{stage}}/{{email}} en variables, notas y emails. */
 function fillTokens(s: string, ctx: Ctx): string {
   return s
     .replace(/\{\{\s*name\s*\}\}/gi, ctx.name || "")
     .replace(/\{\{\s*phone\s*\}\}/gi, ctx.phone || "")
-    .replace(/\{\{\s*stage\s*\}\}/gi, ctx.stageId || "");
+    .replace(/\{\{\s*stage\s*\}\}/gi, ctx.stageId || "")
+    .replace(/\{\{\s*email\s*\}\}/gi, ctx.email || "");
 }
 
 async function findLeadByPhone(phone: string): Promise<LeadItem | null> {
@@ -476,7 +535,276 @@ async function actWebhook(
   }
 }
 
+/**
+ * Resuelve el lead objetivo de una acción que necesita el item (email/tags/attrs):
+ * por leadId directo, o por teléfono (eventos de wrap-up / message_inbound). null
+ * si no se puede resolver.
+ */
+async function resolveLead(ctx: Ctx): Promise<LeadItem | null> {
+  if (ctx.leadId) {
+    const l = await getLead(ctx.leadId);
+    if (l) return l;
+  }
+  if (ctx.phone) return findLeadByPhone(ctx.phone);
+  return null;
+}
+
+async function actSendEmail(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
+  const subject = fillTokens(String(params.subject || ""), ctx).trim();
+  const bodyText = fillTokens(String(params.body || ""), ctx);
+  if (!subject) return "subject requerido";
+  if (!bodyText.trim()) return "body requerido";
+  // El "para" = email del lead. Si el ctx no lo trae (wrap-up), lo cargamos.
+  let to = (ctx.email || "").trim();
+  let leadId = ctx.leadId;
+  if (!to) {
+    const lead = await resolveLead(ctx);
+    to = (lead?.email || "").trim();
+    leadId = leadId || lead?.leadId;
+  }
+  if (!to) return "lead sin email";
+  // Gate de supresión channel-scoped (email) — igual que journey-runner. Best-effort.
+  const phone = (ctx.phone || "").trim();
+  if (phone) {
+    try {
+      const v = await evaluateSend(leadsDynamo, {
+        phone,
+        channel: "email",
+        tenantId: ctx.tenantId,
+      });
+      if (!v.allowed) {
+        console.log(`automation: email suprimido (${v.blockedBy || "?"})`);
+        return null; // suprimido no es error (mismo criterio que actSendTemplate)
+      }
+    } catch {
+      /* gate best-effort: si falla la evaluación, seguimos con el envío */
+    }
+  }
+  const html = `<p>${bodyText.replace(/\n/g, "<br>")}</p>`;
+  await ses.send(
+    new SendEmailCommand({
+      FromEmailAddress: FROM_EMAIL,
+      Destination: { ToAddresses: [to] },
+      Content: {
+        Simple: {
+          Subject: { Data: subject, Charset: "UTF-8" },
+          Body: {
+            Text: { Data: bodyText, Charset: "UTF-8" },
+            Html: { Data: html, Charset: "UTF-8" },
+          },
+        },
+      },
+    }),
+  );
+  // El envío es un golpe (Pilar 2). Best-effort — no aborta si falla el historial.
+  if (leadId) {
+    try {
+      await appendLeadHistory(leadId, {
+        ts: new Date().toISOString(),
+        type: "email_out",
+        channel: "Correo",
+        direction: "out",
+        summary: subject,
+        notes: "Automatización",
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
+  return null;
+}
+
+/**
+ * Aplica una etiqueta al lead. Convención: `attributes.tags` = CSV (dedup
+ * case-insensitive), el mismo shape que edita el bot-runtime (state.vars.tags).
+ * Escritura DIRECTA a DDB (anti-loop): NO re-dispara `tag_applied`.
+ */
+async function actApplyTag(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
+  const tag = fillTokens(String(params.tag || ""), ctx).trim();
+  if (!tag) return "tag requerido";
+  const lead = await resolveLead(ctx);
+  if (!lead) return "lead no encontrado";
+  const current = String(lead.attributes?.tags || "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (current.some((t) => t.toLowerCase() === tag.toLowerCase())) return null; // ya lo tiene
+  const next = [...current, tag].join(", ").slice(0, 1024);
+  // Dos pasos (attributes puede no existir) — mismo patrón que writeFiredMarker.
+  await leadsDynamo
+    .send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: { leadId: { S: lead.leadId } },
+        UpdateExpression: "SET attributes = if_not_exists(attributes, :empty)",
+        ExpressionAttributeValues: { ":empty": { M: {} } },
+      }),
+    )
+    .catch(() => {});
+  await leadsDynamo.send(
+    new UpdateItemCommand({
+      TableName: LEADS_TABLE,
+      Key: { leadId: { S: lead.leadId } },
+      UpdateExpression: "SET attributes.#k = :v, updatedAt = :t",
+      ExpressionAttributeNames: { "#k": "tags" },
+      ExpressionAttributeValues: { ":v": { S: next }, ":t": { S: new Date().toISOString() } },
+    }),
+  );
+  return null;
+}
+
+/**
+ * Setea un atributo arbitrario del lead: `attributes[field] = value`. Escritura
+ * DIRECTA a DDB (anti-loop). El nombre del campo se sanea (sin puntos, ≤64).
+ */
+async function actApplyAttribute(
+  ctx: Ctx,
+  params: Record<string, unknown>,
+): Promise<string | null> {
+  const field = String(params.field || "")
+    .trim()
+    .replace(/[^\w.-]/g, "_")
+    .slice(0, 64);
+  if (!field) return "field requerido";
+  const value = fillTokens(String(params.value ?? ""), ctx).slice(0, 512);
+  const lead = await resolveLead(ctx);
+  if (!lead) return "lead no encontrado";
+  await leadsDynamo
+    .send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: { leadId: { S: lead.leadId } },
+        UpdateExpression: "SET attributes = if_not_exists(attributes, :empty)",
+        ExpressionAttributeValues: { ":empty": { M: {} } },
+      }),
+    )
+    .catch(() => {});
+  await leadsDynamo.send(
+    new UpdateItemCommand({
+      TableName: LEADS_TABLE,
+      Key: { leadId: { S: lead.leadId } },
+      UpdateExpression: "SET attributes.#k = :v, updatedAt = :t",
+      ExpressionAttributeNames: { "#k": field },
+      ExpressionAttributeValues: { ":v": { S: value }, ":t": { S: new Date().toISOString() } },
+    }),
+  );
+  return null;
+}
+
+/**
+ * Crea una notificación in-app para un agente. Best-effort: reusa
+ * `connectview-callbacks` con canal "notification" (no hay tabla dedicada limpia
+ * hoy; el bubble de "Tareas" ya lee de esta tabla). El dispatcher IGNORA este
+ * tipo (actionType "none" + channel "notification" ≠ auto-dispatch/manual-action),
+ * así que no genera llamadas ni WhatsApp: solo aparece como tarea del agente.
+ */
+async function actNotifyAgent(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
+  // Solo tenant fundador: la tabla de callbacks es pooled/legacy hoy (igual que
+  // actScheduleCallback). Para BYO sería una tabla en su Data Plane (follow-up).
+  if (!isLegacyTenant(ctx.tenantId))
+    return "notify_agent aún no soportado para tenants BYO";
+  const message = fillTokens(String(params.message || ""), ctx).trim();
+  if (!message) return "message requerido";
+  const nowIso = new Date().toISOString();
+  const item: Record<string, { S: string } | { N: string }> = {
+    callbackId: { S: randomUUID() },
+    phone: { S: (ctx.phone || "").trim() },
+    customerName: { S: ctx.name || "" },
+    scheduledAt: { S: nowIso }, // "ahora": es un aviso, no un futuro
+    assignedAgentUserId: { S: String(params.agent || "") },
+    notes: { S: message.slice(0, 1024) },
+    channel: { S: "notification" },
+    actionType: { S: "none" }, // el dispatcher no la toca (ni voz ni wa)
+    campaignId: { S: "" },
+    contactFlowId: { S: "" },
+    sourcePhoneNumber: { S: "" },
+    customAttributes: { S: JSON.stringify({ automation: "1", kind: "notification" }) },
+    status: { S: "SCHEDULED" },
+    attempts: { N: "0" },
+    createdAt: { S: nowIso },
+    updatedAt: { S: nowIso },
+  };
+  await legacyDynamo.send(new PutItemCommand({ TableName: CALLBACKS_TABLE, Item: item }));
+  return null;
+}
+
+/**
+ * Inscribe al lead en un Journey (Engagement Studio): crea un enrollment activo en
+ * connectview-journey-enrollments y el journey-runner lo hace avanzar en su tick.
+ * Idempotente (no re-inscribe si ya existe, por ConditionExpression). Tablas
+ * pooled (founder) hoy — mismo alcance que actNotifyAgent/actScheduleCallback.
+ */
+async function actStartJourney(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
+  if (!isLegacyTenant(ctx.tenantId)) return "start_journey aún no soportado para tenants BYO";
+  const journeyId = String(params.journeyId || "").trim();
+  if (!journeyId) return "journeyId requerido";
+  if (!ctx.leadId) return "el disparador no tiene lead (start_journey necesita uno)";
+  const jr = await legacyDynamo.send(
+    new GetItemCommand({
+      TableName: JOURNEYS_TABLE,
+      Key: { tenantId: { S: ctx.tenantId || "" }, journeyId: { S: journeyId } },
+    }),
+  );
+  if (!jr.Item) return "journey no encontrado";
+  const journey = unmarshall(jr.Item) as JourneyDef;
+  if (journey.status !== "active") return `el journey "${journey.name}" no está activo`;
+  const entry = entryNodeId(journey) || "";
+  const nowIso = new Date().toISOString();
+  try {
+    await legacyDynamo.send(
+      new PutItemCommand({
+        TableName: JOURNEY_ENROLLMENTS_TABLE,
+        Item: marshall(
+          {
+            journeyId,
+            leadId: ctx.leadId,
+            tenantId: journey.tenantId || ctx.tenantId || undefined,
+            currentNodeId: entry,
+            status: "active",
+            enteredAt: nowIso,
+            nextRunAt: nowIso,
+            history: [{ node: entry, at: nowIso, note: "inscrito por automatización" }],
+          },
+          { removeUndefinedValues: true },
+        ),
+        ConditionExpression: "attribute_not_exists(journeyId)",
+      }),
+    );
+  } catch (e) {
+    // Ya inscrito → idempotente, no es error de negocio.
+    if (e instanceof Error && e.name === "ConditionalCheckFailedException") return null;
+    throw e; // transitorio → executeRule reintenta
+  }
+  return null;
+}
+
 // ───────────────────────── ejecución + log ─────────────────────────
+
+/** Resumen corto y SIN PII de los params de una acción (para depurar el run). */
+function actionDetail(action: string, params: Record<string, unknown>): string | undefined {
+  switch (action) {
+    case "send_whatsapp_template":
+      return `plantilla ${String(params.templateName || "?")}`;
+    case "move_stage":
+      return `→ etapa ${String(params.stageId || "?")}`;
+    case "schedule_callback":
+      return `callback ${String(params.channel || "voice")} +${Number(params.offsetHours ?? 24)}h`;
+    case "webhook":
+      return "POST webhook";
+    case "send_email":
+      return `email: ${String(params.subject || "").slice(0, 60)}`;
+    case "apply_tag":
+      return `tag ${String(params.tag || "?")}`;
+    case "apply_attribute":
+      return `${String(params.field || "?")}=${String(params.value ?? "").slice(0, 40)}`;
+    case "notify_agent":
+      return `aviso a ${String(params.agent || "equipo")}`;
+    case "start_journey":
+      return `→ journey ${String(params.journeyId || "?")}`;
+    default:
+      return undefined;
+  }
+}
 
 async function logRun(
   tenantId: string,
@@ -484,7 +812,8 @@ async function logRun(
   triggerType: string,
   action: string,
   ctx: Ctx,
-  error: string | null
+  error: string | null,
+  detail?: string,
 ): Promise<void> {
   const at = new Date().toISOString();
   // Sin PII: solo referencias (ids). Nada de phone/nombre en el log.
@@ -498,7 +827,9 @@ async function logRun(
     leadId: ctx.leadId || undefined,
     contactId: ctx.contactId || undefined,
     ok: !error,
-    error: error || undefined,
+    // detail = resumen de la acción (params, truncado); error = mensaje completo ≤500.
+    detail: detail ? detail.slice(0, 200) : undefined,
+    error: error ? error.slice(0, 500) : undefined,
     at,
     expireAt: Math.floor(Date.now() / 1000) + RUN_TTL_DAYS * 86400,
   };
@@ -525,24 +856,69 @@ async function bumpRule(tenantId: string, ruleId: string): Promise<void> {
     .catch((e) => console.warn("bumpRule failed", e));
 }
 
-/** Ejecuta las acciones de una regla sobre un contexto; devuelve cuántas OK. */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Backoff de reintentos para errores TRANSITORIOS (2 reintentos). */
+const RETRY_DELAYS_MS = [300, 900];
+
+/** Despacha UNA acción. Devuelve string = error de negocio (4xx claro, NO se
+ *  reintenta); throw = error transitorio (red/DDB/SES, SÍ se reintenta). */
+async function dispatchAction(
+  action: { type: ActionType; params?: Record<string, unknown> },
+  ctx: Ctx,
+  rule: Rule,
+): Promise<string | null> {
+  const p = action.params || {};
+  switch (action.type) {
+    case "send_whatsapp_template":
+      return actSendTemplate(ctx, p);
+    case "move_stage":
+      return actMoveStage(ctx, p);
+    case "schedule_callback":
+      return actScheduleCallback(ctx, p);
+    case "webhook":
+      return actWebhook(ctx, p, rule.name, rule.ruleId);
+    case "send_email":
+      return actSendEmail(ctx, p);
+    case "apply_tag":
+      return actApplyTag(ctx, p);
+    case "apply_attribute":
+      return actApplyAttribute(ctx, p);
+    case "notify_agent":
+      return actNotifyAgent(ctx, p);
+    case "start_journey":
+      return actStartJourney(ctx, p);
+    default:
+      return `acción desconocida: ${action.type}`;
+  }
+}
+
+/** Ejecuta las acciones de una regla sobre un contexto; devuelve cuántas OK.
+ *  Cada acción se envuelve en RETRY con backoff para fallos transitorios (throw);
+ *  los errores de validación (string devuelto) NO se reintentan. Si una acción
+ *  agota los reintentos, se loguea y se CONTINÚA con la siguiente (no aborta). */
 async function executeRule(rule: Rule, triggerType: string, ctx: Ctx): Promise<number> {
   let okCount = 0;
   for (const action of rule.actions || []) {
+    const detail = actionDetail(action.type, action.params || {});
     let error: string | null = null;
-    try {
-      if (action.type === "send_whatsapp_template")
-        error = await actSendTemplate(ctx, action.params || {});
-      else if (action.type === "move_stage") error = await actMoveStage(ctx, action.params || {});
-      else if (action.type === "schedule_callback")
-        error = await actScheduleCallback(ctx, action.params || {});
-      else if (action.type === "webhook")
-        error = await actWebhook(ctx, action.params || {}, rule.name, rule.ruleId);
-      else error = `acción desconocida: ${action.type}`;
-    } catch (err) {
-      error = err instanceof Error ? err.message : "error";
+    for (let attempt = 0; ; attempt++) {
+      try {
+        error = await dispatchAction(action, ctx, rule);
+        // string devuelto = error de negocio/validación → NO reintentar.
+        break;
+      } catch (err) {
+        error = err instanceof Error ? err.message : "error";
+        if (attempt < RETRY_DELAYS_MS.length) {
+          console.warn(
+            `rule ${rule.ruleId} action ${action.type} throw (intento ${attempt + 1}): ${error} — reintentando`,
+          );
+          await sleep(RETRY_DELAYS_MS[attempt]);
+          continue; // transitorio → reintentar
+        }
+        break; // agotó reintentos → loguear y seguir con la próxima acción
+      }
     }
-    await logRun(ctx.tenantId, rule, triggerType, action.type, ctx, error);
+    await logRun(ctx.tenantId, rule, triggerType, action.type, ctx, error, detail);
     if (!error) okCount++;
     else console.warn(`rule ${rule.ruleId} action ${action.type} failed: ${error}`);
   }
@@ -558,7 +934,26 @@ async function processEvent(ev: AutomationEvent): Promise<{ matched: number; fir
     (r) => r.trigger.type !== "lead_inactive" && matchesTrigger(r, ev)
   );
   const ctx = ctxFromEvent(ev);
-  const matched = rules.filter((r) => matchesConditions(r, ctx));
+  const matched: Rule[] = [];
+  const skipped: Array<{ rule: Rule; fail: NonNullable<ReturnType<typeof firstFailedCondition>> }> = [];
+  for (const r of rules) {
+    const fail = firstFailedCondition(r, ctx);
+    if (fail) skipped.push({ rule: r, fail });
+    else matched.push(r);
+  }
+  // Debug barato: reglas que matchearon el trigger pero no las condiciones dejan
+  // un run "skipped" (ok:true) para explicar el "no disparó" sin ejecutar nada.
+  for (const s of skipped) {
+    await logRun(
+      ev.tenantId,
+      s.rule,
+      ev.type,
+      "skipped",
+      ctx,
+      null,
+      `condición no cumplida: ${s.fail.field} ${s.fail.op} "${s.fail.value}" (actual: "${s.fail.actual}")`,
+    );
+  }
   if (matched.length === 0) return { matched: 0, fired: 0 };
 
   await setupTenant(ev.tenantId, false); // eventos: fallback pooled (no estricto)

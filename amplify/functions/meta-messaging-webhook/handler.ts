@@ -2,7 +2,14 @@ import type { Handler } from "aws-lambda";
 import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
-import { appendInbound, appendComment, type ConvChannel } from "../_shared/conversations";
+import {
+  appendInbound,
+  appendComment,
+  setTyping,
+  convId,
+  type ConvChannel,
+} from "../_shared/conversations";
+import { normalizeMetaAccounts, findMetaAccount } from "../_shared/metaAccounts";
 
 /**
  * meta-messaging-webhook — inbound de Instagram DM + Messenger + comentarios
@@ -37,7 +44,9 @@ const TEXT = (statusCode: number, body: string) => ({
   body,
 });
 
-/** Tenant cuyo meta.pageId o meta.igId matchea el id del evento. */
+/** Tenant cuya CUENTA (page/ig id) matchea el id del evento. Multi-cuenta:
+ *  busca en meta.accounts[] y además en el legacy singular (meta.pageId/igId),
+ *  ambos vía normalizeMetaAccounts. */
 async function findTenant(metaId: string): Promise<{ tenantId: string } | null> {
   let lastKey: Record<string, unknown> | undefined;
   do {
@@ -48,8 +57,8 @@ async function findTenant(metaId: string): Promise<{ tenantId: string } | null> 
       const row = unmarshall(it) as { tenantId?: string; configJson?: string };
       try {
         const cfg = JSON.parse(row.configJson || "{}");
-        if (cfg.meta?.pageId === metaId || cfg.meta?.igId === metaId)
-          return { tenantId: row.tenantId || "" };
+        const accounts = normalizeMetaAccounts(cfg.meta);
+        if (findMetaAccount(accounts, metaId)) return { tenantId: row.tenantId || "" };
       } catch {
         /* */
       }
@@ -189,6 +198,7 @@ export const handler: Handler = async (event: any) => {
           commentId,
           postId,
           tenantId: t.tenantId,
+          metaAccountId: metaId,
           // FB created_time viene en segundos epoch; IG normalmente no lo trae.
           ts: v.created_time ? new Date(Number(v.created_time) * 1000).toISOString() : undefined,
         });
@@ -199,10 +209,28 @@ export const handler: Handler = async (event: any) => {
 
       // ── Mensajería IG DM / Messenger → conversación instagram|messenger (Fase A) ──
       for (const ev of messaging) {
-        const msg = ev.message;
-        if (!msg || msg.is_echo) continue; // ignorar echoes (nuestros propios envíos)
         const senderId = String(ev.sender?.id || "");
         if (!senderId) continue;
+
+        // Typing entrante: cuando Meta lo entrega, llega como `sender_action`
+        // ("typing_on"/"typing_off") en el evento de messaging. Set `typingUntil`
+        // ~8s → la bandeja muestra "escribiendo…". NOTA: el Messenger Platform NO
+        // garantiza estos eventos para todos los usuarios (a diferencia de un DM);
+        // por eso es aditivo y no bloquea nada. Recibo de LECTURA del cliente
+        // (`read`) tampoco se recibe acá de forma estándar → no lo inventamos.
+        const senderAction = String(ev.sender_action || "");
+        if (senderAction === "typing_on") {
+          try {
+            await setTyping(legacyDynamo, convId(channel, senderId));
+          } catch (e) {
+            console.warn("setTyping falló:", (e as Error).message);
+          }
+          continue; // un typing no es un mensaje
+        }
+        if (senderAction === "typing_off") continue;
+
+        const msg = ev.message;
+        if (!msg || msg.is_echo) continue; // ignorar echoes (nuestros propios envíos)
         const text = String(msg.text || "");
         const att = msg.attachments?.[0];
         const attachment = att?.payload?.url
@@ -216,6 +244,7 @@ export const handler: Handler = async (event: any) => {
           customerName,
           tenantId: t.tenantId,
           attachment,
+          metaAccountId: metaId,
           ts: ev.timestamp ? new Date(Number(ev.timestamp)).toISOString() : undefined,
         });
         console.log(`messaging inbound: ${channel} from=${senderId} tenant=${t.tenantId}`);

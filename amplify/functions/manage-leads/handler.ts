@@ -135,8 +135,65 @@ const LEGACY_PROFILES_DOMAIN = process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-c
 const TABLE = process.env.LEADS_TABLE || "connectview-leads";
 const MEMBERSHIP = process.env.LEAD_PROGRAMS_TABLE || "connectview-lead-programs";
 const HSM_SENDS_TABLE = process.env.HSM_SENDS_TABLE || "connectview-hsm-sends";
+// Inbox omnicanal (Pilar 6): tabla POOLED (cuenta de la plataforma) → se accede
+// con `legacyDynamo`, NUNCA con el `dynamo` tenant-scoped (las conversaciones no
+// viven en el data plane del cliente). Ver propagateNameToConversations.
+const CONVERSATIONS_TABLE = process.env.CONVERSATIONS_TABLE || "connectview-conversations";
 const CORS = { "Content-Type": "application/json" };
 const ok = (b: unknown) => ({ statusCode: 200, headers: CORS, body: JSON.stringify(b) });
+/**
+ * Uniformización del nombre (fuente de verdad = el LEAD): al renombrar un lead,
+ * refresca el `customerName` cacheado de las conversaciones del inbox omnicanal
+ * vinculadas (por leadId, o por teléfono si aún no se vincularon), para que el
+ * inbox no muestre el nombre viejo. Best-effort: si falla, NO rompe el guardado.
+ * Usa `legacyDynamo` porque la tabla es pooled (cuenta de la plataforma).
+ */
+async function propagateNameToConversations(
+  leadId: string,
+  phone: string,
+  name: string,
+): Promise<void> {
+  if (!name) return;
+  const e164 = normalizePhone(phone)?.e164 || phone;
+  const nowIso = new Date().toISOString();
+  let ESK: Record<string, unknown> | undefined;
+  try {
+    do {
+      const r = await legacyDynamo.send(
+        new ScanCommand({
+          TableName: CONVERSATIONS_TABLE,
+          ExclusiveStartKey: ESK as never,
+          ProjectionExpression: "conversationId, leadId, phone, customerName",
+        }),
+      );
+      for (const it of r.Items || []) {
+        const c = unmarshall(it) as {
+          conversationId: string;
+          leadId?: string;
+          phone?: string;
+          customerName?: string;
+        };
+        const match = c.leadId === leadId || (!!c.phone && samePhone(c.phone, e164));
+        if (!match || c.customerName === name) continue;
+        await legacyDynamo.send(
+          new UpdateItemCommand({
+            TableName: CONVERSATIONS_TABLE,
+            Key: { conversationId: { S: c.conversationId } },
+            UpdateExpression: "SET customerName = :n, updatedAt = :u",
+            ExpressionAttributeValues: marshall(
+              { ":n": name, ":u": nowIso },
+              { removeUndefinedValues: true },
+            ),
+          }),
+        );
+      }
+      ESK = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (ESK);
+  } catch (e) {
+    console.warn("propagateNameToConversations falló", (e as Error).message);
+  }
+}
+
 const bad = (c: number, e: string) => ({
   statusCode: c,
   headers: CORS,
@@ -658,6 +715,59 @@ export const handler: Handler = async (event: any) => {
         return ok({ moved: true, leadId: body.leadId, stageId: body.stageId });
       }
 
+      // Aplicar una etiqueta a un lead (acción manual del usuario). Guarda el tag
+      // en `attributes.tags` (CSV, dedup case-insensitive) y dispara el trigger
+      // `tag_applied` (#15). El motor (actApplyTag) escribe directo a DDB y NO
+      // re-dispara → solo esta ruta manual dispara el trigger (anti-loop).
+      if (body.action === "applyTag") {
+        if (!body.leadId || !body.tag) return bad(400, "leadId and tag required");
+        const tag = String(body.tag).trim();
+        if (!tag) return bad(400, "tag vacío");
+        const got = await dynamo.send(
+          new GetItemCommand({ TableName: TABLE, Key: { leadId: { S: String(body.leadId) } } }),
+        );
+        if (!got.Item) return bad(404, "lead no encontrado");
+        const l = unmarshall(got.Item) as Lead;
+        const current = String(l.attributes?.tags || "")
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
+        const already = current.some((t) => t.toLowerCase() === tag.toLowerCase());
+        if (!already) {
+          const next = [...current, tag].join(", ").slice(0, 1024);
+          const now = new Date().toISOString();
+          await dynamo
+            .send(
+              new UpdateItemCommand({
+                TableName: TABLE,
+                Key: { leadId: { S: String(body.leadId) } },
+                UpdateExpression: "SET attributes = if_not_exists(attributes, :empty)",
+                ExpressionAttributeValues: { ":empty": { M: {} } },
+              }),
+            )
+            .catch(() => {});
+          await dynamo.send(
+            new UpdateItemCommand({
+              TableName: TABLE,
+              Key: { leadId: { S: String(body.leadId) } },
+              UpdateExpression: "SET attributes.#k = :v, updatedAt = :u",
+              ExpressionAttributeNames: { "#k": "tags" },
+              ExpressionAttributeValues: { ":v": { S: next }, ":u": { S: now } },
+            }),
+          );
+        }
+        // Disparar el trigger aun si el tag ya existía es inofensivo, pero solo
+        // tiene sentido cuando de verdad se aplicó → disparamos siempre (el
+        // usuario ejecutó la acción "aplicar etiqueta"). Fire-and-forget.
+        await fireAutomation({
+          type: "tag_applied",
+          tenantId,
+          lead: { leadId: String(body.leadId), phone: l.phone, name: l.name, stageId: l.stageId },
+          tag,
+        });
+        return ok({ tagged: true, leadId: body.leadId, tag, already });
+      }
+
       // Pilar 1: asignar/quitar leads a un programa (membership N:N). El stageId
       // de la membership = la etapa actual del lead.
       if (body.action === "assignProgram" || body.action === "unassignProgram") {
@@ -939,6 +1049,12 @@ export const handler: Handler = async (event: any) => {
           : "Datos del lead actualizados desde ARIA.",
         taskSubtype: "Task",
       });
+      // Uniformización del nombre: el lead es la fuente de verdad → refrescar el
+      // `customerName` cacheado en las conversaciones del inbox vinculadas, para
+      // que no muestren el nombre viejo. Best-effort (no rompe el guardado).
+      if (body.name) {
+        await propagateNameToConversations(leadId, item.phone, String(body.name));
+      }
       // Pilar 1: si la UI mandó el programa activo, escribir la membership.
       if (body.programId) {
         await upsertLeadProgramMembership(

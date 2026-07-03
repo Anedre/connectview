@@ -9,6 +9,8 @@ import {
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { randomUUID } from "node:crypto";
 import { resolveDynamo } from "../_shared/tenantConnect";
+import { getIdentity } from "../_shared/cognitoAuth";
+import { fireAutomation } from "../_shared/automationHook";
 
 /**
  * manage-appointment — native appointment scheduling (roadmap #26). Agents
@@ -161,6 +163,21 @@ export const handler: Handler = async (event: any) => {
       await dynamo.send(
         new PutItemCommand({ TableName: TABLE, Item: marshall(appt, { removeUndefinedValues: true }) })
       );
+      // Automatizaciones (#15): agendar una cita es un trigger. Best-effort — el
+      // tenantId sale del JWT; si no hay (CTA server-to-server sin token), se
+      // omite el disparo (fireAutomation es no-op sin tenantId). Fire-and-forget.
+      try {
+        const id = await getIdentity(event.headers);
+        if (id?.tenantId) {
+          await fireAutomation({
+            type: "appointment_scheduled",
+            tenantId: id.tenantId,
+            lead: { phone: appt.customerPhone, name: appt.customerName },
+          });
+        }
+      } catch {
+        /* sin identidad → no disparamos (aditivo, no rompe el agendado) */
+      }
       return ok({ appointment: appt, created: true });
     }
 

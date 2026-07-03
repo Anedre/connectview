@@ -1,12 +1,22 @@
 import { ChannelChip } from "@/components/vox/primitives";
+import { Av } from "@/components/aria";
+import { useConnectAuth } from "@/context/ConnectAuthContext";
 import type { Conversation } from "@/hooks/useConversations";
 import { chipType, CH_COLOR } from "./channelMeta";
+import { slaInfo, fmtWait, slaChipStyle } from "./sla";
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+/** Primer nombre/token corto para el chip de dueño en la lista. */
+function shortName(s?: string): string {
+  if (!s) return "Agente";
+  return s.split(/[\s@]/)[0].slice(0, 12);
+}
+
+/** Color del puntito de "tipificada" según la valoración de la última gestión. */
+function dispoColor(v?: string): string {
+  if (v === "negativa") return "var(--red)";
+  if (v === "cierre") return "var(--iris)";
+  if (v === "positiva") return "var(--green)";
+  return "var(--text-3)";
 }
 
 /** Hora relativa corta: HH:MM hoy, "ayer", o DD/MM. */
@@ -23,6 +33,12 @@ function fmtWhen(iso?: string): string {
   return d.toLocaleDateString([], { day: "2-digit", month: "2-digit" });
 }
 
+/**
+ * ConversationList — items del inbox con las clases del handoff ARIA
+ * (`.conv` / `.conv--active` / `.conv__name` / `.conv__prev`). Preserva TODA la
+ * lógica: nombre (customerName || senderId), chip de canal, badge no-leídos y el
+ * indicador de conversación cerrada.
+ */
 export function ConversationList({
   conversations,
   selectedId,
@@ -32,112 +48,151 @@ export function ConversationList({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const { user } = useConnectAuth();
+  const myEmailLc = (user?.email || user?.userId || "").toLowerCase();
   return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
+    <>
       {conversations.map((c) => {
         const name = c.customerName || c.senderId;
         const active = c.conversationId === selectedId;
-        const color = CH_COLOR[c.channel] || "var(--accent-cyan)";
+        const color = CH_COLOR[c.channel] || "var(--accent)";
+        const sla = slaInfo(c);
         return (
-          <button
+          <div
             key={c.conversationId}
-            type="button"
+            role="button"
+            tabIndex={0}
             onClick={() => onSelect(c.conversationId)}
-            style={{
-              display: "flex",
-              gap: 11,
-              alignItems: "center",
-              padding: "11px 13px",
-              textAlign: "left",
-              borderBottom: "1px solid var(--border-1)",
-              background: active ? "var(--accent-cyan-soft)" : "transparent",
-              borderLeft: `3px solid ${active ? "var(--accent-cyan)" : "transparent"}`,
-              cursor: "pointer",
-              transition: "background .12s",
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onSelect(c.conversationId);
+              }
             }}
+            className={"conv" + (active ? " conv--active" : "")}
+            style={
+              sla?.level === "breach"
+                ? { boxShadow: "inset 3px 0 0 var(--red)" }
+                : sla?.level === "warn"
+                  ? { boxShadow: "inset 3px 0 0 var(--gold)" }
+                  : undefined
+            }
           >
             {/* Avatar con chip de canal abajo-derecha */}
-            <span style={{ position: "relative", flex: "0 0 auto" }}>
+            <div style={{ position: "relative", flex: "0 0 auto" }}>
+              <Av
+                name={name}
+                size={40}
+                radius={12}
+                color={`color-mix(in srgb, ${color} 18%, transparent)`}
+                style={{ color }}
+              />
               <span
                 style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: "50%",
-                  display: "grid",
-                  placeItems: "center",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  background: `color-mix(in srgb, ${color} 16%, transparent)`,
-                  color,
+                  position: "absolute",
+                  right: -3,
+                  bottom: -3,
+                  transform: "scale(0.74)",
+                  transformOrigin: "bottom right",
                 }}
               >
-                {initials(name)}
-              </span>
-              <span style={{ position: "absolute", right: -3, bottom: -3, transform: "scale(0.74)", transformOrigin: "bottom right" }}>
                 <ChannelChip type={chipType(c.channel)} />
               </span>
-            </span>
+            </div>
 
-            <span style={{ minWidth: 0, flex: 1 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div className="grow" style={{ minWidth: 0 }}>
+              <div className="row between" style={{ gap: 6 }}>
                 <span
-                  style={{
-                    fontWeight: c.unread ? 800 : 650,
-                    fontSize: 13.5,
-                    color: "var(--text-1)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    flex: 1,
-                  }}
+                  className="conv__name trunc"
+                  style={{ fontWeight: c.unread ? 800 : 700, flex: 1, minWidth: 0 }}
                 >
                   {name}
                 </span>
-                <span style={{ fontSize: 10.5, color: "var(--text-3)", flex: "0 0 auto" }}>
-                  {fmtWhen(c.lastMessageAt)}
+                <span className="row gap6" style={{ flex: "0 0 auto", alignItems: "center" }}>
+                  {sla && (
+                    <span style={slaChipStyle(sla.level)} title={`Esperando respuesta hace ${fmtWait(sla.mins)}`}>
+                      ⏱ {fmtWait(sla.mins)}
+                    </span>
+                  )}
+                  <span style={{ fontSize: 11, color: "var(--text-3)" }}>
+                    {fmtWhen(c.lastMessageAt)}
+                  </span>
                 </span>
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+              </div>
+              <div className="row between" style={{ gap: 6 }}>
                 <span
+                  className="conv__prev"
                   style={{
-                    fontSize: 12,
-                    color: c.unread ? "var(--text-1)" : "var(--text-3)",
-                    fontWeight: c.unread ? 600 : 400,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
                     flex: 1,
+                    minWidth: 0,
+                    color: c.unread ? "var(--text-2)" : "var(--text-3)",
+                    fontWeight: c.unread ? 600 : 400,
                   }}
                 >
                   {c.lastMessagePreview || "—"}
                 </span>
-                {c.unread > 0 && (
-                  <span
-                    style={{
-                      flex: "0 0 auto",
-                      minWidth: 18,
-                      height: 18,
-                      padding: "0 5px",
-                      borderRadius: 999,
-                      background: "var(--accent-cyan)",
-                      color: "#fff",
-                      fontSize: 10.5,
-                      fontWeight: 800,
-                      display: "grid",
-                      placeItems: "center",
-                    }}
-                  >
-                    {c.unread}
-                  </span>
-                )}
-                {c.status === "closed" && (
-                  <span style={{ flex: "0 0 auto", fontSize: 10, color: "var(--text-3)" }} title="Cerrada">✓</span>
-                )}
-              </span>
-            </span>
-          </button>
+                <span className="row gap6" style={{ flex: "0 0 auto", alignItems: "center" }}>
+                  {c.assignee === "bot" && c.status !== "closed" && (
+                    <span
+                      className="chip chip--violet"
+                      style={{ height: 16, fontSize: 9, padding: "0 5px" }}
+                      title="La atiende el Agente IA"
+                    >
+                      IA
+                    </span>
+                  )}
+                  {c.assignee === "agent" && !c.ownerAgentId && c.status !== "closed" && (
+                    <span
+                      className="chip"
+                      style={{
+                        height: 16,
+                        fontSize: 9,
+                        padding: "0 5px",
+                        fontWeight: 700,
+                        background: "color-mix(in srgb, var(--cyan) 15%, transparent)",
+                        color: "var(--cyan)",
+                      }}
+                      title="Sin asignar — en la cola"
+                    >
+                      En cola
+                    </span>
+                  )}
+                  {c.assignee === "agent" &&
+                    c.ownerAgentId &&
+                    c.ownerAgentId.toLowerCase() !== myEmailLc &&
+                    c.status !== "closed" && (
+                      <span
+                        className="chip"
+                        style={{ height: 16, fontSize: 9, padding: "0 5px" }}
+                        title={`Atiende ${c.ownerAgentName || c.ownerAgentId}`}
+                      >
+                        {shortName(c.ownerAgentName || c.ownerAgentId)}
+                      </span>
+                    )}
+                  {c.lastDisposition && (
+                    <span
+                      title={`Tipificada · ${c.lastDisposition.stageLabel}`}
+                      style={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: 999,
+                        background: dispoColor(c.lastDisposition.valoracion),
+                        flex: "0 0 auto",
+                      }}
+                    />
+                  )}
+                  {c.unread > 0 && <span className="sb__count sb__count--accent">{c.unread}</span>}
+                  {c.status === "closed" && (
+                    <span style={{ fontSize: 10, color: "var(--text-3)" }} title="Cerrada">
+                      ✓
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
         );
       })}
-    </div>
+    </>
   );
 }

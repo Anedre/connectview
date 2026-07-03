@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Phone, MessageCircle, Globe, Mail, MessageSquare, Copy, Check } from "lucide-react";
+import { Phone, MessageCircle, Globe, Mail, Copy, Check } from "lucide-react";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
 import { useConnections } from "@/hooks/useConnections";
 import { WhatsAppHealthPanel } from "@/components/admin/WhatsAppHealthPanel";
@@ -31,6 +31,20 @@ function copy(text: string) {
   navigator.clipboard?.writeText(text).then(
     () => toast.success("Snippet copiado"),
     () => toast.error("No se pudo copiar")
+  );
+}
+
+/** Glifo de Instagram (lucide-react en esta versión no trae íconos de marca). */
+function IgIcon({ size = 19 }: { size?: number }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M16.5 7.5h.01" />
+    </svg>
   );
 }
 
@@ -73,16 +87,28 @@ export function ChannelsManager() {
   const wa = config.whatsapp;
   const waOn = !!(wa?.phoneNumberId || wa?.metaPhoneNumberId);
   const webChatOn = !!snippet.trim();
+  // Meta multi-cuenta: cada página conectada trae Messenger; las que tienen un IG
+  // Business Account conectado, además Instagram DM. Se conectan en Integraciones.
+  // Contamos accounts[] + el legacy singular (meta.pageId) — espejo del backend.
+  const meta = config.meta || {};
+  const metaPages: { pageId?: string; igId?: string }[] = meta.accounts?.length
+    ? meta.accounts
+    : meta.pageId
+      ? [{ pageId: meta.pageId, igId: meta.igId }]
+      : [];
+  const messengerOn = metaPages.length > 0;
+  const igCount = metaPages.filter((a) => a.igId).length;
+  const igOn = igCount > 0;
 
   const channels: { key: string; name: string; icon: React.ElementType; on: boolean; sub: string; tone: string; soft: string }[] = [
     { key: "voz", name: "Voz", icon: Phone, on: voiceOn, sub: voiceOn ? "Amazon Connect" : "Conectá Connect en Integraciones", tone: "var(--accent-cyan)", soft: "var(--accent-cyan-soft)" },
     { key: "whatsapp", name: "WhatsApp", icon: MessageCircle, on: waOn, sub: waOn ? (wa?.mode === "meta" ? "Meta Cloud API" : "AWS End User Messaging") : "No configurado", tone: "var(--accent-green)", soft: "var(--accent-green-soft)" },
+    { key: "instagram", name: "Instagram", icon: IgIcon, on: igOn, sub: igOn ? `${igCount} cuenta${igCount > 1 ? "s" : ""} · DM + comentarios` : "Conectá en Integraciones", tone: "#E4405F", soft: "color-mix(in srgb, #E4405F 14%, transparent)" },
+    { key: "messenger", name: "Messenger", icon: MessageCircle, on: messengerOn, sub: messengerOn ? `${metaPages.length} página${metaPages.length > 1 ? "s" : ""} · DM + comentarios` : "Conectá en Integraciones", tone: "#0084FF", soft: "color-mix(in srgb, #0084FF 14%, transparent)" },
     { key: "chatweb", name: "Chat web", icon: Globe, on: webChatOn, sub: webChatOn ? "Snippet configurado" : "Pegá el snippet abajo", tone: "var(--accent-violet)", soft: "var(--accent-violet-soft)" },
     { key: "email", name: "Email", icon: Mail, on: voiceOn, sub: voiceOn ? "Disponible vía Connect" : "Requiere Connect", tone: "var(--accent-amber)", soft: "var(--accent-amber-soft)" },
   ];
-  const soon: { name: string; icon: React.ElementType }[] = [
-    { name: "Instagram", icon: MessageSquare }, { name: "Facebook Messenger", icon: MessageCircle }, { name: "SMS", icon: Phone },
-  ];
+  const soon: { name: string; icon: React.ElementType }[] = [{ name: "SMS", icon: Phone }];
 
   const activeCount = channels.filter((c) => c.on).length;
   const msgCount = [welcome, away, farewell].filter((m) => m.trim()).length;

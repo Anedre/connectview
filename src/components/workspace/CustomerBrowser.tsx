@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { getApiEndpoints } from "@/lib/api";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useConnectAgentUsername } from "@/hooks/useConnectAgentUsername";
-import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import { CustomerProfilePanel } from "@/components/workspace/CustomerProfilePanel";
-import { EditProfileModal } from "@/components/workspace/EditProfileModal";
-import { Avatar, colorFromName } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import { Av } from "@/components/aria";
 import { displayCustomerName } from "@/lib/customerName";
 import { FeatureNotice } from "@/components/vox/FeatureNotice";
 
@@ -79,8 +76,6 @@ export function CustomerBrowser() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<SearchResult | null>(null);
-  const [editOpen, setEditOpen] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // ─── Recently-contacted customers (idle list) ───────────────────
@@ -231,16 +226,8 @@ export function CustomerBrowser() {
     return (
       <SelectedProfileView
         result={selected}
-        refreshKey={refreshKey}
+        refreshKey={0}
         onBack={() => setSelected(null)}
-        onEdit={() => setEditOpen(true)}
-        editOpen={editOpen}
-        onEditClose={() => setEditOpen(false)}
-        onSaved={() => {
-          setRefreshKey((k) => k + 1);
-          setEditOpen(false);
-          toast.success("Perfil actualizado");
-        }}
       />
     );
   }
@@ -269,22 +256,22 @@ export function CustomerBrowser() {
       : "Nombre";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="col gap12">
       <FeatureNotice feature="customerProfiles" />
+      {/* Input de búsqueda — estilo demo (CustomerSearch): caja alta con
+          ícono, botón limpiar y hint bajo la caja. */}
       <div>
-        <div className="section-title">Buscar cliente</div>
         <div
+          className="row gap8"
           style={{
-            display: "flex",
-            gap: 6,
             background: "var(--bg-2)",
             border: "1px solid var(--border-1)",
-            borderRadius: 6,
-            padding: "6px 8px",
-            alignItems: "center",
+            borderRadius: "var(--r-md)",
+            padding: "0 10px",
+            height: 44,
           }}
         >
-          <Icon.Search size={14} style={{ color: "var(--text-3)" }} />
+          <Icon.Search size={15} style={{ color: "var(--text-3)" }} />
           <input
             ref={inputRef}
             value={query}
@@ -299,13 +286,14 @@ export function CustomerBrowser() {
               background: "transparent",
               border: 0,
               outline: "none",
-              fontSize: 12.5,
+              fontSize: 13,
               color: "var(--text-1)",
             }}
           />
-          {query && (
+          {query ? (
             <button
-              className="btn btn--ghost btn--sm btn--icon"
+              type="button"
+              className="ctab__x"
               onClick={() => {
                 setQuery("");
                 setResults([]);
@@ -313,25 +301,22 @@ export function CustomerBrowser() {
               }}
               title="Limpiar"
             >
-              <Icon.Close size={11} />
+              <Icon.Close size={13} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--soft btn--sm"
+              onClick={() => runSearch(query)}
+              disabled={loading || !query.trim()}
+            >
+              {loading ? "…" : "Buscar"}
             </button>
           )}
-          <button
-            className="btn btn--ghost btn--sm"
-            onClick={() => runSearch(query)}
-            disabled={loading || !query.trim()}
-            style={{ height: 24, padding: "0 8px", fontSize: 11 }}
-          >
-            {loading ? "…" : "Buscar"}
-          </button>
         </div>
         <div
-          className="muted"
-          style={{
-            fontSize: 10.5,
-            marginTop: 5,
-            lineHeight: 1.4,
-          }}
+          className="dim"
+          style={{ fontSize: 10.5, marginTop: 5, lineHeight: 1.4 }}
         >
           Busca en Connect Customer Profiles. Se aceptan teléfonos con o sin
           + (ej. 953730189), emails o nombres completos.
@@ -340,12 +325,8 @@ export function CustomerBrowser() {
 
       {loading && (
         <div
-          className="muted"
-          style={{
-            padding: 14,
-            textAlign: "center",
-            fontSize: 12,
-          }}
+          className="dim"
+          style={{ padding: 16, textAlign: "center", fontSize: 12.5 }}
         >
           Buscando…
         </div>
@@ -353,18 +334,15 @@ export function CustomerBrowser() {
 
       {error && !loading && (
         <div
+          className={error === "Sin resultados" ? "dim" : ""}
           style={{
-            padding: 10,
+            padding: error === "Sin resultados" ? 16 : 10,
             background:
-              error === "Sin resultados"
-                ? "var(--bg-2)"
-                : "var(--accent-red-soft)",
+              error === "Sin resultados" ? "transparent" : "var(--red-soft)",
             color:
-              error === "Sin resultados"
-                ? "var(--text-3)"
-                : "var(--accent-red)",
-            borderRadius: 6,
-            fontSize: 11.5,
+              error === "Sin resultados" ? undefined : "var(--red-2)",
+            borderRadius: "var(--r-sm)",
+            fontSize: 12.5,
             textAlign: "center",
           }}
         >
@@ -373,13 +351,13 @@ export function CustomerBrowser() {
       )}
 
       {!loading && results.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div className="col gap4">
           <div
-            className="muted"
+            className="dim"
             style={{
               fontSize: 10.5,
               textTransform: "uppercase",
-              letterSpacing: "0.06em",
+              letterSpacing: ".06em",
             }}
           >
             {results.length} resultado{results.length > 1 ? "s" : ""}
@@ -391,59 +369,35 @@ export function CustomerBrowser() {
                 key={r.profileId}
                 type="button"
                 onClick={() => setSelected(r)}
-                className="btn"
+                className="row gap10"
                 style={{
-                  display: "flex",
                   width: "100%",
                   padding: "8px 10px",
-                  justifyContent: "flex-start",
-                  alignItems: "center",
-                  gap: 10,
-                  height: "auto",
+                  borderRadius: "var(--r-sm)",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--border-1)",
+                  cursor: "pointer",
                   textAlign: "left",
-                  borderRadius: 8,
                 }}
               >
-                <Avatar
-                  name={name}
-                  size="sm"
-                  color={colorFromName(name)}
-                />
-                <span style={{ flex: 1, minWidth: 0 }}>
+                <Av name={name} size={32} color="var(--cyan)" />
+                <span className="grow" style={{ minWidth: 0 }}>
                   <span
-                    style={{
-                      display: "block",
-                      fontSize: 12.5,
-                      fontWeight: 500,
-                      color: "var(--text-1)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
+                    className="trunc"
+                    style={{ display: "block", fontSize: 12.5, fontWeight: 600 }}
                   >
                     {name}
                   </span>
                   <span
-                    className="muted mono"
-                    style={{
-                      display: "block",
-                      fontSize: 10.5,
-                      marginTop: 1,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
+                    className="mono dim trunc"
+                    style={{ display: "block", fontSize: 10.5, marginTop: 1 }}
                   >
                     {r.phoneNumber || r.email || r.accountNumber || "—"}
                   </span>
                 </span>
                 <span
-                  className="chip"
-                  style={{
-                    fontSize: 9.5,
-                    padding: "2px 7px",
-                    flexShrink: 0,
-                  }}
+                  className="pill pill--outline"
+                  style={{ height: 22, fontSize: 10, flexShrink: 0 }}
                 >
                   {matchedByLabel(r.matchedBy)}
                 </span>
@@ -456,20 +410,14 @@ export function CustomerBrowser() {
       {/* Recently-contacted customers — only show when the agent hasn't
           typed a query yet. Click → load the full profile inline. */}
       {!query && !loading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "space-between",
-            }}
-          >
+        <div className="col gap4">
+          <div className="row between">
             <span
-              className="muted"
+              className="dim"
               style={{
                 fontSize: 10.5,
                 textTransform: "uppercase",
-                letterSpacing: "0.06em",
+                letterSpacing: ".06em",
               }}
             >
               Atendidos recientemente
@@ -489,8 +437,8 @@ export function CustomerBrowser() {
 
           {recentsLoading && (
             <div
-              className="muted"
-              style={{ padding: 12, textAlign: "center", fontSize: 11.5 }}
+              className="dim"
+              style={{ padding: 12, textAlign: "center", fontSize: 12 }}
             >
               Cargando…
             </div>
@@ -500,10 +448,10 @@ export function CustomerBrowser() {
             <div
               style={{
                 padding: 8,
-                background: "var(--accent-red-soft)",
-                color: "var(--accent-red)",
-                borderRadius: 6,
-                fontSize: 11,
+                background: "var(--red-soft)",
+                color: "var(--red-2)",
+                borderRadius: "var(--r-sm)",
+                fontSize: 11.5,
                 textAlign: "center",
               }}
             >
@@ -513,14 +461,14 @@ export function CustomerBrowser() {
 
           {!recentsLoading && !recentsError && recents.length === 0 && (
             <div
+              className="dim"
               style={{
                 padding: 18,
                 textAlign: "center",
-                color: "var(--text-3)",
-                fontSize: 11.5,
+                fontSize: 12,
                 lineHeight: 1.6,
                 background: "var(--bg-2)",
-                borderRadius: 8,
+                borderRadius: "var(--r-md)",
                 border: "1px dashed var(--border-1)",
               }}
             >
@@ -533,7 +481,7 @@ export function CustomerBrowser() {
           )}
 
           {!recentsLoading && recents.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div className="col gap4">
               {recents.map((r) => {
                 const isEmail = r.customerPhone.includes("@");
                 const displayName = recentDisplayName(r);
@@ -578,80 +526,45 @@ export function CustomerBrowser() {
                         matchedBy: "recent",
                       })
                     }
-                    className="btn"
+                    className="row gap10"
                     style={{
-                      display: "flex",
                       width: "100%",
                       padding: "8px 10px",
-                      justifyContent: "flex-start",
-                      alignItems: "center",
-                      gap: 10,
-                      height: "auto",
+                      borderRadius: "var(--r-sm)",
+                      background: "var(--bg-2)",
+                      border: "1px solid var(--border-1)",
+                      cursor: "pointer",
                       textAlign: "left",
-                      borderRadius: 8,
                     }}
                   >
-                    <Avatar
-                      name={displayName}
-                      size="sm"
-                      color={colorFromName(displayName)}
-                    />
-                    <span style={{ flex: 1, minWidth: 0 }}>
+                    <Av name={displayName} size={32} color="var(--accent)" />
+                    <span className="grow" style={{ minWidth: 0 }}>
                       {/* Line 1 — display name + channel icon */}
                       <span
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 5,
-                          fontSize: 12.5,
-                          fontWeight: 600,
-                          color: "var(--text-1)",
-                          overflow: "hidden",
-                        }}
+                        className="row gap6"
+                        style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden" }}
                       >
                         <ChannelIcn
                           size={11}
-                          style={{
-                            color: "var(--text-3)",
-                            flexShrink: 0,
-                          }}
+                          style={{ color: "var(--text-3)", flexShrink: 0 }}
                         />
-                        <span
-                          style={{
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                          title={displayName}
-                        >
+                        <span className="trunc" title={displayName}>
                           {displayName}
                         </span>
                       </span>
                       {/* Line 2 — phone (only when we have a real name) */}
                       {hasName && (
                         <span
-                          className="mono"
-                          style={{
-                            display: "block",
-                            fontSize: 10.5,
-                            color: "var(--text-3)",
-                            marginTop: 1,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
+                          className="mono dim trunc"
+                          style={{ display: "block", fontSize: 10.5, marginTop: 1 }}
                         >
                           {r.customerPhone}
                         </span>
                       )}
                       {/* Line 3 — relative time + count */}
                       <span
-                        className="muted"
-                        style={{
-                          display: "block",
-                          fontSize: 10.5,
-                          marginTop: 1,
-                        }}
+                        className="dim"
+                        style={{ display: "block", fontSize: 10.5, marginTop: 1 }}
                       >
                         {relTime}
                         {r.contactCount > 1
@@ -679,24 +592,12 @@ function SelectedProfileView({
   result,
   refreshKey,
   onBack,
-  onEdit,
-  editOpen,
-  onEditClose,
-  onSaved,
 }: {
   result: SearchResult;
   refreshKey: number;
   onBack: () => void;
-  onEdit: () => void;
-  editOpen: boolean;
-  onEditClose: () => void;
-  onSaved: () => void;
 }) {
   const { user } = useConnectAuth();
-  const { profile } = useCustomerProfile(
-    result.phoneNumber || result.email || null,
-    refreshKey
-  );
 
   return (
     <div
@@ -723,49 +624,23 @@ function SelectedProfileView({
         >
           <Icon.ArrowLeft size={14} />
         </button>
-        <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600 }}>
-          Perfil
+        <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600 }}>Perfil</span>
+        {/* Sin botón "Editar": los atributos se editan haciendo click
+            directamente sobre su valor (edición inline). */}
+        <span className="dim" style={{ fontSize: 10.5 }}>
+          Click en un dato para editar
         </span>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="btn btn--ghost btn--sm"
-          style={{ height: 26, padding: "0 8px", fontSize: 11 }}
-          disabled={!profile}
-        >
-          <Icon.Pencil size={11} /> Editar
-        </button>
       </div>
 
-      {/* Reuse the existing CustomerProfilePanel — it already renders
-          hero + stats + contact info + history timeline. We pass
-          `isActive=false` so it doesn't try to subscribe to live
-          events that only exist for an in-progress contact. */}
+      {/* CustomerProfilePanel renderiza hero + stats + contacto + timeline, y
+          ahora hace editables inline los atributos del perfil (guarda vía
+          update-customer-profile). `isActive=false` evita suscripciones de
+          contacto en vivo; `agentUsername` audita la actualización. */}
       <CustomerProfilePanel
         phone={result.phoneNumber || result.email || null}
         isActive={false}
         refreshKey={refreshKey}
-      />
-
-      {/* Use the profileId from the FRESH profile fetch instead of the
-          search-result projection. When the user clicks a "recent"
-          customer we only have the phone — the actual profileId
-          (32-hex-char UUID) comes from useCustomerProfile's response.
-          Guard the modal so we don't open with a placeholder id. */}
-      <EditProfileModal
-        open={editOpen && !!profile?.profileId}
-        onClose={onEditClose}
-        profileId={profile?.profileId || result.profileId}
-        initialValues={{
-          FirstName: profile?.firstName,
-          LastName: profile?.lastName,
-          BusinessName: profile?.businessName,
-          PhoneNumber: profile?.phoneNumber,
-          EmailAddress: profile?.email,
-          AccountNumber: profile?.accountNumber,
-        }}
         agentUsername={user?.username || ""}
-        onSaved={onSaved}
       />
     </div>
   );

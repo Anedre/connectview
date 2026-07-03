@@ -17,6 +17,25 @@ export interface ConvMessage {
   ts: string;
   agent?: string;
   attachment?: { type: string; url: string };
+  /** ISO en que el CLIENTE leyó este mensaje saliente (read receipt de Meta) →
+   *  el thread muestra "visto". Solo canales que lo soportan (WhatsApp/Messenger). */
+  readAt?: string;
+}
+
+/** Tipificación aplicada a la conversación (misma taxonomía que el wrap-up de
+ *  voz — Stage → Sub Stage). Se guarda en la conversación Y como golpe en el
+ *  lead vinculado (Pilar 2 · ledger canónico). */
+export interface ConvDisposition {
+  id: string;
+  stageId: string;
+  stageLabel: string;
+  subStageId?: string;
+  subStageLabel?: string;
+  valoracion?: string;
+  tags?: string[];
+  notes?: string;
+  agent?: string;
+  ts: string;
 }
 
 export interface Conversation {
@@ -26,6 +45,22 @@ export interface Conversation {
   senderId: string;
   customerName?: string;
   status: "open" | "closed";
+  /** Quién atiende AHORA: el Agente IA (bot) o un humano (agent). El estado
+   *  visible es Bot → Agente → Cerrado. Al reabrir por inbound vuelve a "bot". */
+  assignee?: "bot" | "agent";
+  /** Ownership por agente (email + nombre del dueño). Sin dueño = cola compartida
+   *  (todos los agentes la ven); con dueño, solo ese agente (y admin/supervisor).
+   *  El backend YA filtra la lista por rol; estos campos son para los badges. */
+  ownerAgentId?: string;
+  ownerAgentName?: string;
+  /** Historial de tipificaciones + la más reciente (para la lista). */
+  dispositions?: ConvDisposition[];
+  lastDisposition?: ConvDisposition;
+  /** Por qué/ cuándo se cerró (manual, por 30min de inactividad, resuelta) y
+   *  cuándo se reabrió (inbound del cliente). */
+  closedReason?: "manual" | "inactivity" | "resolved";
+  closedAt?: string;
+  reopenedAt?: string;
   unread: number;
   lastMessageAt: string;
   lastMessagePreview: string;
@@ -50,6 +85,11 @@ export interface Conversation {
     buyerId?: string;
   };
   messages?: ConvMessage[];
+  /** ISO hasta el cual mostrar "escribiendo…" (typing entrante — solo IG/
+   *  Messenger; WhatsApp Cloud API no emite typing). */
+  typingUntil?: string;
+  /** ISO del último read receipt del cliente (respaldo cuando no viene por msg). */
+  lastCustomerReadAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -144,8 +184,34 @@ export function useConversationActions() {
     onSuccess: (_d, conversationId) => invalidate(conversationId),
   });
   const close = useMutation({
-    mutationFn: (conversationId: string) => post({ action: "close", conversationId }),
-    onSuccess: (_d, conversationId) => invalidate(conversationId),
+    mutationFn: (v: {
+      conversationId: string;
+      /** Encuesta opcional a enviar ANTES de cerrar (CSAT, etc.). */
+      survey?: { body: string; options: string[] };
+    }) => post({ action: "close", conversationId: v.conversationId, survey: v.survey }),
+    onSuccess: (_d, v) => invalidate(v.conversationId),
+  });
+  // Enviar MEDIA (imagen / audio / video / documento) al cliente. El frontend
+  // sube el archivo (uploadConversationMedia) y pasa la URL pública aquí.
+  const sendMedia = useMutation({
+    mutationFn: (v: {
+      conversationId: string;
+      mediaUrl: string;
+      mediaType: "image" | "audio" | "video" | "document";
+      caption?: string;
+      filename?: string;
+    }) => post({ action: "sendMedia", ...v }),
+    onSuccess: (_d, v) => invalidate(v.conversationId),
+  });
+  // Enviar una PLANTILLA HSM de WhatsApp (reusa las de la sección Plantillas).
+  const sendTemplate = useMutation({
+    mutationFn: (v: {
+      conversationId: string;
+      templateName: string;
+      language: string;
+      bodyParams?: string[];
+    }) => post({ action: "sendTemplate", ...v }),
+    onSuccess: (_d, v) => invalidate(v.conversationId),
   });
   // Fase 4 · F4.2a — enviar un LIST interactivo (menú tappable) por WhatsApp.
   const sendList = useMutation({
@@ -174,6 +240,57 @@ export function useConversationActions() {
     mutationFn: (conversationId: string) => post({ action: "unlink", conversationId }),
     onSuccess: (_d, conversationId) => invalidate(conversationId),
   });
+  // Tipificar la conversación (misma taxonomía que voz). Guarda la disposición
+  // + golpe en el lead; con closeAfter también cierra. Reusable tras interactuar.
+  const typify = useMutation({
+    mutationFn: (v: {
+      conversationId: string;
+      disposition: {
+        stageId: string;
+        stageLabel: string;
+        subStageId?: string;
+        subStageLabel?: string;
+        valoracion?: string;
+        tags?: string[];
+        notes?: string;
+      };
+      closeAfter?: boolean;
+      agent?: string;
+    }) => post({ action: "typify", ...v }),
+    onSuccess: (_d, v) => invalidate(v.conversationId),
+  });
+  // Handoff Bot ↔ Agente: "tomar" el chat (bot→agent) o devolverlo al Agente IA.
+  const assign = useMutation({
+    mutationFn: (v: { conversationId: string; assignee: "bot" | "agent" }) =>
+      post({ action: "assign", ...v }),
+    onSuccess: (_d, v) => invalidate(v.conversationId),
+  });
+  // Traspasar/derivar el chat a OTRO agente (ownership). agentId = email del destino.
+  const assignTo = useMutation({
+    mutationFn: (v: { conversationId: string; agentId: string; agentName?: string }) =>
+      post({ action: "assignTo", ...v }),
+    onSuccess: (_d, v) => invalidate(v.conversationId),
+  });
+  // Soltar el chat a la cola compartida (queda sin dueño, en manos de un agente).
+  const release = useMutation({
+    mutationFn: (conversationId: string) => post({ action: "release", conversationId }),
+    onSuccess: (_d, conversationId) => invalidate(conversationId),
+  });
 
-  return { reply, replyComment, commentToDm, markRead, close, sendList, link, unlink };
+  return {
+    reply,
+    replyComment,
+    commentToDm,
+    markRead,
+    close,
+    sendList,
+    sendMedia,
+    sendTemplate,
+    link,
+    unlink,
+    typify,
+    assign,
+    assignTo,
+    release,
+  };
 }

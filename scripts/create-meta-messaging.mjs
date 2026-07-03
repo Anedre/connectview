@@ -6,12 +6,16 @@
  *   · DynamoDB connectview-conversations           (PK=conversationId)
  *   · IAM managed policy connectview-conversations-access (DynamoDB CRUD)
  *       adjunta a connectview-campaign-lambda-role + VoxCrmConnectAccess
+ *   · IAM managed policy connectview-conversation-media-access (S3 put/get sobre
+ *       el bucket de media) adjunta a connectview-campaign-lambda-role
  *   · Lambda connectview-meta-messaging-webhook     (Function URL — Meta postea acá)
  *   · Lambda connectview-manage-conversations       (Function URL — el inbox lo llama)
+ *   · Lambda connectview-upload-conversation-media   (Function URL — presigned S3 PUT)
  *
  * Uso: node scripts/create-meta-messaging.mjs   (con el sandbox deshabilitado)
- * Tras correrlo: pegar las URLs en amplify_outputs.json (manageConversations) y
- *   suscribir el Page/IG al webhook (messages + messaging_postbacks, override).
+ * Tras correrlo: pegar las URLs en amplify_outputs.json (manageConversations,
+ *   uploadConversationMedia) y suscribir el Page/IG al webhook (messages +
+ *   messaging_postbacks, override).
  */
 import { execSync } from "node:child_process";
 import { mkdtempSync, statSync, writeFileSync } from "node:fs";
@@ -31,6 +35,11 @@ const POLICY_NAME = "connectview-conversations-access";
 const POLICY_ARN = `arn:aws:iam::${ACCOUNT}:policy/${POLICY_NAME}`;
 const ATTACH_ROLES = ["connectview-campaign-lambda-role", "VoxCrmConnectAccess"];
 const VERIFY_TOKEN = "aria-wa-b8b8564c91e157c421ea4473";
+
+// Bucket de media (reusa el de plantillas WhatsApp) + policy S3 para el uploader.
+const MEDIA_BUCKET = "connectview-wa-media-731736972577";
+const MEDIA_POLICY_NAME = "connectview-conversation-media-access";
+const MEDIA_POLICY_ARN = `arn:aws:iam::${ACCOUNT}:policy/${MEDIA_POLICY_NAME}`;
 
 const sh = (cmd) => execSync(cmd, { stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
 const tryjson = (cmd) => { try { return JSON.parse(sh(cmd)); } catch { return null; } };
@@ -132,6 +141,36 @@ async function functionUrl(name) {
     log(`   ${okAttach ? "✅" : "⚠️ "} adjunta a ${role}`);
   }
 
+  // 2b) IAM managed policy S3 para el uploader de adjuntos (put + get sobre el
+  //     bucket de media). El GET presignado exige que el firmante tenga s3:GetObject.
+  log("2b) IAM S3 (uploader de adjuntos)…");
+  const mediaPolicy = {
+    Version: "2012-10-17",
+    Statement: [{
+      Effect: "Allow",
+      Action: ["s3:PutObject", "s3:GetObject"],
+      Resource: [`arn:aws:s3:::${MEDIA_BUCKET}/conversation-media/*`],
+    }],
+  };
+  const mediaPolFile = writeTmp("media-policy.json", mediaPolicy);
+  if (quiet(`aws iam get-policy --policy-arn ${MEDIA_POLICY_ARN}`)) {
+    const vers = tryjson(`aws iam list-policy-versions --policy-arn ${MEDIA_POLICY_ARN}`);
+    const nonDefault = (vers?.Versions || []).filter((v) => !v.IsDefaultVersion);
+    if (nonDefault.length >= 4) {
+      const oldest = nonDefault.sort((a, b) => new Date(a.CreateDate) - new Date(b.CreateDate))[0];
+      quiet(`aws iam delete-policy-version --policy-arn ${MEDIA_POLICY_ARN} --version-id ${oldest.VersionId}`);
+    }
+    sh(`aws iam create-policy-version --policy-arn ${MEDIA_POLICY_ARN} --policy-document file://${mediaPolFile} --set-as-default`);
+    log("   managed policy S3 actualizada");
+  } else {
+    sh(`aws iam create-policy --policy-name ${MEDIA_POLICY_NAME} --policy-document file://${mediaPolFile}`);
+    log("   managed policy S3 creada");
+  }
+  {
+    const okAttach = quiet(`aws iam attach-role-policy --role-name connectview-campaign-lambda-role --policy-arn ${MEDIA_POLICY_ARN}`);
+    log(`   ${okAttach ? "✅" : "⚠️ "} adjunta a connectview-campaign-lambda-role`);
+  }
+
   // 3) Lambdas + Function URLs
   log("3) Lambdas…");
   // El Page tiene 1 solo override_callback_uri → este webhook reenvía los leadgen
@@ -140,15 +179,25 @@ async function functionUrl(name) {
   const env = { META_LEADGEN_VERIFY_TOKEN: VERIFY_TOKEN, CONNECTIONS_TABLE: "connectview-connections", CONVERSATIONS_TABLE: TABLE, LEADGEN_WEBHOOK_URL: leadAdsUrl };
   await ensureLambda("connectview-meta-messaging-webhook", "meta-messaging-webhook", env, 20);
   await ensureLambda("connectview-manage-conversations", "manage-conversations", env, 20);
+  // Uploader de adjuntos: solo necesita el bucket de media (presigned PUT/GET).
+  await ensureLambda(
+    "connectview-upload-conversation-media",
+    "upload-conversation-media",
+    { MEDIA_BUCKET },
+    20,
+  );
   if (leadAdsUrl) log(`   ↪ leadgen se reenvía a ${leadAdsUrl}`);
   const webhookUrl = await functionUrl("connectview-meta-messaging-webhook");
   const manageUrl = await functionUrl("connectview-manage-conversations");
+  const uploadUrl = await functionUrl("connectview-upload-conversation-media");
 
   log("\n╔══════════════════════════════════════════════");
   log(`║ ✅ webhook (Meta):     ${webhookUrl}`);
   log(`║ ✅ manage (inbox):     ${manageUrl}`);
+  log(`║ ✅ upload (adjuntos):  ${uploadUrl}`);
   log(`║ verify_token: ${VERIFY_TOKEN}`);
   log("╚══════════════════════════════════════════════");
   log("→ amplify_outputs.json · custom.apiEndpoints.manageConversations = <manage URL>");
+  log("→ amplify_outputs.json · custom.apiEndpoints.uploadConversationMedia = <upload URL>");
   log("→ suscribir el Page/IG al webhook (messages, messaging_postbacks).");
 })().catch((e) => { console.error("❌", e.message || e); process.exit(1); });

@@ -31,6 +31,13 @@ import {
 import { getIdentity } from "../_shared/cognitoAuth";
 import { getTenantConnect } from "../_shared/tenantConnect";
 import { provisionSfInboundToken } from "../_shared/sfInboundToken";
+import {
+  readMetaSecret,
+  writeMetaSecret,
+  normalizeMetaAccounts,
+  type MetaAccount,
+  type MetaConfig,
+} from "../_shared/metaAccounts";
 
 const REGION = process.env.AWS_REGION || "us-east-1";
 const TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
@@ -115,6 +122,35 @@ async function putWhatsAppSecret(tenantId: string, token: string): Promise<void>
       throw e;
     }
   }
+}
+
+/** Lee el configJson guardado del tenant (para acciones aisladas que mergean un
+ *  solo bloque sin recibir el config completo del body). {} si no hay. */
+async function readStoredConfig(tenantId: string): Promise<Record<string, unknown>> {
+  try {
+    const r = await ddb.send(
+      new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } }),
+    );
+    if (r.Item?.configJson?.S) return JSON.parse(r.Item.configJson.S);
+  } catch {
+    /* sin config previa → {} */
+  }
+  return {};
+}
+async function writeStoredConfig(
+  tenantId: string,
+  config: Record<string, unknown>,
+): Promise<void> {
+  await ddb.send(
+    new PutItemCommand({
+      TableName: TABLE,
+      Item: {
+        tenantId: { S: tenantId },
+        configJson: { S: JSON.stringify(config) },
+        updatedAt: { S: new Date().toISOString() },
+      },
+    }),
+  );
 }
 
 export const handler = async (event: FnEvent) => {
@@ -211,6 +247,9 @@ export const handler = async (event: FnEvent) => {
         whatsappSecret?: string;
         disconnectSalesforce?: boolean;
         rotateSfInboundToken?: boolean;
+        action?: string;
+        pageIds?: unknown[];
+        pageId?: string;
       };
 
       // Provisión/ROTACIÓN del token de ENTRADA de Salesforce (SF→Vox). Mina un
@@ -257,6 +296,107 @@ export const handler = async (event: FnEvent) => {
         // SEGURIDAD: el plaintext viaja UNA vez en esta respuesta y NUNCA se
         // persiste en DynamoDB (sólo el flag). No loguearlo.
         return resp(200, { ok: true, inboundToken, tenantId });
+      }
+
+      // ── Meta multi-cuenta (Instagram/Messenger/Facebook · auto-servicio) ──
+      // Acciones AISLADAS (no dependen de body.config): mergean SOLO el bloque
+      // meta para no pisar el resto del configJson. Los page tokens viven en el
+      // secret connectview/tenant/<id>/meta, NUNCA en DynamoDB ni en el navegador.
+
+      // listMetaAccounts → cuentas ya conectadas + páginas pendientes de elección
+      // (del último "Conectar con Facebook"). Ambas SIN tokens.
+      if (body.action === "listMetaAccounts") {
+        const stored = await readStoredConfig(tenantId);
+        const meta = (stored.meta as MetaConfig) || {};
+        let pending: {
+          pageId: string;
+          pageName?: string;
+          igId?: string;
+          igUsername?: string;
+        }[] = [];
+        try {
+          const secret = await readMetaSecret(sm, tenantId);
+          pending = (secret.pending?.pages || []).map((p) => ({
+            pageId: p.pageId,
+            pageName: p.pageName,
+            igId: p.igId,
+            igUsername: p.igUsername,
+          }));
+        } catch (e) {
+          console.error("readMetaSecret (list):", e instanceof Error ? e.name : String(e));
+        }
+        return resp(200, { accounts: normalizeMetaAccounts(meta), pending, tenantId });
+      }
+
+      // saveMetaAccounts → el usuario eligió qué páginas traer (pageIds del
+      // pending). Movemos sus page tokens a definitivos y agregamos su metadata a
+      // config.meta.accounts (upsert por pageId). Limpia el pending del secret.
+      if (body.action === "saveMetaAccounts") {
+        const pageIds = Array.isArray(body.pageIds) ? body.pageIds.map((x) => String(x)) : [];
+        if (!pageIds.length) return resp(400, { error: "pageIds requerido" });
+        const secret = await readMetaSecret(sm, tenantId);
+        const pendingPages = secret.pending?.pages || [];
+        const chosen = pendingPages.filter((p) => pageIds.includes(p.pageId));
+        if (!chosen.length)
+          return resp(400, { error: "ninguna de las páginas elegidas está pendiente" });
+        // Mover los page tokens elegidos a definitivos + limpiar el pending.
+        secret.pageTokens = { ...(secret.pageTokens || {}) };
+        for (const p of chosen) secret.pageTokens[p.pageId] = p.pageToken;
+        secret.pending = undefined;
+        await writeMetaSecret(sm, tenantId, secret);
+        // Mergear la metadata (sin tokens) en config.meta.accounts.
+        const stored = await readStoredConfig(tenantId);
+        const meta = (stored.meta as MetaConfig) || {};
+        const now = new Date().toISOString();
+        const existing: MetaAccount[] = Array.isArray(meta.accounts) ? [...meta.accounts] : [];
+        for (const p of chosen) {
+          const acc: MetaAccount = {
+            id: p.pageId,
+            pageId: p.pageId,
+            pageName: p.pageName,
+            igId: p.igId,
+            igUsername: p.igUsername,
+            addedAt: now,
+          };
+          const idx = existing.findIndex((a) => a.pageId === p.pageId);
+          if (idx >= 0) existing[idx] = { ...existing[idx], ...acc };
+          else existing.push(acc);
+        }
+        meta.accounts = existing;
+        meta.connectedAt = meta.connectedAt || now;
+        stored.meta = meta;
+        await writeStoredConfig(tenantId, stored);
+        return resp(200, { ok: true, accounts: existing, tenantId });
+      }
+
+      // removeMetaAccount → quitar una página conectada (metadata + su page token).
+      if (body.action === "removeMetaAccount") {
+        const pageId = String(body.pageId || "");
+        if (!pageId) return resp(400, { error: "pageId requerido" });
+        const stored = await readStoredConfig(tenantId);
+        const meta = (stored.meta as MetaConfig) || {};
+        meta.accounts = (Array.isArray(meta.accounts) ? meta.accounts : []).filter(
+          (a) => a.pageId !== pageId,
+        );
+        // Si el legacy singular apuntaba a esta página, también lo limpiamos.
+        if (meta.pageId === pageId) {
+          meta.pageId = undefined;
+          meta.igId = undefined;
+          meta.pageName = undefined;
+        }
+        stored.meta = meta;
+        await writeStoredConfig(tenantId, stored);
+        // Borrar el page token del secret (best-effort).
+        try {
+          const secret = await readMetaSecret(sm, tenantId);
+          if (secret.pageTokens && secret.pageTokens[pageId]) {
+            delete secret.pageTokens[pageId];
+            await writeMetaSecret(sm, tenantId, secret);
+          }
+        } catch (e) {
+          console.error("removeMetaAccount secret:", e instanceof Error ? e.name : String(e));
+        }
+        return resp(200, { ok: true, accounts: meta.accounts, tenantId });
       }
 
       const config = (body.config || {}) as Record<string, unknown>;

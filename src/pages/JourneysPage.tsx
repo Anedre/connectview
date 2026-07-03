@@ -1,32 +1,48 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useJourneys, type Journey } from "@/hooks/useJourneys";
+import { useJourneys, type Journey, type JourneyNodeKind } from "@/hooks/useJourneys";
 import { JourneyBuilder } from "@/components/journeys/JourneyBuilder";
-import * as Icon from "@/components/vox/primitives";
-import { PageHeader } from "@/components/vox/PageHeader";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { Icon, Btn, Card, Stat, Pill, HeroBand, Num } from "@/components/aria";
+import type { IconName } from "@/components/aria";
 
 /**
- * JourneysPage — el /journeys (Fase 3 · 3B). Lista los recorridos del tenant
- * (motor de Journeys / Engagement Studio) y abre el JourneyBuilder visual para
- * crear/editar uno. Persiste con manage-leads (saveJourney, folded); el avance
- * paso-a-paso lo corre el journey-runner por tick.
+ * JourneysPage — el /journeys (Fase 3 · 3B), re-skinneado al sistema ARIA:
+ * HeroBand premium, KPIs con Stat + count-up, journeys como Cards con el rail de
+ * pasos encadenados (icono + chevron) del lenguaje visual de ARIA. Toda la
+ * lógica real queda intacta: lista los recorridos del tenant (motor de Journeys
+ * / Engagement Studio) y abre el JourneyBuilder visual para crear/editar uno.
+ * Persiste con manage-leads (saveJourney, folded); el avance paso-a-paso lo
+ * corre el journey-runner por tick.
  */
 const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
   active: "Activo",
   paused: "Pausado",
 };
+/** Estado → tono de Pill de ARIA. */
+const STATUS_TONE: Record<string, "green" | "gold" | "outline"> = {
+  active: "green",
+  paused: "gold",
+  draft: "outline",
+};
 const ACCENTS = [
-  "#7c3aed",
-  "#2563eb",
-  "#0891b2",
-  "#16a34a",
-  "#d97706",
-  "#db2777",
-  "#0ea5e9",
-  "#8b5cf6",
+  "var(--green)",
+  "var(--cyan)",
+  "var(--accent)",
+  "var(--iris)",
+  "var(--gold)",
+  "var(--coral)",
 ];
+/** Cada tipo de nodo → icono + etiqueta corta para el rail de pasos ARIA. */
+const NODE_META: Record<JourneyNodeKind, { icon: IconName; label: string }> = {
+  entry: { icon: "userplus", label: "Entrada" },
+  send: { icon: "send", label: "Enviar" },
+  wait: { icon: "clock", label: "Espera" },
+  branch: { icon: "filter", label: "Ramifica" },
+  action: { icon: "zap", label: "Acción" },
+  exit: { icon: "target", label: "Fin" },
+};
 const rid = () => Math.random().toString(36).slice(2, 9);
 type N = Journey["nodes"][number];
 type E = Journey["edges"][number];
@@ -60,7 +76,7 @@ const TEMPLATES: JourneyTemplate[] = [
     key: "blank",
     name: "En blanco",
     desc: "Entrada → Fin. Armá el recorrido desde cero, paso por paso.",
-    accent: "#64748b",
+    accent: "var(--text-3)",
     build: () => {
       const e = rid(),
         x = rid();
@@ -78,7 +94,7 @@ const TEMPLATES: JourneyTemplate[] = [
     key: "welcome",
     name: "Bienvenida",
     desc: "Saludo por WhatsApp al entrar, espera 1 día y refuerza por email.",
-    accent: "#2563eb",
+    accent: "var(--accent)",
     build: () => {
       const e = rid(),
         s1 = rid(),
@@ -111,7 +127,7 @@ const TEMPLATES: JourneyTemplate[] = [
     key: "nurture",
     name: "Nutrición (drip)",
     desc: "Tres toques espaciados (WhatsApp → email → WhatsApp) para madurar el interés.",
-    accent: "#16a34a",
+    accent: "var(--green)",
     build: () => {
       const e = rid(),
         s1 = rid(),
@@ -150,7 +166,7 @@ const TEMPLATES: JourneyTemplate[] = [
     key: "reengage",
     name: "Reactivación por score",
     desc: "Ramifica por score: a los calientes (≥50) les manda; al resto los deja salir.",
-    accent: "#7c3aed",
+    accent: "var(--iris)",
     build: () => {
       const e = rid(),
         b = rid(),
@@ -273,23 +289,24 @@ export function JourneysPage() {
   // ── Template picker (Fase 3 · 3C-D) ──
   if (picking) {
     return (
-      <div className="view">
-        <PageHeader
-          crumb="Automatización · Journeys"
+      <div className="page">
+        <HeroBand
           title="Elegí una plantilla"
-          sub="Arrancá de un patrón probado o desde cero. Después editás todo en el lienzo."
-          actions={
-            <button className="btn" onClick={() => setPicking(false)}>
-              ← Volver
-            </button>
+          chip="Arrancá de un patrón probado o desde cero — después editás todo en el riel"
+          chipIcon="flow"
+          chipTone="var(--green)"
+          right={
+            <Btn variant="ghost" size="sm" icon="chevL" onClick={() => setPicking(false)}>
+              Volver
+            </Btn>
           }
         />
-        <div className="bots-grid">
+        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 16 }}>
           {TEMPLATES.map((t) => (
             <div
               key={t.key}
-              className="bot-card"
-              style={{ "--bot-accent": t.accent } as React.CSSProperties}
+              className="card card__accent-bar card__pad"
+              style={{ "--_c": t.accent, cursor: "pointer" } as React.CSSProperties}
               role="button"
               tabIndex={0}
               onClick={() => {
@@ -297,27 +314,28 @@ export function JourneysPage() {
                 setCurrent(t.build());
               }}
             >
-              <div className="bot-card__top">
-                <span className="bot-card__icon">
-                  <Icon.Workflow size={17} />
-                </span>
-              </div>
-              <div className="bot-card__name">{t.name}</div>
               <div
                 style={{
-                  marginTop: 8,
-                  fontSize: 12.5,
-                  color: "var(--text-3)",
-                  lineHeight: 1.5,
-                  minHeight: 54,
+                  width: 40,
+                  height: 40,
+                  borderRadius: 11,
+                  display: "grid",
+                  placeItems: "center",
+                  background: `color-mix(in srgb,${t.accent} 15%,var(--bg-1))`,
+                  color: t.accent,
                 }}
+              >
+                <Icon name="flow" size={19} />
+              </div>
+              <div style={{ fontWeight: 750, fontSize: 15, marginTop: 12 }}>{t.name}</div>
+              <div
+                className="dim"
+                style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.5, minHeight: 54 }}
               >
                 {t.desc}
               </div>
-              <div className="bot-card__foot">
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--bot-accent)" }}>
-                  Usar esta plantilla →
-                </span>
+              <div className="row gap6" style={{ marginTop: 4, color: t.accent, fontSize: 11.5, fontWeight: 700 }}>
+                Usar esta plantilla <Icon name="arrowRight" size={14} />
               </div>
             </div>
           ))}
@@ -328,146 +346,239 @@ export function JourneysPage() {
 
   // ── List view ──
   return (
-    <div className="view">
-      <PageHeader
-        crumb="Automatización"
+    <div className="page">
+      <HeroBand
         title="Journeys"
-        count={`${journeys.length} ${journeys.length === 1 ? "recorrido" : "recorridos"}`}
-        sub="Recorridos automáticos multi-paso: entrar → enviar → esperar → ramificar → salir. El motor de engagement que reemplaza a Pardot."
-        search={{ value: q, onChange: setQ, placeholder: "Buscar journey…" }}
-        actions={
-          <>
-            <button className="btn" onClick={reload} disabled={loading}>
-              <Icon.Refresh size={14} /> Actualizar
-            </button>
-            <button className="btn btn--primary" onClick={() => setPicking(true)}>
-              <Icon.Plus size={14} /> Nuevo journey
-            </button>
-          </>
+        chip={<>Engagement Studio · {journeys.length} {journeys.length === 1 ? "recorrido" : "recorridos"}</>}
+        chipIcon="flow"
+        chipTone="var(--green)"
+        right={
+          <div className="row gap10">
+            <Btn variant="ghost" size="sm" icon="refresh" onClick={reload} disabled={loading}>
+              Actualizar
+            </Btn>
+            <Btn variant="primary" size="sm" icon="plus" onClick={() => setPicking(true)}>
+              Nuevo journey
+            </Btn>
+          </div>
         }
       />
 
+      <div className="dim" style={{ fontSize: 13, marginTop: -8, marginBottom: 18, maxWidth: 720, lineHeight: 1.55 }}>
+        Recorridos automáticos multi-paso: entrar → enviar → esperar → ramificar → salir. El motor
+        de engagement que reemplaza a Pardot.
+      </div>
+
       {loading ? (
-        <div className="bots-grid">
+        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))", gap: 16 }}>
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="skel" style={{ height: 168, borderRadius: 14 }} />
+            <div key={i} className="skel" style={{ height: 176, borderRadius: 14 }} />
           ))}
         </div>
       ) : journeys.length === 0 ? (
-        <div className="card" style={{ padding: 56, textAlign: "center", color: "var(--text-3)" }}>
-          <Icon.Workflow size={34} style={{ opacity: 0.4 }} />
-          <div style={{ marginTop: 12, fontSize: 14.5, fontWeight: 600, color: "var(--text-2)" }}>
-            Todavía no hay journeys
+        <Card>
+          <div style={{ padding: 40, textAlign: "center" }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 16,
+                margin: "0 auto",
+                display: "grid",
+                placeItems: "center",
+                background: "color-mix(in srgb, var(--green) 14%, var(--bg-1))",
+                color: "var(--green)",
+              }}
+            >
+              <Icon name="flow" size={26} />
+            </div>
+            <div style={{ marginTop: 14, fontSize: 15, fontWeight: 700 }}>Todavía no hay journeys</div>
+            <div className="dim" style={{ marginTop: 6, fontSize: 12.5, maxWidth: 420, marginInline: "auto", lineHeight: 1.5 }}>
+              Armá recorridos automáticos que nutren a cada lead con el mensaje correcto en el momento
+              correcto — sin escribir código.
+            </div>
+            <div className="row" style={{ justifyContent: "center", marginTop: 18 }}>
+              <Btn variant="primary" size="sm" icon="plus" onClick={() => setPicking(true)}>
+                Crear el primero
+              </Btn>
+            </div>
           </div>
-          <div style={{ marginTop: 4, fontSize: 12.5 }}>
-            Armá recorridos automáticos que nutren a cada lead con el mensaje correcto en el momento
-            correcto — sin escribir código.
-          </div>
-          <button
-            className="btn btn--primary"
-            style={{ marginTop: 16 }}
-            onClick={() => setPicking(true)}
-          >
-            <Icon.Plus size={14} /> Crear el primero
-          </button>
-        </div>
+        </Card>
       ) : (
         <>
-          <div className="bots-kpis">
-            <div className="bots-kpi">
-              <span className="bots-kpi__n">{counts.all}</span>
-              <span className="bots-kpi__l">Journeys</span>
-            </div>
-            <div className="bots-kpi">
-              <span className="bots-kpi__n" style={{ color: "var(--accent-green)" }}>
-                {counts.active}
-              </span>
-              <span className="bots-kpi__l">Activos</span>
-            </div>
-            <div className="bots-kpi">
-              <span className="bots-kpi__n" style={{ color: "var(--text-2)" }}>
-                {counts.draft}
-              </span>
-              <span className="bots-kpi__l">Borradores</span>
-            </div>
-            <div className="bots-kpi">
-              <span className="bots-kpi__n" style={{ color: "var(--accent-violet)" }}>
-                {counts.paused}
-              </span>
-              <span className="bots-kpi__l">Pausados</span>
-            </div>
+          {/* KPIs — familia ARIA (Stat + count-up). */}
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))",
+              gap: 16,
+              marginBottom: 20,
+            }}
+          >
+            <Stat icon="flow" color="var(--green)" label="Journeys" value={<Num value={counts.all} />} sub="recorridos totales" />
+            <Stat icon="dot" color="var(--green)" label="Activos" value={<Num value={counts.active} />} sub="corriendo ahora" />
+            <Stat icon="fileText" color="var(--text-3)" label="Borradores" value={<Num value={counts.draft} />} sub="sin publicar" />
+            <Stat icon="clock" color="var(--gold)" label="Pausados" value={<Num value={counts.paused} />} sub="en pausa" />
           </div>
 
-          <div className="bots-filters">
-            {FILTERS.map((f) => (
-              <button
-                key={f.key}
-                className={`bots-filter ${statusFilter === f.key ? "bots-filter--on" : ""}`}
-                onClick={() => setStatusFilter(f.key)}
-              >
-                {f.label}
-                <span className="bots-filter__n">{counts[f.key]}</span>
-              </button>
-            ))}
+          {/* Filtros + búsqueda — pills estilo ARIA. */}
+          <div className="row between wrap gap12" style={{ marginBottom: 16 }}>
+            <div className="row gap8 wrap" role="tablist" aria-label="Estado">
+              {FILTERS.map((f) => {
+                const active = statusFilter === f.key;
+                return (
+                  <button
+                    key={f.key}
+                    role="tab"
+                    aria-selected={active}
+                    className="pill"
+                    onClick={() => setStatusFilter(f.key)}
+                    style={{
+                      cursor: "pointer",
+                      height: 32,
+                      gap: 8,
+                      border: active ? "1.5px solid var(--accent)" : "1px solid var(--border-1)",
+                      background: active ? "var(--accent-soft)" : "var(--bg-1)",
+                      color: active ? "var(--accent)" : "var(--text-2)",
+                      fontWeight: active ? 700 : 600,
+                    }}
+                  >
+                    {f.label}
+                    <span className="tnum" style={{ opacity: 0.7, fontSize: 11.5 }}>
+                      {counts[f.key]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div
+              className="row gap8"
+              style={{
+                height: 34,
+                padding: "0 12px",
+                borderRadius: 999,
+                border: "1px solid var(--border-1)",
+                background: "var(--bg-1)",
+                minWidth: 220,
+              }}
+            >
+              <Icon name="search" size={15} style={{ color: "var(--text-3)" }} />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar journey…"
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  outline: "none",
+                  color: "var(--text-1)",
+                  fontSize: 13,
+                  width: "100%",
+                }}
+              />
+            </div>
           </div>
 
           {kept.length === 0 ? (
-            <div
-              className="card"
-              style={{ padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}
-            >
-              Ningún journey coincide con el filtro.
-            </div>
+            <Card>
+              <div className="dim" style={{ padding: 36, textAlign: "center", fontSize: 13 }}>
+                Ningún journey coincide con el filtro.
+              </div>
+            </Card>
           ) : (
-            <div className="bots-grid">
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 16 }}>
               {kept.map((j, i) => {
-                const steps = Array.isArray(j.nodes) ? j.nodes.length : 0;
+                const nodes = Array.isArray(j.nodes) ? j.nodes : [];
+                const steps = nodes.length;
                 const entryLabel = j.entry?.segmentId
                   ? "Segmento"
                   : j.entry?.trigger
                     ? j.entry.trigger
                     : "Manual";
+                const accent = ACCENTS[i % ACCENTS.length];
+                // Rail de pasos: los primeros nodos como pills encadenadas con chevrons.
+                const rail = nodes.slice(0, 5);
                 return (
                   <div
                     key={j.journeyId}
-                    className="bot-card"
-                    style={{ "--bot-accent": ACCENTS[i % ACCENTS.length] } as React.CSSProperties}
+                    className="card card__accent-bar"
+                    style={{ "--_c": accent, padding: "16px 18px", cursor: "pointer" } as React.CSSProperties}
                     onClick={() => setCurrent(j)}
                     role="button"
                     tabIndex={0}
                   >
-                    <div className="bot-card__top">
-                      <span className="bot-card__icon">
-                        <Icon.Workflow size={17} />
-                      </span>
-                      <span className={`bot-card__status bot-card__status--${j.status}`}>
-                        {STATUS_LABEL[j.status] || j.status}
-                      </span>
-                    </div>
-                    <div className="bot-card__name">{j.name || "Sin nombre"}</div>
-                    <div className="bot-card__rail" aria-hidden>
-                      {Array.from({ length: Math.max(1, Math.min(steps || 1, 7)) }).map((_, k) => (
-                        <span key={k} className="bot-card__dot" />
-                      ))}
-                    </div>
-                    <div className="bot-card__meta">
-                      <span className="bot-card__chip">
-                        <Icon.Workflow size={12} /> {entryLabel}
-                      </span>
-                      <span className="bot-card__chip">
-                        {steps} {steps === 1 ? "paso" : "pasos"}
-                      </span>
-                      {j.stats && j.stats.total > 0 && (
-                        <span
-                          className="bot-card__chip"
-                          title={`${j.stats.active} activos · ${j.stats.done} completados`}
+                    <div className="row between" style={{ marginBottom: 12 }}>
+                      <div className="row gap12" style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: 11,
+                            display: "grid",
+                            placeItems: "center",
+                            background: `color-mix(in srgb,${accent} 15%,var(--bg-1))`,
+                            color: accent,
+                            flex: "0 0 auto",
+                          }}
                         >
-                          {j.stats.total} inscrito{j.stats.total === 1 ? "" : "s"}
+                          <Icon name="flow" size={19} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontWeight: 750,
+                              fontSize: 15,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {j.name || "Sin nombre"}
+                          </div>
+                          <div className="dim" style={{ fontSize: 12, marginTop: 2 }}>
+                            {entryLabel} · {steps} {steps === 1 ? "paso" : "pasos"}
+                            {j.stats && j.stats.total > 0 && (
+                              <>
+                                {" · "}
+                                <b style={{ color: "var(--text-2)" }}>{j.stats.total}</b> inscrito
+                                {j.stats.total === 1 ? "" : "s"}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <Pill tone={STATUS_TONE[j.status] || "outline"} icon={j.status === "active" ? "dot" : undefined}>
+                        {STATUS_LABEL[j.status] || j.status}
+                      </Pill>
+                    </div>
+
+                    <div className="row gap6 wrap" style={{ alignItems: "center", marginBottom: 12, minHeight: 30 }}>
+                      {rail.map((n, k) => {
+                        const meta = NODE_META[n.kind] || { icon: "dot" as IconName, label: n.kind };
+                        return (
+                          <span key={n.id || k} style={{ display: "contents" }}>
+                            <span className="pill pill--outline" style={{ height: 28, gap: 6, fontSize: 11.5 }}>
+                              <Icon name={meta.icon} size={13} style={{ color: accent }} />
+                              {meta.label}
+                            </span>
+                            {k < rail.length - 1 && (
+                              <Icon name="chevR" size={14} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
+                            )}
+                          </span>
+                        );
+                      })}
+                      {steps > rail.length && (
+                        <span className="dim" style={{ fontSize: 11.5 }}>
+                          +{steps - rail.length}
                         </span>
                       )}
                     </div>
-                    <div className="bot-card__foot">
-                      <span>
+
+                    <div
+                      className="row between"
+                      style={{ paddingTop: 12, borderTop: "1px solid var(--border-1)" }}
+                    >
+                      <span className="dim" style={{ fontSize: 12 }}>
                         {j.updatedAt
                           ? new Date(j.updatedAt).toLocaleDateString("es-PE", {
                               day: "numeric",
@@ -476,26 +587,23 @@ export function JourneysPage() {
                             })
                           : "—"}
                       </span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <button
-                          className="btn btn--ghost btn--sm"
-                          style={{
-                            padding: "3px 10px",
-                            fontSize: 11.5,
-                            color: j.status === "active" ? "var(--text-3)" : "var(--accent-green)",
-                          }}
+                      <div className="row gap6">
+                        <Btn
+                          variant="ghost"
+                          size="sm"
+                          icon={j.status === "active" ? "clock" : "dot"}
                           onClick={(e) => toggleStatus(j, e)}
                           title={j.status === "active" ? "Pausar" : "Activar"}
                         >
                           {j.status === "active" ? "Pausar" : "Activar"}
-                        </button>
-                        <button
-                          className="bot-card__del"
+                        </Btn>
+                        <Btn
+                          variant="ghost"
+                          size="sm"
+                          icon="x"
                           onClick={(e) => del(j, e)}
                           title="Eliminar journey"
-                        >
-                          <Icon.Trash size={13} />
-                        </button>
+                        />
                       </div>
                     </div>
                   </div>

@@ -308,6 +308,18 @@ Resources:
                   - !Sub "arn:aws:bedrock:*::foundation-model/*"
                   - !Sub "arn:aws:bedrock:*:\${AWS::AccountId}:inference-profile/*"
                   - !Sub "arn:aws:bedrock:*:\${AWS::AccountId}:application-inference-profile/*"
+        - PolicyName: VoxCrmCostExplorer
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Cost Explorer BYO: la calculadora de Consumo de ARIA muestra tu
+              # gasto REAL de Amazon Connect (y servicios asociados) leyéndolo de
+              # TU factura AWS. Cost Explorer es un servicio global → Resource "*".
+              - Effect: Allow
+                Action:
+                  - ce:GetCostAndUsage
+                  - ce:GetCostForecast
+                Resource: "*"
 Outputs:
   RoleArn:
     Description: Pegá este ARN en Vox

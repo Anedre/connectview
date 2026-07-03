@@ -1,0 +1,343 @@
+/* ============================================================
+   ARIA — Design System  ·  Base tokens + reset + utilities
+   Cobalt & Coral · claro/oscuro · accent-swappable
+   ============================================================ */
+
+/* ---------- LIGHT (default) ---------- */
+:root{
+  color-scheme: light;
+
+  /* Typography (conmutable via Personalizar) */
+  --font-ui:"Manrope Variable";
+  --font-mono:"JetBrains Mono Variable";
+
+  /* Surfaces — neutros pizarra */
+  --bg-0:#F4F6FA;            /* app background */
+  --bg-1:#FFFFFF;            /* cards / surfaces */
+  --bg-2:#F8FAFC;            /* subtle raised */
+  --bg-3:#ECF0F6;            /* hover / inset */
+  --bg-inv:#111A2B;          /* inverted chip on light */
+
+  /* Borders */
+  --border-1:#E3E8F1;
+  --border-2:#CFD8E4;
+  --border-strong:#B2BECE;
+
+  /* Text */
+  --text-1:#141C2B;
+  --text-2:#47566B;
+  --text-3:#7F8EA4;
+  --text-inv:#F4F7FC;
+
+  /* Brand — paleta profesional de 3 colores: Azul marino · Teal · Bronce */
+  --accent:#2C5698;           /* primario · navy */
+  --accent-2:#234A83;         /* darker */
+  --accent-hi:#3D69B4;        /* lighter */
+  --accent-ink:#FFFFFF;       /* text on accent */
+  --accent-grad-a:#2C5698;
+  --accent-grad-b:#158A8C;
+
+  /* Secundario / terciario / semántico */
+  --cyan:#0E7C86;    --cyan-2:#0A626B;   /* teal (secundario) */
+  --gold:#B07D2B;    --gold-2:#8F6420;   /* bronce/ámbar (terciario) */
+  --green:#1F8A5B;   --green-2:#177049;
+  --red:#C34A43;     --red-2:#A63A34;
+  --coral:#CE5B4C;   --coral-2:#B3453A;
+  --iris:#5B57B8;    --iris-2:#4A46A0;
+
+  /* Channel map */
+  --ch-voz:var(--cyan);
+  --ch-wa:var(--green);
+  --ch-email:var(--gold);
+  --ch-sf:var(--accent);
+  --ch-sms:var(--coral);
+
+  /* Soft tints (auto-adapt per theme via color-mix) */
+  --accent-soft:color-mix(in srgb, var(--accent) 12%, var(--bg-1));
+  --coral-soft:color-mix(in srgb, var(--coral) 13%, var(--bg-1));
+  --iris-soft:color-mix(in srgb, var(--iris) 13%, var(--bg-1));
+  --green-soft:color-mix(in srgb, var(--green) 13%, var(--bg-1));
+  --gold-soft:color-mix(in srgb, var(--gold) 15%, var(--bg-1));
+  --red-soft:color-mix(in srgb, var(--red) 12%, var(--bg-1));
+  --cyan-soft:color-mix(in srgb, var(--cyan) 13%, var(--bg-1));
+
+  /* Radii */
+  --r-xs:6px; --r-sm:9px; --r-md:12px; --r-lg:16px; --r-xl:22px; --r-pill:999px;
+
+  /* Shadows */
+  --sh-1:0 1px 2px rgba(15,23,42,.05), 0 1px 1px rgba(15,23,42,.03);
+  --sh-2:0 3px 10px -2px rgba(15,23,42,.08), 0 1px 3px rgba(15,23,42,.05);
+  --sh-3:0 16px 38px -12px rgba(15,23,42,.20), 0 6px 14px -6px rgba(15,23,42,.10);
+  --sh-4:0 32px 72px -20px rgba(15,23,42,.34), 0 10px 24px -8px rgba(15,23,42,.16);
+  --sh-accent:0 8px 22px -6px color-mix(in srgb, var(--accent) 55%, transparent);
+  --ring:0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent);
+
+  /* Motion */
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --spring:cubic-bezier(.34,1.4,.5,1);
+
+  /* Metrics */
+  --nav-w:250px;
+  --nav-w-collapsed:74px;
+  --topbar-h:62px;
+  --pad:20px;
+}
+
+/* ---------- DARK ---------- */
+[data-theme="dark"]{
+  color-scheme: dark;
+
+  /* Base: negro profundo → matices de gris neutro */
+  --bg-0:#040406;
+  --bg-1:#0E0E12;
+  --bg-2:#0A0A0D;
+  --bg-3:#1A1A20;
+  --bg-inv:#F4F4F6;
+
+  --border-1:#202026;
+  --border-2:#2C2C34;
+  --border-strong:#3B3B45;
+
+  --text-1:#F5F5F7;
+  --text-2:#A6A6B0;
+  --text-3:#6E6E79;
+  --text-inv:#0A0A0C;
+
+  /* Acentos que resaltan sobre el negro */
+  --accent:#5E8BE6;
+  --accent-2:#4870C8;
+  --accent-hi:#82A6F2;
+  --accent-ink:#05070D;
+  --accent-grad-a:#5E8BE6;
+  --accent-grad-b:#33BEC2;
+
+  --cyan:#33BFC8;  --cyan-2:#5FD6DC;
+  --gold:#E0AC4E;  --gold-2:#EEC578;
+  --green:#33C084; --green-2:#57D89E;
+  --red:#EE6A61;   --red-2:#F58880;
+  --coral:#F08370; --coral-2:#F59D8C;
+  --iris:#9A8CF0;  --iris-2:#B4A8F8;
+
+  --accent-soft:color-mix(in srgb, var(--accent) 20%, transparent);
+  --coral-soft:color-mix(in srgb, var(--coral) 20%, transparent);
+  --iris-soft:color-mix(in srgb, var(--iris) 20%, transparent);
+  --green-soft:color-mix(in srgb, var(--green) 20%, transparent);
+  --gold-soft:color-mix(in srgb, var(--gold) 20%, transparent);
+  --red-soft:color-mix(in srgb, var(--red) 20%, transparent);
+  --cyan-soft:color-mix(in srgb, var(--cyan) 20%, transparent);
+
+  --sh-1:0 1px 2px rgba(0,0,0,.4);
+  --sh-2:0 3px 12px -2px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.4);
+  --sh-3:0 18px 40px -14px rgba(0,0,0,.66), 0 6px 16px -6px rgba(0,0,0,.5);
+  --sh-4:0 36px 80px -22px rgba(0,0,0,.8), 0 12px 28px -10px rgba(0,0,0,.6);
+  --ring:0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* ---------- Accent variants (primario · paleta profesional) ---------- */
+[data-accent="teal"]{
+  --accent:#0E7C86; --accent-2:#0A626B; --accent-hi:#189AA4; --accent-ink:#fff;
+  --accent-grad-a:#0E7C86; --accent-grad-b:#2FA890;
+}
+[data-theme="dark"][data-accent="teal"]{
+  --accent:#3BB0B8; --accent-2:#2A99A0; --accent-hi:#5FC8CE; --accent-ink:#04201F;
+  --accent-grad-a:#3BB0B8; --accent-grad-b:#5FD6BE;
+}
+[data-accent="indigo"]{
+  --accent:#4A46A0; --accent-2:#3B3888; --accent-hi:#5E5ABB; --accent-ink:#fff;
+  --accent-grad-a:#4A46A0; --accent-grad-b:#7A5FC0;
+}
+[data-theme="dark"][data-accent="indigo"]{
+  --accent:#8985DE; --accent-2:#6F6BC8; --accent-hi:#A5A1EC; --accent-ink:#0E0A2A;
+  --accent-grad-a:#8985DE; --accent-grad-b:#A98FE8;
+}
+[data-accent="slate"]{
+  --accent:#43566E; --accent-2:#354557; --accent-hi:#566A82; --accent-ink:#fff;
+  --accent-grad-a:#43566E; --accent-grad-b:#5E7C86;
+}
+[data-theme="dark"][data-accent="slate"]{
+  --accent:#8BA0BC; --accent-2:#71889F; --accent-hi:#A6B8CF; --accent-ink:#0C1420;
+  --accent-grad-a:#8BA0BC; --accent-grad-b:#9DB8C0;
+}
+
+/* ---------- Density ---------- */
+[data-density="compact"]{ --pad:14px; --topbar-h:56px; }
+
+/* ============ Reset / base ============ */
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;}
+body{
+  font-family:var(--font-ui), "Manrope Variable", system-ui, -apple-system, sans-serif;
+  background:var(--bg-0);
+  color:var(--text-1);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  font-size:14px; line-height:1.45;
+  overflow:hidden;
+}
+#root{height:100vh;}
+.mono{font-family:var(--font-mono), "JetBrains Mono Variable", ui-monospace, monospace;font-feature-settings:"tnum";}
+h1,h2,h3,h4,p{margin:0;}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;font-size:inherit;}
+input,textarea,select{font-family:inherit;font-size:inherit;color:inherit;}
+a{color:inherit;text-decoration:none;}
+::selection{background:color-mix(in srgb, var(--accent) 28%, transparent);color:var(--text-1);}
+:focus-visible{outline:none;box-shadow:var(--ring);border-radius:var(--r-sm);}
+
+/* scrollbars */
+*::-webkit-scrollbar{width:11px;height:11px;}
+*::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--text-3) 45%,transparent);border-radius:99px;border:3px solid transparent;background-clip:content-box;}
+*::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--text-3) 70%,transparent);background-clip:content-box;}
+*::-webkit-scrollbar-track{background:transparent;}
+
+/* ============ Utilities ============ */
+.row{display:flex;align-items:center;}
+.col{display:flex;flex-direction:column;}
+.between{justify-content:space-between;}
+.center{align-items:center;justify-content:center;}
+.wrap{flex-wrap:wrap;}
+.grow{flex:1;min-width:0;}
+.gap4{gap:4px;} .gap6{gap:6px;} .gap8{gap:8px;} .gap10{gap:10px;}
+.gap12{gap:12px;} .gap14{gap:14px;} .gap16{gap:16px;} .gap20{gap:20px;} .gap24{gap:24px;}
+.muted{color:var(--text-2);} .dim{color:var(--text-3);}
+.tnum{font-feature-settings:"tnum";font-variant-numeric:tabular-nums;}
+.trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nowrap{white-space:nowrap;}
+.hide{display:none !important;}
+.upper{text-transform:uppercase;letter-spacing:.07em;}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);}
+
+/* ============ Buttons ============ */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  height:38px;padding:0 15px;border-radius:var(--r-md);
+  font-weight:650;font-size:13.5px;white-space:nowrap;
+  border:1px solid transparent;transition:.16s var(--ease);
+  color:var(--text-1);
+}
+.btn svg{flex:0 0 auto;}
+.btn--sm{height:32px;padding:0 11px;font-size:12.5px;border-radius:var(--r-sm);}
+.btn--lg{height:44px;padding:0 20px;font-size:14.5px;}
+.btn--icon{width:38px;padding:0;}
+.btn--icon.btn--sm{width:32px;}
+.btn--primary{background:var(--accent);color:var(--accent-ink);box-shadow:var(--sh-accent);}
+.btn--primary:hover{background:var(--accent-hi);transform:translateY(-1px);}
+.btn--primary:active{transform:translateY(0);}
+.btn--ghost{background:var(--bg-1);border-color:var(--border-1);color:var(--text-1);box-shadow:var(--sh-1);}
+.btn--ghost:hover{background:var(--bg-3);border-color:var(--border-2);}
+.btn--subtle{background:var(--bg-3);color:var(--text-1);}
+.btn--subtle:hover{background:color-mix(in srgb,var(--text-3) 16%,var(--bg-3));}
+.btn--soft{background:var(--accent-soft);color:var(--accent);}
+.btn--soft:hover{background:color-mix(in srgb,var(--accent) 22%,var(--bg-1));}
+.btn--quiet{color:var(--text-2);}
+.btn--quiet:hover{background:var(--bg-3);color:var(--text-1);}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
+
+/* ============ Cards ============ */
+.card{background:var(--bg-1);border:1px solid var(--border-1);border-radius:var(--r-lg);box-shadow:var(--sh-1);}
+.card--pop{box-shadow:var(--sh-2);}
+.card__pad{padding:var(--pad);}
+.card__head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px var(--pad);border-bottom:1px solid var(--border-1);}
+.card__title{font-size:14.5px;font-weight:750;letter-spacing:-.01em;display:flex;align-items:center;gap:10px;}
+.card__ico{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;color:var(--_c,var(--accent));background:linear-gradient(140deg,color-mix(in srgb,var(--_c,var(--accent)) 22%,var(--bg-1)),color-mix(in srgb,var(--_c,var(--accent)) 8%,var(--bg-1)));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--_c,var(--accent)) 20%,transparent),0 1px 2px color-mix(in srgb,var(--_c,var(--accent)) 14%,transparent);}
+.card__accent-bar{position:relative;overflow:hidden;}
+.card__accent-bar::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--_c,var(--accent));}
+
+/* ============ Pills / badges / chips ============ */
+.pill{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:var(--r-pill);
+  font-size:11.5px;font-weight:700;background:var(--bg-3);color:var(--text-2);white-space:nowrap;}
+.pill svg{flex:0 0 auto;}
+.pill--accent{background:var(--accent-soft);color:var(--accent);}
+.pill--green{background:var(--green-soft);color:var(--green-2);}
+.pill--gold{background:var(--gold-soft);color:var(--gold-2);}
+.pill--red{background:var(--red-soft);color:var(--red-2);}
+.pill--coral{background:var(--coral-soft);color:var(--coral-2);}
+.pill--iris{background:var(--iris-soft);color:var(--iris-2);}
+.pill--cyan{background:var(--cyan-soft);color:var(--cyan-2);}
+.pill--outline{background:transparent;border:1px solid var(--border-2);color:var(--text-2);}
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:var(--text-3);}
+.dot--live{background:var(--green);box-shadow:0 0 0 0 color-mix(in srgb,var(--green) 60%,transparent);animation:pulse 2s infinite;}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--green) 55%,transparent);}70%{box-shadow:0 0 0 6px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
+
+.kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:19px;padding:0 5px;
+  border-radius:5px;background:var(--bg-3);border:1px solid var(--border-2);border-bottom-width:2px;
+  font-size:10.5px;font-weight:700;color:var(--text-2);font-family:"JetBrains Mono Variable",monospace;}
+
+/* channel dots */
+.chdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
+.chdot--voz{background:var(--ch-voz);} .chdot--wa{background:var(--ch-wa);}
+.chdot--email{background:var(--ch-email);} .chdot--sf{background:var(--ch-sf);} .chdot--sms{background:var(--ch-sms);}
+
+/* avatar */
+.av{display:grid;place-items:center;border-radius:11px;font-weight:800;color:#fff;flex:0 0 auto;
+  background:linear-gradient(135deg,var(--accent-grad-a),var(--accent-grad-b));font-size:13px;}
+
+/* ============ Tooltip ============ */
+.tt{position:relative;display:inline-flex;}
+.tt__bub{position:absolute;z-index:120;bottom:calc(100% + 9px);left:50%;transform:translateX(-50%) translateY(4px);
+  background:var(--bg-inv);color:var(--text-inv);font-size:11.5px;font-weight:600;line-height:1.35;
+  padding:7px 10px;border-radius:8px;white-space:nowrap;max-width:240px;white-space:normal;text-align:center;
+  opacity:0;pointer-events:none;transition:.15s var(--ease);box-shadow:var(--sh-3);}
+.tt__bub::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--bg-inv);}
+.tt:hover .tt__bub{opacity:1;transform:translateX(-50%) translateY(0);}
+.tt__bub--r{left:auto;right:0;transform:translateX(0) translateY(4px);} .tt__bub--r::after{left:auto;right:12px;transform:none;}
+
+/* ============ Stat card ============ */
+.stat{background:var(--bg-1);border:1px solid var(--border-1);border-radius:var(--r-lg);padding:15px 16px;
+  box-shadow:var(--sh-1);position:relative;overflow:hidden;transition:.18s var(--ease);}
+.stat:hover{box-shadow:var(--sh-2);transform:translateY(-2px);border-color:var(--border-2);}
+.stat__top{display:flex;align-items:center;gap:8px;}
+.stat__ico{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;color:var(--_c,var(--accent));background:color-mix(in srgb,var(--_c,var(--accent)) 14%,var(--bg-1));}
+.stat__label{font-size:11px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3);}
+.stat__val{font-size:29px;font-weight:800;letter-spacing:-.03em;margin-top:9px;line-height:1;}
+.stat__sub{font-size:11.5px;color:var(--text-3);margin-top:7px;}
+.delta{display:inline-flex;align-items:center;gap:3px;font-weight:750;}
+.delta--up{color:var(--green-2);} .delta--down{color:var(--red-2);}
+
+/* progress / bars */
+.bar{height:8px;border-radius:99px;background:var(--bg-3);overflow:hidden;}
+.bar>span{display:block;height:100%;border-radius:99px;background:var(--accent);}
+.segbar{display:flex;height:9px;border-radius:99px;overflow:hidden;background:var(--bg-3);}
+.segbar>span{display:block;height:100%;}
+
+/* ============ Fade / motion helpers ============ */
+/* Entrance motion on top-level view containers (.fadeup/.fadein) is
+   TRANSFORM-ONLY, so a paused animation (hidden tab, PDF/print, thumbnail
+   capture — browsers pause CSS animations at frame 0) never leaves the whole
+   view at opacity:0. Opacity fades are reserved for transient overlays that
+   are not part of a static page capture. */
+@keyframes fadeUp{from{transform:translateY(10px);}to{transform:none;}}
+@keyframes fadeIn{from{transform:translateY(5px);}to{transform:none;}}
+@keyframes scaleIn{from{opacity:0;transform:scale(.96);}to{opacity:1;transform:none;}}
+@keyframes slideL{from{opacity:0;transform:translateX(18px);}to{opacity:1;transform:none;}}
+.fadeup{animation:fadeUp .4s var(--ease) both;}
+.fadein{animation:fadeIn .3s var(--ease) both;}
+@media (prefers-reduced-motion:reduce){.fadeup,.fadein{animation:none;}*{animation-duration:.001s !important;transition-duration:.001s !important;}}
+@media print{*{animation:none !important;}.fadeup,.fadein,.scrim,.welcome,.cmdk,.drawer{opacity:1 !important;transform:none !important;}}
+
+/* ============================================================
+   HOMOGENEIZACIÓN · alias del sistema de tokens previo → ARIA
+   Los componentes anteriores (~90 archivos) usan --accent-cyan,
+   --radius-3, --shadow-card, etc. Los apuntamos al sistema ARIA para
+   que TODA la app comparta la misma paleta, radios y sombras sin tener
+   que reescribir cada archivo. var() se resuelve en el punto de uso, así
+   que este único bloque :root sirve para claro y oscuro (cada
+   --cyan/--gold/… ya se redefine por tema arriba). Importado después de
+   index.css → gana la cascada.
+   ============================================================ */
+:root {
+  --accent-cyan: var(--cyan);       --accent-cyan-soft: var(--cyan-soft);
+  --accent-amber: var(--gold);      --accent-amber-soft: var(--gold-soft);
+  --accent-green: var(--green);     --accent-green-soft: var(--green-soft);
+  --accent-red: var(--red);         --accent-red-soft: var(--red-soft);
+  --accent-violet: var(--iris);     --accent-violet-soft: var(--iris-soft);
+  --accent-pink: var(--coral);      --accent-pink-soft: var(--coral-soft);
+
+  --radius-1: var(--r-xs);
+  --radius-2: var(--r-sm);
+  --radius-3: var(--r-md);
+  --radius-4: var(--r-lg);
+
+  --shadow-card: var(--sh-1);
+  --shadow-pop: var(--sh-3);
+  --shadow-call: var(--sh-3);
+}

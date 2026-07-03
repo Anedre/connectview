@@ -57,7 +57,12 @@ describe("planAdvance", () => {
   it("branch YES (score alto) → moveStage → exit", () => {
     const p = planAdvance(J, "b", { score: 80 }, NOW);
     expect(p.effects).toEqual([
-      { type: "action", action: "moveStage", params: { type: "moveStage", stageId: "won" } },
+      {
+        type: "action",
+        nodeId: "mv",
+        action: "moveStage",
+        params: { type: "moveStage", stageId: "won" },
+      },
     ]);
     expect(p.done).toBe(true);
   });
@@ -87,5 +92,36 @@ describe("planAdvance", () => {
     expect(Date.parse(notMet.nextRunAt)).toBe(NOW + 5 * 60_000);
     const met = planAdvance(jc, "w", { grade: "A" }, NOW);
     expect(met.done).toBe(true); // cumplido → sigue al exit
+  });
+
+  it("split A/B: el percent decide la rama y es estable por lead", () => {
+    const mk = (percent: number): JourneyDef => ({
+      journeyId: "js",
+      name: "AB",
+      status: "active",
+      nodes: [
+        { id: "sp", kind: "split", params: { percent } },
+        { id: "sa", kind: "send", params: { channel: "whatsapp", templateName: "a" } },
+        { id: "sb", kind: "send", params: { channel: "whatsapp", templateName: "b" } },
+        { id: "x", kind: "exit" },
+      ],
+      edges: [
+        { from: "sp", to: "sa", on: "a" },
+        { from: "sp", to: "sb", on: "b" },
+        { from: "sa", to: "x" },
+        { from: "sb", to: "x" },
+      ],
+    });
+    // percent=100 → siempre rama A; percent=0 → siempre rama B.
+    expect(planAdvance(mk(100), "sp", { leadId: "L1" }, NOW).effects[0]?.params.templateName).toBe(
+      "a",
+    );
+    expect(planAdvance(mk(0), "sp", { leadId: "L1" }, NOW).effects[0]?.params.templateName).toBe(
+      "b",
+    );
+    // Mismo lead → misma rama en dos evaluaciones (determinístico).
+    const a1 = planAdvance(mk(50), "sp", { leadId: "stable" }, NOW).effects[0]?.params.templateName;
+    const a2 = planAdvance(mk(50), "sp", { leadId: "stable" }, NOW).effects[0]?.params.templateName;
+    expect(a1).toBe(a2);
   });
 });

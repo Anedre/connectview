@@ -8,18 +8,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { AgentActionsDialog } from "@/components/queue/AgentActionsDialog";
 import { formatDurationSec } from "@/lib/utils";
 import { toast } from "sonner";
-import * as Icon from "@/components/vox/primitives";
+import { Icon, Btn, Card, Stat, Pill, Av, MiniBars, HeroBand } from "@/components/aria";
 import type { AgentStatus, QueueMetrics } from "@/types/monitoring";
 
 /**
- * MonitoringPage — "Cola en vivo · Supervisión". WFM command center (amber
- * control-room identity): 6 KPI bar-tiles, a rich "Contactos en espera" table
- * (priority + SLA breach), per-channel "Salud de colas", live coaching signals,
- * and an agent board with call-progress bars + Whisper/Barge.
+ * MonitoringPage — "Cola en vivo · Supervisión". Re-skinneada al sistema ARIA
+ * (HeroBand con pulso live + Stat KPIs + Card panels), preservando el WFM
+ * command center: 6 KPIs, "Contactos en espera" (prioridad + SLA breach),
+ * "Salud de colas", coaching en vivo y el tablero de agentes con Whisper/Barge.
  *
- * Real data: realtime-metrics + live-queue + derived SLA/alerts. Fields not yet
- * in the backend (abandono %, VIP priority, sentiment coaching) are wired to
- * real equivalents now and to dedicated endpoints as they land (see roadmap).
+ * Real data: realtime-metrics + live-queue + derived SLA/alerts. Toda la lógica,
+ * hooks, effects y handlers reales quedan intactos — solo cambia la presentación.
  */
 const fmt = formatDurationSec;
 
@@ -28,38 +27,47 @@ function since(iso?: string | null): number {
   const t = new Date(iso).getTime();
   return Number.isNaN(t) ? 0 : Math.max(0, Math.round((Date.now() - t) / 1000));
 }
-function initials(name: string): string {
-  const p = name.trim().split(/\s+/).filter(Boolean);
-  if (!p.length) return "?";
-  return (p.length === 1 ? p[0].slice(0, 2) : p[0][0] + p[p.length - 1][0]).toUpperCase();
-}
 
 const STATE: Record<string, { label: string; color: string }> = {
-  Available: { label: "Disponible", color: "var(--accent-green)" },
-  Busy: { label: "En llamada", color: "var(--accent-cyan)" },
-  AfterCallWork: { label: "ACW", color: "var(--accent-amber)" },
+  Available: { label: "Disponible", color: "var(--green)" },
+  Busy: { label: "En llamada", color: "var(--cyan)" },
+  AfterCallWork: { label: "ACW", color: "var(--gold)" },
   Offline: { label: "Off", color: "var(--text-3)" },
-  MissedCallAgent: { label: "Perdida", color: "var(--accent-red)" },
+  MissedCallAgent: { label: "Perdida", color: "var(--coral)" },
 };
-function stateOf(s: string) { return STATE[s] || { label: s, color: "var(--accent-violet)" }; }
+function stateOf(s: string) { return STATE[s] || { label: s, color: "var(--iris)" }; }
 
 /** Channel meta from a queue/contact channel string. */
 function channelMeta(ch?: string): { label: string; color: string } {
   const k = (ch || "").toUpperCase();
   if (k.includes("WHATS") || k === "WA") return { label: "WA", color: "#25B873" };
-  if (k.includes("CHAT")) return { label: "Chat", color: "var(--accent-violet)" };
-  if (k.includes("EMAIL")) return { label: "Email", color: "var(--accent-amber)" };
-  if (k.includes("SMS")) return { label: "SMS", color: "var(--accent-pink)" };
-  return { label: "Voz", color: "var(--accent-cyan)" };
+  if (k.includes("CHAT")) return { label: "Chat", color: "var(--iris)" };
+  if (k.includes("EMAIL")) return { label: "Email", color: "var(--gold)" };
+  if (k.includes("SMS")) return { label: "SMS", color: "var(--coral)" };
+  return { label: "Voz", color: "var(--cyan)" };
 }
 
-/** Mini vertical-bar chart (Kommo-style) for a KPI tile. */
-function MiniBars({ data, color }: { data: number[]; color: string }) {
-  const max = Math.max(1, ...data);
+/** Small ARIA channel chip (colored rounded square with the channel initial). */
+function ChBadge({ ch, size = 24 }: { ch?: string; size?: number }) {
+  const cm = channelMeta(ch);
   return (
-    <div className="mon-bars">
-      {data.map((v, i) => <span key={i} style={{ height: `${Math.max(8, (v / max) * 100)}%`, background: color }} />)}
-    </div>
+    <span
+      className="tnum"
+      style={{
+        width: size,
+        height: size,
+        flex: "0 0 auto",
+        borderRadius: 7,
+        display: "grid",
+        placeItems: "center",
+        fontSize: size * 0.44,
+        fontWeight: 800,
+        color: "#fff",
+        background: cm.color,
+      }}
+    >
+      {cm.label[0]}
+    </span>
   );
 }
 
@@ -78,10 +86,10 @@ function inFilter(a: AgentStatus, f: AgentFilter): boolean {
  *  Both are REAL signals — wait seconds from the live queue, customer history
  *  from Customer Profiles (see useWaitingPriority). */
 type Sev = 0 | 1 | 2;
-const SEV_META: { label: string; cls: string }[] = [
-  { label: "Normal", cls: "mon-prio--norm" },
-  { label: "Alta", cls: "mon-prio--high" },
-  { label: "Crítica", cls: "mon-prio--crit" },
+const SEV_META: { label: string; tone: "green" | "gold" | "coral" }[] = [
+  { label: "Normal", tone: "green" },
+  { label: "Alta", tone: "gold" },
+  { label: "Crítica", tone: "coral" },
 ];
 function waitSeverity(waitSecs: number): Sev {
   if (waitSecs >= 300) return 2;
@@ -211,9 +219,9 @@ export function MonitoringPage() {
 
   if (loading && !metrics) {
     return (
-      <div className="view" style={{ display: "grid", placeItems: "center", minHeight: "60vh" }}>
+      <div className="page" style={{ display: "grid", placeItems: "center", minHeight: "60vh" }}>
         <div style={{ textAlign: "center" }}>
-          <Icon.Activity size={28} style={{ color: "var(--accent-amber)" }} />
+          <Icon name="live" size={28} style={{ color: "var(--gold)" }} />
           <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>Cargando supervisión en tiempo real…</div>
         </div>
       </div>
@@ -221,14 +229,14 @@ export function MonitoringPage() {
   }
   if (!metrics) return null;
 
-  const tone: Record<string, string> = { ok: "var(--accent-green)", warn: "var(--accent-amber)", crit: "var(--accent-red)", info: "var(--accent-cyan)" };
+  const tone: Record<string, string> = { ok: "var(--green)", warn: "var(--gold)", crit: "var(--coral)", info: "var(--cyan)" };
   const kpis = [
-    { label: "En cola", value: String(inQueue), sub: inQueue > 0 ? `${inQueue} esperando` : "sin contactos", t: inQueue > 5 ? "crit" : "ok", bars: barHist.queue },
-    { label: "En conversación", value: String(onCall), sub: `${util}% utilización`, t: "info", bars: barHist.conv },
-    { label: "SLA hoy", value: `${slaDisplay}%`, sub: slaToday == null ? "en vivo · meta 80%" : "atend. <30s · meta 80%", t: slaDisplay >= 80 ? "ok" : slaDisplay >= 50 ? "warn" : "crit", bars: barHist.sla },
-    { label: "Abandono hoy", value: `${abandRate}%`, sub: today ? `${today.abandoned} de ${today.queued}` : "sin datos aún", t: abandRate > 8 ? "crit" : abandRate > 4 ? "warn" : "ok", bars: barHist.aband },
-    { label: "Espera máx.", value: fmt(longest), sub: `${breachCount} en breach`, t: longest > 120 ? "crit" : "ok", bars: barHist.wait },
-    { label: "Disponibles", value: String(available), sub: `${acw} en ACW · ${handledToday} atend.`, t: "ok", bars: barHist.conv.map((_, i) => available + (i % 2)) },
+    { label: "En cola", icon: "headset", value: String(inQueue), sub: inQueue > 0 ? `${inQueue} esperando` : "sin contactos", t: inQueue > 5 ? "crit" : "ok", bars: barHist.queue },
+    { label: "En conversación", icon: "phone", value: String(onCall), sub: `${util}% utilización`, t: "info", bars: barHist.conv },
+    { label: "SLA hoy", icon: "check", value: `${slaDisplay}%`, sub: slaToday == null ? "en vivo · meta 80%" : "atend. <30s · meta 80%", t: slaDisplay >= 80 ? "ok" : slaDisplay >= 50 ? "warn" : "crit", bars: barHist.sla },
+    { label: "Abandono hoy", icon: "missed", value: `${abandRate}%`, sub: today ? `${today.abandoned} de ${today.queued}` : "sin datos aún", t: abandRate > 8 ? "crit" : abandRate > 4 ? "warn" : "ok", bars: barHist.aband },
+    { label: "Espera máx.", icon: "clock", value: fmt(longest), sub: `${breachCount} en breach`, t: longest > 120 ? "crit" : "ok", bars: barHist.wait },
+    { label: "Disponibles", icon: "users", value: String(available), sub: `${acw} en ACW · ${handledToday} atend.`, t: "ok", bars: barHist.conv.map((_, i) => available + (i % 2)) },
   ];
 
   const doMonitor = async (agent: LiveAgent, mode: "SILENT_MONITOR" | "BARGE") => {
@@ -248,134 +256,151 @@ export function MonitoringPage() {
   ];
 
   return (
-    <div className="view mon">
-      {/* Header */}
-      <div className="mon-head">
-        <div className="mon-head__main">
-          <div className="mon-head__crumb">Operación · Tiempo real</div>
-          <h1 className="mon-head__title"><Icon.Eye size={18} style={{ verticalAlign: "-3px", marginRight: 7, color: "var(--accent-amber)" }} />Cola en vivo · Supervisión</h1>
-        </div>
-        <div className="mon-head__actions">
-          <span className="mon-live"><span className="mon-live__dot" /> Live · {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
-          {areas.length > 0 && (
-            <div className="mon-seg">
-              <button className={`mon-seg__opt ${queueFilter === "all" ? "mon-seg__opt--active" : ""}`} onClick={() => setQueueFilter("all")}>Todos</button>
-              {areas.map((a) => (
-                <button key={a} className={`mon-seg__opt ${queueFilter === a ? "mon-seg__opt--active" : ""}`} onClick={() => setQueueFilter(a)}>{a}</button>
-              ))}
-            </div>
-          )}
-          <label className="mon-auto" title="Auto-actualizar">
-            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-            <span className="mon-auto__track"><span className="mon-auto__thumb" /></span>
-            Auto-refresh
-          </label>
-          <button className="btn" onClick={() => setMuted((m) => !m)} title={muted ? "Activar alertas sonoras" : "Silenciar"} style={{ color: muted ? "var(--text-3)" : "var(--accent-amber)" }}>
-            <Icon.Sparkles size={14} /> Coach IA
-          </button>
-        </div>
-      </div>
-
-      {error && <div style={{ marginBottom: 14, padding: 12, borderRadius: 8, background: "var(--accent-amber-soft)", color: "var(--accent-amber)", fontSize: 12.5 }}>{error}</div>}
-
-      {/* 5 KPI bar-tiles */}
-      <div className="mon-kpis">
-        {kpis.map((k) => (
-          <div key={k.label} className="mon-kpi" style={{ ["--kc" as string]: tone[k.t] }}>
-            <div className="mon-kpi__bar" />
-            <div className="mon-kpi__label">{k.label}</div>
-            <div className="mon-kpi__row">
-              <div className="mon-kpi__value">{k.value}</div>
-              <MiniBars data={k.bars.length > 1 ? k.bars : [1, 1]} color={tone[k.t]} />
-            </div>
-            <div className="mon-kpi__sub">{k.sub}</div>
+    <div className="page" style={{ maxWidth: 1320 }}>
+      {/* ARIA hero band — "Cola en vivo" con pulso live + segmentos por área y
+          controles reales (auto-refresh, coach IA). Reemplaza el header propio
+          por el lenguaje premium de ARIA sin perder ningún control. */}
+      <HeroBand
+        title={<span className="row gap10">Cola en vivo · Supervisión <span className="dot dot--live" /></span>}
+        chip={<>Live · {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</>}
+        chipIcon="live"
+        chipTone="var(--green)"
+        right={
+          <div className="row gap8" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {areas.length > 0 && (
+              <div className="row gap4">
+                <Btn variant={queueFilter === "all" ? "soft" : "ghost"} size="sm" onClick={() => setQueueFilter("all")}>Todos</Btn>
+                {areas.map((a) => (
+                  <Btn key={a} variant={queueFilter === a ? "soft" : "ghost"} size="sm" onClick={() => setQueueFilter(a)}>{a}</Btn>
+                ))}
+              </div>
+            )}
+            <label className="row gap6" style={{ fontSize: 12.5, cursor: "pointer", color: "var(--text-2)" }} title="Auto-actualizar">
+              <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+              Auto-refresh
+            </label>
+            <Btn
+              variant={muted ? "ghost" : "soft"}
+              size="sm"
+              icon="sparkle"
+              onClick={() => setMuted((m) => !m)}
+              title={muted ? "Activar alertas sonoras" : "Silenciar"}
+            >
+              Coach IA
+            </Btn>
           </div>
+        }
+      />
+
+      {error && (
+        <div style={{ marginBottom: 14, padding: 12, borderRadius: "var(--r-md)", background: "color-mix(in srgb,var(--gold) 14%,transparent)", color: "var(--gold)", fontSize: 12.5 }}>{error}</div>
+      )}
+
+      {/* 6 KPIs — familia ARIA (Stat + spark MiniBars). */}
+      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 20 }}>
+        {kpis.map((k) => (
+          <Stat
+            key={k.label}
+            icon={k.icon}
+            color={tone[k.t]}
+            label={k.label}
+            value={k.value}
+            sub={
+              <div className="col gap6">
+                <span>{k.sub}</span>
+                <MiniBars data={k.bars.length > 1 ? k.bars : [1, 1]} color={tone[k.t]} h={22} />
+              </div>
+            }
+          />
         ))}
       </div>
 
       {/* Contactos en espera (60) + Salud de colas (40) */}
-      <div className="mon-split2">
-        <section className="mon-panel">
-          <div className="mon-panel__head">
-            <span className="mon-panel__title">Contactos en espera</span>
-            <div className="row" style={{ gap: 8 }}>
-              {breachCount > 0 && <span className="mon-pill mon-pill--crit">{breachCount} en breach SLA</span>}
-              <span className="mon-panel__hint">{waiting.length} en cola</span>
+      <div className="grid" style={{ gridTemplateColumns: "1.5fr 1fr", gap: 16, marginBottom: 16 }}>
+        <Card
+          title="Contactos en espera"
+          icon="clock"
+          extra={
+            <div className="row gap8">
+              {breachCount > 0 && <Pill tone="coral">{breachCount} en breach SLA</Pill>}
+              <span className="dim" style={{ fontSize: 12 }}>{waiting.length} en cola</span>
             </div>
-          </div>
+          }
+        >
           {waiting.length === 0 ? (
-            <div className="mon-empty">Sin contactos en espera · todo atendido.</div>
+            <div style={{ padding: "28px 8px", textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>Sin contactos en espera · todo atendido.</div>
           ) : (
-            <table className="mon-wtable">
-              <thead><tr><th>Contacto</th><th>Cola / Skill</th><th>Prioridad</th><th>Espera</th><th>SLA</th></tr></thead>
-              <tbody>
-                {waiting.slice(0, 8).map((c) => {
-                  const cm = channelMeta(c.channel);
-                  const sig = c.phone ? custSignals[c.phone] : undefined;
-                  const sev = Math.max(waitSeverity(c.waitingSeconds), sig?.severity ?? 0) as Sev;
-                  const prio = SEV_META[sev];
-                  const over = c.waitingSeconds - WAIT_SLA_SECONDS;
-                  const breach = over > 0;
-                  return (
-                    <tr key={c.contactId} className={breach ? "mon-wrow--breach" : ""}>
-                      <td>
-                        <div className="row" style={{ gap: 8 }}>
-                          <span className="mon-ch" style={{ background: cm.color }}>{cm.label[0]}</span>
-                          <span style={{ minWidth: 0 }}>
-                            <span className="mon-wname">{c.customerName || c.phone || "Contacto"}</span>
-                            <span className="mon-wsub">{cm.label}</span>
-                          </span>
-                        </div>
-                      </td>
-                      <td><span style={{ fontSize: 12 }}>{c.queueName || "—"}</span></td>
-                      <td>
-                        <span className={`mon-prio ${prio.cls}`}>{prio.label}</span>
-                        {sig?.reason && <span className="mon-wsub" style={{ marginTop: 3 }}>{sig.reason}</span>}
-                      </td>
-                      <td className="mono" style={{ fontWeight: 700 }}>{fmt(c.waitingSeconds)}</td>
-                      <td>
-                        <div className="mon-sla">
-                          <div className="mon-sla__bar" style={{ width: breach ? "100%" : `${Math.min(100, (c.waitingSeconds / WAIT_SLA_SECONDS) * 100)}%`, background: breach ? "var(--accent-red)" : "var(--accent-amber)" }} />
-                          {breach && <span className="mon-sla__over">+{fmt(over)}</span>}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="col gap8">
+              {waiting.slice(0, 8).map((c) => {
+                const sig = c.phone ? custSignals[c.phone] : undefined;
+                const sev = Math.max(waitSeverity(c.waitingSeconds), sig?.severity ?? 0) as Sev;
+                const prio = SEV_META[sev];
+                const over = c.waitingSeconds - WAIT_SLA_SECONDS;
+                const breach = over > 0;
+                const cm = channelMeta(c.channel);
+                const pct = breach ? 100 : Math.min(100, (c.waitingSeconds / WAIT_SLA_SECONDS) * 100);
+                return (
+                  <div
+                    key={c.contactId}
+                    className="row gap12"
+                    style={{
+                      padding: "10px 12px",
+                      border: "1px solid " + (breach ? "color-mix(in srgb,var(--coral) 40%,var(--border-1))" : "var(--border-1)"),
+                      borderRadius: "var(--r-md)",
+                      background: breach ? "color-mix(in srgb,var(--coral) 7%,var(--bg-2))" : "var(--bg-2)",
+                    }}
+                  >
+                    <ChBadge ch={c.channel} />
+                    <div className="grow" style={{ minWidth: 0 }}>
+                      <div className="row gap8" style={{ minWidth: 0 }}>
+                        <b style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.customerName || c.phone || "Contacto"}</b>
+                        <span className="dim" style={{ fontSize: 11.5 }}>· {cm.label}</span>
+                      </div>
+                      <div className="dim" style={{ fontSize: 11.5, marginTop: 2 }}>
+                        {c.queueName || "—"}{sig?.reason ? ` · ${sig.reason}` : ""}
+                      </div>
+                      <div className="bar" style={{ height: 5, marginTop: 6 }}>
+                        <span style={{ width: `${pct}%`, background: breach ? "var(--coral)" : "var(--gold)" }} />
+                      </div>
+                    </div>
+                    <div className="col" style={{ alignItems: "flex-end", gap: 5, flex: "0 0 auto" }}>
+                      <Pill tone={prio.tone}>{prio.label}</Pill>
+                      <span className="mono tnum" style={{ fontSize: 13, fontWeight: 700, color: breach ? "var(--coral-2)" : "var(--text-1)" }}>
+                        {fmt(c.waitingSeconds)}{breach && <span className="dim" style={{ fontWeight: 500 }}> +{fmt(over)}</span>}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
-        </section>
+        </Card>
 
-        <section className="mon-panel">
-          <div className="mon-panel__head">
-            <span className="mon-panel__title">Salud de colas</span>
-            <span className="mon-panel__hint">{metrics.queues.length} activas</span>
-          </div>
-          <div className="mon-health">
+        <Card title="Salud de colas" icon="layers" extra={<span className="dim" style={{ fontSize: 12 }}>{metrics.queues.length} activas</span>}>
+          <div className="col gap8">
             {shownQueues.map((q: QueueMetrics) => {
-              const cm = channelMeta(q.queueName.toLowerCase().includes("whats") ? "wa" : q.queueName.toLowerCase().includes("chat") ? "chat" : q.queueName.toLowerCase().includes("email") ? "email" : q.queueName.toLowerCase().includes("sms") ? "sms" : "voz");
+              const chKey = q.queueName.toLowerCase().includes("whats") ? "wa" : q.queueName.toLowerCase().includes("chat") ? "chat" : q.queueName.toLowerCase().includes("email") ? "email" : q.queueName.toLowerCase().includes("sms") ? "sms" : "voz";
               const wait = q.oldestContactAge ?? 0;
               const st = wait > 120 ? "crit" : wait > WAIT_SLA_SECONDS ? "warn" : "ok";
               const sl = q.serviceLevelToday;                       // real SLA hoy (null = sin datos)
               const slColor = sl == null ? "var(--text-3)" : sl >= 80 ? tone.ok : sl >= 50 ? tone.warn : tone.crit;
               const aba = q.abandonRateToday ?? 0;
               return (
-                <div key={q.queueId} className="mon-hrow">
-                  <span className="mon-ch" style={{ background: cm.color }}>{cm.label[0]}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="mon-hname">{q.queueName}</div>
-                    <div className="mon-hsub">{aba}% abandono hoy · meta SLA 80%</div>
+                <div key={q.queueId} className="row gap12" style={{ padding: "10px 12px", border: "1px solid var(--border-1)", borderRadius: "var(--r-md)", background: "var(--bg-2)" }}>
+                  <ChBadge ch={chKey} />
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.queueName}</div>
+                    <div className="dim" style={{ fontSize: 11.5, marginTop: 2 }}>{aba}% abandono hoy · meta SLA 80%</div>
                   </div>
-                  <div className="mon-hstat"><b>{q.contactsInQueue}</b><span>COLA</span></div>
-                  <div className="mon-hstat"><b style={{ color: slColor }}>{sl == null ? "—" : `${Math.round(sl)}%`}</b><span>SLA HOY</span></div>
-                  <div className="mon-hstat"><b style={{ color: tone[st] }}>{fmt(wait)}</b><span>MÁX</span></div>
-                  <span className="mon-hdot" style={{ background: tone[st] }} />
+                  <div className="col" style={{ alignItems: "center", minWidth: 40 }}><b className="tnum" style={{ fontSize: 14 }}>{q.contactsInQueue}</b><span className="dim" style={{ fontSize: 9.5, letterSpacing: 0.3 }}>COLA</span></div>
+                  <div className="col" style={{ alignItems: "center", minWidth: 46 }}><b className="tnum" style={{ fontSize: 14, color: slColor }}>{sl == null ? "—" : `${Math.round(sl)}%`}</b><span className="dim" style={{ fontSize: 9.5, letterSpacing: 0.3 }}>SLA HOY</span></div>
+                  <div className="col" style={{ alignItems: "center", minWidth: 44 }}><b className="tnum mono" style={{ fontSize: 13, color: tone[st] }}>{fmt(wait)}</b><span className="dim" style={{ fontSize: 9.5, letterSpacing: 0.3 }}>MÁX</span></div>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: tone[st], flex: "0 0 auto" }} />
                 </div>
               );
             })}
           </div>
-        </section>
+        </Card>
       </div>
 
       {/* Coaching live signals (real: long AHT / long ACW / missed) */}
@@ -401,44 +426,49 @@ export function MonitoringPage() {
           .slice(0, 4) as { a: LiveAgent; kind: string; text: string; action: string }[];
         if (signals.length === 0) return null;
         return (
-          <section className="mon-panel" style={{ marginTop: 14 }}>
-            <div className="mon-panel__head">
-              <span className="mon-panel__title"><Icon.Sparkles size={14} style={{ verticalAlign: "-2px", marginRight: 6, color: "var(--accent-violet)" }} />Coaching automático · alertas en vivo</span>
-              <span className="mon-pill" style={{ background: "var(--accent-violet-soft)", color: "var(--accent-violet)" }}>{signals.length} señales activas</span>
-            </div>
-            <div className="mon-coach">
+          <Card
+            title="Coaching automático · alertas en vivo"
+            icon="sparkle"
+            extra={<Pill tone="iris">{signals.length} señales activas</Pill>}
+            style={{ marginBottom: 16 }}
+          >
+            <div className="col gap8">
               {signals.map((s) => (
-                <div key={s.a.userId} className="mon-coach__row">
-                  <span className="mon-coach__av" style={{ background: stateOf(s.a.statusName || "").color }}>{initials(s.a.username)}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="mon-coach__name">{s.a.username} <span className="muted" style={{ fontWeight: 400 }}>· {s.a.routingProfile || "—"}</span></div>
-                    <div className="mon-coach__text">{s.text}</div>
+                <div key={s.a.userId} className="row gap12" style={{ padding: "10px 12px", border: "1px solid var(--border-1)", borderRadius: "var(--r-md)", background: "var(--bg-2)" }}>
+                  <Av name={s.a.username} size={34} color={stateOf(s.a.statusName || "").color} />
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.a.username} <span className="dim" style={{ fontWeight: 400 }}>· {s.a.routingProfile || "—"}</span></div>
+                    <div className="dim" style={{ fontSize: 12, marginTop: 2 }}>{s.text}</div>
                   </div>
-                  <button className="btn btn--sm" disabled={pending || !s.a.activeContact} onClick={() => doMonitor(s.a, "SILENT_MONITOR")}>{s.action}</button>
+                  <Btn variant="soft" size="sm" icon="mic" disabled={pending || !s.a.activeContact} onClick={() => doMonitor(s.a, "SILENT_MONITOR")}>{s.action}</Btn>
                 </div>
               ))}
             </div>
-          </section>
+          </Card>
         );
       })()}
 
       {/* Agent board */}
-      <section className="mon-panel" style={{ marginTop: 14 }}>
-        <div className="mon-panel__head">
-          <span className="mon-panel__title">Tablero de agentes</span>
+      <Card
+        title="Tablero de agentes"
+        icon="users"
+        extra={
           <label className="searchbox" style={{ maxWidth: 240 }}>
-            <Icon.Search size={13} />
+            <Icon name="search" size={13} />
             <input value={agentQuery} onChange={(e) => setAgentQuery(e.target.value)} placeholder="Buscar agente…" />
           </label>
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+        }
+      >
+        <div className="row gap6" style={{ flexWrap: "wrap", marginBottom: 12 }}>
           {filters.map((f) => (
-            <button key={f.id} onClick={() => setAgentFilter(f.id)} className={`mon-fchip ${agentFilter === f.id ? "mon-fchip--active" : ""}`}>{f.label} <b>{f.n}</b></button>
+            <Btn key={f.id} variant={agentFilter === f.id ? "soft" : "ghost"} size="sm" onClick={() => setAgentFilter(f.id)}>
+              {f.label} <b className="tnum" style={{ marginLeft: 4 }}>{f.n}</b>
+            </Btn>
           ))}
         </div>
-        <div className="mon-board">
+        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(268px, 1fr))", gap: 12 }}>
           {sortedAgents.length === 0 ? (
-            <div className="mon-empty" style={{ gridColumn: "1 / -1" }}>Sin agentes que coincidan.</div>
+            <div style={{ gridColumn: "1 / -1", padding: "28px 8px", textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>Sin agentes que coincidan.</div>
           ) : sortedAgents.map((a) => {
             const meta = stateOf(a.status);
             const live = liveQueue?.agents.find((la) => la.userId === a.agentId) || null;
@@ -448,40 +478,43 @@ export function MonitoringPage() {
             const callSecs = ac ? since(ac.connectedToAgentTimestamp) : 0;
             const callPct = Math.min(100, (callSecs / 480) * 100); // 8min full bar
             return (
-              <div key={a.agentId} className="mon-card" style={{ ["--ac" as string]: meta.color }}>
-                <div className="mon-card__top">
-                  <span className="mon-card__av" style={{ background: meta.color }}>{initials(a.username)}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="mon-card__name">{a.username}</div>
-                    <div className="mon-card__role">{live?.routingProfile || "Agente"}</div>
+              <div key={a.agentId} className="card" style={{ padding: 14, borderLeft: `3px solid ${meta.color}`, ["--_c" as string]: meta.color }}>
+                <div className="row gap10">
+                  <div style={{ position: "relative", flex: "0 0 auto" }}>
+                    <Av name={a.username} size={36} color={meta.color} />
+                    <span style={{ position: "absolute", right: -2, bottom: -2, width: 12, height: 12, borderRadius: "50%", background: meta.color, border: "2px solid var(--bg-1)" }} />
                   </div>
-                  <span className="mon-card__time" style={{ color: longAcw ? "var(--accent-red)" : meta.color }}>
-                    <span className="mon-card__dot" style={{ background: meta.color }} />{inState > 0 ? fmt(inState) : "—"}
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.username}</div>
+                    <div className="dim" style={{ fontSize: 11.5 }}>{live?.routingProfile || "Agente"}</div>
+                  </div>
+                  <span className="row gap4 tnum" style={{ fontSize: 12, fontWeight: 600, color: longAcw ? "var(--coral)" : meta.color }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: meta.color }} />{inState > 0 ? fmt(inState) : "—"}
                   </span>
                 </div>
                 {ac ? (
                   <>
-                    <div className="mon-card__contact">
-                      <span className="mon-ch" style={{ background: channelMeta(ac.channel).color }}>{channelMeta(ac.channel).label[0]}</span>
-                      En contacto · {ac.phone || ac.queueName || "Cliente"}
+                    <div className="row gap8" style={{ marginTop: 10, fontSize: 12, color: "var(--text-2)" }}>
+                      <ChBadge ch={ac.channel} size={20} />
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>En contacto · {ac.phone || ac.queueName || "Cliente"}</span>
                     </div>
-                    <div className="mon-card__progress"><div style={{ width: `${callPct}%` }} /></div>
+                    <div className="bar" style={{ height: 6, marginTop: 8 }}><span style={{ width: `${callPct}%`, background: meta.color }} /></div>
                     {live && (
-                      <div className="mon-card__actions">
-                        <button className="btn btn--sm" onClick={() => doMonitor(live, "SILENT_MONITOR")}><Icon.Headset size={12} /> Whisper</button>
-                        <button className="btn btn--sm" onClick={() => doMonitor(live, "BARGE")}><Icon.Users size={12} /> Barge</button>
-                        <button className="btn btn--sm btn--icon" onClick={() => setSelectedAgent(live)} title="Más"><Icon.Note size={12} /></button>
+                      <div className="row gap6" style={{ marginTop: 10 }}>
+                        <Btn variant="ghost" size="sm" icon="headset" onClick={() => doMonitor(live, "SILENT_MONITOR")}>Whisper</Btn>
+                        <Btn variant="soft" size="sm" icon="mic" onClick={() => doMonitor(live, "BARGE")}>Barge</Btn>
+                        <Btn variant="ghost" size="sm" icon="fileText" onClick={() => setSelectedAgent(live)} title="Más" />
                       </div>
                     )}
                   </>
                 ) : (
-                  <div className="mon-card__idle">{a.status === "AfterCallWork" ? "En wrap-up…" : a.status === "Available" ? "Esperando contacto" : a.status === "Offline" ? "Fuera de turno" : "En pausa"}</div>
+                  <div className="dim" style={{ marginTop: 10, fontSize: 12 }}>{a.status === "AfterCallWork" ? "En wrap-up…" : a.status === "Available" ? "Esperando contacto" : a.status === "Offline" ? "Fuera de turno" : "En pausa"}</div>
                 )}
               </div>
             );
           })}
         </div>
-      </section>
+      </Card>
 
       <AgentActionsDialog
         agent={selectedAgent}

@@ -25,21 +25,21 @@ function vGrad(color: string, a0: number, a1: number) {
   };
 }
 // Paleta muteada del handoff (= tokens --e-* / --cian,--verde,--violeta,--ambar):
-// cian #0F84A0 · verde #138354 · violeta #6253CE · ámbar #B8761A · slate #7A879F.
-// El rojo (#C0353A) se reserva para "negativo" (sentiment), no para un canal.
+// cian #0E7C86 · verde #1F8A5B · violeta #5B57B8 · ámbar #B07D2B · slate #7F8EA4.
+// El rojo (#C34A43) se reserva para "negativo" (sentiment), no para un canal.
 export const EXEC_CHANNEL_META: { key: keyof ExecChannelDay; label: string; color: string }[] = [
-  { key: "voz", label: "Voz", color: "#0F84A0" },
-  { key: "wa", label: "WhatsApp", color: "#138354" },
-  { key: "chat", label: "Chat", color: "#6253CE" },
-  { key: "email", label: "Email", color: "#B8761A" },
-  { key: "sms", label: "SMS", color: "#7A879F" },
+  { key: "voz", label: "Voz", color: "#0E7C86" },
+  { key: "wa", label: "WhatsApp", color: "#1F8A5B" },
+  { key: "chat", label: "Chat", color: "#5B57B8" },
+  { key: "email", label: "Email", color: "#B07D2B" },
+  { key: "sms", label: "SMS", color: "#7F8EA4" },
 ];
 
 /* ---------- Área comparativa (actual vs anterior) ---------- */
 export function ExecAreaEChart({
   data,
-  colorA = "#6253CE",
-  colorB = "#7A879F",
+  colorA = "#5B57B8",
+  colorB = "#7F8EA4",
   height = 282,
 }: {
   data: ExecTrendDay[];
@@ -72,7 +72,7 @@ export function ExecAreaEChart({
         const vb = b ? b.value : 0;
         const diff = va - vb;
         const pct = vb ? Math.round((diff / vb) * 100) : 0;
-        const col = diff >= 0 ? "#138354" : "#C0353A";
+        const col = diff >= 0 ? "#1F8A5B" : "#C34A43";
         return (
           `<div style="font-size:10.5px;color:${t.text3};text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px;font-weight:600">${arr[0].axisValue}</div>` +
           `<div style="display:flex;align-items:center;gap:8px;padding:2px 0"><span style="width:9px;height:9px;border-radius:50%;background:${colorA}"></span><span style="color:${t.text2};flex:1">Período actual</span><b style="margin-left:14px">${va}</b></div>` +
@@ -288,7 +288,7 @@ export function ExecDonutEChart({
 /* ---------- Gauge (CSAT) ---------- */
 export function ExecGaugeEChart({
   value,
-  color = "#138354",
+  color = "#1F8A5B",
   label = "satisfacción",
   height = 184,
 }: {

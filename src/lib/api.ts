@@ -120,6 +120,10 @@ interface ApiEndpoints {
   // Inbox omnicanal (Pilar 6 · R13) — lista/thread/reply de conversaciones de
   // Instagram DM / Messenger (connectview-conversations); responde por la Graph API.
   manageConversations?: string;
+  // Subida de adjuntos del inbox (Pilar 6) — devuelve un presigned S3 PUT +
+  // publicUrl (presigned GET de larga duración) que la Graph API de Meta puede
+  // descargar. El frontend sube directo a S3 y luego llama sendMedia.
+  uploadConversationMedia?: string;
   // Native appointment scheduling — CRUD over connectview-appointments.
   manageAppointment?: string;
   // Granular RBAC matrix — capability → minimum role. useCan() checks it.
@@ -148,6 +152,12 @@ interface ApiEndpoints {
   // el webhook público de inbound (su URL se pega en el panel de ML → Notificaciones).
   mercadolibreOAuthStart?: string;
   mercadolibreWebhook?: string;
+  // Meta multi-cuenta (Instagram/Messenger/Facebook · auto-servicio "Conectar
+  // con Facebook"): inicia el OAuth (devuelve authUrl). El callback es un
+  // redirect del navegador (no se llama por fetch). Ambos build-ahead: recién
+  // aparecen cuando se corre scripts/create-meta-oauth.mjs en el go-live.
+  metaOAuthStart?: string;
+  metaOAuthCallback?: string;
   // Inicia el flujo OAuth web de Salesforce (devuelve la URL de autorización).
   salesforceOAuthStart?: string;
   // Callback del OAuth web de Salesforce. SF redirige acá con ?code=…&state=…
@@ -188,6 +198,11 @@ interface ApiEndpoints {
   // Exports programados (#7): CRUD de los jobs (connectview-scheduled-exports)
   // + "generar ahora". El runner arma XLSX y lo manda por SES.
   manageScheduledExports?: string;
+  // Calculadora de Consumo (Configuración → Consumo): agrega el volumen del tenant
+  // por período × el modelo de precios (estimación) + el cobro real cuando hay
+  // fuente (WhatsApp vía Graph; Connect vía Cost Explorer, build-ahead). Ver
+  // design/consumo.md.
+  getCostReport?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

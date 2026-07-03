@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
@@ -13,8 +14,9 @@ import { useCCP } from "@/hooks/useCCP";
 import { useConnections } from "@/hooks/useConnections";
 import { NotIntegrated } from "@/components/vox/NotIntegrated";
 import { type Valoracion } from "@/lib/dispositions";
+import { initials } from "@/lib/initials";
 import * as Icon from "@/components/vox/primitives";
-import { PageHeader } from "@/components/vox/PageHeader";
+import { Btn, Stat, HeroBand, Num, Icon as AIcon } from "@/components/aria";
 import { SourceHealthBar } from "@/components/leads/SourceHealthBar";
 import { PipelineSummary } from "@/components/leads/PipelineSummary";
 import { WhatsAppQuickSendModal } from "@/components/workspace/WhatsAppQuickSendModal";
@@ -107,12 +109,7 @@ function stageProbability(valoracion: Valoracion, index: number, total: number):
   return Math.round((0.15 + (index / (total - 1)) * 0.7) * 100) / 100;
 }
 
-function initialsOf(s: string): string {
-  const parts = s.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
+const initialsOf = initials;
 
 function fmtMoney(n?: number): string {
   if (!n || n <= 0) return "—";
@@ -753,12 +750,23 @@ interface VoxHistoryEvent {
   agent?: string;
   sfTaskId?: string;
 }
+/** Un campo del Lead de Salesforce (paridad total): label + valor legible + si
+ *  es editable. `allFields` los trae TODOS (estándar + custom `__c` con valor). */
+interface SfField {
+  name: string;
+  label: string;
+  value: string;
+  type?: string;
+  updateable?: boolean;
+}
 interface SfLeadData {
   found?: boolean;
   lead?: Record<string, unknown>;
+  allFields?: SfField[];
   activities?: SfActivity[];
   voxHistory?: VoxHistoryEvent[];
   lightningUrl?: string;
+  sfNotConnected?: boolean;
 }
 interface TimelineItem {
   key: string;
@@ -861,34 +869,79 @@ function buildTimeline(voxHistory: VoxHistoryEvent[], activities: SfActivity[]):
   return items;
 }
 
-function SalesforcePanel({ lead }: { lead: Lead }) {
-  const [data, setData] = useState<SfLeadData | null>(null);
-  const [state, setState] = useState<"loading" | "ok" | "none" | "err">(() =>
-    getApiEndpoints()?.salesforceSync ? "loading" : "none",
-  );
+/** Trae el Lead + historial de Salesforce con react-query: cachea por lead
+ *  (staleTime) → reabrir el mismo lead es INSTANTÁNEO (stale-while-revalidate),
+ *  ya no re-pega a SF en cada apertura. */
+function useSfLead(lead: Lead) {
+  const url = getApiEndpoints()?.salesforceSync;
+  return useQuery({
+    queryKey: ["sfLead", lead.sfLeadId || lead.phone || lead.leadId],
+    enabled: !!url,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    queryFn: async ({ signal }) => {
+      const r = await authedFetch(url!, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "lead", sfLeadId: lead.sfLeadId, phone: lead.phone }),
+        signal,
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return (await r.json()) as SfLeadData;
+    },
+  });
+}
 
-  useEffect(() => {
-    const ep = getApiEndpoints();
-    const syncUrl = ep?.salesforceSync;
-    if (!syncUrl) return; // estado inicial ya es "none"
-    const ctrl = new AbortController();
-    (async () => {
-      try {
-        const r = await authedFetch(syncUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "lead", sfLeadId: lead.sfLeadId, phone: lead.phone }),
-          signal: ctrl.signal,
-        });
-        const j: SfLeadData = await r.json();
-        setData(j);
-        setState(j.found || (j.voxHistory && j.voxHistory.length > 0) ? "ok" : "none");
-      } catch (e) {
-        if (!(e instanceof DOMException && e.name === "AbortError")) setState("err");
-      }
-    })();
-    return () => ctrl.abort();
-  }, [lead.sfLeadId, lead.phone]);
+function SalesforcePanel({ lead }: { lead: Lead }) {
+  const configured = !!getApiEndpoints()?.salesforceSync;
+  const { data, isLoading, error, isFetching } = useSfLead(lead);
+  const qc = useQueryClient();
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [savingSf, setSavingSf] = useState(false);
+
+  // Estado derivado del query (sin sincronizar estado con efectos).
+  const hasContent =
+    !!data &&
+    (data.found ||
+      (data.voxHistory?.length ?? 0) > 0 ||
+      (data.allFields?.length ?? 0) > 0);
+  const state: "loading" | "ok" | "none" | "err" = !configured
+    ? "none"
+    : error
+      ? "err"
+      : isLoading && !data
+        ? "loading"
+        : hasContent
+          ? "ok"
+          : "none";
+
+  // Guardar los campos editados EN Salesforce (mode:updateLead → PATCH del Lead).
+  const saveSf = async () => {
+    const url = getApiEndpoints()?.salesforceSync;
+    const sfId = data?.lead?.Id ? String(data.lead.Id) : lead.sfLeadId;
+    if (!url || !sfId || Object.keys(edits).length === 0) return;
+    setSavingSf(true);
+    try {
+      const r = await authedFetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "updateLead", sfLeadId: sfId, fields: edits }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.updated) throw new Error(d?.error || "No se pudo actualizar en Salesforce");
+      toast.success(
+        d.ignored?.length
+          ? `Guardado en Salesforce · ${d.ignored.length} campo(s) no editable(s) omitido(s)`
+          : "Guardado en Salesforce",
+      );
+      setEdits({});
+      qc.invalidateQueries({ queryKey: ["sfLead", lead.sfLeadId || lead.phone || lead.leadId] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo actualizar en Salesforce");
+    } finally {
+      setSavingSf(false);
+    }
+  };
 
   const card: React.CSSProperties = {
     marginTop: 16,
@@ -908,7 +961,14 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
       }}
     >
       <Icon.Cloud size={14} strokeWidth={2.4} />
-      <span style={{ fontWeight: 700, fontSize: 12.5, flex: 1 }}>Historial de contacto</span>
+      <span style={{ fontWeight: 700, fontSize: 12.5, flex: 1 }}>
+        Salesforce · ficha y actividad
+        {isFetching && data ? (
+          <span style={{ opacity: 0.75, fontWeight: 500, marginLeft: 6, fontSize: 11 }}>
+            · actualizando…
+          </span>
+        ) : null}
+      </span>
       {state === "ok" && data?.found && data?.lightningUrl && data?.lead?.Id ? (
         <a
           href={`${data.lightningUrl}/lightning/r/Lead/${String(data.lead.Id)}/view`}
@@ -958,14 +1018,33 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
 
   const L = data.lead || {};
   const origin = data.found ? originBadge(L.LeadSource ? String(L.LeadSource) : undefined) : null;
-  const fields: [string, string][] = [];
-  if (data.found) {
-    if (L.Status) fields.push(["Estado", String(L.Status)]);
-    if (L.Title) fields.push(["Cargo", String(L.Title)]);
-    if (L.Industry) fields.push(["Industria", String(L.Industry)]);
-    if (L.Rating) fields.push(["Rating", String(L.Rating)]);
-    if (L.Website) fields.push(["Web", String(L.Website)]);
-  }
+  // PARIDAD: todos los campos SF (estándar + custom con valor). Si el backend
+  // aún no manda `allFields`, caemos a un set mínimo derivado del lead crudo.
+  const CORE: [string, string][] = [
+    ["FirstName", "Nombre"],
+    ["LastName", "Apellido"],
+    ["Company", "Empresa"],
+    ["Title", "Cargo"],
+    ["Email", "Email"],
+    ["Phone", "Teléfono"],
+    ["MobilePhone", "Celular"],
+    ["Status", "Estado"],
+    ["LeadSource", "Origen"],
+    ["Industry", "Industria"],
+    ["Rating", "Rating"],
+    ["Website", "Web"],
+  ];
+  const allFields: SfField[] = data.allFields?.length
+    ? data.allFields
+    : data.found
+      ? CORE.filter(([n]) => L[n] != null && String(L[n]) !== "").map(([n, label]) => ({
+          name: n,
+          label,
+          value: String(L[n]),
+          updateable: false,
+        }))
+      : [];
+  const editCount = Object.keys(edits).length;
   const timeline = buildTimeline(data.voxHistory || [], data.activities || []);
 
   return (
@@ -1001,23 +1080,60 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
             </span>
           </div>
         )}
-        {fields.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-            {fields.map(([k, v]) => (
-              <div key={k} className="row" style={{ gap: 10, alignItems: "baseline" }}>
-                <span
-                  style={{
-                    color: "var(--text-3)",
-                    fontWeight: 600,
-                    minWidth: 64,
-                    flex: "0 0 auto",
-                  }}
+        {allFields.length > 0 && (
+          <div>
+            <div className="row between" style={{ alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-2)" }}>
+                Datos en Salesforce ({allFields.length})
+              </span>
+              {editCount > 0 && (
+                <button
+                  className="btn btn--primary btn--sm"
+                  onClick={saveSf}
+                  disabled={savingSf}
+                  title="Guardar los cambios en Salesforce"
                 >
-                  {k}
-                </span>
-                <span style={{ color: "var(--text-1)", wordBreak: "break-word" }}>{v}</span>
-              </div>
-            ))}
+                  {savingSf ? "Guardando…" : `Guardar en SF (${editCount})`}
+                </button>
+              )}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {allFields.map((fld) => {
+                const editable = !!fld.updateable;
+                const val = edits[fld.name] ?? fld.value;
+                const dirty = fld.name in edits && edits[fld.name] !== fld.value;
+                return (
+                  <div
+                    key={fld.name}
+                    style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}
+                  >
+                    <span style={{ fontSize: 10, color: "var(--text-3)", fontWeight: 600 }}>
+                      {fld.label}
+                    </span>
+                    {editable ? (
+                      <input
+                        value={val}
+                        onChange={(e) => setEdits((s) => ({ ...s, [fld.name]: e.target.value }))}
+                        style={{
+                          fontSize: 12,
+                          padding: "5px 7px",
+                          border: `1px solid ${dirty ? "var(--accent-cyan)" : "var(--border-1)"}`,
+                          borderRadius: 6,
+                          background: "var(--bg-1)",
+                          color: "var(--text-1)",
+                          outline: "none",
+                          minWidth: 0,
+                        }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: 12, color: "var(--text-1)", wordBreak: "break-word" }}>
+                        {fld.value}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
         {/* Timeline unificado: gestiones por canal + cambios + actividad de SF */}
@@ -1525,6 +1641,8 @@ export function LeadsPage() {
   const [waTarget, setWaTarget] = useState<{ phone: string; name?: string } | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const sfConnected = !!config?.salesforce?.connected;
+  const [pulling, setPulling] = useState(false);
 
   /** Place an outbound call via the agent's softphone. Surfaces the
    *  most common failure modes (offline, missing permission, invalid
@@ -1621,6 +1739,35 @@ export function LeadsPage() {
       setLeads(Array.isArray(d.leads) ? d.leads : []);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Sincronización inversa on-demand: trae de Salesforce los leads modificados
+  // (últimos 30 días) y los refleja en ARIA (pull; el push por webhook es aparte).
+  const pullFromSf = async () => {
+    const ep = getApiEndpoints();
+    if (!ep?.salesforceSync) return;
+    setPulling(true);
+    try {
+      const r = await authedFetch(ep.salesforceSync, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "pullFromSf", sinceDays: 30, limit: 200 }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.ok === false) {
+        throw new Error(
+          d?.error || (d.sfNotConnected ? "Salesforce no está conectado" : "No se pudo sincronizar"),
+        );
+      }
+      toast.success(
+        `Sincronizado desde Salesforce · ${d.created || 0} nuevos, ${d.updated || 0} actualizados`,
+      );
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo sincronizar desde Salesforce");
+    } finally {
+      setPulling(false);
     }
   };
 
@@ -1742,6 +1889,14 @@ export function LeadsPage() {
     });
     return { shownCount: count, totalValue: value, weightedTotal: weighted };
   }, [byStage, tree]);
+
+  // Leads visibles estancados (>7 días sin cambios) — KPI de salud del pipeline
+  // en la franja ARIA. Cuenta sobre lo que realmente se ve en el board.
+  const staleShown = useMemo(() => {
+    let n = 0;
+    for (const list of byStage.values()) for (const l of list) if (ageInfo(l.updatedAt).stale) n++;
+    return n;
+  }, [byStage]);
 
   // Stats por etapa para la franja de resumen del embudo (PipelineSummary).
   const pipelineStages = useMemo(
@@ -1949,67 +2104,111 @@ export function LeadsPage() {
   };
 
   return (
-    <div className="view">
-      <PageHeader
-        crumb="Crecimiento"
-        title="Embudo de leads"
-        filterPill={sourceFilter === "all" ? "Todos" : SOURCE_LABEL[sourceFilter] || sourceFilter}
-        count={`${shownCount} leads${totalValue > 0 ? ` · ${fmtMoney(totalValue)}` : ""}`}
-        sub={
-          weightedTotal > 0
-            ? `Pipeline ponderado ${fmtMoney(weightedTotal)} · arrastra las tarjetas entre etapas`
-            : "Arrastra las tarjetas entre etapas · columnas = tu taxonomía"
-        }
-        search={{ value: q, onChange: setQ, placeholder: "Buscar lead…" }}
-        actions={
+    <div className="page" style={{ maxWidth: "none" }}>
+      {/* ARIA hero band — reemplaza el PageHeader por el lenguaje premium de
+          ARIA sin perder el reporting real (embudo + valor) que vive debajo.
+          Título = sección; chip = pulso del pipeline; acciones reales a la
+          derecha (buscar, alternar vista, actualizar, nuevo lead). */}
+      <HeroBand
+        title="Leads"
+        chip={
           <>
-            <div
-              className="row"
-              style={{
-                gap: 0,
-                border: "1px solid var(--border-2)",
-                borderRadius: 6,
-                overflow: "hidden",
-              }}
-            >
-              <button
-                onClick={() => setView("board")}
-                title="Vista de tablero"
-                style={{
-                  padding: "6px 11px",
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  background: view === "board" ? "var(--bg-3)" : "transparent",
-                  color: view === "board" ? "var(--text-1)" : "var(--text-3)",
-                }}
-              >
-                Tablero
-              </button>
-              <button
-                onClick={() => setView("table")}
-                title="Vista de tabla (data cruda)"
-                style={{
-                  padding: "6px 11px",
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  background: view === "table" ? "var(--bg-3)" : "transparent",
-                  color: view === "table" ? "var(--text-1)" : "var(--text-3)",
-                }}
-              >
-                Tabla
-              </button>
-            </div>
-            <button className="btn" onClick={load} disabled={loading}>
-              <Icon.Refresh size={14} /> Actualizar
-            </button>
-            {canManage && (
-              <button className="btn btn--primary" onClick={() => setAdding((a) => !a)}>
-                <Icon.Plus size={14} /> Nuevo lead
-              </button>
-            )}
+            {shownCount} {shownCount === 1 ? "lead" : "leads"} en el embudo
           </>
         }
+        chipIcon="funnel"
+        chipTone="var(--cyan)"
+        right={
+          <div className="row gap8" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <div
+              className="sb__search"
+              style={{ margin: 0, flex: "0 1 240px", minWidth: 180, maxWidth: 260 }}
+            >
+              <AIcon name="search" size={15} />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar lead…"
+                style={{
+                  border: "none",
+                  background: "none",
+                  outline: "none",
+                  flex: 1,
+                  fontSize: 13,
+                  color: "var(--text-1)",
+                }}
+              />
+            </div>
+            <div className="stateseg">
+              <button aria-pressed={view === "board"} onClick={() => setView("board")}>
+                <AIcon name="grid" size={14} /> Tablero
+              </button>
+              <button aria-pressed={view === "table"} onClick={() => setView("table")}>
+                <AIcon name="layers" size={14} /> Tabla
+              </button>
+            </div>
+            {sfConnected && (
+              <Btn
+                variant="ghost"
+                size="sm"
+                icon="download"
+                onClick={pullFromSf}
+                disabled={pulling}
+                title="Traer los cambios recientes desde Salesforce (leads modificados en los últimos 30 días)"
+              >
+                {pulling ? "Sincronizando…" : "Traer de SF"}
+              </Btn>
+            )}
+            <Btn variant="ghost" size="sm" icon="refresh" onClick={load} disabled={loading}>
+              Actualizar
+            </Btn>
+            {canManage && (
+              <Btn variant="primary" size="sm" icon="plus" onClick={() => setAdding((a) => !a)}>
+                Nuevo lead
+              </Btn>
+            )}
+          </div>
+        }
       />
+
+      {/* KPI strip ARIA — métricas reales del embudo filtrado. */}
+      <div
+        className="grid"
+        style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 18 }}
+      >
+        <Stat
+          icon="users"
+          color="var(--cyan)"
+          label="Leads en vista"
+          value={<Num value={shownCount} />}
+          sub={
+            sourceFilter === "all"
+              ? "todos los orígenes"
+              : SOURCE_LABEL[sourceFilter] || sourceFilter
+          }
+        />
+        <Stat
+          icon="chart"
+          color="var(--green)"
+          label="Valor total"
+          value={totalValue > 0 ? fmtMoney(totalValue) : "—"}
+          sub="suma del pipeline"
+        />
+        <Stat
+          icon="target"
+          color="var(--iris)"
+          label="Pipeline ponderado"
+          value={weightedTotal > 0 ? fmtMoney(weightedTotal) : "—"}
+          sub="por probabilidad de cierre"
+        />
+        <Stat
+          icon="clock"
+          color="var(--coral)"
+          label="Estancados"
+          value={<Num value={staleShown} />}
+          sub="+7 días sin cambios"
+        />
+      </div>
 
       {/* Pilar 5 — Ingesta en vivo: leads por fuente (Meta/web/campaña/…) */}
       <SourceHealthBar leads={leads} />

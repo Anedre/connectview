@@ -41,7 +41,7 @@ interface OutMsg {
   media?: MediaRef;
 }
 interface ChatItem {
-  from: "bot" | "user" | "note";
+  from: "bot" | "user" | "note" | "tool";
   text: string;
   buttons?: { id: string; label: string }[];
   rows?: { id: string; title: string; description?: string }[];
@@ -104,15 +104,25 @@ export function BotTester({
       });
       const d = await r.json();
       const msgs: OutMsg[] = Array.isArray(d.messages) ? d.messages : [];
+      // Herramientas nuevas de ESTA respuesta (diff del acumulado) → badge inline en vivo,
+      // antes del texto del bot ("ejecutó la acción, luego respondió").
+      const prevN = Array.isArray(st?.toolsUsed) ? st.toolsUsed.length : 0;
+      const allTools: string[] = Array.isArray(d.state?.toolsUsed) ? d.state.toolsUsed : [];
+      const newTools = allTools.slice(prevN);
       setItems((i) => [
         ...i,
-        ...msgs.map((m) => ({
-          from: (m.kind === "note" ? "note" : "bot") as ChatItem["from"],
-          text: m.text,
-          buttons: m.buttons,
-          rows: m.rows,
-          media: m.media,
-        })),
+        ...newTools.map((t) => ({ from: "tool" as const, text: TOOL_LABELS[t] || t })),
+        ...msgs
+          // No dupliques la nota cruda de la tool (p.ej. "book_appointment"): ya la
+          // mostramos arriba como badge legible ("Agendó una cita").
+          .filter((m) => !(m.kind === "note" && !!TOOL_LABELS[(m.text || "").trim()]))
+          .map((m) => ({
+            from: (m.kind === "note" ? "note" : "bot") as ChatItem["from"],
+            text: m.text,
+            buttons: m.buttons,
+            rows: m.rows,
+            media: m.media,
+          })),
       ]);
       setConvState(d.state);
       setAwaiting(d.awaiting ?? null);
@@ -223,7 +233,11 @@ export function BotTester({
       {/* Chat */}
       <div ref={scrollRef} className="fb-wa__chat">
         {items.map((m, idx) =>
-          m.from === "note" ? (
+          m.from === "tool" ? (
+            <div key={idx} className="fb-wa__toolnote">
+              <Wrench size={11} /> {m.text}
+            </div>
+          ) : m.from === "note" ? (
             <div key={idx} className="fb-wa__note">
               {m.text}
             </div>

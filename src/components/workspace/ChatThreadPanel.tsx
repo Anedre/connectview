@@ -41,13 +41,13 @@ function MessageBubble({ m }: { m: ChatMessage }) {
   if (isSystem) {
     return (
       <div
+        className="dim"
         style={{
           alignSelf: "center",
-          color: "var(--text-3)",
           fontSize: 11,
-          padding: "4px 10px",
+          padding: "4px 12px",
           background: "var(--bg-2)",
-          borderRadius: 999,
+          borderRadius: "var(--r-pill)",
           margin: "4px 0",
         }}
       >
@@ -56,43 +56,12 @@ function MessageBubble({ m }: { m: ChatMessage }) {
     );
   }
 
+  // Burbujas al estilo demo: `.msg .msg--out` (agente) / `.msg--in` (cliente),
+  // con la hora en `.msg__time`.
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: isAgent ? "flex-end" : "flex-start",
-        margin: "2px 0",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: "78%",
-          padding: "8px 10px",
-          background: isAgent ? "var(--accent-violet-soft)" : "var(--bg-2)",
-          color: "var(--text-1)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 10,
-          borderBottomRightRadius: isAgent ? 2 : 10,
-          borderBottomLeftRadius: isAgent ? 10 : 2,
-          fontSize: 13,
-          lineHeight: 1.4,
-          overflowWrap: "anywhere",
-          whiteSpace: "pre-wrap",
-        }}
-      >
-        {m.content}
-      </div>
-      <div
-        style={{
-          fontSize: 10,
-          color: "var(--text-3)",
-          marginTop: 2,
-          padding: "0 4px",
-        }}
-      >
-        {fmtTime(m.timestamp)}
-      </div>
+    <div className={"msg msg--" + (isAgent ? "out" : "in")} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+      {m.content}
+      <div className="msg__time">{fmtTime(m.timestamp)}</div>
     </div>
   );
 }
@@ -252,19 +221,13 @@ export function ChatThreadPanel({
             </button>
           )}
           <span
-            className="chip"
-            style={{
-              background:
-                status === "connected"
-                  ? "var(--accent-green-soft)"
-                  : "var(--bg-2)",
-              color:
-                status === "connected"
-                  ? "var(--accent-green)"
-                  : "var(--text-3)",
-            }}
+            className={
+              "pill " + (status === "connected" ? "pill--green" : "pill--outline")
+            }
+            style={{ height: 22, fontSize: 10.5 }}
           >
-            <span className="dot" /> {status === "connected" ? "En vivo" : status}
+            <span className={"dot" + (status === "connected" ? " dot--live" : "")} />
+            {status === "connected" ? "En vivo" : status}
           </span>
         </div>
       </div>
@@ -275,10 +238,10 @@ export function ChatThreadPanel({
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: "12px 16px",
+          padding: "16px",
           display: "flex",
           flexDirection: "column",
-          gap: 2,
+          gap: 8,
         }}
       >
         {messages.length === 0 && status === "connecting" && (
@@ -342,14 +305,8 @@ export function ChatThreadPanel({
         </div>
       )}
 
-      {/* Composer */}
-      <div
-        style={{
-          borderTop: "1px solid var(--border-1)",
-          padding: 10,
-          background: "var(--bg-1)",
-        }}
-      >
+      {/* Composer — envoltura al estilo demo (.composer). */}
+      <div className="composer">
         {/* WhatsApp 24h window countdown — only renders for WA channels. */}
         <WindowCountdown
           messages={messages}
@@ -428,15 +385,8 @@ export function ChatThreadPanel({
           />
         </div>
         <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "flex-end",
-            background: "var(--bg-2)",
-            border: "1px solid var(--border-1)",
-            borderRadius: 8,
-            padding: "8px 10px",
-          }}
+          className="composer__box"
+          style={{ alignItems: "flex-end" }}
         >
           <textarea
             ref={textareaRef}

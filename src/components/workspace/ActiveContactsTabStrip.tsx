@@ -8,6 +8,7 @@ import {
   type MissedContact,
 } from "@/hooks/useActiveContact";
 import { useCCP } from "@/hooks/useCCP";
+import { useCustomerNamesByPhone } from "@/hooks/useCustomerNamesByPhone";
 import { useOmnichannelNotifierContext } from "@/context/OmnichannelNotifierContext";
 import * as Icon from "@/components/vox/primitives";
 import { useDebugRender } from "@/lib/debugTrace";
@@ -73,7 +74,9 @@ function isRingingState(s: string) {
   return s === "ringing" || s === "incoming" || s === "connecting";
 }
 
-function customerLabel(contact: ActiveContact): string {
+function customerLabel(contact: ActiveContact, resolvedName?: string): string {
+  // Preferir SIEMPRE el nombre del cliente sobre el número crudo.
+  if (resolvedName) return resolvedName;
   if (contact.customerPhone) return contact.customerPhone;
   if (contact.queueName) return contact.queueName;
   return "Contacto entrante";
@@ -127,10 +130,11 @@ interface TabProps {
   contact: ActiveContact;
   focused: boolean;
   unread: number;
+  resolvedName?: string;
   onClick: () => void;
 }
 
-function ContactTab({ contact, focused, unread, onClick }: TabProps) {
+function ContactTab({ contact, focused, unread, resolvedName, onClick }: TabProps) {
   const meta = metaFor(contact.channel, contact.attributes);
   const Icn = meta.Icn;
   const ringing = isRingingState(contact.state);
@@ -159,7 +163,7 @@ function ContactTab({ contact, focused, unread, onClick }: TabProps) {
           "--ch-soft": meta.accentSoft,
         } as React.CSSProperties
       }
-      title={`${meta.label} · ${customerLabel(contact)} · ${contact.state || "—"}`}
+      title={`${meta.label} · ${customerLabel(contact, resolvedName)} · ${contact.state || "—"}`}
     >
       <span className="vox-ct__icon">
         <Icn />
@@ -174,7 +178,7 @@ function ContactTab({ contact, focused, unread, onClick }: TabProps) {
       </span>
 
       <div className="vox-ct__body">
-        <span className="vox-ct__name">{customerLabel(contact)}</span>
+        <span className="vox-ct__name">{customerLabel(contact, resolvedName)}</span>
         <span className="vox-ct__meta">
           <span className="vox-ct__meta-channel">{meta.label}</span>
           {/* Live timer — voice connected only. Chat / email get a
@@ -217,9 +221,11 @@ function ContactTab({ contact, focused, unread, onClick }: TabProps) {
 function MissedTab({
   missed,
   onDismiss,
+  resolvedName,
 }: {
   missed: MissedContact;
   onDismiss: () => void;
+  resolvedName?: string;
 }) {
   const { placeCall } = useCCP();
   const [callingBack, setCallingBack] = useState(false);
@@ -266,7 +272,7 @@ function MissedTab({
       </span>
       <div className="vox-ct__body">
         <span className="vox-ct__name">
-          {missed.customerPhone || missed.queueName || "Cliente"}
+          {resolvedName || missed.customerPhone || missed.queueName || "Cliente"}
         </span>
         <span className="vox-ct__meta">
           <span style={{ color: "var(--accent-red)", fontWeight: 600 }}>
@@ -311,6 +317,18 @@ export function ActiveContactsTabStrip() {
   const { focusedContactId, focus } = useContactFocus();
   const { missedContacts, dismissMissed } = useMissedContacts();
   const { unreadCount } = useOmnichannelNotifierContext();
+
+  // Resolver el NOMBRE del cliente por teléfono (Customer Profiles) para
+  // mostrarlo en las tabs en vez del número crudo. Cálculo directo (el React
+  // Compiler lo memoiza); el hook cachea globalmente por teléfono.
+  const phones = Array.from(
+    new Set(
+      [...contacts, ...missedContacts]
+        .map((c) => c.customerPhone)
+        .filter((p): p is string => !!p)
+    )
+  );
+  const names = useCustomerNamesByPhone(phones);
 
   // Sort: focused first, ringing next, then by channel order.
   const sorted = useMemo(() => {
@@ -359,6 +377,7 @@ export function ActiveContactsTabStrip() {
           contact={c}
           focused={c.contactId === focusedContactId}
           unread={unreadCount[c.contactId] || 0}
+          resolvedName={c.customerPhone ? names[c.customerPhone] : undefined}
           onClick={() => focus(c.contactId)}
         />
       ))}
@@ -369,6 +388,7 @@ export function ActiveContactsTabStrip() {
             key={`missed-${m.contactId}`}
             missed={m}
             onDismiss={() => dismissMissed(m.contactId)}
+            resolvedName={m.customerPhone ? names[m.customerPhone] : undefined}
           />
         ))}
     </div>

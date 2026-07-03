@@ -13,6 +13,8 @@ import {
 } from "@aws-sdk/client-customer-profiles";
 import { resolveConnect } from "../_shared/tenantConnect";
 import { readRecordingsCache, writeRecordingsCache, getCachedName, putCachedName } from "../_shared/recordingsCache";
+import { DynamoDBClient, BatchGetItemCommand } from "@aws-sdk/client-dynamodb";
+import { unmarshall } from "@aws-sdk/util-dynamodb";
 
 // BYO (#43+#46): module-active. maxAttempts:1 → frontend reintenta en
 // próximo render.
@@ -29,6 +31,10 @@ let CUSTOMER_PROFILES_DOMAIN = LEGACY_CUSTOMER_PROFILES_DOMAIN;
 // In-memory caches so we don't DescribeUser/DescribeQueue on every request.
 const userCache = new Map<string, string>();
 const queueCache = new Map<string, string>();
+// Sentiment por contacto (Contact Lens) vive en connectview-contacts (PK contactId);
+// lo mergeamos al historial para el heatmap coloreado por tono del día.
+const contactsDynamo = new DynamoDBClient({});
+const CONTACTS_TABLE = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
 
 interface HistoricalContact {
   contactId: string;
@@ -43,6 +49,7 @@ interface HistoricalContact {
   disconnectReason?: string;
   customerEndpoint?: string;
   hasRecording: boolean;
+  sentiment?: string;
 }
 
 async function resolveAgentUsername(agentId: string): Promise<string> {
@@ -325,6 +332,40 @@ async function searchContactsFallback(
   return rows;
 }
 
+/** Mergea el sentimiento de Contact Lens (connectview-contacts, PK contactId) al
+ *  historial — habilita el heatmap coloreado por tono del día. Best-effort. */
+async function enrichSentiment(rows: HistoricalContact[]): Promise<void> {
+  const ids = [...new Set(rows.map((r) => r.contactId).filter(Boolean))];
+  if (!ids.length) return;
+  const map = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const batch = ids.slice(i, i + 100);
+    try {
+      const res = await contactsDynamo.send(
+        new BatchGetItemCommand({
+          RequestItems: {
+            [CONTACTS_TABLE]: {
+              Keys: batch.map((id) => ({ contactId: { S: id } })),
+              ProjectionExpression: "contactId, sentiment",
+            },
+          },
+        })
+      );
+      for (const it of res.Responses?.[CONTACTS_TABLE] || []) {
+        const u = unmarshall(it) as { contactId?: string; sentiment?: string };
+        if (u.contactId && u.sentiment) map.set(u.contactId, u.sentiment);
+      }
+    } catch (e) {
+      console.warn("[get-contact-history] sentiment enrich failed", e);
+      return; // sin sentiment el heatmap cae a neutro (degrada elegante)
+    }
+  }
+  for (const r of rows) {
+    const s = map.get(r.contactId);
+    if (s) r.sentiment = s;
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min para evitar el
@@ -401,6 +442,10 @@ export const handler: Handler = async (event: any) => {
         new Date(b.initiationTimestamp).getTime() -
         new Date(a.initiationTimestamp).getTime()
     );
+
+    // Enriquecé con el sentimiento de Contact Lens (connectview-contacts) para el
+    // heatmap coloreado por tono del día. Best-effort; se cachea junto al resto.
+    await enrichSentiment(contacts);
 
     // Poblá el caché para las próximas lecturas (await: en Lambda el trabajo
     // post-return no se completa). Best-effort — si falla, no rompe la respuesta.

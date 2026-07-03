@@ -10,6 +10,11 @@ export interface BuilderActions {
   selectNode: (id: string) => void;
   /** 1-based step number among non-start nodes (the numbered badge). */
   numberOf: (id: string) => number | undefined;
+  /**
+   * Avisos de validación de ESTE nodo (los issues de validateBot cuyo nodeId
+   * coincide). Vacío si el paso está sano. Alimenta el badge de alerta inline.
+   */
+  issuesOf: (id: string) => string[];
 }
 
 export const BuilderCtx = createContext<BuilderActions | null>(null);

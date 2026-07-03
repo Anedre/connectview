@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useCCP } from "@/hooks/useCCP";
-import * as Icon from "@/components/vox/primitives";
+import { Icon } from "@/components/aria";
 
 interface DTMFKeypadModalProps {
   open: boolean;
@@ -64,126 +64,87 @@ export function DTMFKeypadModal({ open, onClose }: DTMFKeypadModalProps) {
       aria-modal="true"
       aria-label="Teclado DTMF"
       onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(8, 10, 16, 0.55)",
-        backdropFilter: "blur(6px)",
-        WebkitBackdropFilter: "blur(6px)",
-        zIndex: 250,
-        display: "grid",
-        placeItems: "center",
-      }}
+      className="scrim"
+      style={{ zIndex: 250, display: "grid", placeItems: "center" }}
     >
       <div
+        className="card card--pop"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 340,
-          background: "var(--bg-1)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 16,
-          boxShadow: "0 24px 60px rgba(0,0,0,0.55)",
-          overflow: "hidden",
-        }}
+        style={{ width: 340, maxWidth: "92vw", overflow: "hidden" }}
       >
         <div
+          className="row gap10"
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
             padding: "14px 16px",
             borderBottom: "1px solid var(--border-1)",
+            alignItems: "center",
           }}
         >
-          <span
-            style={{
-              display: "grid",
-              placeItems: "center",
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: "var(--accent-cyan-soft)",
-              color: "var(--accent-cyan)",
-            }}
+          <div
+            className="tl__ico"
+            style={{ ["--_c" as string]: "var(--accent)", width: 30, height: 30, flex: "0 0 auto" }}
           >
-            <Icon.Pad size={14} />
-          </span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Teclado DTMF</div>
-            <div className="muted" style={{ fontSize: 11 }}>
+            <Icon name="grid" size={15} />
+          </div>
+          <div className="grow">
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>Teclado DTMF</div>
+            <div className="dim" style={{ fontSize: 11 }}>
               Los tonos llegan en vivo al cliente
             </div>
           </div>
           <button
             ref={closeBtnRef}
             type="button"
-            className="btn btn--ghost btn--sm btn--icon"
+            className="ctab__x"
             onClick={onClose}
             aria-label="Cerrar"
           >
-            <Icon.Close size={14} />
+            <Icon name="x" size={14} />
           </button>
         </div>
 
-        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Tone history display */}
-          <div
-            className="mono"
-            style={{
-              background: "var(--bg-2)",
-              border: "1px solid var(--border-1)",
-              borderRadius: 10,
-              padding: "12px 14px",
-              fontSize: 22,
-              fontWeight: 600,
-              minHeight: 50,
-              letterSpacing: 6,
-              textAlign: "right",
-              color: history ? "var(--text-1)" : "var(--text-4)",
-              overflow: "hidden",
-              whiteSpace: "nowrap",
-              direction: "rtl",
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {history || "—"}
-          </div>
+        <div className="card__pad">
+          <div className="col gap14">
+            {/* Tone history display */}
+            <div
+              className="mono"
+              style={{
+                background: "var(--bg-2)",
+                border: "1px solid var(--border-1)",
+                borderRadius: "var(--r-md)",
+                padding: "12px 14px",
+                fontSize: 22,
+                fontWeight: 700,
+                minHeight: 50,
+                letterSpacing: 6,
+                textAlign: "right",
+                color: history ? "var(--text-1)" : "var(--text-3)",
+                overflow: "hidden",
+                whiteSpace: "nowrap",
+                direction: "rtl",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {history || "—"}
+            </div>
 
-          {/* Circular pad — same look as the new SoftphoneDialer */}
-          <div className="vox-dial__pad">
-            {(
-              [
-                { d: "1", sub: "" },
-                { d: "2", sub: "ABC" },
-                { d: "3", sub: "DEF" },
-                { d: "4", sub: "GHI" },
-                { d: "5", sub: "JKL" },
-                { d: "6", sub: "MNO" },
-                { d: "7", sub: "PQRS" },
-                { d: "8", sub: "TUV" },
-                { d: "9", sub: "WXYZ" },
-                { d: "*", sub: "" },
-                { d: "0", sub: "+" },
-                { d: "#", sub: "" },
-              ] as Array<{ d: string; sub: string }>
-            ).map((k) => (
-              <button
-                key={k.d}
-                type="button"
-                className="vox-dial__key"
-                onClick={() => press(k.d)}
-              >
-                <span>{k.d}</span>
-                {k.sub && <span className="vox-dial__key-sub">{k.sub}</span>}
-              </button>
-            ))}
-          </div>
+            {/* Teclado numérico — estilo demo (.dialpad) */}
+            <div className="dialpad">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map(
+                (k) => (
+                  <button key={k} type="button" onClick={() => press(k)}>
+                    {k}
+                  </button>
+                )
+              )}
+            </div>
 
-          <div
-            className="muted"
-            style={{ fontSize: 10.5, textAlign: "center", lineHeight: 1.5 }}
-          >
-            Usa el teclado físico (0-9, *, #) si prefieres
+            <div
+              className="dim"
+              style={{ fontSize: 10.5, textAlign: "center", lineHeight: 1.5 }}
+            >
+              Usa el teclado físico (0-9, *, #) si prefieres
+            </div>
           </div>
         </div>
       </div>

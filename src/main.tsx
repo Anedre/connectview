@@ -9,6 +9,10 @@ import App from "./App";
 import { queryClient } from "./lib/queryClient";
 import { installApiAuthInterceptor } from "./lib/apiAuthInterceptor";
 import "./index.css";
+// ARIA design system — imported AFTER index.css so its tokens/classes win the
+// cascade (Tailwind requires @import at top, which would lose ordering).
+import "./styles/aria-base.css";
+import "./styles/aria-components.css";
 
 Amplify.configure(outputs);
 // Adjunta el ID token de Cognito a todas las llamadas a nuestra API (tenant scoping).

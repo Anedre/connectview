@@ -168,6 +168,29 @@ export interface MlConn {
   nickname?: string;
   connectedAt?: string;
 }
+/**
+ * Meta multi-cuenta ("Conectar con Facebook", auto-servicio estilo Chattigo/
+ * ManyChat). Cada tenant conecta VARIAS páginas de Facebook; cada una trae
+ * Messenger (de la página) y, si tiene un Instagram Business Account conectado,
+ * también Instagram DM. Metadata NO sensible acá; los page tokens viven en
+ * Secrets Manager (connectview/tenant/<id>/meta), NUNCA en el navegador.
+ */
+export interface MetaAccountRef {
+  id: string; // = pageId
+  pageId: string;
+  pageName?: string;
+  igId?: string;
+  igUsername?: string;
+  addedAt?: string;
+}
+export interface MetaConn {
+  accounts?: MetaAccountRef[];
+  // legacy singular (retrocompat, pre multi-cuenta)
+  pageId?: string;
+  igId?: string;
+  pageName?: string;
+  connectedAt?: string;
+}
 export interface ConnectionsConfig {
   connect?: ConnectConn;
   salesforce?: SalesforceConn;
@@ -178,6 +201,7 @@ export interface ConnectionsConfig {
   branding?: BrandingConn;
   sso?: SsoConn;
   mercadolibre?: MlConn;
+  meta?: MetaConn;
 }
 
 const LS_KEY = "vox:connections";

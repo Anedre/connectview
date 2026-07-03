@@ -8,6 +8,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
+import { randomUUID } from "node:crypto";
 import { planAdvance, entryNodeId, type JourneyDef, type Enrollment } from "../_shared/journeys";
 import { evaluateLeadFilter, type FilterRule } from "../_shared/leadFilter";
 import { appendLeadHistory, setActiveDynamo, stageIdToLabel } from "../_shared/leadSync";
@@ -38,7 +39,26 @@ const SEND_WA_URL = process.env.SEND_WHATSAPP_TEMPLATE_URL || "";
 const INTERNAL_SECRET = process.env.VOX_INTERNAL_SECRET || "";
 const FROM_EMAIL = process.env.FROM_EMAIL || "ARIA <notificaciones@novasys.com.pe>";
 const EMAIL_TRACKING_URL = process.env.EMAIL_TRACKING_URL || ""; // Function URL de email-tracking (F4.4)
+const CALLBACKS_TABLE = process.env.CALLBACKS_TABLE || "connectview-callbacks";
 const MAX_ENROLL_PER_JOURNEY = 200;
+
+// Horario de silencio (hora local Perú UTC-5 por default): no enviar sends fuera de ventana.
+const QUIET_START = Number(process.env.QUIET_HOURS_START ?? 21);
+const QUIET_END = Number(process.env.QUIET_HOURS_END ?? 8);
+const QUIET_TZ_OFFSET = Number(process.env.QUIET_TZ_OFFSET ?? -5);
+
+/** Si `nowMs` cae en horario de silencio, devuelve el ISO de la próxima ventana; si no, null. */
+function quietHoursResume(nowMs: number): string | null {
+  if (QUIET_START === QUIET_END) return null; // deshabilitado
+  const localH = (new Date(nowMs).getUTCHours() + QUIET_TZ_OFFSET + 24) % 24;
+  const inQuiet =
+    QUIET_START < QUIET_END
+      ? localH >= QUIET_START && localH < QUIET_END
+      : localH >= QUIET_START || localH < QUIET_END; // cruza medianoche
+  if (!inQuiet) return null;
+  const delta = (QUIET_END - localH + 24) % 24 || 24;
+  return new Date(nowMs + delta * 3_600_000).toISOString();
+}
 
 type LeadRec = Record<string, unknown> & { leadId?: string; tenantId?: string };
 
@@ -262,10 +282,65 @@ async function runEffect(
   }
 
   if (effect.type === "action" && effect.action === "enqueueDialer") {
-    return "enqueueDialer:recorded(pending-wire)";
+    return enqueueDialer(effect.params, lead, leadId);
   }
 
   return `${effect.type}:noop`;
+}
+
+/**
+ * enqueueDialer — encola una llamada saliente automática en la cola de callbacks
+ * (channel="voice" + actionType="auto-dispatch"), la misma que consume el
+ * callback-dispatcher. Si el nodo trae campaignId, la liga a esa campaña (que
+ * rutea por su flow de Connect). Reemplaza el viejo no-op "pending-wire".
+ */
+async function enqueueDialer(
+  params: Record<string, unknown>,
+  lead: LeadRec,
+  leadId: string,
+): Promise<string> {
+  const phone = String(lead.phone || "");
+  if (!phone) return "enqueueDialer:sin-telefono";
+  const nowIso = new Date().toISOString();
+  const item = {
+    callbackId: randomUUID(),
+    phone,
+    customerName: String(lead.name || lead.fullName || ""),
+    scheduledAt: nowIso, // el dispatcher lo toma en su próximo tick
+    assignedAgentUserId: "", // campaña/flow rutea; sin agente fijo
+    notes: "Journey: llamada automática",
+    channel: "voice",
+    actionType: "auto-dispatch",
+    campaignId: String(params.campaignId || ""),
+    customAttributes: JSON.stringify({ source: "journey", leadId }),
+    status: "SCHEDULED",
+    attempts: 0,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  try {
+    await dynamo.send(
+      new PutItemCommand({
+        TableName: CALLBACKS_TABLE,
+        Item: marshall(item, { removeUndefinedValues: true }),
+      }),
+    );
+    return "enqueueDialer:queued";
+  } catch (e) {
+    return `enqueueDialer:err:${e instanceof Error ? e.message : e}`;
+  }
+}
+
+/** ¿El lead ya cumplió la meta del journey? (stageId directo, o pertenencia a un segmento). */
+async function leadMeetsGoal(j: JourneyDef, lead: LeadRec, tenantId: string): Promise<boolean> {
+  const goal = j.goal;
+  if (!goal) return false;
+  if (goal.stageId && String(lead.stageId || "") === goal.stageId) return true;
+  if (goal.segmentId) {
+    const seg = await loadSegmentRules(tenantId, goal.segmentId);
+    if (seg) return evaluateLeadFilter(lead, seg.rules, seg.match);
+  }
+  return false;
 }
 
 /** WhatsApp REAL — reusa send-whatsapp-template (que ya aplica el gate de supresión). */
@@ -423,10 +498,33 @@ async function processDueEnrollments(
           await markEnrollment(enr, enr.currentNodeId, nowIso, "exited", "lead inexistente");
           continue;
         }
+        // Meta: si el lead ya convirtió, sale del journey (mide conversión del recorrido).
+        if (await leadMeetsGoal(journey, lead, tenantId)) {
+          await markEnrollment(enr, enr.currentNodeId, nowIso, "done", "meta alcanzada ✓");
+          advanced++;
+          continue;
+        }
         const plan = planAdvance(journey, enr.currentNodeId, lead, nowMs);
+        // Horario de silencio: si el plan enviaría algo, posponer a la próxima ventana (no lo descarta).
+        if (plan.effects.some((e) => e.type === "send")) {
+          const resume = quietHoursResume(nowMs);
+          if (resume) {
+            await markEnrollment(enr, enr.currentNodeId, resume, "active", "pospuesto por horario");
+            continue;
+          }
+        }
+        // Idempotencia: no reenviar un send que este enrollment ya ejecutó (tick redelivered).
+        const already = (enr as { sent?: string[] }).sent;
+        const sent = new Set<string>(Array.isArray(already) ? already : []);
         const notes: string[] = [];
         for (const eff of plan.effects) {
-          notes.push(await runEffect(eff, enr.leadId, lead, tenantId, enr.journeyId));
+          if (eff.type === "send" && sent.has(eff.nodeId)) {
+            notes.push("send:dedup");
+            continue;
+          }
+          const note = await runEffect(eff, enr.leadId, lead, tenantId, enr.journeyId);
+          notes.push(note);
+          if (eff.type === "send" && note.includes(":sent")) sent.add(eff.nodeId);
         }
         await markEnrollment(
           enr,
@@ -434,6 +532,7 @@ async function processDueEnrollments(
           plan.nextRunAt,
           plan.done ? "done" : "active",
           notes.join(" · "),
+          [...sent],
         );
         advanced++;
       } catch (err) {
@@ -451,19 +550,30 @@ async function markEnrollment(
   nextRunAt: string,
   status: string,
   note: string,
+  sent?: string[],
 ): Promise<void> {
   const hist = Array.isArray(enr.history) ? enr.history : [];
   hist.push({ node: nodeId, at: new Date().toISOString(), ...(note ? { note } : {}) } as never);
+  const names: Record<string, string> = { "#st": "status" };
+  const values: Record<string, unknown> = {
+    ":n": nodeId,
+    ":r": nextRunAt,
+    ":s": status,
+    ":h": hist.slice(-50),
+  };
+  let expr = "SET currentNodeId = :n, nextRunAt = :r, #st = :s, history = :h";
+  if (sent) {
+    names["#snt"] = "sent";
+    values[":snt"] = sent.slice(-100);
+    expr += ", #snt = :snt";
+  }
   await dynamo.send(
     new UpdateItemCommand({
       TableName: ENROLLMENTS_TABLE,
       Key: { journeyId: { S: enr.journeyId }, leadId: { S: enr.leadId } },
-      UpdateExpression: "SET currentNodeId = :n, nextRunAt = :r, #st = :s, history = :h",
-      ExpressionAttributeNames: { "#st": "status" },
-      ExpressionAttributeValues: marshall(
-        { ":n": nodeId, ":r": nextRunAt, ":s": status, ":h": hist.slice(-50) },
-        { removeUndefinedValues: true },
-      ),
+      UpdateExpression: expr,
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: marshall(values, { removeUndefinedValues: true }),
     }),
   );
 }

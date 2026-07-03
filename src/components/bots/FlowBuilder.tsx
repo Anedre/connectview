@@ -14,6 +14,8 @@ import {
   type Node,
   type Edge,
   type Connection,
+  type OnConnectStart,
+  type OnConnectEnd,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -30,6 +32,9 @@ import {
   HelpCircle,
   X,
   GripVertical,
+  Undo2,
+  Redo2,
+  Copy,
 } from "lucide-react";
 import {
   NODE_KINDS,
@@ -48,6 +53,8 @@ import { StepNode } from "@/components/bots/StepNode";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { BuilderCtx } from "@/components/bots/builderCtx";
 import { BotTester } from "@/components/bots/BotTester";
+import { NodePicker } from "@/components/bots/NodePicker";
+import { PlusEdge, branchColor } from "@/components/bots/PlusEdge";
 import {
   NodePreview,
   ConditionPreview,
@@ -74,10 +81,11 @@ import {
  * the same builder powers both the real page and the gate-free demo.
  */
 const nodeTypes = { step: StepNode };
+const edgeTypes = { plus: PlusEdge };
 
 const EDGE_COLOR = "#22B8D9";
 const edgeDefaults = {
-  type: "smoothstep",
+  type: "plus",
   animated: false,
   style: { stroke: EDGE_COLOR, strokeWidth: 2 },
   markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR, width: 18, height: 18 },
@@ -150,6 +158,41 @@ function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
 }
 
 /**
+ * ¿El flujo llega DESORDENADO y conviene auto-ordenarlo al abrir? True si hay
+ * nodos colapsados (misma posición) o si el grafo NO es predominantemente
+ * izquierda→derecha (p.ej. un bot importado con posiciones arriba-abajo). Así
+ * respetamos un layout LTR ya acomodado a mano, pero enderezamos los torcidos.
+ */
+function needsLayout(nodes: Node[], edges: Edge[]): boolean {
+  if (nodes.length <= 1) return false;
+  const seen = new Set<string>();
+  for (const n of nodes) {
+    const key = `${Math.round(n.position.x / 40)},${Math.round(n.position.y / 40)}`;
+    if (seen.has(key)) return true; // dos nodos colapsados en el mismo punto
+    seen.add(key);
+  }
+  const pos = new Map(nodes.map((n) => [n.id, n.position]));
+  let ltr = 0;
+  let total = 0;
+  for (const e of edges) {
+    const s = pos.get(e.source);
+    const t = pos.get(e.target);
+    if (!s || !t) continue;
+    total++;
+    if (t.x > s.x + 40) ltr++; // el destino queda a la derecha del origen
+  }
+  if (total === 0) return false;
+  return ltr / total < 0.6; // <60% de las conexiones van a la derecha → torcido
+}
+
+/** Nodos del bot ya listos para el canvas: auto-ordenados L→R si venían torcidos. */
+function initialRFNodes(bot: Bot): Node[] {
+  const n = toRFNodes(bot);
+  const e = toRFEdges(bot);
+  return needsLayout(n, e) ? layoutLR(n, e) : n;
+}
+
+/**
  * Conectar-al-soltar: si el punto donde se suelta un paso cae cerca de la
  * salida de otro nodo (a su derecha y a la altura adecuada, para respetar el
  * flujo L→R) y esa salida está libre, devuelve {source, sourceHandle} para
@@ -217,6 +260,27 @@ function toRFEdges(bot: Bot): Edge[] {
   }));
 }
 
+/**
+ * Huella estable del bot para detectar cambios sin guardar. Ignora `botId`
+ * (no cambia con la edición) y ordena las claves de cada nodo/edge para que el
+ * mismo contenido dé siempre el mismo string. El `onInsert` de render nunca
+ * llega acá porque `currentBot` lee de `edges`, no de `rfEdges`.
+ */
+function serializeBot(bot: Bot): string {
+  return JSON.stringify({
+    name: bot.name,
+    status: bot.status,
+    nodes: bot.nodes.map((n) => ({ id: n.id, kind: n.kind, position: n.position, data: n.data })),
+    edges: bot.edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      sourceHandle: e.sourceHandle ?? null,
+      target: e.target,
+      targetHandle: e.targetHandle ?? null,
+    })),
+  });
+}
+
 export function FlowBuilder(props: {
   initial: Bot;
   onSave?: (bot: Bot) => void | Promise<void>;
@@ -247,7 +311,7 @@ function FlowBuilderInner({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition, fitView } = useReactFlow();
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(toRFNodes(initial));
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(initialRFNodes(initial));
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(toRFEdges(initial));
   const [name, setName] = useState(initial.name);
   const [status, setStatus] = useState<Bot["status"]>(initial.status);
@@ -257,6 +321,216 @@ function FlowBuilderInner({
   const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
   const [isDropping, setIsDropping] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+
+  // NodePicker (quick-connect on edge-drop + "+" insert-on-edge). `pending`
+  // carries what to do once a kind is picked; `at` anchors the popover to the
+  // cursor in screen coords.
+  const [picker, setPicker] = useState<{
+    at: { x: number; y: number };
+    mode: "connect" | "insert";
+    /** connect: origin handle to link from. insert: the edge to split. */
+    connect?: { source: string; sourceHandle: string; flowPos: { x: number; y: number } };
+    insertEdgeId?: string;
+  } | null>(null);
+  // Origin of an in-progress connection drag (for quick-connect on empty drop).
+  const connectFrom = useRef<{ nodeId: string; handleId: string | null } | null>(null);
+
+  // ── Historial (undo/redo) ──────────────────────────────────────────────
+  // Stacks de snapshots {nodes, edges}. Refs (no estado) para no recrear
+  // callbacks ni chocar con el React Compiler; un contador fuerza el
+  // re-render de los botones deshabilitados. `nodesRef`/`edgesRef` espejan el
+  // estado vivo para poder tomar snapshots desde handlers/atajos sin closures
+  // rancios. `skipHistory` evita que restaurar un snapshot cree otro paso.
+  type Snapshot = { nodes: Node[]; edges: Edge[] };
+  const past = useRef<Snapshot[]>([]);
+  const future = useRef<Snapshot[]>([]);
+  const nodesRef = useRef<Node[]>(nodes);
+  const edgesRef = useRef<Edge[]>(edges);
+  const selectedIdRef = useRef<string | null>(selectedId);
+  const [, setHistoryTick] = useState(0);
+  const clipboard = useRef<{
+    kind: NodeKind;
+    data: Record<string, unknown>;
+    pos: { x: number; y: number };
+  } | null>(null);
+  // Debounce del historial para edits del inspector: solo el PRIMER cambio de una
+  // ráfaga de tecleo empuja un snapshot; el timer se reinicia con cada tecla.
+  const editDebounce = useRef<number | null>(null);
+  // Snapshot capturado al empezar a arrastrar un nodo; se empuja al soltar
+  // (así el undo restaura la posición ANTERIOR, no la ya movida).
+  const dragSnapshot = useRef<Snapshot | null>(null);
+  // Baseline serializado del último guardado/carga → base para el chip
+  // «sin guardar». Se fija en el primer render y se reajusta al guardar/cargar.
+  const savedBaseline = useRef<string | null>(null);
+  // Marca puesta al cargar un bot; el efecto de baseline la consume una vez que
+  // `currentBot` refleja el estado (ya con auto-layout aplicado).
+  const justLoaded = useRef(true);
+
+  useEffect(() => {
+    nodesRef.current = nodes;
+    edgesRef.current = edges;
+    selectedIdRef.current = selectedId;
+  }, [nodes, edges, selectedId]);
+
+  // Clona superficialmente arrays + data de cada nodo (suficiente: nunca
+  // mutamos data en sitio, siempre reemplazamos el objeto). Descarta `onInsert`
+  // inyectado en edges para render (no pertenece al modelo).
+  const snapshot = useCallback((): Snapshot => {
+    return {
+      nodes: nodesRef.current.map((n) => ({ ...n, data: { ...n.data } })),
+      edges: edgesRef.current.map((e) => ({ ...e })),
+    };
+  }, []);
+
+  // Empuja el estado ACTUAL a `past` y limpia `future`. Llamar ANTES de aplicar
+  // un cambio significativo (drag final, conectar, borrar, pegar, editar datos…).
+  const HISTORY_LIMIT = 100;
+  const commit = useCallback(() => {
+    past.current.push(snapshot());
+    if (past.current.length > HISTORY_LIMIT) past.current.shift();
+    future.current = [];
+    setHistoryTick((t) => t + 1);
+  }, [snapshot]);
+
+  const undo = useCallback(() => {
+    const prev = past.current.pop();
+    if (!prev) return;
+    future.current.push(snapshot());
+    setNodes(prev.nodes);
+    setEdges(prev.edges);
+    setHistoryTick((t) => t + 1);
+  }, [snapshot, setNodes, setEdges]);
+
+  const redo = useCallback(() => {
+    const next = future.current.pop();
+    if (!next) return;
+    past.current.push(snapshot());
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setHistoryTick((t) => t + 1);
+  }, [snapshot, setNodes, setEdges]);
+
+  // Arrastre de nodos: guardamos el estado al empezar y lo empujamos al soltar
+  // (solo si de verdad se movió), para que el undo devuelva la posición previa.
+  const onNodeDragStart = useCallback(() => {
+    dragSnapshot.current = snapshot();
+  }, [snapshot]);
+  const onNodeDragStop = useCallback(
+    (_e: unknown, node: Node) => {
+      const before = dragSnapshot.current;
+      dragSnapshot.current = null;
+      if (!before) return;
+      const prev = before.nodes.find((n) => n.id === node.id);
+      // Sin movimiento real (click sin drag) → no ensuciamos el historial.
+      if (prev && prev.position.x === node.position.x && prev.position.y === node.position.y) return;
+      past.current.push(before);
+      if (past.current.length > HISTORY_LIMIT) past.current.shift();
+      future.current = [];
+      setHistoryTick((t) => t + 1);
+    },
+    [],
+  );
+
+  // Borrado nativo de React Flow (tecla Supr/Backspace sobre lo seleccionado):
+  // estas callbacks corren ANTES de aplicar el cambio, así que un commit toma el
+  // estado con los elementos aún presentes → el undo los restaura.
+  const onNodesDelete = useCallback(() => {
+    commit();
+  }, [commit]);
+  const onEdgesDelete = useCallback(() => {
+    commit();
+  }, [commit]);
+
+  // ── Copiar / Pegar / Duplicar ──────────────────────────────────────────
+  // Guarda kind + data (clonada) + posición del nodo dado en el portapapeles
+  // interno. El «Inicio» no se copia (el flujo admite uno solo).
+  const copyNodeById = useCallback((id: string | null) => {
+    if (!id) return false;
+    const n = nodesRef.current.find((x) => x.id === id);
+    if (!n) return false;
+    const kind = (n.data as { kind: NodeKind }).kind;
+    if (kind === "start") return false;
+    const { kind: _k, ...rest } = n.data as { kind: NodeKind } & Record<string, unknown>;
+    void _k;
+    clipboard.current = {
+      kind,
+      data: JSON.parse(JSON.stringify(rest)),
+      pos: { ...n.position },
+    };
+    return true;
+  }, []);
+
+  // Crea un nodo nuevo (ids frescos) con la data del portapapeles, desplazado
+  // +40,+40, y lo selecciona. NO copia conexiones. Es un paso de undo.
+  const pasteClipboard = useCallback(() => {
+    const clip = clipboard.current;
+    if (!clip) return;
+    const node = makeNode(clip.kind, { x: clip.pos.x + 40, y: clip.pos.y + 40 });
+    node.data = { ...node.data, ...JSON.parse(JSON.stringify(clip.data)) };
+    commit();
+    setNodes((nds) => [
+      ...nds,
+      { id: node.id, type: "step", position: node.position, data: { ...node.data, kind: clip.kind } },
+    ]);
+    setSelectedId(node.id);
+  }, [setNodes, commit]);
+
+  // Duplicar = copiar el seleccionado y pegar de inmediato.
+  const duplicateNode = useCallback(
+    (id: string | null) => {
+      if (copyNodeById(id)) pasteClipboard();
+    },
+    [copyNodeById, pasteClipboard],
+  );
+
+  // ── Atajos de teclado globales (mientras el builder está montado) ──────
+  // Undo/redo + copiar/pegar/duplicar. Si el foco está en un campo de texto
+  // dejamos que el navegador maneje el atajo nativo (Ctrl+Z del input, copiar
+  // texto, etc.) — no secuestramos la edición del inspector ni del nombre.
+  useEffect(() => {
+    const isEditable = (el: EventTarget | null): boolean => {
+      const t = el as HTMLElement | null;
+      if (!t) return false;
+      const tag = t.tagName;
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        t.isContentEditable === true
+      );
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const editing = isEditable(document.activeElement);
+      const key = e.key.toLowerCase();
+      if (key === "z") {
+        if (editing) return; // Ctrl+Z estándar del campo
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if (key === "y") {
+        if (editing) return;
+        e.preventDefault();
+        redo();
+      } else if (key === "c") {
+        if (editing) return; // copiar texto seleccionado
+        if (copyNodeById(selectedIdRef.current)) e.preventDefault();
+      } else if (key === "v") {
+        if (editing) return; // pegar texto en el campo
+        if (clipboard.current) {
+          e.preventDefault();
+          pasteClipboard();
+        }
+      } else if (key === "d") {
+        if (editing) return;
+        e.preventDefault();
+        duplicateNode(selectedIdRef.current);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo, copyNodeById, pasteClipboard, duplicateNode]);
 
   // Mini-tour: abre los tips la primera vez (luego, con el botón «?»).
   useEffect(() => {
@@ -268,6 +542,22 @@ function FlowBuilderInner({
     } catch {
       /* localStorage puede estar bloqueado */
     }
+  }, []);
+
+  // Tecla «?» (Shift+/) → abre/cierra la ayuda con los atajos. Se ignora si el
+  // foco está en un campo (para no robar el signo de interrogación al escribir).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key !== "?") return;
+      const t = document.activeElement as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
+      e.preventDefault();
+      setShowHelp((s) => !s);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   // Approved WhatsApp templates — powers the "Plantilla" node's configurator.
@@ -282,19 +572,150 @@ function FlowBuilderInner({
       });
   }, []);
 
-  // Reset when a different bot is loaded.
+  // Reset when a different bot is loaded. Auto-ordena L→R si el flujo venía
+  // torcido, y encuadra el canvas para que el flujo se lea de una.
   useEffect(() => {
-    setNodes(toRFNodes(initial));
+    setNodes(initialRFNodes(initial));
     setEdges(toRFEdges(initial));
     setName(initial.name);
     setStatus(initial.status);
     setSelectedId(null);
+    // Reinicia historial y baseline de "sin guardar" al cambiar de bot.
+    past.current = [];
+    future.current = [];
+    justLoaded.current = true; // el próximo currentBot fija el baseline limpio
+    setHistoryTick((t) => t + 1);
+    window.setTimeout(() => fitView({ padding: 0.2, duration: 350 }), 80);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial.botId]);
 
   const onConnect = useCallback(
-    (c: Connection) => setEdges((eds) => addEdge({ ...c, ...edgeDefaults }, eds)),
-    [setEdges],
+    (c: Connection) => {
+      commit();
+      setEdges((eds) => addEdge({ ...c, ...edgeDefaults }, eds));
+    },
+    [setEdges, commit],
+  );
+
+  // ── Quick-connect: arrastrar una conexión al vacío abre el NodePicker ──
+  // Guardamos el origen al empezar; al soltar, si NO cayó sobre un handle ni un
+  // nodo, abrimos el picker para crear un paso ya conectado (patrón oficial
+  // "add node on edge drop" de React Flow).
+  const onConnectStart = useCallback<OnConnectStart>((_, params) => {
+    // Solo desde una SALIDA (source handle) → mantiene el flujo L→R y garantiza
+    // un handle de origen válido para el edge que crea el quick-connect.
+    connectFrom.current =
+      params.nodeId != null && params.handleType === "source"
+        ? { nodeId: params.nodeId, handleId: params.handleId }
+        : null;
+  }, []);
+
+  const onConnectEnd = useCallback<OnConnectEnd>(
+    (event) => {
+      const from = connectFrom.current;
+      connectFrom.current = null;
+      if (!from) return;
+      const target = event.target as HTMLElement | null;
+      // ¿Soltó en el vacío? (ni sobre un handle ni dentro de un nodo)
+      const droppedOnPane =
+        !!target &&
+        !target.classList.contains("react-flow__handle") &&
+        !target.closest(".react-flow__node");
+      if (!droppedOnPane) return;
+      const point =
+        "changedTouches" in event
+          ? { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY }
+          : { x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY };
+      const flowPos = screenToFlowPosition(point);
+      setPicker({
+        at: point,
+        mode: "connect",
+        connect: {
+          source: from.nodeId,
+          sourceHandle: from.handleId ?? "out",
+          flowPos: { x: flowPos.x - 117, y: flowPos.y - 20 },
+        },
+      });
+    },
+    [screenToFlowPosition],
+  );
+
+  // ── "+" en una conexión: inserta un paso ENTRE origen y destino ──
+  const openInsertOnEdge = useCallback((edgeId: string, screenX: number, screenY: number) => {
+    setPicker({ at: { x: screenX, y: screenY }, mode: "insert", insertEdgeId: edgeId });
+  }, []);
+
+  const insertNodeOnEdge = useCallback(
+    (edgeId: string, kind: NodeKind) => {
+      // Todo se calcula FUERA de los updaters (updaters puros → seguro en
+      // StrictMode: makeNode se llama una sola vez, un único id para el nodo).
+      const edge = edges.find((e) => e.id === edgeId);
+      if (!edge) return;
+      const sPos = nodes.find((n) => n.id === edge.source)?.position;
+      const tPos = nodes.find((n) => n.id === edge.target)?.position;
+      const mid =
+        sPos && tPos
+          ? { x: (sPos.x + tPos.x) / 2, y: (sPos.y + tPos.y) / 2 }
+          : (sPos ?? tPos ?? { x: 120, y: 120 });
+      const node = makeNode(kind, mid);
+      const firstOutlet = NODE_KINDS[kind].outlets(node.data)[0];
+
+      commit();
+      setNodes((nds) => [
+        ...nds,
+        { id: node.id, type: "step", position: node.position, data: { ...node.data, kind } },
+      ]);
+      setEdges((eds) => {
+        const rest = eds.filter((e) => e.id !== edgeId);
+        // origen → nodo nuevo
+        let next = addEdge(
+          {
+            source: edge.source,
+            sourceHandle: edge.sourceHandle ?? null,
+            target: node.id,
+            targetHandle: null,
+            ...edgeDefaults,
+          },
+          rest,
+        );
+        // nodo nuevo (primera salida) → destino original
+        if (firstOutlet) {
+          next = addEdge(
+            {
+              source: node.id,
+              sourceHandle: firstOutlet.id,
+              target: edge.target,
+              targetHandle: edge.targetHandle ?? null,
+              ...edgeDefaults,
+            },
+            next,
+          );
+        }
+        return next;
+      });
+      setSelectedId(node.id);
+    },
+    [edges, nodes, setEdges, setNodes, commit],
+  );
+
+  // El picker eligió un tipo → resolvemos según el modo con el que se abrió.
+  const onPickerPick = useCallback(
+    (kind: NodeKind) => {
+      const p = picker;
+      setPicker(null);
+      if (!p) return;
+      if (p.mode === "insert" && p.insertEdgeId) {
+        insertNodeOnEdge(p.insertEdgeId, kind);
+      } else if (p.mode === "connect" && p.connect) {
+        addNode(kind, p.connect.flowPos, {
+          source: p.connect.source,
+          sourceHandle: p.connect.sourceHandle,
+        });
+      }
+    },
+    // addNode se declara más abajo; su identidad es estable vía useCallback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [picker, insertNodeOnEdge],
   );
 
   const currentBot = useMemo<Bot>(
@@ -322,6 +743,34 @@ function FlowBuilderInner({
 
   const issues = useMemo(() => validateBot(currentBot), [currentBot]);
 
+  // Huella actual del bot (para el chip «sin guardar»). Cálculo directo — barato
+  // y sin for-return, así que no choca con el React Compiler.
+  const currentSig = serializeBot(currentBot);
+
+  // Tras cargar un bot, fija el baseline al estado ya renderizado (con layout).
+  useEffect(() => {
+    if (justLoaded.current) {
+      savedBaseline.current = currentSig;
+      justLoaded.current = false;
+    }
+  }, [currentSig]);
+
+  const dirty = savedBaseline.current !== null && currentSig !== savedBaseline.current;
+
+  // Guardado: delega en el padre y, si sale bien, reajusta el baseline al estado
+  // guardado (limpia el chip «sin guardar» sin depender de que cambie initial).
+  const handleSave = useCallback(async () => {
+    if (!onSave) return;
+    const sig = serializeBot(currentBot);
+    try {
+      await onSave(currentBot);
+      savedBaseline.current = sig;
+      setHistoryTick((t) => t + 1);
+    } catch {
+      /* el padre ya avisa del error; el chip sigue en «sin guardar» */
+    }
+  }, [onSave, currentBot]);
+
   // Saltar al paso de un aviso de validación: lo selecciona y lo encuadra.
   const goToIssue = useCallback(
     (nodeId?: string) => {
@@ -341,6 +790,7 @@ function FlowBuilderInner({
       dropPos?: { x: number; y: number },
       autoConnect?: { source: string; sourceHandle: string },
     ) => {
+      commit();
       // Soltar (arrastrar desde la paleta) = posición exacta del cursor. Click =
       // a la derecha del nodo seleccionado. En ambos casos puede autoconectar.
       const sel = !dropPos && selectedId ? nodes.find((n) => n.id === selectedId) : null;
@@ -386,14 +836,15 @@ function FlowBuilderInner({
       }
       setSelectedId(node.id);
     },
-    [screenToFlowPosition, setNodes, setEdges, selectedId, nodes, edges],
+    [screenToFlowPosition, setNodes, setEdges, selectedId, nodes, edges, commit],
   );
 
-  // "Ordenar" — auto-layout L→R + encuadrar.
+  // "Ordenar" — auto-layout L→R + encuadrar. Undoable (mueve todos los nodos).
   const arrange = useCallback(() => {
+    commit();
     setNodes((nds) => layoutLR(nds, edges));
     window.setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 60);
-  }, [setNodes, edges, fitView]);
+  }, [setNodes, edges, fitView, commit]);
 
   // ── Arrastrar pasos desde la paleta al lienzo (HTML5 drag-and-drop) ──
   const onDragOver = useCallback((e: React.DragEvent) => {
@@ -417,20 +868,29 @@ function FlowBuilderInner({
 
   const updateNodeData = useCallback(
     (id: string, patch: Record<string, unknown>) => {
+      // Un único snapshot por ráfaga de edición: si no hay timer activo, este es
+      // el primer cambio → commit del estado previo. Cada cambio reinicia el
+      // timer; a los 400ms sin tocar nada, la próxima edición vuelve a commitear.
+      if (editDebounce.current == null) commit();
+      else window.clearTimeout(editDebounce.current);
+      editDebounce.current = window.setTimeout(() => {
+        editDebounce.current = null;
+      }, 400);
       setNodes((nds) =>
         nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)),
       );
     },
-    [setNodes],
+    [setNodes, commit],
   );
 
   const deleteNode = useCallback(
     (id: string) => {
+      commit();
       setNodes((nds) => nds.filter((n) => n.id !== id));
       setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
       setSelectedId(null);
     },
-    [setNodes, setEdges],
+    [setNodes, setEdges, commit],
   );
 
   const selectedNode = nodes.find((n) => n.id === selectedId) || null;
@@ -448,14 +908,46 @@ function FlowBuilderInner({
     return m;
   }, [nodes]);
 
+  // Avisos por nodo → badge inline en cada StepNode. Solo los issues con nodeId
+  // se anclan a un paso; los globales (p. ej. «Falta un Inicio») quedan en la
+  // barra de avisos, no en un badge. Map directo (sin for-return en useMemo) →
+  // ok con el React Compiler.
+  const issuesByNode = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const it of issues) {
+      if (!it.nodeId) continue;
+      const list = m.get(it.nodeId);
+      if (list) list.push(it.message);
+      else m.set(it.nodeId, [it.message]);
+    }
+    return m;
+  }, [issues]);
+
   const builderActions = useMemo(
     () => ({
       updateNodeData,
       selectNode: (id: string) => setSelectedId(id),
       numberOf: (id: string) => numberMap.get(id),
+      issuesOf: (id: string) => issuesByNode.get(id) ?? [],
     }),
-    [updateNodeData, numberMap],
+    [updateNodeData, numberMap, issuesByNode],
   );
+
+  // Inyecta el callback del "+" en cada edge SOLO para el render (no se guarda:
+  // currentBot lee de `edges`, no de esto). Cálculo directo (sin useMemo) para
+  // no chocar con el React Compiler; `openInsertOnEdge` es estable. Además tiñe
+  // trazo + flecha según la rama de origen (react-flow genera un <marker> por
+  // color) — respetando el markerEnd por defecto para las ramas cyan neutras.
+  const rfEdges = edges.map((e) => {
+    const color = branchColor(e.sourceHandle);
+    const baseStyle = (e.style as React.CSSProperties | undefined) ?? edgeDefaults.style;
+    return {
+      ...e,
+      style: { ...baseStyle, stroke: color },
+      markerEnd: { ...edgeDefaults.markerEnd, color },
+      data: { ...(e.data as Record<string, unknown> | undefined), onInsert: openInsertOnEdge },
+    };
+  });
 
   return (
     <BuilderCtx.Provider value={builderActions}>
@@ -463,7 +955,18 @@ function FlowBuilderInner({
         {/* Toolbar */}
         <div className="fb-bar">
           {onBack && (
-            <button onClick={onBack} title="Volver a mis bots" className="fb-bar__back">
+            <button
+              onClick={() => {
+                if (
+                  dirty &&
+                  !window.confirm("Tenés cambios sin guardar. ¿Salir y descartarlos?")
+                )
+                  return;
+                onBack();
+              }}
+              title="Volver a mis bots"
+              className="fb-bar__back"
+            >
               ←
             </button>
           )}
@@ -485,7 +988,33 @@ function FlowBuilderInner({
             </select>
           </div>
 
+          {dirty && (
+            <span className="fb-dirty" title="Tenés cambios sin guardar">
+              <span className="fb-dirty__dot" /> sin guardar
+            </span>
+          )}
+
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="fb-undo">
+              <button
+                onClick={undo}
+                disabled={past.current.length === 0}
+                title="Deshacer (Ctrl+Z)"
+                aria-label="Deshacer"
+                className="btn btn--sm btn--icon"
+              >
+                <Undo2 size={14} />
+              </button>
+              <button
+                onClick={redo}
+                disabled={future.current.length === 0}
+                title="Rehacer (Ctrl+Shift+Z)"
+                aria-label="Rehacer"
+                className="btn btn--sm btn--icon"
+              >
+                <Redo2 size={14} />
+              </button>
+            </div>
             <button
               onClick={() => setShowHelp((s) => !s)}
               title="¿Cómo funciona el constructor?"
@@ -518,11 +1047,11 @@ function FlowBuilderInner({
               <Play size={13} /> Probar
             </button>
             <button
-              onClick={() => onSave?.(currentBot)}
+              onClick={handleSave}
               disabled={saving}
               className="btn btn--primary btn--sm"
             >
-              <Save size={13} /> {saving ? "Guardando…" : "Guardar"}
+              <Save size={13} /> {saving ? "Guardando…" : dirty ? "Guardar •" : "Guardar"}
             </button>
           </div>
         </div>
@@ -567,6 +1096,81 @@ function FlowBuilderInner({
               </li>
               <li>Tocá «Ordenar» para acomodar el flujo y «Probar» para chatear con el bot.</li>
             </ul>
+
+            <div className="fb-tips__subhead">Atajos de teclado</div>
+            <div className="fb-shortcuts">
+              <div className="fb-shortcut">
+                <span className="fb-shortcut__keys">
+                  <kbd>Ctrl</kbd>
+                  <kbd>Z</kbd>
+                </span>
+                <span className="fb-shortcut__desc">Deshacer</span>
+              </div>
+              <div className="fb-shortcut">
+                <span className="fb-shortcut__keys">
+                  <kbd>Ctrl</kbd>
+                  <kbd>Shift</kbd>
+                  <kbd>Z</kbd>
+                </span>
+                <span className="fb-shortcut__desc">Rehacer</span>
+              </div>
+              <div className="fb-shortcut">
+                <span className="fb-shortcut__keys">
+                  <kbd>Ctrl</kbd>
+                  <kbd>Y</kbd>
+                </span>
+                <span className="fb-shortcut__desc">Rehacer (alternativo)</span>
+              </div>
+              <div className="fb-shortcut">
+                <span className="fb-shortcut__keys">
+                  <kbd>Ctrl</kbd>
+                  <kbd>C</kbd>
+                </span>
+                <span className="fb-shortcut__desc">Copiar el paso</span>
+              </div>
+              <div className="fb-shortcut">
+                <span className="fb-shortcut__keys">
+                  <kbd>Ctrl</kbd>
+                  <kbd>V</kbd>
+                </span>
+                <span className="fb-shortcut__desc">Pegar el paso</span>
+              </div>
+              <div className="fb-shortcut">
+                <span className="fb-shortcut__keys">
+                  <kbd>Ctrl</kbd>
+                  <kbd>D</kbd>
+                </span>
+                <span className="fb-shortcut__desc">Duplicar el paso</span>
+              </div>
+              <div className="fb-shortcut">
+                <span className="fb-shortcut__keys">
+                  <kbd>Supr</kbd>
+                  <span className="fb-shortcut__or">/</span>
+                  <kbd>Backspace</kbd>
+                </span>
+                <span className="fb-shortcut__desc">Borrar lo seleccionado</span>
+              </div>
+              <div className="fb-shortcut">
+                <span className="fb-shortcut__keys">
+                  <kbd>arrastrar</kbd>
+                  <span className="fb-shortcut__or">→</span>
+                  <kbd>vacío</kbd>
+                </span>
+                <span className="fb-shortcut__desc">Conectar y crear un paso</span>
+              </div>
+              <div className="fb-shortcut">
+                <span className="fb-shortcut__keys">
+                  <kbd>+</kbd>
+                </span>
+                <span className="fb-shortcut__desc">Insertar un paso en la conexión</span>
+              </div>
+              <div className="fb-shortcut">
+                <span className="fb-shortcut__keys">
+                  <kbd>?</kbd>
+                </span>
+                <span className="fb-shortcut__desc">Abrir / cerrar esta ayuda</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -590,23 +1194,32 @@ function FlowBuilderInner({
             >
               <ReactFlow
                 nodes={nodes}
-                edges={edges}
+                edges={rfEdges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
+                onConnectStart={onConnectStart}
+                onConnectEnd={onConnectEnd}
+                onNodeDragStart={onNodeDragStart}
+                onNodeDragStop={onNodeDragStop}
+                onNodesDelete={onNodesDelete}
+                onEdgesDelete={onEdgesDelete}
                 onNodeClick={(_, n) => setSelectedId(n.id)}
                 onPaneClick={() => setSelectedId(null)}
                 nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
                 defaultEdgeOptions={edgeDefaults}
                 fitView
+                snapToGrid
+                snapGrid={[20, 20]}
                 proOptions={{ hideAttribution: true }}
                 style={{ background: "var(--bg-1)" }}
               >
                 <Background
                   variant={BackgroundVariant.Dots}
-                  gap={20}
-                  size={1}
-                  color="var(--border-1)"
+                  gap={22}
+                  size={1.4}
+                  color="var(--border-2)"
                 />
                 <Controls showInteractive={false} />
                 <MiniMap
@@ -653,11 +1266,21 @@ function FlowBuilderInner({
               waTemplates={waTemplates}
               onChange={(patch) => updateNodeData(selectedNode.id, patch)}
               onDelete={() => deleteNode(selectedNode.id)}
+              onDuplicate={() => duplicateNode(selectedNode.id)}
               onClose={() => setSelectedId(null)}
             />
           )}
         </div>
       </div>
+
+      {picker && (
+        <NodePicker
+          screenX={picker.at.x}
+          screenY={picker.at.y}
+          onPick={onPickerPick}
+          onClose={() => setPicker(null)}
+        />
+      )}
     </BuilderCtx.Provider>
   );
 }
@@ -726,6 +1349,7 @@ function Inspector({
   waTemplates,
   onChange,
   onDelete,
+  onDuplicate,
   onClose,
 }: {
   node: Node;
@@ -733,6 +1357,7 @@ function Inspector({
   waTemplates: WaTemplate[];
   onChange: (patch: Record<string, unknown>) => void;
   onDelete: () => void;
+  onDuplicate: () => void;
   onClose: () => void;
 }) {
   const kind = (node.data as { kind: NodeKind }).kind;
@@ -819,9 +1444,20 @@ function Inspector({
           </div>
         )}
 
-        <button onClick={onDelete} className="fb-insp__delete">
-          <Trash2 size={13} /> Eliminar paso
-        </button>
+        <div className="fb-insp__actions">
+          {kind !== "start" && (
+            <button
+              onClick={onDuplicate}
+              className="fb-insp__dup"
+              title="Duplicar este paso (Ctrl+D)"
+            >
+              <Copy size={13} /> Duplicar
+            </button>
+          )}
+          <button onClick={onDelete} className="fb-insp__delete">
+            <Trash2 size={13} /> Eliminar paso
+          </button>
+        </div>
       </div>
     </div>
   );

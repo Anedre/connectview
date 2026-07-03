@@ -1,108 +1,83 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ReactFlow,
-  ReactFlowProvider,
-  Background,
-  BackgroundVariant,
-  Controls,
-  MiniMap,
-  addEdge,
-  useNodesState,
-  useEdgesState,
-  useReactFlow,
-  Handle,
-  Position,
-  MarkerType,
-  type Node,
-  type Edge,
-  type Connection,
-  type NodeProps,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import { useEffect, useMemo, useState } from "react";
 import {
   LogIn,
-  LogOut,
   Send,
   Clock,
   GitBranch,
+  Shuffle,
   Zap,
   Plus,
   Save,
   Trash2,
-  Network,
   Check,
   AlertTriangle,
   X,
+  Users,
+  ArrowLeft,
+  Flag,
 } from "lucide-react";
-import type { Journey, JourneyNode, JourneyNodeKind, JourneyStats } from "@/hooks/useJourneys";
+import type {
+  Journey,
+  JourneyNode,
+  JourneyNodeKind,
+  JourneyEdge,
+  JourneyStats,
+} from "@/hooks/useJourneys";
 import { useSegments, type FilterRule, type FilterOp } from "@/hooks/useSegments";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 
 /**
- * JourneyBuilder — el editor visual del motor de Journeys (Fase 3 · 3B). Lienzo
- * react-flow (molde del FlowBuilder del Pilar 8) para que un no-técnico arme un
- * recorrido: Entrada → Enviar → Esperar → Ramificar → Acción → Fin. El CRUD ya
- * está folded en manage-leads (saveJourney/deleteJourney) y el AVANCE lo corre el
- * journey-runner (tick). Aquí solo se edita la definición (nodos + aristas +
- * entrada) y se persiste con `onSave`.
+ * JourneyBuilder — el editor del motor de Journeys, rediseñado a su identidad
+ * propia: una "línea de vida" VERTICAL (el tiempo baja), distinta a propósito del
+ * canvas horizontal de Bots y de la receta de Automatizaciones. Las esperas no son
+ * un nodo más: son TRAMOS rotulados del riel ("⏱ 3 días"). Las ramas abren dos
+ * carriles paralelos (Sí / No). Cada estación muestra su embudo de gente. Color de
+ * sección: verde. El modelo (nodes + edges) es el nativo del journey — no hay
+ * conversión a react-flow. El avance lo corre el journey-runner (tick).
  */
 
-// ── Catálogo de tipos de nodo (etiqueta, icono, color, conectores) ──────────
-type Outlet = { id: string; label?: string };
+const rid = () => Math.random().toString(36).slice(2, 9);
+
+// ── Catálogo de tipos de estación ───────────────────────────────────────────
+type Outlet = { id: "out" | "yes" | "no" | "a" | "b"; label?: string };
 interface KindDef {
   label: string;
   icon: typeof Send;
   accent: string;
-  hasTarget: boolean; // ¿recibe conexión de entrada?
-  outlets: Outlet[]; // salidas (0 = terminal)
+  outlets: Outlet[]; // 0 = terminal
 }
 const JOURNEY_KINDS: Record<JourneyNodeKind, KindDef> = {
-  entry: {
-    label: "Entrada",
-    icon: LogIn,
-    accent: "#16a34a",
-    hasTarget: false,
-    outlets: [{ id: "out" }],
-  },
-  send: {
-    label: "Enviar",
-    icon: Send,
-    accent: "#2563eb",
-    hasTarget: true,
-    outlets: [{ id: "out" }],
-  },
-  wait: {
-    label: "Esperar",
-    icon: Clock,
-    accent: "#d97706",
-    hasTarget: true,
-    outlets: [{ id: "out" }],
-  },
+  entry: { label: "Entrada", icon: LogIn, accent: "var(--green)", outlets: [{ id: "out" }] },
+  send: { label: "Enviar", icon: Send, accent: "var(--cyan)", outlets: [{ id: "out" }] },
+  wait: { label: "Esperar", icon: Clock, accent: "var(--gold)", outlets: [{ id: "out" }] },
   branch: {
     label: "Ramificar",
     icon: GitBranch,
-    accent: "#7c3aed",
-    hasTarget: true,
+    accent: "var(--iris)",
     outlets: [
       { id: "yes", label: "Sí" },
       { id: "no", label: "No" },
     ],
   },
-  action: {
-    label: "Acción",
-    icon: Zap,
-    accent: "#0891b2",
-    hasTarget: true,
-    outlets: [{ id: "out" }],
+  split: {
+    label: "Test A/B",
+    icon: Shuffle,
+    accent: "var(--accent)",
+    outlets: [
+      { id: "a", label: "A" },
+      { id: "b", label: "B" },
+    ],
   },
-  exit: { label: "Fin", icon: LogOut, accent: "#64748b", hasTarget: true, outlets: [] },
+  action: { label: "Acción", icon: Zap, accent: "var(--coral)", outlets: [{ id: "out" }] },
+  exit: { label: "Fin", icon: Flag, accent: "var(--text-3)", outlets: [] },
 };
-const PALETTE: JourneyNodeKind[] = ["send", "wait", "branch", "action", "exit"];
+/** Pasos que se pueden insertar en medio del riel (exit se agrega solo al final). */
+const INSERTABLE: JourneyNodeKind[] = ["send", "wait", "branch", "split", "action"];
 
 type NodeParams = Record<string, unknown>;
 
-/** Resumen legible de un nodo según sus params — lo que se ve en el lienzo. */
+/** Resumen legible de una estación según sus params. */
 function summaryOf(kind: JourneyNodeKind, p: NodeParams): string {
   switch (kind) {
     case "entry":
@@ -113,9 +88,9 @@ function summaryOf(kind: JourneyNodeKind, p: NodeParams): string {
       return t ? `${ch} · ${t}` : `${ch} · (sin plantilla)`;
     }
     case "wait": {
-      if (Array.isArray(p.untilRule) && p.untilRule.length) return "Esperar hasta que se cumpla…";
+      if (Array.isArray(p.untilRule) && p.untilRule.length) return "hasta que se cumpla…";
       const d = Number(p.days ?? 0);
-      return d > 0 ? `Esperar ${d} día${d === 1 ? "" : "s"}` : "Esperar (sin definir)";
+      return d > 0 ? `${d} día${d === 1 ? "" : "s"}` : "(sin definir)";
     }
     case "branch": {
       const n = Array.isArray(p.rules) ? p.rules.length : 0;
@@ -125,267 +100,130 @@ function summaryOf(kind: JourneyNodeKind, p: NodeParams): string {
     case "action": {
       if (p.type === "moveStage") return `Mover a etapa "${p.stageId || "?"}"`;
       if (p.type === "webhook") return "Llamar webhook";
-      if (p.type === "enqueueDialer") return "Encolar al dialer";
+      if (p.type === "enqueueDialer") return "Llamar (encolar al dialer)";
       return "Acción (sin definir)";
+    }
+    case "split": {
+      const pct = Math.max(0, Math.min(100, Number(p.percent ?? 50)));
+      return `${pct}% A · ${100 - pct}% B`;
     }
     case "exit":
       return "El lead sale del recorrido";
   }
 }
 
-// ── Nodo custom del lienzo ──────────────────────────────────────────────────
-type JData = { kind: JourneyNodeKind; params: NodeParams; count?: number };
-function JourneyFlowNodeImpl({ data, selected }: NodeProps) {
-  const d = data as JData;
-  const def = JOURNEY_KINDS[d.kind];
-  if (!def) return null;
-  const Icon = def.icon;
-  const accent = def.accent;
-  const branchy = def.outlets.length > 1 || Boolean(def.outlets[0]?.label);
-  const single = def.outlets.length === 1 && !def.outlets[0].label ? def.outlets[0] : null;
-  const count = Number(d.count || 0); // leads que descansan en este nodo (embudo 3C)
-
-  return (
-    <div
-      style={{
-        minWidth: 210,
-        maxWidth: 260,
-        background: "var(--bg-2)",
-        border: `1px solid ${selected ? accent : "var(--border-2)"}`,
-        borderRadius: 12,
-        boxShadow: selected
-          ? `0 0 0 2px ${accent}40, 0 12px 26px -14px rgba(0,0,0,0.45)`
-          : "0 6px 18px -12px rgba(0,0,0,0.35)",
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ height: 3, background: `linear-gradient(90deg, ${accent}, ${accent}88)` }} />
-      {def.hasTarget && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          style={{
-            width: 10,
-            height: 10,
-            background: "var(--bg-1)",
-            border: "2px solid var(--border-2)",
-            left: -5,
-          }}
-        />
-      )}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px 4px" }}>
-        <span
-          style={{
-            display: "inline-flex",
-            width: 24,
-            height: 24,
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 7,
-            background: `${accent}1a`,
-            color: accent,
-          }}
-        >
-          <Icon size={14} strokeWidth={2.2} />
-        </span>
-        <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--text-1)" }}>{def.label}</span>
-        {count > 0 && (
-          <span
-            title={`${count} lead${count === 1 ? "" : "s"} en este paso`}
-            style={{
-              marginLeft: "auto",
-              minWidth: 20,
-              padding: "1px 7px",
-              borderRadius: 999,
-              background: accent,
-              color: "#fff",
-              fontSize: 11,
-              fontWeight: 800,
-            }}
-          >
-            {count}
-          </span>
-        )}
-      </div>
-      <div
-        style={{ padding: "0 11px 11px", fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.35 }}
-      >
-        {summaryOf(d.kind, d.params)}
-      </div>
-
-      {branchy && (
-        <div style={{ borderTop: "1px solid var(--border-1)" }}>
-          {def.outlets.map((o) => (
-            <div
-              key={o.id}
-              style={{
-                position: "relative",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "flex-end",
-                gap: 6,
-                padding: "6px 16px 6px 11px",
-                fontSize: 11,
-                fontWeight: 700,
-                color: accent,
-              }}
-            >
-              {o.label}
-              <Handle
-                type="source"
-                id={o.id}
-                position={Position.Right}
-                style={{
-                  width: 10,
-                  height: 10,
-                  background: accent,
-                  border: "2px solid var(--bg-1)",
-                  right: -5,
-                  position: "absolute",
-                  top: "50%",
-                }}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-      {single && (
-        <Handle
-          type="source"
-          id={single.id}
-          position={Position.Right}
-          style={{
-            width: 10,
-            height: 10,
-            background: accent,
-            border: "2px solid var(--bg-1)",
-            right: -5,
-          }}
-        />
-      )}
-    </div>
-  );
+// ── Layout: recorre el grafo y arma la "línea de vida" (árbol vertical) ───────
+interface ForkLeg {
+  on: "yes" | "no" | "a" | "b";
+  label: string;
+  tone: "yes" | "no" | "a" | "b";
+  items: TreeItem[];
 }
-const JourneyFlowNode = JourneyFlowNodeImpl;
-const nodeTypes = { journey: JourneyFlowNode };
+type TreeItem =
+  | { type: "station"; node: JourneyNode }
+  | { type: "wait"; node: JourneyNode }
+  | { type: "fork"; node: JourneyNode; legs: ForkLeg[] }
+  | { type: "ref"; toId: string; label: string };
 
-const EDGE_COLOR = "#7c8db5";
-const edgeDefaults = {
-  type: "smoothstep",
-  markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR, width: 16, height: 16 },
-  style: { stroke: EDGE_COLOR, strokeWidth: 1.6 },
-};
+interface BuiltTree {
+  items: TreeItem[];
+  orphans: JourneyNode[];
+}
 
-const COL_GAP = 300;
-const ROW_GAP = 130;
-const rid = () => Math.random().toString(36).slice(2, 9);
+/** Primer edge que sale de `id` por el conector `handle`. */
+function succ(edges: JourneyEdge[], id: string, handle: "out" | "yes" | "no"): string | null {
+  const e = edges.find((x) => x.from === id && (x.on || "out") === handle);
+  return e ? e.to : null;
+}
 
-/** Auto-layout L→R: profundidad por BFS desde la Entrada, columnas apiladas. */
-function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
-  const entry = nodes.find((n) => (n.data as JData).kind === "entry");
-  const depth = new Map<string, number>();
-  if (entry) {
-    const queue: Array<{ id: string; d: number }> = [{ id: entry.id, d: 0 }];
-    while (queue.length) {
-      const { id, d } = queue.shift()!;
-      if (depth.has(id) && depth.get(id)! >= d) continue;
-      depth.set(id, Math.max(depth.get(id) ?? 0, d));
-      edges.filter((e) => e.source === id).forEach((e) => queue.push({ id: e.target, d: d + 1 }));
+function buildTree(nodes: JourneyNode[], edges: JourneyEdge[]): BuiltTree {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const entry = nodes.find((n) => n.kind === "entry");
+  const visited = new Set<string>();
+
+  const walk = (startId: string | null): TreeItem[] => {
+    const items: TreeItem[] = [];
+    let cur = startId;
+    while (cur) {
+      const node = byId.get(cur);
+      if (!node) break;
+      if (visited.has(cur)) {
+        items.push({ type: "ref", toId: cur, label: JOURNEY_KINDS[node.kind].label });
+        break;
+      }
+      visited.add(cur);
+      if (node.kind === "wait") {
+        items.push({ type: "wait", node });
+        cur = succ(edges, cur, "out");
+        continue;
+      }
+      if (node.kind === "branch" || node.kind === "split") {
+        const bp = (node.params as NodeParams) || {};
+        const pct = Math.max(0, Math.min(100, Number(bp.percent ?? 50)));
+        const legs: ForkLeg[] =
+          node.kind === "branch"
+            ? [
+                { on: "yes", label: "SÍ · cumple", tone: "yes", items: walk(succ(edges, cur, "yes")) },
+                { on: "no", label: "NO · no cumple", tone: "no", items: walk(succ(edges, cur, "no")) },
+              ]
+            : [
+                { on: "a", label: `A · ${pct}%`, tone: "a", items: walk(succ(edges, cur, "a")) },
+                { on: "b", label: `B · ${100 - pct}%`, tone: "b", items: walk(succ(edges, cur, "b")) },
+              ];
+        items.push({ type: "fork", node, legs });
+        break;
+      }
+      items.push({ type: "station", node });
+      if (node.kind === "exit") break;
+      cur = succ(edges, cur, "out");
     }
-  }
-  nodes.forEach((n, i) => {
-    if (!depth.has(n.id)) depth.set(n.id, i);
-  });
-  const cols = new Map<number, string[]>();
-  nodes.forEach((n) => {
-    const d = depth.get(n.id) ?? 0;
-    if (!cols.has(d)) cols.set(d, []);
-    cols.get(d)!.push(n.id);
-  });
-  const pos = new Map<string, { x: number; y: number }>();
-  [...cols.keys()]
-    .sort((a, b) => a - b)
-    .forEach((d) => {
-      const ids = cols.get(d)!;
-      ids.forEach((id, i) => {
-        pos.set(id, { x: d * COL_GAP, y: i * ROW_GAP - ((ids.length - 1) * ROW_GAP) / 2 });
-      });
-    });
-  return nodes.map((n) => ({ ...n, position: pos.get(n.id) || n.position }));
-}
+    return items;
+  };
 
-function toRFNodes(j: Journey): Node[] {
-  return j.nodes.map((n) => ({
-    id: n.id,
-    type: "journey",
-    position: n.position || { x: 0, y: 0 },
-    data: { kind: n.kind, params: (n.params as NodeParams) || {} },
-  }));
-}
-function toRFEdges(j: Journey): Edge[] {
-  return j.edges.map((e, i) => ({
-    id: `e${i}:${e.from}->${e.to}:${e.on || "out"}`,
-    source: e.from,
-    target: e.to,
-    sourceHandle: e.on || "out",
-    ...edgeDefaults,
-  }));
+  const items = entry ? walk(entry.id) : [];
+  const orphans = nodes.filter((n) => !visited.has(n.id));
+  return { items, orphans };
 }
 
 /** Avisos de validación (no bloquean, guían). */
-function validateJourney(
-  nodes: Node[],
-  edges: Edge[],
-): Array<{ message: string; nodeId?: string }> {
+function validateJourney(nodes: JourneyNode[], edges: JourneyEdge[]) {
   const out: Array<{ message: string; nodeId?: string }> = [];
-  const entries = nodes.filter((n) => (n.data as JData).kind === "entry");
+  const entries = nodes.filter((n) => n.kind === "entry");
   if (entries.length === 0) out.push({ message: "Falta el nodo de Entrada." });
   if (entries.length > 1) out.push({ message: "Hay más de una Entrada — dejá solo una." });
   const entry = entries[0];
-  if (entry && !edges.some((e) => e.source === entry.id))
-    out.push({ message: "La Entrada no está conectada a ningún paso.", nodeId: entry.id });
-  if (!nodes.some((n) => (n.data as JData).kind === "exit"))
-    out.push({ message: "Agregá un nodo de Fin para cerrar el recorrido." });
+  if (entry && !edges.some((e) => e.from === entry.id))
+    out.push({ message: "La Entrada no lleva a ningún paso.", nodeId: entry.id });
+  if (!nodes.some((n) => n.kind === "exit"))
+    out.push({ message: "Agregá un Fin para cerrar el recorrido." });
   for (const n of nodes) {
-    const d = n.data as JData;
-    if (d.kind === "branch") {
-      const outs = edges.filter((e) => e.source === n.id).map((e) => e.sourceHandle);
+    const p = (n.params as NodeParams) || {};
+    if (n.kind === "branch") {
+      const outs = edges.filter((e) => e.from === n.id).map((e) => e.on || "out");
       if (!outs.includes("yes") || !outs.includes("no"))
-        out.push({
-          message: `La rama "${summaryOf("branch", d.params)}" necesita salida Sí y No.`,
-          nodeId: n.id,
-        });
+        out.push({ message: `La rama necesita salida Sí y No.`, nodeId: n.id });
     }
-    if (d.kind === "send" && !d.params.templateName && !d.params.subject)
+    if (n.kind === "split") {
+      const outs = edges.filter((e) => e.from === n.id).map((e) => e.on || "out");
+      if (!outs.includes("a") || !outs.includes("b"))
+        out.push({ message: `El test A/B necesita salida A y B.`, nodeId: n.id });
+    }
+    if (n.kind === "send" && !p.templateName && !p.subject)
       out.push({ message: "Un paso Enviar no tiene plantilla/asunto.", nodeId: n.id });
+    if (n.kind === "wait" && !Number(p.days) && !(Array.isArray(p.untilRule) && p.untilRule.length))
+      out.push({ message: "Una Espera no tiene tiempo definido.", nodeId: n.id });
     if (
-      d.kind !== "entry" &&
-      JOURNEY_KINDS[d.kind].hasTarget &&
-      !edges.some((e) => e.target === n.id)
+      n.kind !== "entry" &&
+      !edges.some((e) => e.to === n.id) &&
+      nodes.some((x) => x.kind === "entry")
     )
-      out.push({
-        message: `Paso "${JOURNEY_KINDS[d.kind].label}" suelto (sin entrada).`,
-        nodeId: n.id,
-      });
+      out.push({ message: `Paso "${JOURNEY_KINDS[n.kind].label}" suelto (sin entrada).`, nodeId: n.id });
   }
   return out;
 }
 
-// ── Wrapper con provider ────────────────────────────────────────────────────
-export function JourneyBuilder(props: {
-  initial: Journey;
-  onSave?: (j: Journey) => void | Promise<void>;
-  saving?: boolean;
-  onBack?: () => void;
-}) {
-  return (
-    <ReactFlowProvider>
-      <JourneyBuilderInner {...props} />
-    </ReactFlowProvider>
-  );
-}
-
-function JourneyBuilderInner({
+// ════════════════════════════════════════════════════════════════════════════
+export function JourneyBuilder({
   initial,
   onSave,
   saving,
@@ -396,12 +234,8 @@ function JourneyBuilderInner({
   saving?: boolean;
   onBack?: () => void;
 }) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition, fitView } = useReactFlow();
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(
-    layoutLR(toRFNodes(initial), toRFEdges(initial)),
-  );
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(toRFEdges(initial));
+  const [nodes, setNodes] = useState<JourneyNode[]>(initial.nodes);
+  const [edges, setEdges] = useState<JourneyEdge[]>(initial.edges);
   const [name, setName] = useState(initial.name);
   const [status, setStatus] = useState<Journey["status"]>(initial.status);
   const [entry, setEntry] = useState(initial.entry || { manual: true });
@@ -412,8 +246,8 @@ function JourneyBuilderInner({
 
   // Recargar al cambiar de journey.
   useEffect(() => {
-    setNodes(layoutLR(toRFNodes(initial), toRFEdges(initial)));
-    setEdges(toRFEdges(initial));
+    setNodes(initial.nodes);
+    setEdges(initial.edges);
     setName(initial.name);
     setStatus(initial.status);
     setEntry(initial.entry || { manual: true });
@@ -422,8 +256,7 @@ function JourneyBuilderInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial.journeyId]);
 
-  // Observabilidad (3C): trae el embudo del journey guardado y pinta el conteo
-  // de leads en cada nodo (data.count) + el timeline en el inspector.
+  // Observabilidad: embudo por nodo + timeline del journey guardado.
   useEffect(() => {
     const url = getApiEndpoints()?.manageLeads;
     if (!url || !initial.journeyId) {
@@ -436,245 +269,187 @@ function JourneyBuilderInner({
       .catch(() => setStats(null));
   }, [initial.journeyId]);
 
-  // Inyecta el conteo por nodo en data.count cuando llegan las stats.
-  useEffect(() => {
-    const byNode = stats?.byNode || {};
-    setNodes((nds) =>
-      nds.map((n) => ({ ...n, data: { ...(n.data as JData), count: byNode[n.id] || 0 } })),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stats]);
-
-  const onConnect = useCallback(
-    (c: Connection) => setEdges((eds) => addEdge({ ...c, ...edgeDefaults }, eds)),
-    [setEdges],
-  );
-
-  const addNode = useCallback(
-    (kind: JourneyNodeKind) => {
-      const sel = selectedId ? nodes.find((n) => n.id === selectedId) : null;
-      let pos: { x: number; y: number };
-      if (sel) {
-        pos = { x: sel.position.x + COL_GAP, y: sel.position.y };
-      } else {
-        const rect = wrapperRef.current?.getBoundingClientRect();
-        pos = rect
-          ? screenToFlowPosition({ x: rect.x + rect.width / 2 - 105, y: rect.y + rect.height / 3 })
-          : { x: 120, y: 120 };
-      }
-      const id = rid();
-      setNodes((nds) => [
-        ...nds,
-        { id, type: "journey", position: pos, data: { kind, params: {} } },
-      ]);
-      // Autoconecta desde el primer conector libre del nodo seleccionado.
-      if (sel) {
-        const def = JOURNEY_KINDS[(sel.data as JData).kind];
-        const firstOutlet = def.outlets.find(
-          (o) => !edges.some((e) => e.source === sel.id && e.sourceHandle === o.id),
-        );
-        if (firstOutlet) {
-          setEdges((eds) =>
-            addEdge(
-              {
-                source: sel.id,
-                sourceHandle: firstOutlet.id,
-                target: id,
-                targetHandle: null,
-                ...edgeDefaults,
-              },
-              eds,
-            ),
-          );
-        }
-      }
-      setSelectedId(id);
-    },
-    [screenToFlowPosition, setNodes, setEdges, selectedId, nodes, edges],
-  );
-
-  const updateNodeParams = useCallback(
-    (id: string, patch: NodeParams) => {
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === id
-            ? {
-                ...n,
-                data: { ...(n.data as JData), params: { ...(n.data as JData).params, ...patch } },
-              }
-            : n,
-        ),
-      );
-    },
-    [setNodes],
-  );
-
-  const deleteNode = useCallback(
-    (id: string) => {
-      setNodes((nds) => nds.filter((n) => n.id !== id));
-      setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
-      setSelectedId(null);
-    },
-    [setNodes, setEdges],
-  );
-
-  const arrange = useCallback(() => {
-    setNodes((nds) => layoutLR(nds, edges));
-    window.setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 60);
-  }, [setNodes, edges, fitView]);
-
+  const tree = useMemo(() => buildTree(nodes, edges), [nodes, edges]);
   const issues = useMemo(() => validateJourney(nodes, edges), [nodes, edges]);
+  const byNode = stats?.byNode || {};
   const selectedNode = nodes.find((n) => n.id === selectedId) || null;
 
-  const currentJourney = useMemo<Journey>(
-    () => ({
-      journeyId: initial.journeyId,
-      name,
-      status,
-      entry,
-      reenroll,
-      nodes: nodes.map((n) => ({
-        id: n.id,
-        kind: (n.data as JData).kind,
-        params: (n.data as JData).params,
-        position: n.position,
-      })) as JourneyNode[],
-      edges: edges.map((e) => ({
-        from: e.source,
-        to: e.target,
-        on: e.sourceHandle === "yes" ? "yes" : e.sourceHandle === "no" ? "no" : undefined,
-      })),
-      goal: initial.goal,
-    }),
-    [initial.journeyId, initial.goal, name, status, entry, reenroll, nodes, edges],
-  );
+  // ── Mutaciones sobre el modelo ──
+  const updateParams = (id: string, patch: NodeParams) =>
+    setNodes((ns) =>
+      ns.map((n) =>
+        n.id === id ? { ...n, params: { ...((n.params as NodeParams) || {}), ...patch } } : n,
+      ),
+    );
 
-  const goToIssue = useCallback(
-    (nodeId?: string) => {
-      if (!nodeId) return;
-      setSelectedId(nodeId);
-      window.setTimeout(
-        () => fitView({ nodes: [{ id: nodeId }], duration: 400, maxZoom: 1.2, padding: 0.6 }),
-        30,
-      );
-    },
-    [fitView],
-  );
+  /** Inserta una estación nueva en la arista `from --handle--> to` (to puede ser null = punta). */
+  const insertStep = (
+    fromId: string,
+    handle: "out" | "yes" | "no" | "a" | "b",
+    toId: string | null,
+    kind: JourneyNodeKind,
+  ) => {
+    const id = rid();
+    const newNode: JourneyNode = { id, kind, params: kind === "split" ? { percent: 50 } : {} };
+    setNodes((ns) => {
+      const extra: JourneyNode[] = [newNode];
+      // Un branch/split nace con su 2ª salida hacia un Fin nuevo; la 1ª continúa el riel.
+      if (kind === "branch" || kind === "split")
+        extra.push({ id: `${id}x`, kind: "exit", params: {} });
+      return [...ns, ...extra];
+    });
+    setEdges((es) => {
+      let next = es.filter((e) => !(e.from === fromId && (e.on || "out") === handle && e.to === toId));
+      if (kind === "branch" || kind === "split") {
+        const contOn = kind === "branch" ? "yes" : "a";
+        const exitOn = kind === "branch" ? "no" : "b";
+        next = [
+          ...next,
+          { from: fromId, to: id, on: handle === "out" ? undefined : handle },
+          ...(toId ? [{ from: id, to: toId, on: contOn }] : []),
+          { from: id, to: `${id}x`, on: exitOn },
+        ];
+      } else {
+        next = [
+          ...next,
+          { from: fromId, to: id, on: handle === "out" ? undefined : handle },
+          ...(toId ? [{ from: id, to: toId }] : []),
+        ];
+      }
+      return next;
+    });
+    setSelectedId(id);
+  };
+
+  /** Quita una estación y recose el riel (predecesor → sucesor) cuando es lineal. */
+  const deleteNode = (id: string) => {
+    const node = nodes.find((n) => n.id === id);
+    if (!node || node.kind === "entry") return;
+    const inEdge = edges.find((e) => e.to === id);
+    const outEdge = edges.find((e) => e.from === id && (e.on || "out") === "out");
+    setNodes((ns) => ns.filter((n) => n.id !== id));
+    setEdges((es) => {
+      let next = es.filter((e) => e.from !== id && e.to !== id);
+      // recoser sólo si el nodo era lineal (1 entrada, ≤1 salida)
+      if (inEdge && outEdge && node.kind !== "branch")
+        next = [...next, { from: inEdge.from, to: outEdge.to, on: inEdge.on }];
+      return next;
+    });
+    setSelectedId(null);
+  };
+
+  const currentJourney: Journey = {
+    journeyId: initial.journeyId,
+    name,
+    status,
+    entry,
+    reenroll,
+    nodes,
+    edges,
+    goal: initial.goal,
+  };
+
+  const totalActive = stats?.byStatus?.active || 0;
+  const totalDone = stats?.byStatus?.done || 0;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+    <div className="jb">
       {/* Toolbar */}
-      <div className="fb-bar">
+      <div className="jb-bar">
         {onBack && (
-          <button onClick={onBack} title="Volver a mis journeys" className="fb-bar__back">
-            ←
+          <button onClick={onBack} title="Volver a mis journeys" className="jb-bar__back">
+            <ArrowLeft size={16} />
           </button>
         )}
-        <span className="fb-bar__icon">
-          <Network size={16} />
+        <span className="jb-bar__icon">
+          <Users size={15} />
         </span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Nombre del journey"
-          className="fb-bar__name"
+          className="jb-bar__name"
         />
-        <div className={`fb-status fb-status--${status}`}>
-          <span className="fb-status__dot" />
+        <div className={`jb-status jb-status--${status}`}>
+          <span className="jb-status__dot" />
           <select value={status} onChange={(e) => setStatus(e.target.value as Journey["status"])}>
             <option value="draft">Borrador</option>
             <option value="active">Activo</option>
             <option value="paused">Pausado</option>
           </select>
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          {stats && stats.total > 0 && (
-            <span
-              className="fb-chip"
-              title={`${stats.byStatus.active || 0} activos · ${stats.byStatus.done || 0} completados`}
-            >
-              {stats.total} inscrito{stats.total === 1 ? "" : "s"}
-            </span>
-          )}
-          <button
-            onClick={() => setShowIssues((s) => !s)}
-            title="Validación del recorrido"
-            className={`fb-chip ${issues.length ? "fb-chip--warn" : "fb-chip--ok"}`}
-          >
-            {issues.length ? <AlertTriangle size={13} /> : <Check size={13} />}
-            {issues.length ? `${issues.length} aviso${issues.length > 1 ? "s" : ""}` : "Sin avisos"}
-          </button>
-          <button
-            onClick={arrange}
-            title="Ordenar automáticamente (izq → der)"
-            className="btn btn--sm"
-          >
-            <Network size={13} /> Ordenar
-          </button>
-          <button
-            onClick={() => onSave?.(currentJourney)}
-            disabled={saving}
-            className="btn btn--primary btn--sm"
-          >
-            <Save size={13} /> {saving ? "Guardando…" : "Guardar"}
-          </button>
-        </div>
+        <div className="jb-bar__spacer" />
+        {stats && stats.total > 0 && (
+          <span className="jb-chip" title={`${totalActive} activos · ${totalDone} completados`}>
+            <Users size={12} /> {stats.total} inscrito{stats.total === 1 ? "" : "s"}
+          </span>
+        )}
+        <button
+          onClick={() => setShowIssues((s) => !s)}
+          title="Validación del recorrido"
+          className={`jb-chip ${issues.length ? "jb-chip--warn" : "jb-chip--ok"}`}
+        >
+          {issues.length ? <AlertTriangle size={13} /> : <Check size={13} />}
+          {issues.length ? `${issues.length} aviso${issues.length > 1 ? "s" : ""}` : "Sin avisos"}
+        </button>
+        <button
+          onClick={() => onSave?.(currentJourney)}
+          disabled={saving}
+          className="jb-btn jb-btn--primary"
+        >
+          <Save size={13} /> {saving ? "Guardando…" : "Guardar"}
+        </button>
       </div>
 
       {showIssues && issues.length > 0 && (
-        <div className="fb-issues">
+        <div className="jb-issues">
           {issues.map((i, idx) => (
             <button
               key={idx}
-              className="fb-issue"
-              onClick={() => goToIssue(i.nodeId)}
+              className="jb-issue"
+              onClick={() => i.nodeId && setSelectedId(i.nodeId)}
               disabled={!i.nodeId}
-              title={i.nodeId ? "Ir al paso" : undefined}
             >
               <AlertTriangle size={12} />
-              <span className="fb-issue__msg">{i.message}</span>
-              {i.nodeId && <span className="fb-issue__go">Ver paso →</span>}
+              <span>{i.message}</span>
+              {i.nodeId && <span className="jb-issue__go">Ver →</span>}
             </button>
           ))}
         </div>
       )}
 
-      {/* Body: paleta | lienzo | inspector */}
-      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        <JourneyPalette onAdd={addNode} />
-        <div ref={wrapperRef} style={{ flex: 1, position: "relative", minWidth: 0 }}>
-          <div style={{ position: "absolute", inset: 0 }}>
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onNodeClick={(_, n) => setSelectedId(n.id)}
-              onPaneClick={() => setSelectedId(null)}
-              nodeTypes={nodeTypes}
-              defaultEdgeOptions={edgeDefaults}
-              fitView
-              proOptions={{ hideAttribution: true }}
-              style={{ background: "var(--bg-1)" }}
-            >
-              <Background
-                variant={BackgroundVariant.Dots}
-                gap={20}
-                size={1}
-                color="var(--border-1)"
-              />
-              <Controls showInteractive={false} />
-              <MiniMap
-                pannable
-                zoomable
-                nodeColor={(n) => JOURNEY_KINDS[(n.data as JData).kind]?.accent || "#888"}
-                nodeStrokeWidth={2}
-                maskColor="rgba(10,16,28,0.6)"
-              />
-            </ReactFlow>
+      {/* Body: lienzo vertical | inspector */}
+      <div className="jb-body">
+        <div className="jb-canvas">
+          <div className="jb-lifeline">
+            <ColumnView
+              items={tree.items}
+              byNode={byNode}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onInsert={insertStep}
+            />
+            {tree.orphans.length > 0 && (
+              <div className="jb-orphans">
+                <div className="jb-orphans__title">
+                  <AlertTriangle size={12} /> Pasos sueltos (no conectados al recorrido)
+                </div>
+                <div className="jb-orphans__row">
+                  {tree.orphans.map((n) => (
+                    <StationCard
+                      key={n.id}
+                      node={n}
+                      count={byNode[n.id] || 0}
+                      selected={selectedId === n.id}
+                      onSelect={() => setSelectedId(n.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
         <JourneyInspector
           node={selectedNode}
           entry={entry}
@@ -682,7 +457,7 @@ function JourneyBuilderInner({
           stats={stats}
           onEntry={setEntry}
           onReenroll={setReenroll}
-          onParams={updateNodeParams}
+          onParams={updateParams}
           onDelete={deleteNode}
         />
       </div>
@@ -690,83 +465,247 @@ function JourneyBuilderInner({
   );
 }
 
-// ── Paleta izquierda ────────────────────────────────────────────────────────
-function JourneyPalette({ onAdd }: { onAdd: (k: JourneyNodeKind) => void }) {
+// ── Render recursivo de una columna del riel ────────────────────────────────
+function ColumnView({
+  items,
+  byNode,
+  selectedId,
+  onSelect,
+  onInsert,
+}: {
+  items: TreeItem[];
+  byNode: Record<string, number>;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onInsert: (
+    fromId: string,
+    handle: "out" | "yes" | "no" | "a" | "b",
+    toId: string | null,
+    kind: JourneyNodeKind,
+  ) => void;
+}) {
+  // ¿La columna está "abierta" al final? (último item con salida libre → inserter de punta)
+  const last = items[items.length - 1];
+  let tailFrom: { id: string; handle: "out" | "yes" | "no" } | null = null;
+  if (last) {
+    if (last.type === "station" && last.node.kind !== "exit")
+      tailFrom = { id: last.node.id, handle: "out" };
+    else if (last.type === "wait") tailFrom = { id: last.node.id, handle: "out" };
+    // branch: sus legs manejan su propia cola; ref/exit: cerrado
+  }
+
   return (
-    <div
-      style={{
-        width: 168,
-        borderRight: "1px solid var(--border-1)",
-        background: "var(--bg-2)",
-        padding: 12,
-        overflowY: "auto",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 800,
-          color: "var(--text-3)",
-          textTransform: "uppercase",
-          letterSpacing: 0.4,
-          marginBottom: 10,
-        }}
-      >
-        Agregar paso
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {PALETTE.map((k) => {
-          const def = JOURNEY_KINDS[k];
-          const Icon = def.icon;
-          return (
-            <button
-              key={k}
-              onClick={() => onAdd(k)}
-              title={`Agregar "${def.label}"`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 9,
-                padding: "9px 10px",
-                borderRadius: 9,
-                border: "1px solid var(--border-2)",
-                background: "var(--bg-1)",
-                color: "var(--text-1)",
-                cursor: "pointer",
-                fontSize: 12.5,
-                fontWeight: 700,
-                textAlign: "left",
-              }}
-            >
-              <span
-                style={{
-                  display: "inline-flex",
-                  width: 22,
-                  height: 22,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 6,
-                  background: `${def.accent}1a`,
-                  color: def.accent,
-                }}
-              >
-                <Icon size={13} strokeWidth={2.2} />
-              </span>
-              {def.label}
-              <Plus size={12} style={{ marginLeft: "auto", color: "var(--text-3)" }} />
-            </button>
-          );
-        })}
-      </div>
-      <div style={{ marginTop: 14, fontSize: 10.5, color: "var(--text-3)", lineHeight: 1.5 }}>
-        Tip: seleccioná un paso y agregá el siguiente — se conecta solo. O tirá una línea entre los
-        puntos de conexión.
-      </div>
+    <div className="jb-col">
+      {items.length === 0 && (
+        <Inserter onPick={(k) => onInsert("__none__", "out", null, k)} disabledRoot />
+      )}
+      {items.map((it, i) => {
+        const prev = items[i - 1];
+        // el inserter ANTES de este item divide la arista prev--handle-->this
+        let node: JourneyNode | null = null;
+        if (it.type === "station" || it.type === "wait" || it.type === "fork") node = it.node;
+        const showInserter = i > 0 && prev && node;
+        let fromId = "";
+        let handle: "out" | "yes" | "no" = "out";
+        if (showInserter && node) {
+          if (prev.type === "station" || prev.type === "wait") {
+            fromId = prev.node.id;
+            handle = "out";
+          } else if (prev.type === "fork") {
+            fromId = prev.node.id; // no debería pasar (el fork corta la columna), pero por seguridad
+          }
+        }
+        return (
+          <div key={node ? node.id : `ref${i}`} className="jb-seg">
+            {showInserter && node && fromId && (
+              <Inserter onPick={(k) => onInsert(fromId, handle, node!.id, k)} />
+            )}
+            {it.type === "station" && (
+              <>
+                {i === 0 && it.node.kind !== "entry" && <div className="jb-link" />}
+                <StationCard
+                  node={it.node}
+                  count={byNode[it.node.id] || 0}
+                  selected={selectedId === it.node.id}
+                  onSelect={() => onSelect(it.node.id)}
+                />
+              </>
+            )}
+            {it.type === "wait" && (
+              <WaitTram
+                node={it.node}
+                count={byNode[it.node.id] || 0}
+                selected={selectedId === it.node.id}
+                onSelect={() => onSelect(it.node.id)}
+              />
+            )}
+            {it.type === "fork" && (
+              <>
+                <StationCard
+                  node={it.node}
+                  count={byNode[it.node.id] || 0}
+                  selected={selectedId === it.node.id}
+                  onSelect={() => onSelect(it.node.id)}
+                />
+                <div className="jb-split">
+                  {it.legs.map((leg) => (
+                    <div key={leg.on} className={`jb-leg jb-leg--${leg.tone}`}>
+                      <div className={`jb-leg__tag jb-leg__tag--${leg.tone}`}>{leg.label}</div>
+                      <ColumnView
+                        items={leg.items}
+                        byNode={byNode}
+                        selectedId={selectedId}
+                        onSelect={onSelect}
+                        onInsert={onInsert}
+                      />
+                      {leg.items.length === 0 && (
+                        <Inserter onPick={(k) => onInsert(it.node.id, leg.on, null, k)} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            {it.type === "ref" && (
+              <div className="jb-ref" title="Este paso vuelve a una estación anterior">
+                ↑ vuelve a {it.label}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {tailFrom && (
+        <Inserter
+          onPick={(k) => onInsert(tailFrom!.id, tailFrom!.handle, null, k)}
+          allowExit
+        />
+      )}
     </div>
   );
 }
 
-// ── Inspector derecho ───────────────────────────────────────────────────────
+// ── Estación (tarjeta) ──────────────────────────────────────────────────────
+function StationCard({
+  node,
+  count,
+  selected,
+  onSelect,
+}: {
+  node: JourneyNode;
+  count: number;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const def = JOURNEY_KINDS[node.kind];
+  const Icon = def.icon;
+  const p = (node.params as NodeParams) || {};
+  return (
+    <button
+      className={`jb-station ${selected ? "jb-station--sel" : ""}`}
+      style={{ "--_c": def.accent } as React.CSSProperties}
+      onClick={onSelect}
+    >
+      <span className="jb-station__ico">
+        <Icon size={15} strokeWidth={2.2} />
+      </span>
+      <span className="jb-station__body">
+        <span className="jb-station__label">{def.label}</span>
+        <span className="jb-station__sum">{summaryOf(node.kind, p)}</span>
+      </span>
+      {count > 0 && (
+        <span className="jb-station__count" title={`${count} lead${count === 1 ? "" : "s"} acá`}>
+          <Users size={11} /> {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ── Tramo de espera (el tiempo hecho visible) ───────────────────────────────
+function WaitTram({
+  node,
+  count,
+  selected,
+  onSelect,
+}: {
+  node: JourneyNode;
+  count: number;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const p = (node.params as NodeParams) || {};
+  const until = Array.isArray(p.untilRule) && p.untilRule.length;
+  const d = Number(p.days ?? 0);
+  const label = until ? "hasta que se cumpla" : d > 0 ? `${d} día${d === 1 ? "" : "s"}` : "sin definir";
+  return (
+    <button
+      className={`jb-tram ${selected ? "jb-tram--sel" : ""}`}
+      onClick={onSelect}
+      title="Editar la espera"
+    >
+      <span className="jb-tram__line" />
+      <span className="jb-tram__pill">
+        <Clock size={12} /> {label}
+        {count > 0 && <span className="jb-tram__count">· {count} esperando</span>}
+      </span>
+      <span className="jb-tram__line" />
+    </button>
+  );
+}
+
+// ── Inserter "+" (menú de pasos) ────────────────────────────────────────────
+function Inserter({
+  onPick,
+  allowExit,
+  disabledRoot,
+}: {
+  onPick: (k: JourneyNodeKind) => void;
+  allowExit?: boolean;
+  disabledRoot?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const kinds: JourneyNodeKind[] = allowExit ? [...INSERTABLE, "exit"] : INSERTABLE;
+  if (disabledRoot) return null;
+  return (
+    <div className="jb-ins">
+      {!open ? (
+        <button className="jb-ins__btn" onClick={() => setOpen(true)} title="Insertar paso acá">
+          <Plus size={13} />
+        </button>
+      ) : (
+        <>
+          <div className="jb-ins__backdrop" onClick={() => setOpen(false)} />
+          <div className="jb-ins__menu">
+            {kinds.map((k) => {
+              const def = JOURNEY_KINDS[k];
+              const Icon = def.icon;
+              return (
+                <button
+                  key={k}
+                  className="jb-ins__opt"
+                  style={{ "--_c": def.accent } as React.CSSProperties}
+                  onClick={() => {
+                    onPick(k);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="jb-ins__optico">
+                    <Icon size={13} strokeWidth={2.2} />
+                  </span>
+                  {def.label}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Inspector derecho (edición de params) — re-pieled verde, lógica intacta
+// ════════════════════════════════════════════════════════════════════════════
 const OP_LABELS: Record<FilterOp, string> = {
   eq: "es igual a",
   neq: "no es igual a",
@@ -787,78 +726,6 @@ const LEAD_FIELDS = [
   "montoEstimado",
   "utmSource",
 ];
-
-function RuleRows({
-  rules,
-  onChange,
-}: {
-  rules: FilterRule[];
-  onChange: (r: FilterRule[]) => void;
-}) {
-  const set = (i: number, patch: Partial<FilterRule>) =>
-    onChange(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-      <datalist id="jb-fields">
-        {LEAD_FIELDS.map((f) => (
-          <option key={f} value={f} />
-        ))}
-      </datalist>
-      {rules.map((r, i) => {
-        const noVal = r.op === "exists" || r.op === "notexists";
-        return (
-          <div key={i} style={{ display: "flex", gap: 5, alignItems: "center" }}>
-            <input
-              list="jb-fields"
-              value={r.field}
-              onChange={(e) => set(i, { field: e.target.value })}
-              placeholder="campo"
-              style={jbInput(88)}
-            />
-            <select
-              value={r.op}
-              onChange={(e) => set(i, { op: e.target.value as FilterOp })}
-              style={jbInput(96)}
-            >
-              {(Object.keys(OP_LABELS) as FilterOp[]).map((op) => (
-                <option key={op} value={op}>
-                  {OP_LABELS[op]}
-                </option>
-              ))}
-            </select>
-            {!noVal && (
-              <input
-                value={String(r.value ?? "")}
-                onChange={(e) => set(i, { value: e.target.value })}
-                placeholder="valor"
-                style={jbInput(72)}
-              />
-            )}
-            <button
-              onClick={() => onChange(rules.filter((_, idx) => idx !== i))}
-              title="Quitar"
-              style={{
-                ...jbInput(26),
-                color: "var(--danger, #e5484d)",
-                cursor: "pointer",
-                padding: 0,
-              }}
-            >
-              <X size={12} />
-            </button>
-          </div>
-        );
-      })}
-      <button
-        onClick={() => onChange([...rules, { field: "score", op: "gte", value: "70" }])}
-        className="btn btn--sm"
-        style={{ alignSelf: "flex-start" }}
-      >
-        <Plus size={12} /> Condición
-      </button>
-    </div>
-  );
-}
 
 function jbInput(width?: number): React.CSSProperties {
   return {
@@ -881,6 +748,67 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function RuleRows({ rules, onChange }: { rules: FilterRule[]; onChange: (r: FilterRule[]) => void }) {
+  const set = (i: number, patch: Partial<FilterRule>) =>
+    onChange(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      <datalist id="jb-fields">
+        {LEAD_FIELDS.map((f) => (
+          <option key={f} value={f} />
+        ))}
+      </datalist>
+      {rules.map((r, i) => {
+        const noVal = r.op === "exists" || r.op === "notexists";
+        return (
+          <div key={i} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+            <input
+              list="jb-fields"
+              value={r.field}
+              onChange={(e) => set(i, { field: e.target.value })}
+              placeholder="campo"
+              style={jbInput(84)}
+            />
+            <select
+              value={r.op}
+              onChange={(e) => set(i, { op: e.target.value as FilterOp })}
+              style={jbInput(92)}
+            >
+              {(Object.keys(OP_LABELS) as FilterOp[]).map((op) => (
+                <option key={op} value={op}>
+                  {OP_LABELS[op]}
+                </option>
+              ))}
+            </select>
+            {!noVal && (
+              <input
+                value={String(r.value ?? "")}
+                onChange={(e) => set(i, { value: e.target.value })}
+                placeholder="valor"
+                style={jbInput(64)}
+              />
+            )}
+            <button
+              onClick={() => onChange(rules.filter((_, idx) => idx !== i))}
+              title="Quitar"
+              style={{ ...jbInput(26), color: "var(--red)", cursor: "pointer", padding: 0 }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        );
+      })}
+      <button
+        onClick={() => onChange([...rules, { field: "score", op: "gte", value: "70" }])}
+        className="jb-btn"
+        style={{ alignSelf: "flex-start" }}
+      >
+        <Plus size={12} /> Condición
+      </button>
+    </div>
+  );
+}
+
 function JourneyInspector({
   node,
   entry,
@@ -891,7 +819,7 @@ function JourneyInspector({
   onParams,
   onDelete,
 }: {
-  node: Node | null;
+  node: JourneyNode | null;
   entry: NonNullable<Journey["entry"]>;
   reenroll: boolean;
   stats: JourneyStats | null;
@@ -911,63 +839,26 @@ function JourneyInspector({
       .catch(() => {});
   }, []);
 
-  const wrap: React.CSSProperties = {
-    width: 288,
-    borderLeft: "1px solid var(--border-1)",
-    background: "var(--bg-2)",
-    padding: 14,
-    overflowY: "auto",
-  };
-
   if (!node) {
     return (
-      <div style={wrap}>
-        <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.5 }}>
-          Seleccioná un paso del lienzo para editarlo. Empezá por la <strong>Entrada</strong> para
-          definir cómo entran los leads.
+      <div className="jb-inspect">
+        <div className="jb-inspect__hint">
+          Tocá una estación del riel para editarla. Empezá por la <strong>Entrada</strong> — definí
+          cómo entran los leads al recorrido.
         </div>
         {stats && stats.total > 0 && (
           <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-1)", marginBottom: 8 }}>
-              Actividad · {stats.total} inscrito{stats.total === 1 ? "" : "s"}
+            <div className="jb-inspect__h">Actividad · {stats.total} inscrito{stats.total === 1 ? "" : "s"}</div>
+            <div style={{ display: "flex", gap: 6, margin: "8px 0 14px" }}>
+              <span className="jb-chip jb-chip--ok">{stats.byStatus.active || 0} activos</span>
+              <span className="jb-chip">{stats.byStatus.done || 0} completados</span>
             </div>
-            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-              <span
-                className="fb-chip"
-                style={{ background: "var(--accent-green-soft)", color: "var(--accent-green)" }}
-              >
-                {stats.byStatus.active || 0} activos
-              </span>
-              <span className="fb-chip">{stats.byStatus.done || 0} completados</span>
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "var(--text-3)",
-                textTransform: "uppercase",
-                letterSpacing: 0.4,
-                marginBottom: 6,
-              }}
-            >
-              Timeline reciente
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <div className="jb-inspect__k">Timeline reciente</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 6 }}>
               {stats.recent.slice(0, 12).map((r, i) => (
-                <div
-                  key={i}
-                  style={{
-                    fontSize: 11.5,
-                    color: "var(--text-2)",
-                    lineHeight: 1.4,
-                    borderLeft: "2px solid var(--border-2)",
-                    paddingLeft: 8,
-                  }}
-                >
-                  <div style={{ fontWeight: 700, color: "var(--text-1)" }}>
-                    {r.note || `en ${r.node}`}
-                  </div>
-                  <div style={{ color: "var(--text-3)" }}>
+                <div key={i} className="jb-tl">
+                  <div className="jb-tl__note">{r.note || `en ${r.node}`}</div>
+                  <div className="jb-tl__meta">
                     {r.leadId.slice(0, 12)} ·{" "}
                     {r.at
                       ? new Date(r.at).toLocaleString("es-PE", {
@@ -987,48 +878,26 @@ function JourneyInspector({
     );
   }
 
-  const d = node.data as JData;
-  const def = JOURNEY_KINDS[d.kind];
-  const p = d.params;
+  const def = JOURNEY_KINDS[node.kind];
+  const p = (node.params as NodeParams) || {};
   const set = (patch: NodeParams) => onParams(node.id, patch);
 
   return (
-    <div style={wrap}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-        <span
-          style={{
-            display: "inline-flex",
-            width: 26,
-            height: 26,
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 7,
-            background: `${def.accent}1a`,
-            color: def.accent,
-          }}
-        >
+    <div className="jb-inspect">
+      <div className="jb-inspect__head">
+        <span className="jb-inspect__ico" style={{ "--_c": def.accent } as React.CSSProperties}>
           <def.icon size={15} strokeWidth={2.2} />
         </span>
-        <span style={{ fontSize: 14, fontWeight: 800, color: "var(--text-1)" }}>{def.label}</span>
-        {d.kind !== "entry" && (
-          <button
-            onClick={() => onDelete(node.id)}
-            title="Eliminar paso"
-            style={{
-              marginLeft: "auto",
-              background: "none",
-              border: "none",
-              color: "var(--text-3)",
-              cursor: "pointer",
-            }}
-          >
+        <span className="jb-inspect__title">{def.label}</span>
+        {node.kind !== "entry" && (
+          <button onClick={() => onDelete(node.id)} title="Eliminar paso" className="jb-inspect__del">
             <Trash2 size={15} />
           </button>
         )}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {d.kind === "entry" && (
+        {node.kind === "entry" && (
           <>
             <Field label="Cómo entran los leads">
               <select
@@ -1036,8 +905,7 @@ function JourneyInspector({
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === "manual") onEntry({ manual: true });
-                  else if (v === "segment")
-                    onEntry({ segmentId: segments[0]?.segmentId, manual: false });
+                  else if (v === "segment") onEntry({ segmentId: segments[0]?.segmentId, manual: false });
                   else onEntry({ trigger: v, manual: false });
                 }}
                 style={jbInput()}
@@ -1065,37 +933,21 @@ function JourneyInspector({
                 </select>
               </Field>
             )}
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 12.5,
-                color: "var(--text-2)",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={reenroll}
-                onChange={(e) => onReenroll(e.target.checked)}
-              />
+            <label className="jb-check">
+              <input type="checkbox" checked={reenroll} onChange={(e) => onReenroll(e.target.checked)} />
               Permitir re-inscripción (volver a entrar si ya pasó)
             </label>
-            <div style={{ fontSize: 11, color: "var(--text-3)", lineHeight: 1.5 }}>
-              La entrada automática por disparador/segmento se activa en el tick del runner (Fase
-              3C). La inscripción manual ya funciona desde Leads.
+            <div className="jb-note">
+              La entrada automática por disparador/segmento la activa el tick del runner. La
+              inscripción manual ya funciona desde Leads.
             </div>
           </>
         )}
 
-        {d.kind === "send" && (
+        {node.kind === "send" && (
           <>
             <Field label="Canal">
-              <select
-                value={String(p.channel || "whatsapp")}
-                onChange={(e) => set({ channel: e.target.value })}
-                style={jbInput()}
-              >
+              <select value={String(p.channel || "whatsapp")} onChange={(e) => set({ channel: e.target.value })} style={jbInput()}>
                 <option value="whatsapp">WhatsApp</option>
                 <option value="email">Email</option>
               </select>
@@ -1103,32 +955,15 @@ function JourneyInspector({
             {p.channel === "email" ? (
               <>
                 <Field label="Asunto">
-                  <input
-                    value={String(p.subject || "")}
-                    onChange={(e) => set({ subject: e.target.value })}
-                    placeholder="Asunto del correo"
-                    style={jbInput()}
-                  />
+                  <input value={String(p.subject || "")} onChange={(e) => set({ subject: e.target.value })} placeholder="Asunto del correo" style={jbInput()} />
                 </Field>
                 <Field label="Cuerpo">
-                  <textarea
-                    value={String(p.body || "")}
-                    onChange={(e) => set({ body: e.target.value })}
-                    rows={4}
-                    placeholder="Texto del correo…"
-                    style={{ ...jbInput(), resize: "vertical", fontFamily: "inherit" }}
-                  />
+                  <textarea value={String(p.body || "")} onChange={(e) => set({ body: e.target.value })} rows={4} placeholder="Texto del correo…" style={{ ...jbInput(), resize: "vertical", fontFamily: "inherit" }} />
                 </Field>
               </>
             ) : (
               <Field label="Plantilla de WhatsApp">
-                <input
-                  list="jb-templates"
-                  value={String(p.templateName || "")}
-                  onChange={(e) => set({ templateName: e.target.value })}
-                  placeholder="nombre_de_la_plantilla"
-                  style={jbInput()}
-                />
+                <input list="jb-templates" value={String(p.templateName || "")} onChange={(e) => set({ templateName: e.target.value })} placeholder="nombre_de_la_plantilla" style={jbInput()} />
                 <datalist id="jb-templates">
                   {templates.map((t) => (
                     <option key={t.name} value={t.name} />
@@ -1136,14 +971,11 @@ function JourneyInspector({
                 </datalist>
               </Field>
             )}
-            <div style={{ fontSize: 11, color: "var(--text-3)", lineHeight: 1.5 }}>
-              El envío pasa por el gate de supresión (no le manda a un DNC). El wiring del envío
-              real se completa en 3C.
-            </div>
+            <div className="jb-note">El envío pasa por el gate de supresión (no le manda a un DNC).</div>
           </>
         )}
 
-        {d.kind === "wait" && (
+        {node.kind === "wait" && (
           <>
             <Field label="Tipo de espera">
               <select
@@ -1163,96 +995,79 @@ function JourneyInspector({
             </Field>
             {Array.isArray(p.untilRule) ? (
               <Field label="Esperar hasta que (todas)">
-                <RuleRows
-                  rules={p.untilRule as FilterRule[]}
-                  onChange={(r) => set({ untilRule: r })}
-                />
+                <RuleRows rules={p.untilRule as FilterRule[]} onChange={(r) => set({ untilRule: r })} />
               </Field>
             ) : (
               <Field label="Días a esperar">
-                <input
-                  type="number"
-                  min={0}
-                  value={Number(p.days ?? 1)}
-                  onChange={(e) => set({ days: Math.max(0, Number(e.target.value)) })}
-                  style={jbInput(90)}
-                />
+                <input type="number" min={0} value={Number(p.days ?? 1)} onChange={(e) => set({ days: Math.max(0, Number(e.target.value)) })} style={jbInput(90)} />
               </Field>
             )}
           </>
         )}
 
-        {d.kind === "branch" && (
+        {node.kind === "branch" && (
           <>
             <Field label="Coincidir">
-              <select
-                value={String(p.match || "all")}
-                onChange={(e) => set({ match: e.target.value })}
-                style={jbInput()}
-              >
+              <select value={String(p.match || "all")} onChange={(e) => set({ match: e.target.value })} style={jbInput()}>
                 <option value="all">Todas las condiciones (Y)</option>
                 <option value="any">Cualquier condición (O)</option>
               </select>
             </Field>
             <Field label="Condiciones">
-              <RuleRows
-                rules={(p.rules as FilterRule[]) || []}
-                onChange={(r) => set({ rules: r })}
-              />
+              <RuleRows rules={(p.rules as FilterRule[]) || []} onChange={(r) => set({ rules: r })} />
             </Field>
-            <div style={{ fontSize: 11, color: "var(--text-3)", lineHeight: 1.5 }}>
-              <strong>Sí</strong> = el lead cumple · <strong>No</strong> = no cumple. Conectá cada
-              salida a su paso.
+            <div className="jb-note">
+              <strong>Sí</strong> = el lead cumple · <strong>No</strong> = no cumple.
             </div>
           </>
         )}
 
-        {d.kind === "action" && (
+        {node.kind === "split" && (
+          <>
+            <Field label="% que va a la rama A">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={Number(p.percent ?? 50)}
+                onChange={(e) => set({ percent: Math.max(0, Math.min(100, Number(e.target.value))) })}
+                style={jbInput(90)}
+              />
+            </Field>
+            <div className="jb-note">
+              Reparte los leads de forma estable: el mismo lead cae siempre en la misma rama.{" "}
+              <strong>A</strong> recibe {Number(p.percent ?? 50)}% · <strong>B</strong> el resto.
+            </div>
+          </>
+        )}
+
+        {node.kind === "action" && (
           <>
             <Field label="Tipo de acción">
-              <select
-                value={String(p.type || "moveStage")}
-                onChange={(e) => set({ type: e.target.value })}
-                style={jbInput()}
-              >
+              <select value={String(p.type || "moveStage")} onChange={(e) => set({ type: e.target.value })} style={jbInput()}>
                 <option value="moveStage">Mover a etapa</option>
                 <option value="webhook">Llamar webhook</option>
-                <option value="enqueueDialer">Encolar al dialer</option>
+                <option value="enqueueDialer">Llamar (encolar al dialer)</option>
               </select>
             </Field>
             {p.type === "webhook" ? (
               <Field label="URL del webhook">
-                <input
-                  value={String(p.url || "")}
-                  onChange={(e) => set({ url: e.target.value })}
-                  placeholder="https://…"
-                  style={jbInput()}
-                />
+                <input value={String(p.url || "")} onChange={(e) => set({ url: e.target.value })} placeholder="https://…" style={jbInput()} />
               </Field>
             ) : p.type === "enqueueDialer" ? (
               <Field label="Campaña (id, opcional)">
-                <input
-                  value={String(p.campaignId || "")}
-                  onChange={(e) => set({ campaignId: e.target.value })}
-                  placeholder="id de campaña"
-                  style={jbInput()}
-                />
+                <input value={String(p.campaignId || "")} onChange={(e) => set({ campaignId: e.target.value })} placeholder="id de campaña" style={jbInput()} />
               </Field>
             ) : (
               <Field label="Etapa destino (stageId)">
-                <input
-                  value={String(p.stageId || "")}
-                  onChange={(e) => set({ stageId: e.target.value })}
-                  placeholder='p.ej. "won"'
-                  style={jbInput()}
-                />
+                <input value={String(p.stageId || "")} onChange={(e) => set({ stageId: e.target.value })} placeholder='p.ej. "won"' style={jbInput()} />
               </Field>
             )}
           </>
         )}
 
-        {d.kind === "exit" && (
-          <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+        {node.kind === "exit" && (
+          <div className="jb-note" style={{ fontSize: 12.5 }}>
             Fin del recorrido. Al llegar acá, el lead sale del journey (enrollment «done»).
           </div>
         )}

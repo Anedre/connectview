@@ -96,18 +96,19 @@ export interface ExecData {
   liveAgents?: string[];
 }
 
-/** Paleta de datos "infografía" del diseño v2 (tokenizada también como --data-* en index.css). */
+/** Paleta de datos "infografía" — alineada al sistema ARIA v2 (navy · teal · verde · gold). */
 export const EXEC_DATA_PALETTE = {
-  teal: "#15485A",
-  emerald: "#2E9D8E",
-  lime: "#92C73E",
-  orange: "#F2972E",
-  cyan: "#1C97A6",
-  amber: "#F5A524",
+  teal: "#0E7C86",
+  emerald: "#1F8A5B",
+  lime: "#158A8C",
+  orange: "#B07D2B",
+  cyan: "#2C5698",
+  amber: "#B07D2B",
 } as const;
 
-/** Paleta diversa aprobada (un color vívido y único por serie/etapa; cicla si hay más). */
-export const DATA_COLORS = ["#2BC6E6","#25B873","#A3D63B","#F5C518","#F5A524","#F2722E","#9B8CF0","#ED84C2","#ED5257","#6E8BFF"];
+/** Paleta diversa ARIA (un color único por serie/etapa; cicla si hay más).
+ *  Navy · teal · verde · bronce · iris · coral · rojo + variantes. */
+export const DATA_COLORS = ["#2C5698","#0E7C86","#1F8A5B","#B07D2B","#5B57B8","#CE5B4C","#C34A43","#3D69B4","#158A8C","#8F6420"];
 
 export const EXEC_MOCK: ExecData = {
   kpis: {
@@ -142,10 +143,10 @@ export const EXEC_MOCK: ExecData = {
     { label: "30/5", actual: 96, anterior: 40 },
   ],
   sentiment: [
-    { name: "Positivo", value: 114, color: "#138354" },
-    { name: "Neutral", value: 48, color: "#7A879F" },
-    { name: "Mixto", value: 14, color: "#B8761A" },
-    { name: "Negativo", value: 8, color: "#C0353A" },
+    { name: "Positivo", value: 114, color: "#1F8A5B" },
+    { name: "Neutral", value: 48, color: "#7F8EA4" },
+    { name: "Mixto", value: 14, color: "#B07D2B" },
+    { name: "Negativo", value: 8, color: "#C34A43" },
   ],
   agentRank: [
     { name: "María Gonzales", value: 42 },
@@ -155,26 +156,26 @@ export const EXEC_MOCK: ExecData = {
     { name: "Diego Soto", value: 19 },
   ],
   byQueue: [
-    { name: "UDEP-Pregrado", value: 78, color: "#0F84A0" },
-    { name: "UDEP-Posgrado", value: 41, color: "#138354" },
-    { name: "UDEP-Alumnos", value: 33, color: "#6253CE" },
-    { name: "UDEP-Diplomados", value: 20, color: "#B8761A" },
-    { name: "Gerencia", value: 12, color: "#C0353A" },
+    { name: "UDEP-Pregrado", value: 78, color: "#0E7C86" },
+    { name: "UDEP-Posgrado", value: 41, color: "#1F8A5B" },
+    { name: "UDEP-Alumnos", value: 33, color: "#5B57B8" },
+    { name: "UDEP-Diplomados", value: 20, color: "#B07D2B" },
+    { name: "Gerencia", value: 12, color: "#C34A43" },
   ],
   leadSources: [
-    { name: "Web", value: 18, color: "#0F84A0" },
-    { name: "Campaña", value: 14, color: "#138354" },
-    { name: "WhatsApp", value: 9, color: "#6253CE" },
-    { name: "Salesforce", value: 4, color: "#B8761A" },
-    { name: "Manual", value: 2, color: "#C0353A" },
+    { name: "Web", value: 18, color: "#0E7C86" },
+    { name: "Campaña", value: 14, color: "#1F8A5B" },
+    { name: "WhatsApp", value: 9, color: "#5B57B8" },
+    { name: "Salesforce", value: 4, color: "#B07D2B" },
+    { name: "Manual", value: 2, color: "#C34A43" },
   ],
   funnel: [
-    { label: "Contactado", value: 47, color: "#0F84A0" },
-    { label: "Interesado", value: 31, color: "#138354" },
-    { label: "Negociando", value: 18, color: "#6253CE" },
-    { label: "Cerrando", value: 9, color: "#B8761A" },
-    { label: "Inscrito", value: 5, color: "#0f6e46" },
-    { label: "No interesado", value: 6, color: "#C0353A" },
+    { label: "Contactado", value: 47, color: "#0E7C86" },
+    { label: "Interesado", value: 31, color: "#1F8A5B" },
+    { label: "Negociando", value: 18, color: "#5B57B8" },
+    { label: "Cerrando", value: 9, color: "#B07D2B" },
+    { label: "Inscrito", value: 5, color: "#177049" },
+    { label: "No interesado", value: 6, color: "#C34A43" },
   ],
   campaigns: [
     { name: "Admisión Pregrado 2026-I", done: 340, total: 500, status: "RUNNING" },

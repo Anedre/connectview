@@ -61,12 +61,19 @@ async function bundleHandler(dir) {
     outfile: outFile,
     minify: false,
     sourcemap: false,
-    external: [
-      "@aws-sdk/*",
-      "aws-sdk",
-      // Built-in / runtime-provided modules
-      "node:*",
-    ],
+    // Por defecto TODO @aws-sdk queda external (lo provee el runtime nodejs20).
+    // Con EXTERNAL_OVERRIDE (lista separada por comas) se controla qué queda
+    // external y se bundlea el resto — para clientes que NO están en el runtime
+    // (p.ej. @aws-sdk/client-cost-explorer): listá todo lo demás como external y
+    // ese cliente se empaqueta. Mismo mecanismo que create-lambda.mjs.
+    external: process.env.EXTERNAL_OVERRIDE
+      ? process.env.EXTERNAL_OVERRIDE.split(",").map((s) => s.trim()).filter(Boolean)
+      : [
+          "@aws-sdk/*",
+          "aws-sdk",
+          // Built-in / runtime-provided modules
+          "node:*",
+        ],
     logLevel: "warning",
   });
 

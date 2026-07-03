@@ -8,7 +8,14 @@ import type { FilterRule } from "@/hooks/useSegments";
  * manual están folded en `manage-leads` (GET ?journeys=1, POST saveJourney/
  * deleteJourney/enrollJourney). El AVANCE lo corre el `journey-runner` (tick).
  */
-export type JourneyNodeKind = "entry" | "send" | "wait" | "branch" | "action" | "exit";
+export type JourneyNodeKind =
+  | "entry"
+  | "send"
+  | "wait"
+  | "branch"
+  | "split"
+  | "action"
+  | "exit";
 export interface JourneyNode {
   id: string;
   kind: JourneyNodeKind;
@@ -19,7 +26,8 @@ export interface JourneyNode {
 export interface JourneyEdge {
   from: string;
   to: string;
-  on?: "yes" | "no";
+  /** Salida: branch→"yes"/"no", split A/B→"a"/"b", lineal→undefined. */
+  on?: string;
 }
 export interface Journey {
   journeyId: string;

@@ -9,6 +9,13 @@ import { colorFromName as avatarColor, initialsOf } from "@/components/vox/primi
 import { NotIntegrated } from "@/components/vox/NotIntegrated";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { displayCustomerName } from "@/lib/customerName";
+import { Btn, Pill } from "@/components/aria";
+import {
+  CitasExplain,
+  CitasLegend,
+  CitasStatGrid,
+  type CitasStats,
+} from "@/components/appointments/aria/AppointmentsAria";
 
 /**
  * Citas — Google-Calendar-styled scheduler. Unified with Follow-ups:
@@ -494,6 +501,35 @@ export function AppointmentsPage() {
     return c;
   }, [appts]);
 
+  // ARIA KPI strip — all derived from the agent's REAL callbacks.
+  //  · Hoy         → citas cuyo día es hoy
+  //  · Semana      → citas dentro de la semana visible (anchor)
+  //  · Confirmadas → % completadas sobre las no canceladas
+  //  · No-show     → % de "no asistió" sobre el total gestionado
+  const citasStats = useMemo<CitasStats>(() => {
+    const wkStart = startOfWeek(anchor);
+    const wkEnd = addDays(wkStart, 7);
+    let today = 0;
+    let week = 0;
+    for (const a of appts) {
+      const d = new Date(a.whenISO);
+      if (sameDay(d, now)) today++;
+      if (d >= wkStart && d < wkEnd) week++;
+    }
+    const done = statusCounts.done || 0;
+    const cancelled = statusCounts.cancelled || 0;
+    const noShow = statusCounts.no_show || 0;
+    const scheduled = statusCounts.scheduled || 0;
+    const confirmBase = done + noShow + scheduled; // no canceladas
+    const managed = done + noShow + cancelled + scheduled; // total gestionado
+    return {
+      today,
+      week,
+      confirmedPct: confirmBase ? Math.round((done / confirmBase) * 100) : 0,
+      noShowPct: managed ? Math.round((noShow / managed) * 100) : 0,
+    };
+  }, [appts, anchor, now, statusCounts]);
+
   const toggleStatus = (s: string) => {
     setActiveStatuses((cur) => {
       const next = new Set(cur);
@@ -648,6 +684,9 @@ export function AppointmentsPage() {
               Crear
             </button>
 
+            {/* ARIA explainer — captación agenda framing */}
+            <CitasExplain />
+
             <MiniMonth
               anchor={miniAnchor}
               selected={anchor}
@@ -683,6 +722,12 @@ export function AppointmentsPage() {
                 );
               })}
             </div>
+
+            {/* ARIA KPI strip — real numbers from the agent's callbacks */}
+            <CitasStatGrid stats={citasStats} />
+
+            {/* ARIA channel legend */}
+            <CitasLegend />
 
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <div className="gcal__section-title">Próximamente</div>
@@ -723,44 +768,44 @@ export function AppointmentsPage() {
               <path d="M3 6h18M3 12h18M3 18h18" />
             </svg>
           </button>
-          <button
-            type="button"
-            className="gcal__bar-today"
+          <Btn
+            variant="soft"
+            size="sm"
             onClick={() => {
               setAnchor(new Date());
               setMiniAnchor(new Date());
             }}
           >
             Hoy
-          </button>
-          <button
-            type="button"
-            className="gcal__bar-arrow"
+          </Btn>
+          <Btn
+            variant="ghost"
+            size="sm"
+            icon="chevL"
             onClick={() => go(-1)}
             title="Anterior"
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            className="gcal__bar-arrow"
+            aria-label="Anterior"
+          />
+          <Btn
+            variant="ghost"
+            size="sm"
+            icon="chevR"
             onClick={() => go(1)}
             title="Siguiente"
-          >
-            ›
-          </button>
+            aria-label="Siguiente"
+          />
           <span className="gcal__bar-title">{title}</span>
           <div className="gcal__bar-spacer" />
-          <span className="gcal__bar-count">{upcomingCount} próximas</span>
-          <button
-            type="button"
-            className="gcal__bar-iconbtn"
+          <Pill tone="cyan">{upcomingCount} próximas</Pill>
+          <Btn
+            variant="ghost"
+            size="sm"
+            icon="refresh"
             onClick={load}
             disabled={loading}
             title="Recargar"
-          >
-            <Icon.Refresh size={16} />
-          </button>
+            aria-label="Recargar"
+          />
           <div className="gcal__bar-view" role="tablist">
             {(["day", "week", "month"] as View[]).map((v) => (
               <button
@@ -887,15 +932,16 @@ function MiniMonth({
     () => Array.from({ length: 42 }, (_, i) => addDays(gridStart, i)),
     [gridStart]
   );
-  // For each visible cell, mark a dot when at least one appointment
-  // exists that day — gives the agent at-a-glance density.
-  const hasAppt = useMemo(() => {
-    const set = new Set<string>();
+  // Densidad por día: cuántas citas tiene cada celda visible → hasta 3 dots,
+  // para que el agente vea la carga de la semana/mes de un vistazo.
+  const countByDay = useMemo(() => {
+    const m = new Map<string, number>();
     for (const a of appts) {
       const d = new Date(a.whenISO);
-      set.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+      const k = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      m.set(k, (m.get(k) || 0) + 1);
     }
-    return set;
+    return m;
   }, [appts]);
 
   return (
@@ -924,7 +970,7 @@ function MiniMonth({
           const inMonth = d.getMonth() === anchor.getMonth();
           const isToday = sameDay(d, today);
           const isSelected = sameDay(d, selected);
-          const has = hasAppt.has(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+          const count = countByDay.get(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`) || 0;
           return (
             <button
               key={i}
@@ -935,12 +981,19 @@ function MiniMonth({
                 !inMonth && "gcal__mini-day--out",
                 isToday && "gcal__mini-day--today",
                 !isToday && isSelected && "gcal__mini-day--selected",
-                has && "gcal__mini-day--has",
               ]
                 .filter(Boolean)
                 .join(" ")}
+              title={count > 0 ? `${count} cita${count === 1 ? "" : "s"}` : undefined}
             >
               {d.getDate()}
+              {count > 0 && (
+                <span className="gcal__mini-dots">
+                  {Array.from({ length: Math.min(count, 3) }).map((_, k) => (
+                    <i key={k} />
+                  ))}
+                </span>
+              )}
             </button>
           );
         })}

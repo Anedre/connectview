@@ -4,6 +4,7 @@
    módulo histórico del que dependen cientos de imports. */
 /* eslint-disable react-refresh/only-export-components */
 import { useMemo, type CSSProperties, type ReactNode, type SVGProps } from "react";
+import { initials } from "@/lib/initials";
 
 /* ============================================================
    Vox primitives — Avatar, Spark, ChannelChip, Kpi, StatusPill
@@ -26,15 +27,10 @@ export function colorFromName(name: string): string {
   return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
 }
 
+/** @deprecated usá `initials` de `@/lib/initials`. Se mantiene como alias para
+ *  no romper los cientos de imports existentes; delega en la función canónica. */
 export function initialsOf(name: string | null | undefined): string {
-  if (!name) return "?";
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+  return initials(name);
 }
 
 interface AvatarProps {

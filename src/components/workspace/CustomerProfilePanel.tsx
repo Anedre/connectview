@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { getApiEndpoints } from "@/lib/api";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import { useContactHistory } from "@/hooks/useContactHistory";
 import { useActiveContact } from "@/hooks/useActiveContact";
@@ -9,11 +11,20 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useDebugRender, traceChange } from "@/lib/debugTrace";
 import { ContactDetailModal } from "@/components/workspace/ContactDetailModal";
+import { ContactHistoryPanel } from "@/components/workspace/ContactHistoryPanel";
+import { CasesPanel } from "@/components/workspace/CasesPanel";
+import { AgentNotesPanel } from "@/components/workspace/AgentNotesPanel";
 import { formatDurationSec } from "@/lib/utils";
 import {
   displayCustomerName,
   displayBusinessLine,
 } from "@/lib/customerName";
+
+/** Sub-pestañas del Cliente 360° estilo handoff. Sólo se muestran cuando el
+ *  panel recibe `contactId` (contexto de un contacto activo) — así puede
+ *  hostear Casos/Notas/Historial con sus datos reales. Sin `contactId` el
+ *  panel se comporta como antes (sólo Perfil). */
+type C360Tab = "perfil" | "historial" | "notas" | "casos";
 
 interface CustomerProfilePanelProps {
   phone: string | null;
@@ -21,6 +32,11 @@ interface CustomerProfilePanelProps {
   /** Bump to force the customer-profile hook to re-fetch even when
    *  the phone hasn't changed (used by the "Refrescar perfil" menu). */
   refreshKey?: number;
+  /** Contacto activo — habilita las pestañas Historial/Notas/Casos. Si se
+   *  omite, el panel renderiza sólo el Perfil (retro-compatible). */
+  contactId?: string | null;
+  /** Usuario del agente — requerido por AgentNotesPanel (pestaña Notas). */
+  agentUsername?: string;
 }
 
 const CHANNEL_META: Record<
@@ -39,12 +55,253 @@ function fmtDuration(s: number): string {
   return formatDurationSec(s);
 }
 
+/* -------------------------------------------------------------------------- */
+/* Edición inline de atributos del perfil                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Campos que el endpoint `update-customer-profile` sabe escribir. */
+type EditableField =
+  | "FirstName"
+  | "MiddleName"
+  | "LastName"
+  | "BusinessName"
+  | "AccountNumber"
+  | "EmailAddress"
+  | "PhoneNumber";
+
+const EDIT_VALIDATORS: Partial<Record<EditableField, (v: string) => boolean>> = {
+  PhoneNumber: (v) => !v || /^\+?\d[\d\s\-()]{6,}$/.test(v),
+  EmailAddress: (v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+};
+
+/**
+ * Valor de perfil editable EN EL LUGAR: se muestra como texto; al hacer click
+ * se convierte en input; Enter/blur guarda (POST update-customer-profile),
+ * Esc cancela. Reemplaza al botón "Editar" + modal. Sólo sirve cuando hay
+ * `profileId` y el endpoint está configurado; si no, cae a texto plano.
+ */
+function InlineEditField({
+  value,
+  field,
+  profileId,
+  agentUsername,
+  mono,
+  inputType = "text",
+  onSaved,
+}: {
+  value: string;
+  field: EditableField;
+  profileId: string | null;
+  agentUsername: string;
+  mono?: boolean;
+  inputType?: string;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  // Valor optimista: tras guardar mostramos el valor nuevo YA, sin esperar a
+  // que Customer Profiles (consistencia eventual) lo devuelva en el re-fetch.
+  const [optimistic, setOptimistic] = useState<string | null>(null);
+  const shown = optimistic ?? value;
+  const canEdit = !!profileId && !!getApiEndpoints()?.updateCustomerProfile;
+
+  // Cuando el re-fetch ya trae el valor guardado, soltamos el optimista.
+  useEffect(() => {
+    if (optimistic !== null && value === optimistic) setOptimistic(null);
+  }, [value, optimistic]);
+
+  const start = () => {
+    if (!canEdit || saving) return;
+    setDraft(shown);
+    setEditing(true);
+  };
+  const cancel = () => {
+    setDraft(shown);
+    setEditing(false);
+  };
+  const commit = async () => {
+    const next = draft.trim();
+    if (next === (shown ?? "").trim()) {
+      setEditing(false);
+      return;
+    }
+    const validator = EDIT_VALIDATORS[field];
+    if (validator && !validator(next)) {
+      toast.error("Formato inválido");
+      return;
+    }
+    const endpoints = getApiEndpoints();
+    if (!endpoints?.updateCustomerProfile || !profileId) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      const r = await fetch(endpoints.updateCustomerProfile, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileId,
+          fields: { [field]: next === "" ? null : next },
+          actor: agentUsername || "unknown",
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.message || data.error || `HTTP ${r.status}`);
+      toast.success("Perfil actualizado");
+      setOptimistic(next); // muestra el valor nuevo ya, sin esperar el re-fetch
+      setEditing(false);
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        disabled={saving}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        className={"inline-edit__input" + (mono ? " mono" : "")}
+        type={inputType}
+        inputMode={inputType === "tel" ? "tel" : inputType === "email" ? "email" : undefined}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={"inline-edit__val" + (mono ? " mono" : "") + (canEdit ? "" : " inline-edit__val--ro")}
+      onClick={start}
+      disabled={!canEdit}
+      title={canEdit ? "Click para editar" : undefined}
+    >
+      <span className={shown ? "inline-edit__txt" : "inline-edit__txt dim"}>
+        {shown || "Añadir…"}
+      </span>
+      {canEdit && <Icon.Pencil size={11} className="inline-edit__pencil" />}
+    </button>
+  );
+}
+
+/**
+ * Cliente 360° tabbed — envoltorio de presentación estilo handoff ARIA.
+ * Muestra 4 sub-pestañas (Perfil · Historial · Notas · Casos) cuando hay un
+ * contacto activo, cada una cableada a su panel REAL existente. Sin
+ * `contactId` sólo renderiza el Perfil (retro-compatible con los call sites
+ * que sólo pasan `phone`).
+ *
+ * NO reescribe la lógica del perfil: el cuerpo del perfil vive intacto en
+ * <CustomerProfileContent/> (antes era este mismo componente, sólo renombrado).
+ */
 export function CustomerProfilePanel({
   phone,
   isActive,
   refreshKey = 0,
+  contactId,
+  agentUsername = "",
 }: CustomerProfilePanelProps) {
-  const { profile, loading, error } = useCustomerProfile(phone, refreshKey);
+  const [tab, setTab] = useState<C360Tab>("perfil");
+  const tabbed = !!contactId;
+
+  // Sin contacto → comportamiento previo: sólo el Perfil (que a su vez muestra
+  // su propio estado vacío honesto cuando no hay teléfono).
+  if (!tabbed) {
+    return (
+      <CustomerProfileContent
+        phone={phone}
+        isActive={isActive}
+        refreshKey={refreshKey}
+        agentUsername={agentUsername}
+      />
+    );
+  }
+
+  const TABS: [C360Tab, string][] = [
+    ["perfil", "Perfil"],
+    ["historial", "Historial"],
+    ["notas", "Notas"],
+    ["casos", "Casos"],
+  ];
+
+  return (
+    <div data-debug-component="Cliente360Tabbed">
+      <div className="c360-tabs">
+        {TABS.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={tab === id}
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Perfil — cuerpo real intacto. */}
+      <div style={{ display: tab === "perfil" ? "block" : "none" }}>
+        <CustomerProfileContent
+          phone={phone}
+          isActive={isActive}
+          refreshKey={refreshKey}
+          agentUsername={agentUsername}
+        />
+      </div>
+
+      {/* Historial — contactos previos del cliente (panel real). */}
+      <div style={{ display: tab === "historial" ? "block" : "none" }}>
+        <ContactHistoryPanel phone={phone} />
+      </div>
+
+      {/* Notas — notas del agente para este contacto (panel real). */}
+      <div style={{ display: tab === "notas" ? "block" : "none" }}>
+        <AgentNotesPanel contactId={contactId ?? null} agentUsername={agentUsername} />
+      </div>
+
+      {/* Casos — Amazon Connect Cases (panel real). */}
+      <div style={{ display: tab === "casos" ? "block" : "none" }}>
+        <CasesPanel contactId={contactId ?? null} customerPhone={phone} />
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* CustomerProfileContent — cuerpo del Perfil (lógica original sin cambios)    */
+/* -------------------------------------------------------------------------- */
+
+function CustomerProfileContent({
+  phone,
+  isActive,
+  refreshKey = 0,
+  agentUsername = "",
+}: {
+  phone: string | null;
+  isActive: boolean;
+  refreshKey?: number;
+  agentUsername?: string;
+}) {
+  // Bump local: al guardar un atributo inline forzamos re-fetch del perfil
+  // sin depender de que el padre suba el refreshKey.
+  const [localRefresh, setLocalRefresh] = useState(0);
+  const { profile, loading, error } = useCustomerProfile(phone, refreshKey + localRefresh);
   const { contacts: history } = useContactHistory(phone, 90);
   // Tracks which interaction the agent clicked on — opens the detail
   // modal with the contactId, which fetches recording + transcript +
@@ -206,26 +463,49 @@ export function CustomerProfilePanel({
     ? formatDistanceToNow(new Date(stats.last), { addSuffix: false, locale: es })
     : null;
 
-  // Build the list of all structured profile fields with a value — every
-  // Customer Profiles field we know about, in a stable order. We render
-  // these as a flat key/value list so nothing gets lost.
-  const profileRows: Array<{ label: string; value: string; mono?: boolean }> = [];
-  const push = (label: string, value: string | undefined | null, mono = false) => {
-    if (value !== undefined && value !== null && String(value).trim() !== "") {
-      profileRows.push({ label, value: String(value), mono });
+  // Build the list of all structured profile fields — every Customer Profiles
+  // field we know about, in a stable order. Los campos EDITABLES (con `field`)
+  // se muestran aunque estén vacíos si `always` (los esenciales), para poder
+  // añadirlos inline; los no-editables sólo si tienen valor.
+  const profileRows: Array<{
+    label: string;
+    value: string;
+    mono?: boolean;
+    field?: EditableField;
+    inputType?: string;
+  }> = [];
+  const push = (
+    label: string,
+    value: string | undefined | null,
+    opts: { mono?: boolean; field?: EditableField; inputType?: string; always?: boolean } = {}
+  ) => {
+    const has = value !== undefined && value !== null && String(value).trim() !== "";
+    if (has || (opts.field && opts.always)) {
+      profileRows.push({
+        label,
+        value: has ? String(value) : "",
+        mono: opts.mono,
+        field: opts.field,
+        inputType: opts.inputType,
+      });
     }
   };
-  // Bug — Profile ID is a UUID and has no value for the agent. We keep
-  // it accessible via the more-menu / debug tooltips, but stop pushing
-  // it as a primary profile row.
-  push("Nombre", profile.firstName);
-  push("Segundo nombre", profile.middleName);
-  push("Apellido", profile.lastName);
-  push("Razón social", profile.businessName);
-  push("Tipo de cuenta", profile.partyType);
-  push("Cuenta", profile.accountNumber, true);
-  push("Email", profile.email);
-  push("Teléfono", profile.phoneNumber, true);
+  // Editables (Customer Profiles). Nombre/Apellido/Email/Teléfono siempre
+  // visibles (esenciales); el resto sólo si tienen valor.
+  push("Nombre", profile.firstName, { field: "FirstName", always: true });
+  push("Segundo nombre", profile.middleName, { field: "MiddleName" });
+  push("Apellido", profile.lastName, { field: "LastName", always: true });
+  push("Razón social", profile.businessName, { field: "BusinessName" });
+  push("Tipo de cuenta", profile.partyType); // solo lectura
+  push("Cuenta", profile.accountNumber, { mono: true, field: "AccountNumber" });
+  push("Email", profile.email, { field: "EmailAddress", inputType: "email", always: true });
+  push("Teléfono", profile.phoneNumber, {
+    mono: true,
+    field: "PhoneNumber",
+    inputType: "tel",
+    always: true,
+  });
+  // Solo lectura (el endpoint no los escribe todavía).
   push("Fecha de nacimiento", profile.birthDate);
   push("Género", profile.gender);
   if (profile.address) {
@@ -400,25 +680,38 @@ export function CustomerProfilePanel({
                   display: "grid",
                   gridTemplateColumns: "minmax(110px, 40%) 1fr",
                   gap: 10,
-                  padding: "8px 10px",
+                  padding: "6px 10px",
                   borderBottom:
                     i < profileRows.length - 1
                       ? "1px solid var(--border-1)"
                       : "none",
                   fontSize: 11.5,
+                  alignItems: "center",
                 }}
               >
                 <span className="muted">{r.label}</span>
-                <span
-                  className={r.mono ? "mono" : ""}
-                  style={{
-                    color: "var(--text-1)",
-                    overflowWrap: "anywhere",
-                    fontSize: r.mono ? 11 : 12,
-                  }}
-                >
-                  {r.value}
-                </span>
+                {r.field ? (
+                  <InlineEditField
+                    value={r.value}
+                    field={r.field}
+                    profileId={profile.profileId}
+                    agentUsername={agentUsername}
+                    mono={r.mono}
+                    inputType={r.inputType}
+                    onSaved={() => setLocalRefresh((n) => n + 1)}
+                  />
+                ) : (
+                  <span
+                    className={r.mono ? "mono" : ""}
+                    style={{
+                      color: "var(--text-1)",
+                      overflowWrap: "anywhere",
+                      fontSize: r.mono ? 11 : 12,
+                    }}
+                  >
+                    {r.value}
+                  </span>
+                )}
               </div>
             ))}
           </div>

@@ -16,21 +16,21 @@ const shortcuts = [
   {
     category: "Global",
     items: [
-      { keys: ["⌘", "K"], description: "Open command palette" },
-      { keys: ["⌘", "⇧", "D"], description: "Toggle dark mode" },
-      { keys: ["?"], description: "Show keyboard shortcuts" },
-      { keys: ["Esc"], description: "Close dialogs" },
+      { keys: ["⌘", "K"], description: "Abrir la paleta de comandos" },
+      { keys: ["⌘", "⇧", "D"], description: "Cambiar modo oscuro" },
+      { keys: ["?"], description: "Ver atajos de teclado" },
+      { keys: ["Esc"], description: "Cerrar diálogos" },
     ],
   },
   {
-    category: "Navigation (vim-style)",
+    category: "Navegación (estilo vim)",
     items: [
-      { keys: ["G", "D"], description: "Go to Dashboard" },
-      { keys: ["G", "A"], description: "Go to Agent Desktop" },
-      { keys: ["G", "M"], description: "Go to Monitoring" },
-      { keys: ["G", "R"], description: "Go to Reports" },
-      { keys: ["G", "C"], description: "Go to Recordings" },
-      { keys: ["G", "S"], description: "Go to Admin" },
+      { keys: ["G", "D"], description: "Ir a Inicio" },
+      { keys: ["G", "A"], description: "Ir a Agent Desktop" },
+      { keys: ["G", "M"], description: "Ir a Cola en vivo" },
+      { keys: ["G", "R"], description: "Ir a Reportes" },
+      { keys: ["G", "C"], description: "Ir a Grabaciones" },
+      { keys: ["G", "S"], description: "Ir a Configuración" },
     ],
   },
 ];
@@ -50,10 +50,10 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Keyboard className="h-4 w-4" />
-            Keyboard Shortcuts
+            Atajos de teclado
           </DialogTitle>
           <DialogDescription>
-            Speed up your workflow with these shortcuts.
+            Agilizá tu trabajo con estos atajos.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
@@ -75,7 +75,7 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
                           <Kbd>{k}</Kbd>
                           {i < item.keys.length - 1 && group.category.includes("vim") && (
                             <span className="text-xs text-muted-foreground">
-                              then
+                              luego
                             </span>
                           )}
                         </span>

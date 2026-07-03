@@ -6,6 +6,7 @@ import { roleLabelOf } from "@/types/auth";
 import { useActiveContact } from "@/hooks/useActiveContact";
 import { useLiveTranscript } from "@/hooks/useLiveTranscript";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
+import { useMicLevels } from "@/hooks/useMicLevels";
 import { useDebugRender, traceChange } from "@/lib/debugTrace";
 import { getApiEndpoints } from "@/lib/api";
 import { ActiveContactsTabStrip } from "@/components/workspace/ActiveContactsTabStrip";
@@ -18,16 +19,15 @@ import { ChatThreadPanel } from "@/components/workspace/ChatThreadPanel";
 import { EmailThreadPanel } from "@/components/workspace/EmailThreadPanel";
 import { MyCampaignLeadsPanel } from "@/components/workspace/MyCampaignLeadsPanel";
 import { useMyCampaignLeads } from "@/hooks/useMyCampaignLeads";
-import { AgentNotesPanel } from "@/components/workspace/AgentNotesPanel";
 import { AIAssistPanel } from "@/components/workspace/AIAssistPanel";
 import { AICoachPanel } from "@/components/workspace/AICoachPanel";
-import { CasesPanel } from "@/components/workspace/CasesPanel";
 import { DTMFKeypadModal } from "@/components/workspace/DTMFKeypadModal";
 import { TransferQueueModal } from "@/components/workspace/TransferQueueModal";
 import { Customer360MoreMenu } from "@/components/workspace/Customer360MoreMenu";
 import { LiveSummaryModal } from "@/components/workspace/LiveSummaryModal";
 import { QuickNoteModal } from "@/components/workspace/QuickNoteModal";
-import { OutboundActionsMenu } from "@/components/workspace/OutboundActionsMenu";
+import { AgentIdleCockpit } from "@/components/workspace/AgentIdleCockpit";
+import { MomentsPanel } from "@/components/workspace/MomentsPanel";
 import { CustomerBrowser } from "@/components/workspace/CustomerBrowser";
 import { WrapUpView } from "@/components/vox/WrapUpView";
 import {
@@ -35,10 +35,20 @@ import {
   colorFromName,
 } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+// ARIA design-system primitives — used to re-skin the Agent Desktop content
+// (pills, cards, buttons, KPIs) without touching the live softphone logic.
+import { Av, Btn, Card, Pill, Icon as AIcon } from "@/components/aria";
 import { AgentStatePill } from "@/components/vox/AgentStatePill";
 import { ConferenceModal } from "@/components/workspace/ConferenceModal";
-import { ContactHistoryPanel } from "@/components/workspace/ContactHistoryPanel";
 import { displayCustomerName } from "@/lib/customerName";
+// Cockpit estilo handoff: MODO DEMO (data mock, self-contained) + CallBar
+// horizontal reutilizado en el rediseño del estado EN-LLAMADA REAL.
+import {
+  AgentCockpitDemo,
+  DEMO_STATES,
+  type DemoState,
+  CallBar as CockpitCallBar,
+} from "@/components/workspace/aria-cockpit";
 
 /** CSS color token for the channel-coded glow ring behind the caller
  *  avatar in the softphone hero. Each channel gets its own accent so
@@ -157,6 +167,95 @@ function EmptyPanel({
           {title}
         </div>
         <div style={{ marginTop: 4, fontSize: 11.5 }}>{body}</div>
+      </div>
+    </div>
+  );
+}
+
+/** Barra compacta superior para canales no-voz (WhatsApp / Email /
+ *  Tarea) en el rediseño EN-LLAMADA. Espeja el `ChannelBar` de la
+ *  "Vista demo" (mismas clases .card--pop / Av / Pill / Btn) pero
+ *  cableada a los handlers REALES del softphone. El botón "Cerrar/
+ *  Finalizar" dispara hangup(); "Transferir/Nota" abren los modales
+ *  reales; "Llamar" (solo chat con teléfono) dispara placeCall(). */
+function ChannelBarReal({
+  channel,
+  label,
+  name,
+  secondary,
+  avatarColor,
+  canCall,
+  onCall,
+  onClose,
+  onTransfer,
+  onNote,
+  timer,
+}: {
+  channel: string;
+  label: string;
+  name: string;
+  secondary: string;
+  avatarColor: string;
+  canCall?: boolean;
+  onCall?: () => void;
+  onClose: () => void;
+  onTransfer?: () => void;
+  onNote?: () => void;
+  timer?: React.ReactNode;
+}) {
+  const meta: { tone: "green" | "gold" | "iris"; icon: string; color: string; close: string } =
+    channel === "CHAT"
+      ? { tone: "green", icon: "wa", color: "var(--green)", close: "Finalizar" }
+      : channel === "EMAIL"
+      ? { tone: "gold", icon: "mail", color: "var(--gold)", close: "Cerrar correo" }
+      : { tone: "iris", icon: "check", color: "var(--iris)", close: "Cerrar tarea" };
+
+  return (
+    <div className="card card--pop" style={{ padding: "12px 18px", marginBottom: 16 }}>
+      <div className="row between wrap gap12">
+        <div className="row gap12" style={{ minWidth: 0 }}>
+          <Av name={name} size={44} color={avatarColor} />
+          <div style={{ minWidth: 0 }}>
+            <div className="row gap8" style={{ fontSize: 15, fontWeight: 700 }}>
+              <span className="truncate" style={{ maxWidth: 220 }}>
+                {name}
+              </span>
+              <Pill tone={meta.tone} icon={meta.icon}>
+                {label}
+              </Pill>
+            </div>
+            {secondary && (
+              <div className="muted mono" style={{ fontSize: 12, marginTop: 2 }}>
+                {secondary}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="row gap10 wrap" style={{ alignItems: "center" }}>
+          {timer && (
+            <div className="mono" style={{ fontSize: 16, fontWeight: 700 }}>
+              {timer}
+            </div>
+          )}
+          {onNote && (
+            <Btn variant="ghost" size="sm" icon="plus" onClick={onNote}>
+              Nota
+            </Btn>
+          )}
+          {onTransfer && (
+            <Btn variant="ghost" size="sm" icon="route" onClick={onTransfer}>
+              Transferir
+            </Btn>
+          )}
+          {canCall && onCall && (
+            <Btn variant="soft" size="sm" icon="phone" onClick={onCall}>
+              Llamar
+            </Btn>
+          )}
+          <Btn variant="primary" size="sm" icon="check" onClick={onClose}>
+            {meta.close}
+          </Btn>
+        </div>
       </div>
     </div>
   );
@@ -314,15 +413,42 @@ export function AgentDesktopPage() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [conferenceOpen, setConferenceOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  // "Volver al inicio" durante una llamada: muestra el marcador sin colgar
+  // (la llamada sigue viva); un banner permite regresar al cockpit.
+  const [homeWhileInCall, setHomeWhileInCall] = useState(false);
   const [quickNoteOpen, setQuickNoteOpen] = useState(false);
+
+  // ─── MODO "Vista demo" ───────────────────────────────────────────
+  // Toggle discreto en el header. Cuando está ON, el Agent Desktop
+  // renderiza el cockpit del handoff con DATA MOCK (AgentCockpitDemo)
+  // para poder VER todos los estados sin una llamada real. Cuando está
+  // OFF, el softphone/CCP funciona EXACTAMENTE como siempre — cero
+  // cambios de comportamiento. Persistimos la elección para QA/demo.
+  const DEMO_KEY = "vox.agentDesktop.demoView";
+  const [demoOn, setDemoOn] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(DEMO_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [demoState, setDemoState] = useState<DemoState>("active");
+  const setDemo = (on: boolean) => {
+    setDemoOn(on);
+    try {
+      localStorage.setItem(DEMO_KEY, on ? "1" : "0");
+    } catch {
+      /* ignore quota / disabled storage */
+    }
+  };
   // Agendar follow-up/tarea ahora vive SOLO en el launcher global "Tasks"
   // (debajo de Copilot) — se quitaron los atajos in-call del softphone.
 
-  // Right-rail tab: 'cliente' (Customer 360°) | 'coach' (Claude Coach) |
-  // 'historial' (previous contacts of this customer). All three panels
-  // stay MOUNTED across switches so transcript-driven fetches don't
-  // stop when the agent flips between them.
-  const [rightRailTab, setRightRailTab] = useState<"cliente" | "coach" | "historial">("cliente");
+  // Right-rail tab: 'cliente' (Customer 360° — con sus sub-pestañas Perfil/
+  // Historial/Notas/Casos) | 'coach' (Claude Coach). Ambos paneles quedan
+  // MONTADOS entre cambios (display:none) para que los fetches disparados por
+  // la transcripción no se detengan cuando el agente cambia de pestaña.
+  const [rightRailTab, setRightRailTab] = useState<"cliente" | "coach">("cliente");
   const [coachBlockCount, setCoachBlockCount] = useState(0);
   const [coachPulse, setCoachPulse] = useState(false);
   const prevCoachCountRef = useRef(0);
@@ -482,6 +608,29 @@ export function AgentDesktopPage() {
   const sentTotal = sentimentCounts.pos + sentimentCounts.neu + sentimentCounts.neg || 1;
   const sentScore =
     (sentimentCounts.pos - sentimentCounts.neg) / Math.max(1, sentTotal);
+  // Sentiment -1..1 mapeado a 0..100 para el medidor del CallBar. Cuando
+  // aún no hay segmentos, mostramos el centro (50) en vez de saltar.
+  const hasSentiment =
+    sentimentCounts.pos + sentimentCounts.neu + sentimentCounts.neg > 0;
+  const sentMeter = hasSentiment ? Math.round((sentScore + 1) * 50) : 50;
+
+  // ¿Llamada de VOZ conectada y en foco? → dispara el rediseño en-llamada
+  // (CallBar horizontal + grid de 3 columnas). El resto de canales/estados
+  // (chat, email, idle, entrante) conserva el layout .call de 3 paneles.
+  const isVoiceInCall = isActive && channelKey === "VOICE";
+  // Rama que muestra el cockpit de voz: en llamada O marcando (saliente).
+  // Marcar entra DIRECTO al cockpit (con "Marcando…"), sin pantalla aparte.
+  const showVoiceCockpit = isVoiceInCall || (isDialing && channelKey === "VOICE");
+
+  // Ondas REALES del CallBar: nivel del micrófono del agente en vivo (17
+  // barras, igual que WAVE_BARS). Sólo se abre el mic en llamada conectada y
+  // con audio activo (no mute / no espera); si no, cae a la animación CSS.
+  const micLevels = useMicLevels(isVoiceInCall && !muted && !onHold, 17);
+
+  // Al terminar la llamada, salir del modo "inicio durante llamada".
+  useEffect(() => {
+    if (!showVoiceCockpit && homeWhileInCall) setHomeWhileInCall(false);
+  }, [showVoiceCockpit, homeWhileInCall]);
 
   // Caller display — uses the smart resolver: person name first, then
   // BusinessName only if it doesn't look like a Salesforce-synced
@@ -618,10 +767,76 @@ export function AgentDesktopPage() {
     isActive,
   });
 
+  // Header compacto del Agent Desktop — vive por encima de la tira de
+  // contactos. Lleva el toggle "Vista demo" (siempre visible, útil para
+  // demo/QA) y, cuando el demo está activo, el segmentador de estados.
+  const cockpitHeader = (
+    <div className="vox-ad__head">
+      <div className="row gap12" style={{ alignItems: "center", flexWrap: "wrap" }}>
+        {demoOn && (
+          <div className="stateseg" role="tablist" aria-label="Estado demo del agente">
+            {DEMO_STATES.map(([id, label, ic]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-pressed={demoState === id}
+                onClick={() => setDemoState(id)}
+              >
+                <AIcon name={ic} size={13} />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="row gap8" style={{ alignItems: "center" }}>
+        <span className="muted" style={{ fontSize: 11.5 }}>
+          Vista demo
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={demoOn}
+          aria-label="Alternar vista demo"
+          onClick={() => setDemo(!demoOn)}
+          title={
+            demoOn
+              ? "Volver al softphone real"
+              : "Ver el cockpit con datos de ejemplo (no toca la llamada real)"
+          }
+          className="vox-ad__switch"
+          data-on={demoOn ? "true" : "false"}
+        >
+          <span className="vox-ad__switch-knob" />
+        </button>
+      </div>
+    </div>
+  );
+
+  // MODO DEMO — reemplaza todo el softphone real por el cockpit mock.
+  // Self-contained: no monta hooks/modales del CCP; sólo el header sigue
+  // vivo para poder apagar el demo.
+  if (demoOn) {
+    return (
+      <OmnichannelNotifierProvider>
+        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          {cockpitHeader}
+          <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            <div className="page" style={{ maxWidth: "none", paddingTop: 14 }}>
+              <AgentCockpitDemo state={demoState} onState={setDemoState} />
+            </div>
+          </div>
+        </div>
+      </OmnichannelNotifierProvider>
+    );
+  }
+
   if (showWrapUp && pendingWrap) {
     return (
       <OmnichannelNotifierProvider>
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          {cockpitHeader}
           <MissedCallBanner />
           <ActiveContactsTabStrip />
           <div style={{ flex: 1, minHeight: 0 }}>
@@ -648,8 +863,384 @@ export function AgentDesktopPage() {
       style={{ display: "flex", flexDirection: "column", height: "100%" }}
       data-debug-component="AgentDesktopPage"
     >
+      {cockpitHeader}
       <MissedCallBanner />
       <ActiveContactsTabStrip />
+      {/* ENTRANTE (voz): el screen-pop es un POP-UP con overlay GLOBAL
+         (<IncomingCallOverlay/>) que interrumpe cualquier pantalla; ahí se
+         acepta/rechaza. De fondo mostramos el idle (rama de más abajo)
+         mientras suena. Aceptar → connected → cockpit en-llamada directo. */}
+      {/* VOZ (marcando o en llamada) → entra DIRECTO al cockpit. Marcar no
+         muestra una pantalla aparte: el CallBar dice "Marcando…" y al
+         conectar arranca el timer. "Volver al inicio" (homeWhileInCall)
+         muestra el marcador SIN colgar; un banner permite regresar. El resto
+         de canales/estados usa el layout .call de abajo. */}
+      {showVoiceCockpit ? (
+        homeWhileInCall ? (
+          <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            <div className="page fadeup" style={{ maxWidth: "none", paddingTop: 12 }}>
+              <button
+                type="button"
+                onClick={() => setHomeWhileInCall(false)}
+                className="card card__pad row between"
+                style={{
+                  alignItems: "center",
+                  marginBottom: 16,
+                  width: "100%",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  borderColor: "color-mix(in srgb,var(--green) 45%,var(--border-1))",
+                  background: "linear-gradient(100deg,var(--green-soft),transparent 60%)",
+                }}
+              >
+                <span className="row gap12" style={{ alignItems: "center", minWidth: 0 }}>
+                  <span className="dot dot--live" style={{ background: "var(--green)" }} />
+                  <span style={{ minWidth: 0 }}>
+                    <b style={{ fontSize: 14 }}>
+                      Llamada en curso · {callerName}
+                    </b>
+                    <div className="dim" style={{ fontSize: 12 }}>
+                      Estás en el marcador — la llamada sigue activa. Toca para volver.
+                    </div>
+                  </span>
+                </span>
+                <span className="btn btn--primary btn--sm">
+                  <AIcon name="phone" size={14} /> Volver a la llamada
+                </span>
+              </button>
+              <AgentIdleCockpit />
+            </div>
+          </div>
+        ) : (
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+          <div className="page fadeup" style={{ maxWidth: "none", paddingTop: 12 }}>
+            <CockpitCallBar
+              name={callerName}
+              phone={activeContact?.customerPhone}
+              prog={activeContact?.queueName || undefined}
+              statusLabel={isConnected ? "En llamada" : "Marcando…"}
+              avatarColor={callerAvatarColor}
+              sentiment={hasSentiment ? sentMeter : null}
+              audioOn={!onHold && !muted}
+              levels={isVoiceInCall && !muted && !onHold ? micLevels : undefined}
+              hold={onHold}
+              muted={muted}
+              onMute={() => mute()}
+              onHold={() => toggleHold()}
+              onHome={() => setHomeWhileInCall(true)}
+              onTransfer={() => setTransferOpen(true)}
+              onConference={() => setConferenceOpen(true)}
+              onEnd={() => hangup(activeContact?.contactId)}
+              timer={
+                <CallTimer
+                  active={isConnected}
+                  resetKey={rawContact?.contactId || ""}
+                  startedAtMs={rawContact?.connectedAtMs ?? null}
+                  onTickRef={elapsedRef}
+                />
+              }
+              rightExtra={
+                <button
+                  type="button"
+                  onClick={toggleRecording}
+                  title={recording ? "Pausar grabación" : "Reanudar grabación"}
+                  className="row gap6 center"
+                  style={{
+                    fontWeight: 700,
+                    fontSize: 12,
+                    color: recording ? "var(--accent-red)" : "var(--text-3)",
+                    background: "transparent",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span
+                    className={recording ? "dot dot--live" : "dot"}
+                    style={{ background: recording ? "var(--accent-red)" : "var(--text-3)" }}
+                  />
+                  {recording ? "REC" : "Grabar"}
+                </button>
+              }
+            />
+
+            <div className="agent-grid">
+              {/* Columna 1 — Cliente 360° (real) + Momentos clave (Contact Lens) */}
+              <div className="col gap16">
+                <Card
+                  title="Cliente 360°"
+                  icon="user"
+                  extra={
+                    <Customer360MoreMenu
+                      customerPhone={activeContact?.customerPhone ?? null}
+                      contactId={activeContact?.contactId ?? null}
+                      onRefreshProfile={() => setProfileRefreshKey((k) => k + 1)}
+                    />
+                  }
+                >
+                  <CustomerProfilePanel
+                    phone={activeContact?.customerPhone ?? null}
+                    isActive={!!isActive}
+                    refreshKey={profileRefreshKey}
+                    contactId={activeContact?.contactId ?? null}
+                    agentUsername={user?.username || ""}
+                  />
+                </Card>
+                <MomentsPanel liveData={liveData} />
+              </div>
+
+              {/* Columna 2 — Transcripción en vivo (burbujas por sentimiento, Contact Lens) */}
+              <Card
+                title="Transcripción en vivo"
+                icon="mic"
+                bodyStyle={{ maxHeight: "calc(100dvh - 300px)", overflowY: "auto" }}
+                extra={
+                  <span className="row gap8" style={{ alignItems: "center" }}>
+                    {liveData && liveData.totalSegments > 0 && (
+                      <Pill tone="cyan" icon="dot">
+                        Contact Lens
+                      </Pill>
+                    )}
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      icon="sparkle"
+                      onClick={() => setSummaryOpen(true)}
+                      title="Generar resumen de la conversación"
+                    >
+                      Resumen
+                    </Btn>
+                  </span>
+                }
+              >
+                <LiveTranscriptPanel
+                  contactId={activeContact?.contactId ?? null}
+                  isActive={!!isActive}
+                />
+              </Card>
+
+              {/* Columna 3 — Copiloto (asistente real) */}
+              <div className="col gap16">
+                <AIAssistPanel
+                  contactId={activeContact?.contactId ?? null}
+                  customerPhone={activeContact?.customerPhone ?? null}
+                  latestCustomerUtterance={latestCustomerUtterance}
+                />
+                <AICoachPanel
+                  contactId={activeContact?.contactId ?? null}
+                  customerPhone={activeContact?.customerPhone ?? null}
+                  transcriptSegmentCount={liveData?.totalSegments || 0}
+                  isActive={!!isActive}
+                  sentiment={liveData?.overallSentiment}
+                  inline
+                  onBlocksChange={handleCoachBlocksChange}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        )
+      ) : (!activeContact && !isIncoming) ||
+        (isIncoming && channelKey === "VOICE") ? (
+        /* IDLE REAL — cabina a ANCHO COMPLETO, idéntica al `Dialer` de la
+           "Vista demo": card "Iniciar contacto" (Marcador/Buscar/Más
+           acciones) + Disponible/Pausar · Perdidas · Siguiente en cola ·
+           Mis leads · Tareas. También es el FONDO mientras suena un entrante
+           de voz (el pop-up <IncomingCallOverlay/> va encima). Todo el wiring
+           real (placeCall, leads, perdidas, estado) vive en <AgentIdleCockpit/>. */
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+          <div className="page fadeup" style={{ maxWidth: "none", paddingTop: 12 }}>
+            {/* Barra de identidad del agente — conserva el pill de estado
+                real (AgentStatePill) visible sobre la cabina. */}
+            <div
+              className="card card__pad row between"
+              style={{ alignItems: "center", marginBottom: 16 }}
+            >
+              <div className="row gap12" style={{ alignItems: "center", minWidth: 0 }}>
+                <Avatar
+                  name={agentName || user?.username || "Agente"}
+                  size="md"
+                  color={colorFromName(agentName || user?.username || "Vox")}
+                />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 700 }}>
+                    {agentName || user?.username || "Agente"}
+                  </div>
+                  <div className="muted" style={{ fontSize: 11.5 }}>
+                    {roleLabelOf(user?.highestRole)}
+                  </div>
+                </div>
+              </div>
+              <AgentStatePill />
+            </div>
+            <AgentIdleCockpit />
+          </div>
+        </div>
+      ) : isActive && (isChat || isEmail || isTask) ? (
+        /* EN-LLAMADA REAL (WhatsApp / Email / Tarea) — MISMO diseño demo
+           que la voz: barra compacta por canal + `.agent-grid` de 3
+           columnas (Cliente 360° | panel real del canal | Copiloto).
+           Se reutilizan los paneles REALES (ChatThreadPanel /
+           EmailThreadPanel) con sus handlers intactos (enviar mensaje,
+           cerrar, adjuntar…). El Coach de voz no aplica a estos canales
+           (degrada honesto). Cerrar/Finalizar dispara los MISMOS handlers
+           del softphone (hangup + dismissWrap para chat). */
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+          <div className="page fadeup" style={{ maxWidth: "none", paddingTop: 12 }}>
+            <ChannelBarReal
+              channel={channelKey}
+              label={channelLabel}
+              name={callerName}
+              secondary={
+                isEmail
+                  ? activeContact?.customerPhone || activeContact?.queueName || ""
+                  : activeContact?.queueName || activeContact?.customerPhone || ""
+              }
+              avatarColor={callerAvatarColor}
+              canCall={
+                channelKey === "CHAT" && !!activeContact?.customerPhone
+              }
+              onCall={async () => {
+                if (!activeContact?.customerPhone) return;
+                try {
+                  await placeCall(activeContact.customerPhone);
+                } catch {
+                  /* toast lo maneja el dialer */
+                }
+              }}
+              onClose={() => {
+                if (!activeContact) return;
+                hangup(activeContact.contactId);
+                if (isChat && activeContact.contactId) {
+                  dismissWrap(activeContact.contactId);
+                }
+              }}
+              onTransfer={
+                isChat ? () => setTransferOpen(true) : undefined
+              }
+              onNote={isChat ? () => setQuickNoteOpen(true) : undefined}
+              timer={
+                <CallTimer
+                  active={isConnected}
+                  resetKey={rawContact?.contactId || ""}
+                  startedAtMs={rawContact?.connectedAtMs ?? null}
+                  onTickRef={elapsedRef}
+                />
+              }
+            />
+
+            <div className="agent-grid">
+              {/* Columna 1 — Cliente 360° real */}
+              <div className="col gap16">
+                <Card
+                  title="Cliente 360°"
+                  icon="user"
+                  extra={
+                    <Customer360MoreMenu
+                      customerPhone={activeContact?.customerPhone ?? null}
+                      contactId={activeContact?.contactId ?? null}
+                      onRefreshProfile={() => setProfileRefreshKey((k) => k + 1)}
+                    />
+                  }
+                >
+                  <CustomerProfilePanel
+                    phone={activeContact?.customerPhone ?? null}
+                    isActive={!!isActive}
+                    refreshKey={profileRefreshKey}
+                    contactId={activeContact?.contactId ?? null}
+                    agentUsername={user?.username || ""}
+                  />
+                </Card>
+              </div>
+
+              {/* Columna 2 — panel real del canal */}
+              <Card
+                title={
+                  isChat
+                    ? `Conversación · ${channelLabel}`
+                    : isEmail
+                    ? "Correo · Email"
+                    : "Tarea · seguimiento"
+                }
+                icon={isChat ? "wa" : isEmail ? "mail" : "check"}
+                pad={false}
+                bodyStyle={{
+                  display: "flex",
+                  flexDirection: "column",
+                  // Altura acotada por viewport para que los paneles reales
+                  // (que usan height:100% + flex:1 en su scroll interno) se
+                  // rendericen correctamente dentro del grid.
+                  height: "clamp(420px, 64vh, 760px)",
+                }}
+              >
+                {isChat && activeContact ? (
+                  <ChatThreadPanel
+                    contactId={activeContact.contactId}
+                    channel={activeContact.channel}
+                    customerName={callerName}
+                    channelLabel={channelLabel}
+                    customerPhone={activeContact.customerPhone}
+                    agentName={agentName || user?.username}
+                    queueName={activeContact.queueName}
+                  />
+                ) : isEmail && activeContact ? (
+                  <EmailThreadPanel
+                    contactId={activeContact.contactId}
+                    customerName={callerName}
+                  />
+                ) : (
+                  /* TASK — no hay panel real dedicado; mostramos la info
+                     real del contacto de tarea (sin inventar checklist). */
+                  <div style={{ padding: 16 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.3 }}>
+                      {callerName}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                      {activeContact?.queueName || "Tarea de Connect"}
+                    </div>
+                    {activeContact?.attributes &&
+                      Object.entries(activeContact.attributes).filter(
+                        ([k]) => !k.startsWith("_")
+                      ).length > 0 && (
+                        <div
+                          className="col"
+                          style={{ gap: 8, marginTop: 14, fontSize: 13 }}
+                        >
+                          {Object.entries(activeContact.attributes)
+                            .filter(([k]) => !k.startsWith("_"))
+                            .map(([k, v]) => (
+                              <div key={k} className="row between">
+                                <span className="muted">{k}</span>
+                                <b style={{ maxWidth: "60%", textAlign: "right" }}>
+                                  {String(v)}
+                                </b>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                  </div>
+                )}
+              </Card>
+
+              {/* Columna 3 — Copiloto real (el Coach de voz no aplica) */}
+              <div className="col gap16">
+                <AIAssistPanel
+                  contactId={activeContact?.contactId ?? null}
+                  customerPhone={activeContact?.customerPhone ?? null}
+                  latestCustomerUtterance={latestCustomerUtterance}
+                />
+                <Card title="Coach · Claude" icon="bot" accent="var(--iris)">
+                  <div
+                    className="muted"
+                    style={{ fontSize: 12.5, lineHeight: 1.5 }}
+                  >
+                    El coach en vivo analiza la transcripción de Contact Lens,
+                    disponible solo en llamadas de voz.
+                  </div>
+                </Card>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="call" style={{ flex: 1, minHeight: 0 }}>
       {/* ──────────────────────────────────────────────────────────
          LEFT — Softphone v2 (modernized)
@@ -698,10 +1289,10 @@ export function AgentDesktopPage() {
             <div className="vox-sp__sub">{callerSecondary}</div>
             <div className="vox-sp__pills">
               {profileAccountType && (
-                <span className="chip chip--violet">{profileAccountType}</span>
+                <Pill tone="iris">{profileAccountType}</Pill>
               )}
               <span
-                className="chip"
+                className="pill"
                 style={{
                   background: channelGlow,
                   color: channelSolid,
@@ -720,9 +1311,8 @@ export function AgentDesktopPage() {
               </span>
               {isActive && !isChat && !isEmail && !isTask && (
                 <span
-                  className="chip"
+                  className="pill pill--outline"
                   title="Calidad de conexión"
-                  style={{ background: "var(--bg-2)", borderColor: "var(--border-1)" }}
                 >
                   <span className="vox-sp__quality">
                     <span /><span /><span />
@@ -1072,35 +1662,12 @@ export function AgentDesktopPage() {
             </div>
           )}
 
-        {/* Empty state — stats + outbound actions grid */}
-        {!activeContact && !isIncoming && (
-          <>
-            <div className="vox-start" style={{ paddingBottom: 0 }}>
-              <div className="vox-start__stats">
-                <div className="vox-start__stat">
-                  <div className="vox-start__stat-label">Mis leads</div>
-                  <div className="vox-start__stat-value">{myLeadsCount}</div>
-                </div>
-                <div className="vox-start__stat">
-                  <div className="vox-start__stat-label">Estado</div>
-                  <div
-                    className="vox-start__stat-value"
-                    style={{ fontSize: 14, fontFamily: "var(--font-ui)" }}
-                  >
-                    {agentState === "Available"
-                      ? "Listo"
-                      : agentState === "Offline"
-                      ? "Offline"
-                      : agentState === "AfterCallWork"
-                      ? "ACW"
-                      : agentState}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <OutboundActionsMenu />
-          </>
-        )}
+        {/* El estado IDLE (sin contacto) ahora se intercepta antes que este
+            layout .call y se renderiza a ancho completo con <AgentIdleCockpit/>
+            (cabina estilo demo). Este softphone .call__panel--v2 sólo queda
+            para canales no-voz activos (chat/email/tarea) y el estado missed,
+            donde siempre hay un contacto — de ahí que ya no se muestre el
+            cockpit idle embebido aquí. */}
       </div>
 
       {/* ──────────────────────────────────────────────────────────
@@ -1182,19 +1749,18 @@ export function AgentDesktopPage() {
               )}
             </div>
             <div className="row" style={{ gap: 10, marginTop: 4, flexShrink: 0 }}>
-              <button
-                type="button"
-                className="btn btn--danger"
-                style={{ minHeight: 38, padding: "0 16px" }}
+              <Btn
+                variant="soft"
+                icon="phone"
+                style={{ color: "var(--red)" }}
                 onClick={() => hangup(activeContact.contactId)}
               >
-                <Icon.Hangup size={13} /> Cerrar contacto
-              </button>
+                Cerrar contacto
+              </Btn>
               {channelKey === "VOICE" && activeContact.customerPhone && (
-                <button
-                  type="button"
-                  className="btn btn--success"
-                  style={{ minHeight: 38, padding: "0 16px" }}
+                <Btn
+                  variant="primary"
+                  icon="arrowIn"
                   onClick={async () => {
                     try {
                       await placeCall(activeContact.customerPhone!);
@@ -1203,8 +1769,8 @@ export function AgentDesktopPage() {
                     }
                   }}
                 >
-                  <Icon.PhoneIn size={13} /> Devolver llamada
-                </button>
+                  Devolver llamada
+                </Btn>
               )}
             </div>
           </div>
@@ -1244,29 +1810,31 @@ export function AgentDesktopPage() {
                 </div>
               </div>
               {liveData && liveData.totalSegments > 0 && (
-                <span className="chip chip--cyan">
-                  <span
-                    className="pulse"
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: "currentColor",
-                    }}
-                  />
+                <Pill tone="cyan" icon="dot">
                   Stream
-                </span>
+                </Pill>
               )}
               {activeContact && (
-                <button
-                  className="btn btn--ghost btn--sm"
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  icon="sparkle"
                   onClick={() => setSummaryOpen(true)}
                   title="Generar resumen de la conversación"
                 >
-                  <Icon.Send size={12} /> Resumen
-                </button>
+                  Resumen
+                </Btn>
               )}
             </div>
+
+            {/* Momentos clave — hitos de Contact Lens (categorías/issues) de la
+                llamada de voz. Se auto-oculta si Contact Lens aún no marcó
+                ninguno (no inventa data). */}
+            {activeContact && !isChat && !isEmail && !isTask && (
+              <div style={{ padding: "12px 14px 0" }}>
+                <MomentsPanel liveData={liveData} />
+              </div>
+            )}
 
             <div className="call__panel-body">
               {activeContact ? (
@@ -1309,15 +1877,23 @@ export function AgentDesktopPage() {
                 latestCustomerUtterance={latestCustomerUtterance}
               />
             ) : (
-              <div className="q-card">
-                <div className="q-card__head">
-                  <Icon.Sparkles size={14} /> Amazon Q · Asistente
+              <Card
+                title="Copiloto · Asistente"
+                icon="sparkle"
+                accent="var(--iris)"
+              >
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "var(--text-2)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Cuando entre una llamada, el copiloto generará sugerencias
+                  contextuales, citas de la base de conocimiento y la siguiente
+                  mejor acción a tomar.
                 </div>
-                <div className="q-card__body">
-                  Cuando entre una llamada, Q generará sugerencias contextuales, citas
-                  de la base de conocimiento y la siguiente mejor acción a tomar.
-                </div>
-              </div>
+              </Card>
             )}
           </div>
         )}
@@ -1327,23 +1903,29 @@ export function AgentDesktopPage() {
          RIGHT — Customer 360° + Coach (tabbed, always rendered)
       ────────────────────────────────────────────────────────── */}
       <div className="call__panel call__panel--v2" data-debug-component="Customer360Panel">
-        {/* Pill-style tabs — Cliente · Coach · Historial. All three
-            panels stay MOUNTED across switches so transcript-driven
-            fetches keep going while the agent looks at a different tab. */}
-        <div className="vox-tabs" style={{ paddingRight: 6 }}>
+        {/* Pill-style tabs — Cliente · Coach. Ambos paneles quedan MONTADOS
+            entre cambios para que los fetches disparados por la transcripción
+            sigan corriendo. El Historial pasó a ser una sub-pestaña dentro del
+            Cliente 360° (junto con Perfil/Notas/Casos). */}
+        <div
+          className="c360-tabs"
+          style={{ margin: 0, padding: "0 10px", gap: 4 }}
+        >
           <button
             type="button"
+            aria-pressed={rightRailTab === "cliente"}
             onClick={() => setRightRailTab("cliente")}
-            className={`vox-tab ${rightRailTab === "cliente" ? "vox-tab--active" : ""}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
           >
-            <Icon.User size={13} /> Cliente
+            <AIcon name="user" size={13} /> Cliente
           </button>
           <button
             type="button"
+            aria-pressed={rightRailTab === "coach"}
             onClick={() => setRightRailTab("coach")}
-            className={`vox-tab ${rightRailTab === "coach" ? "vox-tab--active" : ""}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
           >
-            <Icon.Sparkles size={13} /> Coach
+            <AIcon name="sparkle" size={13} /> Coach
             {coachBlockCount > 0 && (
               <span
                 className={`vox-tab__badge ${coachPulse ? "coach-tab-badge--pulse" : ""}`}
@@ -1351,14 +1933,6 @@ export function AgentDesktopPage() {
                 {coachBlockCount}
               </span>
             )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setRightRailTab("historial")}
-            className={`vox-tab ${rightRailTab === "historial" ? "vox-tab--active" : ""}`}
-            title="Contactos previos del cliente"
-          >
-            <Icon.Clock size={13} /> Historial
           </button>
           {rightRailTab === "cliente" && activeContact && (
             <div style={{ display: "flex", alignItems: "center", paddingLeft: 4 }}>
@@ -1371,37 +1945,24 @@ export function AgentDesktopPage() {
           )}
         </div>
         <div className="call__panel-body">
-          {/* Cliente 360° */}
+          {/* Cliente 360° — tabbed (Perfil · Historial · Notas · Casos),
+              cada sub-pestaña cableada a su panel real. */}
           <div style={{ display: rightRailTab === "cliente" ? "block" : "none" }}>
-            <div className="c360">
-              {activeContact ? (
-                <>
-                  <CustomerProfilePanel
-                    phone={activeContact.customerPhone}
-                    isActive={!!isActive}
-                    refreshKey={profileRefreshKey}
-                  />
-
-                  <div>
-                    <div className="section-title">Casos · Amazon Connect</div>
-                    <CasesPanel
-                      contactId={activeContact.contactId}
-                      customerPhone={activeContact.customerPhone}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="section-title">Notas del agente</div>
-                    <AgentNotesPanel
-                      contactId={activeContact.contactId}
-                      agentUsername={user?.username || ""}
-                    />
-                  </div>
-                </>
-              ) : (
+            {activeContact ? (
+              <div style={{ padding: 14 }}>
+                <CustomerProfilePanel
+                  phone={activeContact.customerPhone}
+                  isActive={!!isActive}
+                  refreshKey={profileRefreshKey}
+                  contactId={activeContact.contactId}
+                  agentUsername={user?.username || ""}
+                />
+              </div>
+            ) : (
+              <div className="c360">
                 <CustomerBrowser />
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Coach */}
@@ -1430,13 +1991,6 @@ export function AgentDesktopPage() {
               </div>
             )}
           </div>
-
-          {/* Historial — previous contacts for this customer */}
-          <div
-            style={{ display: rightRailTab === "historial" ? "block" : "none" }}
-          >
-            <ContactHistoryPanel phone={activeContact?.customerPhone ?? null} />
-          </div>
         </div>
         <style>{`
           @keyframes coach-tab-pulse {
@@ -1450,6 +2004,7 @@ export function AgentDesktopPage() {
       </div>
 
       </div>
+      )}
       {/* El bubble flotante de Tareas se reemplazó por el launcher global
           <TasksLauncher/> (debajo de Copilot, en App.tsx). */}
       <MissedHistoryDrawer />

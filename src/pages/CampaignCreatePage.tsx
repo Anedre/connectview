@@ -5,8 +5,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2, Rocket,
-  Users, Search, ArrowLeft, Phone, MessageSquare, User, Bot, Zap, Check, X,
+  Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2,
+  Users, Search, Phone, MessageSquare, User, Bot, Zap, Check,
   ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -22,12 +22,16 @@ import { previewSuppression, type BatchSummary } from "@/hooks/useSuppression";
 import { useAuth } from "@/hooks/useAuth";
 import { authedFetch } from "@/lib/authedFetch";
 import { useProgram } from "@/context/ProgramContext";
+import { Btn, Card, Pill, Icon as AriaIcon } from "@/components/aria";
+import { useTopBarActions } from "@/components/layout/TopBarSlot";
 
 /**
  * CampaignCreatePage — full-screen, single-page campaign builder (replaces the
  * 4-step modal wizard). Two columns: Audiencia (contacts: CSV / Leads / paste)
- * ↔ Configuración (channel + dialing + advanced, all visible). Sticky header
- * with inline name + launch. Real data: createCampaign Lambda.
+ * ↔ Configuración (channel + dialing + advanced, all visible). Re-skinned to
+ * the ARIA design system: HeroBand header + ARIA step Cards for the two panels,
+ * ARIA Btn/Pill chrome. Real data + wizard flow + validation are preserved
+ * verbatim (createCampaign Lambda).
  */
 interface PoolLead {
   leadId: string; phone: string; name?: string; email?: string; company?: string;
@@ -87,6 +91,28 @@ function canonicaliseNivel(raw: string): string | null {
   if (NIVEL_ALIAS[v]) return NIVEL_ALIAS[v];
   for (const [re, t] of NIVEL_PREFIX) if (re.test(v)) return t;
   return null;
+}
+
+/* ARIA step header: numbered accent chip + title + optional trailing badge. */
+function StepHead({ n, title, extra }: { n: number; title: string; extra?: React.ReactNode }) {
+  return (
+    <div className="row between" style={{ marginBottom: 16 }}>
+      <div className="row gap10">
+        <span
+          className="tnum"
+          style={{
+            width: 26, height: 26, borderRadius: 8, display: "grid", placeItems: "center",
+            background: "var(--accent-soft)", color: "var(--accent)", fontSize: 13, fontWeight: 800,
+            flex: "0 0 auto",
+          }}
+        >
+          {n}
+        </span>
+        <span style={{ fontSize: 15, fontWeight: 750, letterSpacing: "-.01em" }}>{title}</span>
+      </div>
+      {extra}
+    </div>
+  );
 }
 
 export function CampaignCreatePage() {
@@ -383,34 +409,67 @@ export function CampaignCreatePage() {
 
   const csvCols = Object.keys(contacts[0]?.attributes ?? {});
 
+  // Acciones del wizard (cancelar / lanzar) → topbar, como el resto de secciones.
+  useTopBarActions(
+    <div className="row gap10">
+      <Btn variant="ghost" size="sm" onClick={() => navigate("/campaigns")}>Cancelar</Btn>
+      <Btn
+        variant="primary"
+        size="sm"
+        icon={submitting ? undefined : "send"}
+        disabled={!canLaunch || submitting}
+        onClick={handleCreate}
+        title={canLaunch ? "" : `Falta: ${missing}`}
+      >
+        {submitting ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" /> Lanzando…
+          </>
+        ) : (
+          <>Lanzar campaña</>
+        )}
+      </Btn>
+    </div>,
+    [submitting, canLaunch, missing],
+  );
+
   return (
-    <div className="view camp-new">
-      {/* Sticky header */}
-      <div className="camp-new__bar">
-        <button className="cal-nav__btn" onClick={() => navigate("/campaigns")} title="Volver"><ArrowLeft size={16} /></button>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="camp-new__crumb">Crecimiento · Nueva campaña</div>
-          <input className="camp-new__name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre de la campaña" />
-        </div>
-        <div className="camp-new__actions">
-          <span className="camp-new__ready">
-            {canLaunch ? <><CheckCircle2 size={14} style={{ color: "var(--accent-green)" }} /> Listo para lanzar</>
-              : <span className="muted">Falta: {missing}</span>}
-          </span>
-          <button className="btn" onClick={() => navigate("/campaigns")}>Cancelar</button>
-          <button className="btn btn--primary" disabled={!canLaunch || submitting} onClick={handleCreate} title={canLaunch ? "" : `Falta: ${missing}`}>
-            {submitting ? <><Loader2 className="mr-1 h-4 w-4 animate-spin" /> Lanzando…</> : <><Rocket size={14} /> Lanzar campaña</>}
-          </button>
-        </div>
+    <div className="page" style={{ maxWidth: 1320 }}>
+      {/* Header de wizard (liviano): back + nombre editable + validación.
+          Cancelar / Lanzar viven en el topbar (el bloque hero se retiró). */}
+      <div className="row gap10" style={{ marginBottom: 18, flexWrap: "wrap" }}>
+        <Btn variant="ghost" size="sm" icon="chevL" onClick={() => navigate("/campaigns")} title="Volver a campañas" />
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Nombre de la campaña"
+          style={{
+            background: "transparent", border: "none", outline: "none",
+            flex: 1, minWidth: 180, maxWidth: 520,
+            fontSize: 22, fontWeight: 800, letterSpacing: "-.02em",
+            color: "var(--text-1)", padding: 0,
+          }}
+        />
+        <span
+          className="pill"
+          style={{
+            background: canLaunch ? "var(--green-soft)" : "var(--gold-soft)",
+            color: canLaunch ? "var(--green-2)" : "var(--gold-2)",
+          }}
+        >
+          <AriaIcon name={canLaunch ? "checkCircle" : "sparkle"} size={13} />
+          {canLaunch ? "Listo para lanzar" : `Falta: ${missing}`}
+        </span>
       </div>
 
       <div className="camp-new__grid">
         {/* ── AUDIENCIA ── */}
-        <section className="card camp-new__col">
-          <div className="camp-new__h">
-            <span className="camp-new__hn">1</span> Audiencia
-            {contacts.length > 0 && <span className="camp-new__badge">{contacts.length} contactos</span>}
-          </div>
+        <Card pad={false} style={{ padding: "var(--pad)" }}>
+          <StepHead
+            n={1}
+            title="Audiencia"
+            extra={contacts.length > 0 ? <Pill tone="accent" icon="users">{contacts.length} contactos</Pill> : undefined}
+          />
 
           <div className="camp-tabs">
             {([["csv", "Subir CSV", FileSpreadsheet], ["leads", "Desde Leads", Users], ["paste", "Pegar lista", MessageSquare]] as const).map(([id, label, I]) => (
@@ -433,14 +492,14 @@ export function CampaignCreatePage() {
           {inputMode === "paste" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <Textarea rows={6} placeholder={"+51987654321\n+51987654322\n…"} value={pastedList} onChange={(e) => setPastedList(e.target.value)} />
-              <button className="btn" onClick={onUsePastedList} disabled={!pastedList.trim()}>Parsear lista</button>
+              <Btn variant="ghost" onClick={onUsePastedList} disabled={!pastedList.trim()}>Parsear lista</Btn>
             </div>
           )}
 
           {inputMode === "leads" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {presetLeads.length > 0 && (
-                <div className="row" style={{ gap: 8, padding: "8px 11px", borderRadius: 8, background: "var(--accent-green-soft, rgba(34,197,94,0.12))", color: "var(--accent-green)", fontSize: 12 }}>
+                <div className="row gap8" style={{ padding: "8px 11px", borderRadius: 10, background: "var(--green-soft)", color: "var(--green-2)", fontSize: 12 }}>
                   <CheckCircle2 size={15} />
                   <span><strong>{presetLeads.length}</strong> lead{presetLeads.length === 1 ? "" : "s"} traído{presetLeads.length === 1 ? "" : "s"} desde el embudo y listo{presetLeads.length === 1 ? "" : "s"} como audiencia. Ajusta la selección si querés.</span>
                 </div>
@@ -504,17 +563,17 @@ export function CampaignCreatePage() {
                 )}
               </div>
 
-              <div className="row" style={{ justifyContent: "space-between" }}>
+              <div className="row between">
                 <span className="muted" style={{ fontSize: 11.5 }}>{selectedLeadIds.size} de {filteredLeadPool.length} seleccionados</span>
-                <button className="btn btn--primary btn--sm" disabled={selectedLeadIds.size === 0} onClick={applySelectedLeads}>
-                  <Users size={14} /> Usar {selectedLeadIds.size} lead{selectedLeadIds.size === 1 ? "" : "s"}
-                </button>
+                <Btn variant="primary" size="sm" icon="users" disabled={selectedLeadIds.size === 0} onClick={applySelectedLeads}>
+                  Usar {selectedLeadIds.size} lead{selectedLeadIds.size === 1 ? "" : "s"}
+                </Btn>
               </div>
             </div>
           )}
 
           {parseError && (
-            <div className="row" style={{ gap: 8, marginTop: 10, padding: "8px 11px", borderRadius: 8, background: "var(--accent-red-soft)", color: "var(--accent-red)", fontSize: 12.5 }}>
+            <div className="row gap8" style={{ marginTop: 10, padding: "8px 11px", borderRadius: 10, background: "var(--red-soft)", color: "var(--red-2)", fontSize: 12.5 }}>
               <AlertTriangle size={15} /> {parseError}
             </div>
           )}
@@ -523,8 +582,8 @@ export function CampaignCreatePage() {
             <div style={{ marginTop: 12 }}>
               <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
                 <span className="row" style={{ gap: 6, fontSize: 12.5, fontWeight: 600 }}>
-                  <CheckCircle2 size={15} style={{ color: "var(--accent-green)" }} /> {contacts.length} contactos
-                  {skipped.length > 0 && <span style={{ color: "var(--accent-red)", fontSize: 11 }}>· {skipped.length} descartados</span>}
+                  <CheckCircle2 size={15} style={{ color: "var(--green)" }} /> {contacts.length} contactos
+                  {skipped.length > 0 && <span style={{ color: "var(--red-2)", fontSize: 11 }}>· {skipped.length} descartados</span>}
                 </span>
                 {inputMode === "csv" && csvCols.length > 0 && (
                   <div className="row" style={{ gap: 6, marginLeft: "auto" }}>
@@ -538,7 +597,7 @@ export function CampaignCreatePage() {
               </div>
               <LevelDistributionPreview contacts={contacts} />
               <div className="muted" style={{ fontSize: 10.5, margin: "9px 0 5px" }}>✏️ Edita nombre o teléfono directamente en la tabla antes de lanzar.</div>
-              <div style={{ maxHeight: 280, overflowY: "auto", border: "1px solid var(--border-1)", borderRadius: 8 }}>
+              <div style={{ maxHeight: 280, overflowY: "auto", border: "1px solid var(--border-1)", borderRadius: 10 }}>
                 <table className="camp-ltable">
                   <thead><tr><th style={{ width: 40 }}>#</th><th>Teléfono</th><th>Nombre</th><th>Atributos</th></tr></thead>
                   <tbody>
@@ -556,11 +615,11 @@ export function CampaignCreatePage() {
               </div>
             </div>
           )}
-        </section>
+        </Card>
 
         {/* ── CONFIGURACIÓN ── */}
-        <section className="card camp-new__col">
-          <div className="camp-new__h"><span className="camp-new__hn">2</span> Configuración</div>
+        <Card pad={false} style={{ padding: "var(--pad)" }}>
+          <StepHead n={2} title="Configuración" />
 
           {/* Canal */}
           <div className="camp-field">
@@ -691,10 +750,10 @@ export function CampaignCreatePage() {
                               <SelectContent>{queues.map((q) => <SelectItem key={q.id} value={q.id}>{q.name}</SelectItem>)}</SelectContent>
                             </Select>
                           </div>
-                          <button type="button" className="btn btn--ghost btn--sm btn--icon" disabled={routeRules.length <= 1} onClick={() => setRouteRules((rs) => rs.filter((_, j) => j !== i))} title="Quitar"><X size={13} /></button>
+                          <Btn variant="ghost" size="sm" icon="x" disabled={routeRules.length <= 1} onClick={() => setRouteRules((rs) => rs.filter((_, j) => j !== i))} title="Quitar" />
                         </div>
                       ))}
-                      <button type="button" className="btn btn--sm" style={{ alignSelf: "flex-start" }} onClick={() => setRouteRules((rs) => [...rs, { value: "", queueId: "" }])}>+ Regla</button>
+                      <Btn variant="ghost" size="sm" icon="plus" style={{ alignSelf: "flex-start" }} onClick={() => setRouteRules((rs) => [...rs, { value: "", queueId: "" }])}>Regla</Btn>
                     </div>
                     <div>
                       <span className="muted" style={{ fontSize: 10.5, display: "block", marginBottom: 4 }}>Cola por defecto (lo que no matchee)</span>
@@ -799,7 +858,7 @@ export function CampaignCreatePage() {
               </div>
             </>
           )}
-        </section>
+        </Card>
       </div>
     </div>
   );
@@ -833,32 +892,32 @@ function SuppressionPreview({ contacts, programId }: { contacts: ParsedContact[]
     : 0;
   const chips = ex
     ? [
-        { label: "ya enviados", n: ex.dedupWindow, color: "var(--accent-amber)" },
-        { label: "opt-out / baja", n: ex.optOut, color: "var(--accent-red)" },
-        { label: "no contactar", n: ex.dnc, color: "var(--accent-red)" },
-        { label: "frecuencia", n: ex.frequency, color: "var(--accent-violet)" },
-        { label: "fuera de horario", n: ex.quietHours, color: "var(--accent-cyan)" },
-        { label: "cuarentena", n: ex.quarantine, color: "var(--accent-violet)" },
-        { label: "ya convertidos", n: ex.converted, color: "var(--accent-green)" },
+        { label: "ya enviados", n: ex.dedupWindow, color: "var(--gold)" },
+        { label: "opt-out / baja", n: ex.optOut, color: "var(--red)" },
+        { label: "no contactar", n: ex.dnc, color: "var(--red)" },
+        { label: "frecuencia", n: ex.frequency, color: "var(--iris)" },
+        { label: "fuera de horario", n: ex.quietHours, color: "var(--cyan)" },
+        { label: "cuarentena", n: ex.quarantine, color: "var(--iris)" },
+        { label: "ya convertidos", n: ex.converted, color: "var(--green)" },
       ].filter((c) => c.n > 0)
     : [];
 
   return (
     <div className="camp-field" style={{ marginTop: 8 }}>
-      <div style={{ borderRadius: 10, border: `1px solid ${totalExcluded > 0 ? "var(--accent-amber)" : "var(--border-1)"}`, background: totalExcluded > 0 ? "var(--accent-amber-soft)" : "var(--bg-1)", padding: "11px 13px" }}>
+      <div style={{ borderRadius: 12, border: `1px solid ${totalExcluded > 0 ? "var(--gold)" : "var(--border-1)"}`, background: totalExcluded > 0 ? "var(--gold-soft)" : "var(--bg-1)", padding: "11px 13px" }}>
         {loading ? (
           <div className="muted row" style={{ fontSize: 12.5, gap: 7 }}><Loader2 size={13} className="spin" /> Revisando supresión…</div>
         ) : summary ? (
           <>
             <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <ShieldCheck size={15} style={{ color: totalExcluded > 0 ? "var(--accent-amber)" : "var(--accent-green)" }} />
+              <ShieldCheck size={15} style={{ color: totalExcluded > 0 ? "var(--gold-2)" : "var(--green)" }} />
               {totalExcluded > 0 ? (
                 <span style={{ fontSize: 13, fontWeight: 700 }}>
                   De {summary.total} se excluyen {totalExcluded} →{" "}
-                  <span style={{ color: "var(--accent-green)" }}>{summary.willSend} recibirán el mensaje</span>
+                  <span style={{ color: "var(--green-2)" }}>{summary.willSend} recibirán el mensaje</span>
                 </span>
               ) : (
-                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--accent-green)" }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--green-2)" }}>
                   Los {summary.total} pasan el filtro de supresión
                 </span>
               )}
@@ -881,7 +940,7 @@ function SuppressionPreview({ contacts, programId }: { contacts: ParsedContact[]
 }
 
 /* Level distribution preview (UDEP nivel routing) — same logic as the wizard. */
-const NIVEL_TONE: Record<string, string> = { pregrado: "var(--accent-green)", posgrado: "var(--accent-cyan)", diplomados: "var(--accent-violet)", alumnos: "var(--accent-amber)" };
+const NIVEL_TONE: Record<string, string> = { pregrado: "var(--green)", posgrado: "var(--cyan)", diplomados: "var(--iris)", alumnos: "var(--gold)" };
 function LevelDistributionPreview({ contacts }: { contacts: ParsedContact[] }) {
   const sampleKeys = Object.keys(contacts[0]?.attributes ?? {});
   const nivelKey = sampleKeys.find((k) => NIVEL_KEYS.includes(k.trim().toLowerCase()));
@@ -897,7 +956,7 @@ function LevelDistributionPreview({ contacts }: { contacts: ParsedContact[] }) {
   const total = contacts.length;
   const entries = [...counts.entries()].sort((a, b) => b[1] - a[1]);
   return (
-    <div style={{ border: "1px solid var(--border-1)", borderRadius: 8, padding: 10, background: "var(--bg-2)" }}>
+    <div style={{ border: "1px solid var(--border-1)", borderRadius: 10, padding: 10, background: "var(--bg-2)" }}>
       <div className="muted" style={{ fontSize: 11, fontWeight: 600, marginBottom: 6 }}>Distribución por <span className="mono">{nivelKey}</span> · se rutea automáticamente</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {entries.map(([nivel, count]) => (

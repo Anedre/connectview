@@ -26,6 +26,77 @@ export function extractContact(text: string): { phone?: string; email?: string }
   return { phone: phone || undefined, email };
 }
 
+/** Normaliza para matching robusto: minúsculas + sin tildes/diacríticos. Así
+ *  "Asesor", "asesór" y "ASESOR" caen todos en "asesor". */
+function deburr(text: string): string {
+  return (text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
+/** Frases de intención "quiero un humano" (ya deburr-eadas: sin tildes, minúsculas). */
+const HUMAN_PHRASES = [
+  "hablar con alguien",
+  "hablar con una persona",
+  "hablar con un humano",
+  "hablar con un asesor",
+  "hablar con un agente",
+  "hablar con un ejecutivo",
+  "hablar con un representante",
+  "quiero hablar con",
+  "necesito hablar con",
+  "con un humano",
+  "con una persona",
+  "con un asesor",
+  "con un agente",
+  "con un ejecutivo",
+  "con un representante",
+  "atencion humana",
+  "atencion al cliente real",
+  "persona real",
+  "ser humano",
+  "no bot",
+  "no soy bot",
+  "no quiero un bot",
+  "no quiero hablar con un bot",
+  "eres un bot",
+  "sos un bot",
+  "deja de responder",
+];
+/** Palabras sueltas que, por sí solas, señalan pedido de humano (deburr-eadas).
+ *  Se matchean como palabra completa (\b) para no pegar dentro de otra palabra. */
+const HUMAN_WORDS = [
+  "asesor",
+  "asesora",
+  "humano",
+  "humana",
+  "ejecutivo",
+  "ejecutiva",
+  "representante",
+  "operador",
+  "operadora",
+  "supervisor",
+  "supervisora",
+];
+
+/**
+ * ¿El cliente está pidiendo hablar con un humano? Detección robusta a tildes y
+ * mayúsculas (deburr). Combina frases ("hablar con alguien", "con un asesor") y
+ * palabras clave sueltas ("asesor", "humano", "agente"…). Pensado para engancharse
+ * ANTES de que el bot IA genere su respuesta y así escalar a un agente humano.
+ *
+ * NOTA sobre "agente"/"persona": son ambiguas (el cliente puede describir su caso
+ * con esas palabras). Solo cuentan cuando aparecen como pedido explícito ("con un
+ * agente", "hablar con una persona"), que ya cubren las frases de HUMAN_PHRASES.
+ */
+export function wantsHuman(text: string): boolean {
+  const t = deburr(text);
+  if (!t.trim()) return false;
+  if (HUMAN_PHRASES.some((p) => t.includes(p))) return true;
+  return HUMAN_WORDS.some((w) => new RegExp(`\\b${w}\\b`).test(t));
+}
+
 const CONV_TABLE = process.env.CONVERSATIONS_TABLE || "connectview-conversations";
 
 export type ConvChannel = "instagram" | "messenger" | "whatsapp" | "fb_comment" | "mercadolibre";
@@ -49,6 +120,24 @@ export interface ConvMessage {
   ts: string;
   agent?: string;
   attachment?: { type: string; url: string };
+  /** Solo `out` — momento en que el CLIENTE leyó este mensaje (recibo de lectura
+   *  de WhatsApp: statuses[].status==="read"). El hilo muestra el "visto ✓✓". */
+  readAt?: string;
+}
+/** Tipificación (disposition) de una conversación — el agente marca en qué
+ *  etapa del funnel quedó, con qué valoración y tags. Historial en
+ *  `dispositions`; la más reciente cacheada en `lastDisposition` (para la lista).
+ *  `stageId`/`stageLabel` se alinean con el árbol de dispositions unificado
+ *  (connectview-taxonomies); `tags` puede llevar los sub-stages elegidos. */
+export interface Disposition {
+  id: string;
+  stageId: string;
+  stageLabel: string;
+  valoracion?: string;
+  tags?: string[];
+  notes?: string;
+  agent?: string;
+  ts: string;
 }
 export interface Conversation {
   conversationId: string; // `${channel}#${senderId}`
@@ -57,10 +146,35 @@ export interface Conversation {
   senderId: string;
   customerName?: string;
   status: "open" | "closed";
+  /** Quién atiende AHORA (estado visible del inbox):
+   *  · assignee="bot"   + status:"open"  → "Bot"    (el agente IA atiende)
+   *  · assignee="agent" + status:"open"  → "Agente" (un humano atiende)
+   *  · status:"closed"                    → "Cerrado"
+   *  Un inbound reabre en "bot"; un reply/assign lo pasa a "agent". */
+  assignee?: "bot" | "agent";
+  /** Historial de tipificaciones (append) + la más reciente (para la lista). */
+  dispositions?: Disposition[];
+  lastDisposition?: Disposition;
+  /** Cierre: por qué y cuándo se cerró, y cuándo se reabrió (inbound del cliente).
+   *  · "manual"     — el agente cerró (o closeAfter en typify)
+   *  · "inactivity" — auto-cierre por >30 min sin actividad (sweep del list)
+   *  · "resolved"   — cierre marcado como resuelto */
+  closedReason?: "manual" | "inactivity" | "resolved";
+  closedAt?: string;
+  reopenedAt?: string;
   unread: number;
   lastMessageAt: string;
   lastMessagePreview: string;
   assignedAgent?: string;
+  /** Ownership por agente (inbox omnicanal). Campo CANÓNICO de "de quién es este
+   *  chat": el agente que TOMA la conversación se vuelve su dueño y a los DEMÁS
+   *  agentes deja de aparecerles (admin/supervisor ven TODO). Ausente = sin
+   *  dueño → cola compartida (visible para todos los agentes).
+   *  · `ownerAgentId`   — EMAIL (o id) del agente-dueño.
+   *  · `ownerAgentName` — nombre para mostrar en el badge.
+   *  NO confundir con `assignedAgent` (legacy = "quién respondió último"). */
+  ownerAgentId?: string;
+  ownerAgentName?: string;
   /** Identidad unificada (Fase C): lead vinculado + teléfono/email cacheados
    *  (de WhatsApp, del texto del DM, o de un vínculo manual del agente). El
    *  panel "Cliente 360" del hilo usa el teléfono para traer perfil + golpes. */
@@ -76,6 +190,22 @@ export interface Conversation {
   dmSent?: boolean;
   /** Solo `mercadolibre` (F4.1): contexto para responder por el endpoint correcto. */
   ml?: MlContext;
+  /** Meta multi-cuenta (Instagram/Messenger/comentarios): id de la CUENTA
+   *  RECEPTORA (page id de Messenger/FB o IG business account id de Instagram)
+   *  = `entry.id` del webhook. Permite responder DESDE la página correcta cuando
+   *  el tenant conectó varias cuentas. Ausente → cae a la cuenta legacy única. */
+  metaAccountId?: string;
+  /** Read + typing entrantes (bandeja "en vivo"):
+   *  · `lastInboundMessageId` — id del ÚLTIMO mensaje entrante (WhatsApp lo exige
+   *    para mandar el read-receipt POST /messages status:read). Se guarda en cada
+   *    inbound de WhatsApp; en otros canales no aplica.
+   *  · `lastCustomerReadAt` — última vez que el cliente marcó leído (WhatsApp
+   *    statuses[].status==="read"). El hilo pinta "visto".
+   *  · `typingUntil` — instante (ISO) hasta el cual mostrar "escribiendo…" (typing
+   *    entrante de Messenger/IG). WhatsApp Cloud API NO envía typing entrante. */
+  lastInboundMessageId?: string;
+  lastCustomerReadAt?: string;
+  typingUntil?: string;
   messages: ConvMessage[];
   createdAt: string;
   updatedAt: string;
@@ -109,6 +239,7 @@ function blank(
     channel,
     senderId,
     status: "open",
+    assignee: "bot",
     unread: 0,
     lastMessageAt: now,
     lastMessagePreview: "",
@@ -138,6 +269,11 @@ export async function appendInbound(
     ts?: string;
     tenantId?: string;
     attachment?: { type: string; url: string };
+    /** Id del mensaje en la plataforma (WhatsApp `messages[].id`). Se guarda como
+     *  `lastInboundMessageId` para poder mandar el read-receipt luego. */
+    messageId?: string;
+    /** Meta multi-cuenta: id de la cuenta receptora (page/ig id = entry.id). */
+    metaAccountId?: string;
   },
 ): Promise<Conversation> {
   const now = m.ts || new Date().toISOString();
@@ -148,6 +284,8 @@ export async function appendInbound(
     ...(conv.messages || []).slice(-199),
     { id: randomUUID(), direction: "in", text: m.text, ts: now, attachment: m.attachment },
   ];
+  if (m.messageId) conv.lastInboundMessageId = m.messageId;
+  if (m.metaAccountId) conv.metaAccountId = m.metaAccountId;
   conv.unread = (conv.unread || 0) + 1;
   conv.lastMessageAt = now;
   conv.lastMessagePreview = (m.text || "").slice(0, 120) || "[adjunto]";
@@ -162,7 +300,17 @@ export async function appendInbound(
   if (m.channel === "whatsapp" && !conv.phone) {
     conv.phone = normalizePhone(m.senderId)?.e164 || `+${m.senderId.replace(/\D/g, "")}`;
   }
-  conv.status = "open";
+  // Regla de negocio: una conversación cerrada SOLO se reabre cuando el cliente
+  // escribe. Al reabrir, el bot atiende primero de nuevo (assignee="bot"),
+  // se registra `reopenedAt` y se limpia el motivo/instante de cierre. Si ya
+  // estaba abierta, NO tocamos assignee (respeta que un humano la tomara).
+  if (conv.status === "closed") {
+    conv.status = "open";
+    conv.assignee = "bot";
+    conv.reopenedAt = now;
+    conv.closedReason = undefined;
+    conv.closedAt = undefined;
+  }
   conv.updatedAt = now;
   await put(dynamo, conv);
   return conv;
@@ -185,12 +333,15 @@ export async function appendComment(
     postId?: string;
     ts?: string;
     tenantId?: string;
+    /** Meta multi-cuenta: id de la cuenta receptora (page/ig id = entry.id). */
+    metaAccountId?: string;
   },
 ): Promise<Conversation> {
   const now = m.ts || new Date().toISOString();
   const conv =
     (await getConversation(dynamo, convId("fb_comment", m.fromId))) ||
     blank("fb_comment", m.fromId, now, m.tenantId);
+  if (m.metaAccountId) conv.metaAccountId = m.metaAccountId;
   conv.messages = [
     ...(conv.messages || []).slice(-199),
     { id: randomUUID(), direction: "in", text: m.text, ts: now },
@@ -251,30 +402,32 @@ export async function appendMlInbound(
   return conv;
 }
 
-/** Mensaje saliente (respuesta del agente) → append + unread=0. */
+/** Mensaje saliente (respuesta del agente) → append + unread=0. `attachment`
+ *  opcional para salientes con media (imagen/audio/video/documento). */
 export async function appendOutbound(
   dynamo: DynamoDBClient,
   conversationId: string,
   text: string,
   agent?: string,
+  attachment?: { type: string; url: string },
 ): Promise<Conversation | null> {
   const conv = await getConversation(dynamo, conversationId);
   if (!conv) return null;
   const now = new Date().toISOString();
   conv.messages = [
     ...(conv.messages || []).slice(-199),
-    { id: randomUUID(), direction: "out", text, ts: now, agent },
+    { id: randomUUID(), direction: "out", text, ts: now, agent, attachment },
   ];
   conv.unread = 0;
   conv.lastMessageAt = now;
-  conv.lastMessagePreview = (text || "").slice(0, 120);
+  conv.lastMessagePreview = (text || "").slice(0, 120) || (attachment ? "[adjunto]" : "");
   conv.assignedAgent = agent || conv.assignedAgent;
   conv.updatedAt = now;
   await put(dynamo, conv);
   return conv;
 }
 
-/** Marca leída / asigna / cierra / marca dmSent. */
+/** Marca leída / asigna / cierra / marca dmSent / typing / visto del cliente. */
 export async function patchConversation(
   dynamo: DynamoDBClient,
   conversationId: string,
@@ -284,17 +437,120 @@ export async function patchConversation(
       | "unread"
       | "status"
       | "assignedAgent"
+      | "assignee"
+      | "ownerAgentId"
+      | "ownerAgentName"
       | "dmSent"
       | "leadId"
       | "phone"
       | "email"
       | "customerName"
+      | "typingUntil"
+      | "lastCustomerReadAt"
+      | "lastInboundMessageId"
+      | "closedReason"
+      | "closedAt"
+      | "reopenedAt"
     >
   >,
 ): Promise<Conversation | null> {
   const conv = await getConversation(dynamo, conversationId);
   if (!conv) return null;
   Object.assign(conv, patch, { updatedAt: new Date().toISOString() });
+  await put(dynamo, conv);
+  return conv;
+}
+
+/**
+ * Recibo de LECTURA entrante (WhatsApp statuses[].status==="read"): el cliente
+ * leyó nuestros mensajes. Marca `readAt` en TODOS los mensajes salientes que aún
+ * no lo tenían y setea `lastCustomerReadAt`. Best-effort (no rompe si no hay
+ * conversación / mensajes). Devuelve la conversación actualizada o null.
+ */
+export async function markOutboundRead(
+  dynamo: DynamoDBClient,
+  conversationId: string,
+  readAt?: string,
+): Promise<Conversation | null> {
+  const conv = await getConversation(dynamo, conversationId);
+  if (!conv) return null;
+  const ts = readAt || new Date().toISOString();
+  conv.messages = (conv.messages || []).map((msg) =>
+    msg.direction === "out" && !msg.readAt ? { ...msg, readAt: ts } : msg,
+  );
+  // Guardamos siempre `lastCustomerReadAt` (aunque no haya saliente aún): sirve
+  // para pintar "visto" incluso si el recibo llegó antes de registrar el saliente.
+  conv.lastCustomerReadAt = ts;
+  conv.updatedAt = new Date().toISOString();
+  await put(dynamo, conv);
+  return conv;
+}
+
+/**
+ * Typing entrante (Messenger/IG `sender_action:"typing_on"`): el cliente está
+ * escribiendo. Marca `typingUntil` ~8s en el futuro; el hilo muestra "escribiendo…"
+ * mientras `Date.now() < typingUntil`. Best-effort. NOTA: WhatsApp Cloud API NO
+ * envía typing entrante, así que este helper solo se usa desde meta-messaging-webhook.
+ */
+export async function setTyping(
+  dynamo: DynamoDBClient,
+  conversationId: string,
+  ttlMs = 8000,
+): Promise<Conversation | null> {
+  const conv = await getConversation(dynamo, conversationId);
+  if (!conv) return null;
+  conv.typingUntil = new Date(Date.now() + ttlMs).toISOString();
+  conv.updatedAt = new Date().toISOString();
+  await put(dynamo, conv);
+  return conv;
+}
+
+/** Setea quién atiende AHORA (bot ↔ agent) + updatedAt. Muta el record en sitio
+ *  y persiste. Devuelve la conversación actualizada o null si no existe. */
+export async function setAssignee(
+  dynamo: DynamoDBClient,
+  conversationId: string,
+  assignee: "bot" | "agent",
+): Promise<Conversation | null> {
+  const conv = await getConversation(dynamo, conversationId);
+  if (!conv) return null;
+  conv.assignee = assignee;
+  conv.updatedAt = new Date().toISOString();
+  await put(dynamo, conv);
+  return conv;
+}
+
+/** Tipifica una conversación: genera el id de la disposition (randomUUID, como el
+ *  resto del archivo), la empuja al historial `dispositions` (crea el array si no
+ *  existe), setea `lastDisposition` (para la lista) y `updatedAt`. Persiste y
+ *  devuelve la conversación actualizada o null si no existe. */
+export async function typifyConversation(
+  dynamo: DynamoDBClient,
+  conversationId: string,
+  disposition: {
+    stageId: string;
+    stageLabel: string;
+    valoracion?: string;
+    tags?: string[];
+    notes?: string;
+    agent?: string;
+  },
+): Promise<Conversation | null> {
+  const conv = await getConversation(dynamo, conversationId);
+  if (!conv) return null;
+  const entry: Disposition = {
+    id: randomUUID(),
+    stageId: disposition.stageId,
+    stageLabel: disposition.stageLabel,
+    valoracion: disposition.valoracion,
+    tags: disposition.tags,
+    notes: disposition.notes,
+    agent: disposition.agent,
+    ts: new Date().toISOString(),
+  };
+  conv.dispositions = [...(conv.dispositions || []), entry];
+  conv.lastDisposition = entry;
+  conv.updatedAt = entry.ts;
   await put(dynamo, conv);
   return conv;
 }

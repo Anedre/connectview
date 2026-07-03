@@ -1,12 +1,19 @@
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowRightLeft,
+  BellRing,
+  CalendarCheck,
   CalendarClock,
   ClipboardList,
   Globe,
+  Inbox,
+  Mail,
   MessageCircle,
   MoveRight,
+  Route,
   PenLine,
+  SlidersHorizontal,
+  Tag,
   Timer,
   UserPlus,
 } from "lucide-react";
@@ -24,12 +31,20 @@ export type TriggerType =
   | "lead_stage_changed"
   | "lead_inactive"
   | "wrapup_saved"
-  | "whatsapp_flow_completed";
+  | "whatsapp_flow_completed"
+  | "message_inbound"
+  | "appointment_scheduled"
+  | "tag_applied";
 export type ActionType =
   | "send_whatsapp_template"
   | "move_stage"
   | "schedule_callback"
-  | "webhook";
+  | "webhook"
+  | "send_email"
+  | "apply_tag"
+  | "apply_attribute"
+  | "notify_agent"
+  | "start_journey";
 
 export interface RuleCondition {
   field: "source" | "stageId" | "valoracion" | "channel" | "flowName";
@@ -55,19 +70,49 @@ export interface AutomationRun {
   ruleId: string;
   ruleName?: string;
   trigger?: string;
+  /** Tipo de acción ejecutada, o "skipped" cuando la regla no cumplió condiciones. */
   action?: string;
   leadId?: string;
   contactId?: string;
   ok?: boolean;
+  /** Motivo/mensaje de error (rojo) o de skip (ámbar) en el historial. */
   error?: string;
+  /** Detalle humano de lo ejecutado (p.ej. "plantilla bienvenida → +51…"). */
+  detail?: string;
   at?: string;
+}
+
+/** Respuesta del dry-run POST {action:"testRule"} — no ejecuta nada. */
+export interface RuleTestResult {
+  ok: boolean;
+  conditionsPass: boolean;
+  conditionsDetail: Array<{
+    field: string;
+    op: string;
+    value: string;
+    actual: string;
+    pass: boolean;
+  }>;
+  actions: Array<{ type: string; preview: string }>;
+  leadFound?: boolean;
+  error?: string;
 }
 
 /** Campo de configuración de un trigger/acción — la UI lo renderiza genérico. */
 export interface FieldDef {
   key: string;
   label: string;
-  type: "text" | "number" | "select" | "stage" | "template" | "agent" | "url" | "variables";
+  type:
+    | "text"
+    | "textarea"
+    | "number"
+    | "select"
+    | "stage"
+    | "template"
+    | "agent"
+    | "journey"
+    | "url"
+    | "variables";
   placeholder?: string;
   hint?: string;
   required?: boolean;
@@ -136,6 +181,49 @@ export const TRIGGER_DEFS: Record<
         type: "text",
         placeholder: "nombre del Flow",
         hint: "Vacío = cualquier formulario.",
+      },
+    ],
+  },
+  message_inbound: {
+    label: "Mensaje entrante",
+    description: "Un cliente escribe por un canal de mensajería (WhatsApp, IG, Messenger).",
+    icon: Inbox,
+    accent: "var(--accent-cyan)",
+    fields: [
+      {
+        key: "channel",
+        label: "Solo el canal",
+        type: "select",
+        options: [
+          { value: "", label: "Cualquiera" },
+          { value: "whatsapp", label: "WhatsApp" },
+          { value: "instagram", label: "Instagram" },
+          { value: "messenger", label: "Messenger" },
+        ],
+        defaultValue: "",
+        hint: "Vacío = cualquier canal de mensajería.",
+      },
+    ],
+  },
+  appointment_scheduled: {
+    label: "Cita agendada",
+    description: "Se agenda una cita/reunión con un cliente (roadmap #26).",
+    icon: CalendarCheck,
+    accent: "var(--accent-green)",
+    fields: [],
+  },
+  tag_applied: {
+    label: "Etiqueta aplicada",
+    description: "Se le aplica una etiqueta a un lead (manual o por otra regla).",
+    icon: Tag,
+    accent: "var(--accent-amber)",
+    fields: [
+      {
+        key: "tag",
+        label: "Solo la etiqueta",
+        type: "text",
+        placeholder: "nombre de la etiqueta",
+        hint: "Vacío = cualquier etiqueta.",
       },
     ],
   },
@@ -221,6 +309,85 @@ export const ACTION_DEFS: Record<
         required: true,
         placeholder: "https://…",
         hint: "1 intento, timeout 5s (reintentos multi-día: próximamente).",
+      },
+    ],
+  },
+  send_email: {
+    label: "Enviar email",
+    description: "Manda un email al correo del lead (por SES, con tracking de apertura).",
+    icon: Mail,
+    accent: "var(--accent-violet)",
+    fields: [
+      { key: "subject", label: "Asunto", type: "text", required: true, placeholder: "Asunto del correo" },
+      {
+        key: "body",
+        label: "Mensaje",
+        type: "textarea",
+        required: true,
+        hint: "Tokens: {{name}}, {{phone}}, {{stage}} se reemplazan con los datos del lead.",
+      },
+    ],
+  },
+  apply_tag: {
+    label: "Aplicar etiqueta",
+    description: "Agrega una etiqueta al lead (queda en sus atributos y puede disparar otras reglas).",
+    icon: Tag,
+    accent: "var(--accent-amber)",
+    fields: [
+      { key: "tag", label: "Etiqueta", type: "text", required: true, placeholder: "vip, no-contactar…" },
+    ],
+  },
+  apply_attribute: {
+    label: "Setear atributo",
+    description: "Guarda un dato personalizado en el lead (attributes[campo] = valor).",
+    icon: SlidersHorizontal,
+    accent: "var(--accent-cyan)",
+    fields: [
+      { key: "field", label: "Campo", type: "text", required: true, placeholder: "prioridad, origen…" },
+      {
+        key: "value",
+        label: "Valor",
+        type: "text",
+        required: true,
+        placeholder: "alta",
+        hint: "Tokens: {{name}}, {{phone}}, {{stage}} disponibles.",
+      },
+    ],
+  },
+  notify_agent: {
+    label: "Avisar a un agente",
+    description: "Crea una notificación in-app para un agente (aparece en sus tareas).",
+    icon: BellRing,
+    accent: "var(--accent-pink)",
+    fields: [
+      {
+        key: "message",
+        label: "Mensaje",
+        type: "text",
+        required: true,
+        placeholder: "Lead caliente para llamar",
+        hint: "Tokens: {{name}}, {{phone}}, {{stage}} disponibles.",
+      },
+      {
+        key: "agent",
+        label: "Agente",
+        type: "agent",
+        hint: "Opcional. Vacío = notificación general (sin asignar).",
+      },
+    ],
+  },
+  start_journey: {
+    label: "Iniciar Journey",
+    description: "Inscribe al lead en un recorrido del Engagement Studio (nurturing multi-paso).",
+    icon: Route,
+    accent: "var(--accent-green)",
+    fields: [
+      {
+        key: "journeyId",
+        label: "Journey",
+        type: "journey",
+        required: true,
+        hint: "El recorrido debe estar Activo para que el lead avance por sus pasos.",
       },
     ],
   },
@@ -312,10 +479,18 @@ export const TRIGGER_ORDER: TriggerType[] = [
   "lead_inactive",
   "wrapup_saved",
   "whatsapp_flow_completed",
+  "message_inbound",
+  "appointment_scheduled",
+  "tag_applied",
 ];
 export const ACTION_ORDER: ActionType[] = [
   "send_whatsapp_template",
   "move_stage",
   "schedule_callback",
   "webhook",
+  "send_email",
+  "apply_tag",
+  "apply_attribute",
+  "notify_agent",
+  "start_journey",
 ];

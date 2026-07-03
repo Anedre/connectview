@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { FlowBuilder } from "@/components/bots/FlowBuilder";
 import { BotTemplateGallery } from "@/components/bots/BotTemplateGallery";
 import { type Bot } from "@/lib/botFlow";
-import * as Icon from "@/components/vox/primitives";
-import { PageHeader } from "@/components/vox/PageHeader";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { Icon, Btn, Stat, Pill, HeroBand, Num } from "@/components/aria";
 
 /**
  * FlowBuilderPage — the real /bot page (roadmap #16). Lists saved bots from
@@ -28,6 +28,13 @@ const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
   active: "Activo",
   paused: "Pausado",
+};
+
+// Estado → tono del Pill de ARIA (verde=activo, gold=pausado, outline=borrador).
+const STATUS_TONE: Record<string, "green" | "gold" | "outline"> = {
+  active: "green",
+  paused: "gold",
+  draft: "outline",
 };
 
 // Acento por bot — variedad visual (como los colores por etapa del embudo de
@@ -183,103 +190,217 @@ export function FlowBuilderPage() {
   ];
 
   return (
-    <div className="view">
-      <PageHeader
-        crumb="Automatización"
+    <div className="page" style={{ maxWidth: 1320 }}>
+      {/* ARIA hero band — reemplaza el PageHeader por el lenguaje premium de
+          ARIA. El CRUD real (manage-bot) queda intacto debajo. */}
+      <HeroBand
         title="Bots"
-        count={`${list.length} ${list.length === 1 ? "bot" : "bots"}`}
-        sub="Flujos conversacionales sin código — chat, calificación de leads y derivación a un agente."
-        search={{ value: q, onChange: setQ, placeholder: "Buscar bot…" }}
-        actions={
+        chip={
           <>
-            <button className="btn" onClick={loadList} disabled={loading}>
-              <Icon.Refresh size={14} /> Actualizar
-            </button>
-            <button className="btn btn--primary" onClick={() => setPicking(true)}>
-              <Icon.Plus size={14} /> Nuevo bot
-            </button>
+            {list.length} {list.length === 1 ? "bot" : "bots"} · {counts.active} activos
           </>
+        }
+        chipIcon="bot"
+        chipTone="var(--accent)"
+        right={
+          <div className="row gap10">
+            <Btn variant="ghost" size="sm" icon="refresh" onClick={loadList} disabled={loading}>
+              Actualizar
+            </Btn>
+            <Btn variant="primary" size="sm" icon="plus" onClick={() => setPicking(true)}>
+              Nuevo bot
+            </Btn>
+          </div>
         }
       />
 
       {loading ? (
-        <div className="bots-grid">
-          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="skel" style={{ height: 168, borderRadius: 14 }} />)}
+        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="skel" style={{ height: 168, borderRadius: 14 }} />
+          ))}
         </div>
       ) : list.length === 0 ? (
         <div className="card" style={{ padding: 56, textAlign: "center", color: "var(--text-3)" }}>
-          <Icon.Workflow size={34} style={{ opacity: 0.4 }} />
+          <Icon name="flow" size={34} style={{ opacity: 0.4 }} />
           <div style={{ marginTop: 12, fontSize: 14.5, fontWeight: 600, color: "var(--text-2)" }}>
             Todavía no hay bots
           </div>
           <div style={{ marginTop: 4, fontSize: 12.5 }}>
             Construí flujos sin código para automatizar chats, calificar leads y derivar a un agente.
           </div>
-          <button className="btn btn--primary" style={{ marginTop: 16 }} onClick={() => setPicking(true)}>
-            <Icon.Plus size={14} /> Crear el primero
-          </button>
+          <Btn variant="primary" icon="plus" style={{ marginTop: 16 }} onClick={() => setPicking(true)}>
+            Crear el primero
+          </Btn>
         </div>
       ) : (
         <>
-          {/* KPI strip */}
-          <div className="bots-kpis">
-            <div className="bots-kpi"><span className="bots-kpi__n">{counts.all}</span><span className="bots-kpi__l">Bots</span></div>
-            <div className="bots-kpi"><span className="bots-kpi__n" style={{ color: "var(--accent-green)" }}>{counts.active}</span><span className="bots-kpi__l">Activos</span></div>
-            <div className="bots-kpi"><span className="bots-kpi__n" style={{ color: "var(--text-2)" }}>{counts.draft}</span><span className="bots-kpi__l">Borradores</span></div>
-            <div className="bots-kpi"><span className="bots-kpi__n" style={{ color: "var(--accent-violet)" }}>{totalSteps}</span><span className="bots-kpi__l">Pasos totales</span></div>
+          {/* KPIs — familia ARIA (Stat + count-up). */}
+          <div
+            className="grid"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}
+          >
+            <Stat icon="bot" color="var(--accent)" label="Bots" value={<Num value={counts.all} />} sub="flujos creados" />
+            <Stat
+              icon="check"
+              color="var(--green)"
+              label="Activos"
+              value={<Num value={counts.active} />}
+              sub={`${counts.draft} borradores`}
+            />
+            <Stat icon="grip" color="var(--iris)" label="Borradores" value={<Num value={counts.draft} />} sub="sin publicar" />
+            <Stat icon="flow" color="var(--gold)" label="Pasos totales" value={<Num value={totalSteps} />} sub="en todos los bots" />
           </div>
 
-          {/* Status filters */}
-          <div className="bots-filters">
-            {FILTERS.map((f) => (
-              <button
-                key={f.key}
-                className={`bots-filter ${statusFilter === f.key ? "bots-filter--on" : ""}`}
-                onClick={() => setStatusFilter(f.key)}
-              >
-                {f.label}<span className="bots-filter__n">{counts[f.key]}</span>
-              </button>
-            ))}
+          {/* Filtros de estado — pills estilo ARIA. */}
+          <div className="row gap8" role="tablist" aria-label="Estado" style={{ marginBottom: 16, flexWrap: "wrap" }}>
+            {FILTERS.map((f) => {
+              const active = statusFilter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setStatusFilter(f.key)}
+                  className="card"
+                  style={{
+                    padding: "8px 14px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    cursor: "pointer",
+                    border: active ? "1.5px solid var(--accent)" : "1px solid var(--border-1)",
+                    background: active ? "var(--accent-soft)" : "var(--bg-1)",
+                  }}
+                >
+                  <span style={{ fontWeight: 700, fontSize: 13, color: active ? "var(--accent)" : "var(--text-1)" }}>
+                    {f.label}
+                  </span>
+                  <span className="tnum" style={{ fontSize: 12, color: active ? "var(--accent)" : "var(--text-3)" }}>
+                    {counts[f.key]}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Card grid */}
+          {/* Buscador — pill estilo ARIA. */}
+          <div className="row gap8" style={{ marginBottom: 16 }}>
+            <div
+              className="card"
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flex: 1, maxWidth: 360 }}
+            >
+              <Icon name="search" size={15} style={{ color: "var(--text-3)" }} />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar bot…"
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--text-1)",
+                  fontSize: 13,
+                  outline: "none",
+                  flex: 1,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Card grid — familia ARIA (card + card__accent-bar + Pill). */}
           {kept.length === 0 ? (
             <div className="card" style={{ padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>
               Ningún bot coincide con el filtro.
             </div>
           ) : (
-            <div className="bots-grid">
-              {kept.map((b, i) => (
-                <div key={b.botId} className="bot-card" style={{ "--bot-accent": botColor(i) } as React.CSSProperties} onClick={() => openBot(b.botId)} role="button" tabIndex={0}>
-                  <div className="bot-card__top">
-                    <span className="bot-card__icon"><CardIcon size={17} /></span>
-                    <span className={`bot-card__status bot-card__status--${b.status}`}>
-                      {STATUS_LABEL[b.status] || b.status}
-                    </span>
-                  </div>
-                  <div className="bot-card__name">{b.name || "Sin nombre"}</div>
-                  <div className="bot-card__rail" aria-hidden>
-                    {Array.from({ length: Math.max(1, Math.min(b.stepCount || 1, 7)) }).map((_, i) => (
-                      <span key={i} className="bot-card__dot" />
-                    ))}
-                  </div>
-                  <div className="bot-card__meta">
-                    <span className="bot-card__chip"><Icon.Workflow size={12} /> {b.trigger || "Manual"}</span>
-                    <span className="bot-card__chip">{b.stepCount} {b.stepCount === 1 ? "paso" : "pasos"}</span>
-                  </div>
-                  <div className="bot-card__foot">
-                    <span>{b.updatedAt ? new Date(b.updatedAt).toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" }) : "—"}</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <button className="btn btn--ghost btn--sm" style={{ padding: "3px 10px", fontSize: 11.5, color: "var(--accent-cyan)" }} onClick={(e) => { e.stopPropagation(); openBot(b.botId, true); }} title="Probar este flujo">
-                        Probar
-                      </button>
-                      <button className="bot-card__del" onClick={(e) => remove(b.botId, e)} title="Eliminar bot">
-                        <Icon.Trash size={13} />
-                      </button>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+              {kept.map((b, i) => {
+                const accent = botColor(i);
+                return (
+                  <div
+                    key={b.botId}
+                    className="card card__accent-bar"
+                    style={{ "--_c": accent, padding: "16px 18px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 12 } as React.CSSProperties}
+                    onClick={() => openBot(b.botId)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="row between">
+                      <span
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 11,
+                          display: "grid",
+                          placeItems: "center",
+                          flex: "0 0 auto",
+                          background: `color-mix(in srgb, ${accent} 15%, var(--bg-1))`,
+                          color: accent,
+                        }}
+                      >
+                        <CardIcon size={19} />
+                      </span>
+                      <Pill tone={STATUS_TONE[b.status]} icon={b.status === "active" ? "dot" : undefined}>
+                        {STATUS_LABEL[b.status] || b.status}
+                      </Pill>
+                    </div>
+
+                    <div style={{ fontWeight: 750, fontSize: 15, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {b.name || "Sin nombre"}
+                    </div>
+
+                    {/* Riel de pasos — indicador visual del tamaño del flujo. */}
+                    <div className="row gap6" aria-hidden style={{ alignItems: "center" }}>
+                      {Array.from({ length: Math.max(1, Math.min(b.stepCount || 1, 7)) }).map((_, j) => (
+                        <span
+                          key={j}
+                          style={{ width: 18, height: 4, borderRadius: 3, background: `color-mix(in srgb, ${accent} 55%, var(--border-1))` }}
+                        />
+                      ))}
+                    </div>
+
+                    <div className="row gap6 wrap" style={{ alignItems: "center" }}>
+                      <Pill tone="outline" icon="flow">
+                        {b.trigger || "Manual"}
+                      </Pill>
+                      <Pill tone="outline">
+                        {b.stepCount} {b.stepCount === 1 ? "paso" : "pasos"}
+                      </Pill>
+                    </div>
+
+                    <div className="row between" style={{ alignItems: "center", marginTop: "auto", fontSize: 11.5, color: "var(--text-3)" }}>
+                      <span className="tnum">
+                        {b.updatedAt
+                          ? new Date(b.updatedAt).toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" })
+                          : "—"}
+                      </span>
+                      <div className="row gap6" style={{ alignItems: "center" }}>
+                        <Btn
+                          variant="ghost"
+                          size="sm"
+                          icon="eye"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openBot(b.botId, true);
+                          }}
+                          title="Probar este flujo"
+                        >
+                          Probar
+                        </Btn>
+                        <Btn
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => remove(b.botId, e)}
+                          title="Eliminar bot"
+                          aria-label="Eliminar bot"
+                        >
+                          <Trash2 size={13} />
+                        </Btn>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

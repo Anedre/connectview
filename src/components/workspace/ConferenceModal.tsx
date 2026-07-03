@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useCCP } from "@/hooks/useCCP";
-import * as Icon from "@/components/vox/primitives";
+import { Btn, Icon } from "@/components/aria";
 
 interface ConferenceModalProps {
   open: boolean;
@@ -71,71 +71,63 @@ export function ConferenceModal({ open, onClose, contactId }: ConferenceModalPro
       aria-modal="true"
       aria-label="Conferencia"
       onClick={() => !submitting && onClose()}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(8, 10, 16, 0.55)",
-        backdropFilter: "blur(6px)",
-        WebkitBackdropFilter: "blur(6px)",
-        zIndex: 250,
-        display: "grid",
-        placeItems: "center",
-      }}
+      className="scrim"
+      style={{ zIndex: 250, display: "grid", placeItems: "center" }}
     >
       <div
+        className="card card--pop"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 380,
-          background: "var(--bg-1)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 14,
-          boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
-          overflow: "hidden",
-        }}
+        style={{ width: 380, maxWidth: "92vw", overflow: "hidden" }}
       >
         <div
+          className="row gap10"
           style={{
             padding: "14px 16px",
             borderBottom: "1px solid var(--border-1)",
-            display: "flex",
             alignItems: "center",
-            gap: 10,
           }}
         >
-          <Icon.Users size={16} style={{ color: "var(--accent-violet)" }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Añadir a la llamada</div>
-            <div className="muted" style={{ fontSize: 11 }}>
+          <div
+            className="tl__ico"
+            style={{ ["--_c" as string]: "var(--iris)", width: 30, height: 30, flex: "0 0 auto" }}
+          >
+            <Icon name="users" size={15} />
+          </div>
+          <div className="grow">
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>Añadir a la llamada</div>
+            <div className="dim" style={{ fontSize: 11 }}>
               Conferencia · cliente + tú + 3er participante
             </div>
           </div>
           <button
             type="button"
-            className="btn btn--ghost btn--sm btn--icon"
+            className="ctab__x"
             onClick={onClose}
             disabled={submitting}
             aria-label="Cerrar"
           >
-            <Icon.Close size={14} />
+            <Icon name="x" size={14} />
           </button>
         </div>
 
-        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-          <label style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Número del participante
-          </label>
+        <div className="card__pad col gap12">
           <div
+            className="dim"
+            style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}
+          >
+            Número del participante
+          </div>
+          <div
+            className="row gap8"
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
               background: "var(--bg-2)",
               border: "1px solid var(--border-1)",
-              borderRadius: 8,
-              padding: "8px 12px",
+              borderRadius: "var(--r-md)",
+              padding: "0 12px",
+              height: 46,
             }}
           >
-            <Icon.Phone size={14} style={{ color: "var(--text-3)" }} />
+            <Icon name="phone" size={14} style={{ color: "var(--text-3)" }} />
             <input
               ref={inputRef}
               value={phone}
@@ -145,45 +137,43 @@ export function ConferenceModal({ open, onClose, contactId }: ConferenceModalPro
               }}
               placeholder="+51953730189"
               inputMode="tel"
+              className="mono"
               style={{
                 flex: 1,
                 background: "transparent",
                 border: 0,
                 outline: "none",
-                fontFamily: "var(--font-mono)",
                 fontSize: 16,
                 fontWeight: 600,
                 color: "var(--text-1)",
               }}
             />
           </div>
-          <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+          <div className="dim" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
             Tu llamada queda activa mientras Connect marca al 3er participante. Una vez
             conectado, los tres están en una conferencia 3-way.
           </div>
         </div>
 
         <div
+          className="row gap8"
           style={{
             padding: "10px 14px",
             borderTop: "1px solid var(--border-1)",
-            display: "flex",
             justifyContent: "flex-end",
-            gap: 8,
           }}
         >
-          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={submitting}>
+          <Btn variant="ghost" onClick={onClose} disabled={submitting}>
             Cancelar
-          </button>
-          <button
-            type="button"
-            className="btn btn--primary"
+          </Btn>
+          <Btn
+            variant="primary"
+            icon="phone"
             onClick={onAdd}
             disabled={submitting || !valid}
-            style={{ background: "var(--accent-violet)", borderColor: "var(--accent-violet)", color: "white" }}
           >
-            <Icon.PhoneIn size={12} /> {submitting ? "Añadiendo…" : "Añadir a la llamada"}
-          </button>
+            {submitting ? "Añadiendo…" : "Añadir a la llamada"}
+          </Btn>
         </div>
       </div>
     </div>

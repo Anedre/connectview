@@ -4,11 +4,13 @@ import { Phone, Mail, MessageCircle, Lightbulb } from "lucide-react";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import { useLiveTranscript } from "@/hooks/useLiveTranscript";
+import { useLeadOverview } from "@/hooks/useLeadOverview";
 import { useCCP } from "@/hooks/useCCP";
 import { getApiEndpoints } from "@/lib/api";
 import { VALORACION_META, type DispositionStage } from "@/lib/dispositions";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import * as Icon from "@/components/vox/primitives";
+import { Btn, Card, Icon as AIcon, Pill } from "@/components/aria";
 import { ScheduleFollowupModal } from "@/components/workspace/ScheduleCallbackModal";
 
 /**
@@ -124,6 +126,50 @@ function fmtDuration(s: number) {
 }
 
 /**
+ * Próximas acciones sugeridas DERIVADAS de la disposición elegida — NO es
+ * IA: es un set determinista a partir del sub-stage (los `volver_*` ya
+ * declaran el canal del follow-up) y de la valoración de la etapa. Si no
+ * hay nada que sugerir devuelve [] (el bloque se auto-oculta → degradado
+ * honesto, no inventamos acciones).
+ */
+type NextAction = { icon: string; label: string; color: string };
+function deriveNextActions(
+  stage: DispositionStage | null,
+  subStageId: string | null
+): NextAction[] {
+  if (!stage) return [];
+  const out: NextAction[] = [];
+  // 1) El sub-stage `volver_*` compromete un canal de seguimiento concreto.
+  if (subStageId === "volver_llamar")
+    out.push({ icon: "phone", label: "Agendar rellamada", color: "var(--cyan)" });
+  else if (subStageId === "volver_correo")
+    out.push({ icon: "mail", label: "Programar correo de seguimiento", color: "var(--gold)" });
+  else if (subStageId === "volver_whatsapp")
+    out.push({ icon: "wa", label: "Enviar seguimiento por WhatsApp", color: "var(--green)" });
+  // 2) Acciones por valoración de la etapa (comercialmente sensatas).
+  if (stage.valoracion === "cierre") {
+    out.push({ icon: "check", label: "Confirmar matrícula / pago", color: "var(--green)" });
+  } else if (stage.valoracion === "positiva") {
+    if (subStageId == null || !subStageId.startsWith("volver_"))
+      out.push({ icon: "calendar", label: "Agendar próximo contacto", color: "var(--gold)" });
+  } else if (stage.valoracion === "negativa") {
+    out.push({ icon: "tag", label: "Registrar motivo de descarte", color: "var(--red)" });
+  }
+  // 3) Siempre: reflejar la etapa en el CRM (se hace al enviar).
+  out.push({ icon: "tag", label: "Actualizar etapa en Salesforce", color: "var(--accent)" });
+  // Dedup por label, tope de 4.
+  const seen = new Set<string>();
+  const dedup: NextAction[] = [];
+  for (const a of out) {
+    if (seen.has(a.label)) continue;
+    seen.add(a.label);
+    dedup.push(a);
+    if (dedup.length >= 4) break;
+  }
+  return dedup;
+}
+
+/**
  * Wrap-up screen shown when a call ends and the agent moves into AfterCallWork.
  *
  * Disposition uses a 2-level tree (Stage → Sub Stage) loaded from
@@ -157,6 +203,9 @@ export function WrapUpView({
   const { user } = useConnectAuth();
   const { profile } = useCustomerProfile(customerPhone);
   const { data: transcript } = useLiveTranscript(contactId);
+  // Resumen del lead → etapa ACTUAL (último stageLabel del historial) + toques,
+  // para mostrar el "antes → después" que produce la tipificación.
+  const leadOv = useLeadOverview(customerPhone);
   const { agentName, setContactAttributes } = useCCP();
 
   // Unified taxonomy from DynamoDB (single source of truth across all
@@ -466,7 +515,12 @@ export function WrapUpView({
       // #21: el resumen ya quedó persistido por este envío — no re-guardar
       // al desmontar.
       sentRef.current = true;
-      toast.success("Wrap-up enviado");
+      toast.success(`Lead actualizado · ${selectedStage.label}`, {
+        description:
+          currentStageLabel && currentStageLabel !== selectedStage.label
+            ? `Etapa: ${currentStageLabel} → ${selectedStage.label} · toque #${leadTouches + 1}`
+            : `${selectedSubStage.label} · toque #${leadTouches + 1}`,
+      });
       // If the sub-stage commits to a follow-up, open the schedule
       // modal instead of finishing — the agent still needs to pick
       // WHEN (and refine the content for email/whatsapp). Closing the
@@ -486,8 +540,27 @@ export function WrapUpView({
   // Nota: la interacción "sin tipificar" se registra AUTOMÁTICAMENTE al terminar
   // el contacto (en el escritorio), así que acá solo cerramos — no re-registramos.
 
+  // Próximas acciones sugeridas — derivadas de la etapa/sub-stage elegidos
+  // (determinista, NO IA). Cálculo directo (sin useMemo con for-return, que
+  // rompe el gate de memoización del React Compiler).
+  const nextActions = deriveNextActions(selectedStage, subStageId);
+
+  // Impacto en el lead: etapa ACTUAL (último stageLabel del historial; recent[0]
+  // es el evento más nuevo) → etapa NUEVA (la tipificación elegida). Se recalcula
+  // en vivo al cambiar la selección para que el agente VEA cómo queda el lead.
+  const currentStageLabel =
+    leadOv.history?.recent.find((e) => e.stageLabel)?.stageLabel ?? null;
+  const leadTouches = leadOv.history?.count ?? 0;
+  const valTone: "green" | "gold" | "red" | "outline" = selectedStage
+    ? selectedStage.valoracion === "negativa"
+      ? "red"
+      : selectedStage.valoracion === "cierre" || selectedStage.valoracion === "positiva"
+      ? "green"
+      : "outline"
+    : "outline";
+
   return (
-    <div className="view">
+    <div className="view fadeup">
       <div className="view__head">
         <div>
           <div className="view__crumb">
@@ -500,8 +573,8 @@ export function WrapUpView({
             {queueName ? <> · {queueName}</> : null}
             {" · "}
             {summaryLoading
-              ? "Q está generando el resumen…"
-              : "Q ya generó el resumen (editable)"}
+              ? "Generando resumen…"
+              : "Resumen IA listo (editable)"}
           </div>
         </div>
         <div className="view__actions" style={{ alignItems: "center", gap: 10 }}>
@@ -527,131 +600,261 @@ export function WrapUpView({
                 : "Selecciona Stage y Sub Stage para habilitar"
             }
           >
-            <Icon.Check size={14} /> {saving ? "Enviando…" : "Enviar resumen"}
+            <Icon.Check size={14} /> {saving ? "Enviando…" : "Guardar y cerrar"}
           </button>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16, alignItems: "start" }}>
         <div className="col" style={{ gap: 16 }}>
-          {/* Q-generated summary */}
-          <div className="card">
-            <div className="card__head">
-              <div className="card__title">Resumen generado por Q</div>
-              <span className="chip chip--violet">
-                <Icon.Sparkles size={11} /> Contact Lens
-              </span>
-            </div>
-            <div className="card__body">
-              {summaryEditable ? (
-                <textarea
-                  value={summary}
-                  onChange={(e) => setSummary(e.target.value)}
-                  style={{
-                    width: "100%",
-                    minHeight: 140,
-                    background: "var(--accent-violet-soft)",
-                    border: "1px solid var(--accent-violet)",
-                    borderRadius: 8,
-                    padding: 14,
-                    color: "var(--text-1)",
-                    resize: "vertical",
-                    outline: "none",
-                    fontFamily: "var(--font-ui)",
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    background: "var(--accent-violet-soft)",
-                    padding: 14,
-                    borderRadius: 8,
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                    color: "var(--text-1)",
-                    minHeight: 80,
-                  }}
-                >
-                  {summaryLoading
-                    ? "Generando resumen…"
-                    : summary || "Sin resumen disponible."}
-                  {sentimentLabel && !summaryLoading && (
-                    <>
-                      {" "}
-                      <strong>
-                        Sentiment final:{" "}
-                        <span style={{ color: sentimentLabel.color }}>
-                          {sentimentLabel.label}
-                        </span>
-                        .
-                      </strong>
-                    </>
-                  )}
+          {/* Resumen de la llamada — duración real + sentiment (Contact Lens)
+              + resumen IA real (Bedrock). Reusa el mismo estado/fetch. */}
+          <Card title="Resumen de la llamada" icon="sparkle" accent="var(--iris)">
+            <div className="row gap16" style={{ marginBottom: 12, flexWrap: "wrap" }}>
+              <div>
+                <div className="dim" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>
+                  Duración
                 </div>
-              )}
-              <div className="row" style={{ gap: 8, marginTop: 12 }}>
-                <button
-                  className="btn btn--sm"
-                  onClick={fetchSummary}
-                  disabled={summaryLoading}
-                >
-                  <Icon.Refresh size={12} />
-                  Regenerar
-                </button>
-                <button
-                  className="btn btn--sm"
-                  onClick={() => setSummaryEditable((v) => !v)}
-                >
-                  {summaryEditable ? "Listo" : "Editar"}
-                </button>
-                <button
-                  className="btn btn--sm btn--ghost"
-                  onClick={() => {
-                    navigator.clipboard?.writeText(summary).catch(() => {});
-                    toast.success("Resumen copiado");
-                  }}
-                  disabled={!summary}
-                >
-                  Copiar
-                </button>
+                <div className="mono" style={{ fontSize: 18, fontWeight: 700 }}>
+                  {fmtDuration(durationSeconds)}
+                </div>
+              </div>
+              <div>
+                <div className="dim" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>
+                  Sentiment
+                </div>
+                {sentimentLabel ? (
+                  <Pill
+                    tone={
+                      sentimentLabel.label === "positivo"
+                        ? "green"
+                        : sentimentLabel.label === "negativo"
+                        ? "red"
+                        : "outline"
+                    }
+                  >
+                    {sentimentLabel.label}
+                  </Pill>
+                ) : (
+                  <span className="dim" style={{ fontSize: 12.5 }}>
+                    Sin datos
+                  </span>
+                )}
+              </div>
+              <div style={{ marginLeft: "auto" }}>
+                <Pill tone="iris" icon="sparkle">
+                  Contact Lens
+                </Pill>
               </div>
             </div>
-          </div>
-
-          {/* Agent notes */}
-          <div className="card">
-            <div className="card__head">
-              <div className="card__title">Notas del agente</div>
-              <span className="muted" style={{ fontSize: 11 }}>
-                {agentName || user?.username}
-              </span>
-            </div>
-            <div className="card__body">
+            {summaryEditable ? (
               <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Notas internas sobre la llamada…"
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
                 style={{
                   width: "100%",
-                  minHeight: 120,
-                  background: "var(--bg-2)",
-                  border: "1px solid var(--border-1)",
-                  borderRadius: 6,
-                  padding: 12,
+                  minHeight: 132,
+                  background: "var(--iris-soft)",
+                  border: "1px solid color-mix(in srgb,var(--iris) 40%,transparent)",
+                  borderRadius: "var(--r-md)",
+                  padding: 14,
                   color: "var(--text-1)",
                   resize: "vertical",
                   outline: "none",
                   fontFamily: "var(--font-ui)",
                   fontSize: 13,
+                  lineHeight: 1.6,
                 }}
               />
+            ) : (
+              <div
+                className="tl__note"
+                style={{ margin: 0, minHeight: 72, lineHeight: 1.6, fontSize: 13 }}
+              >
+                {summaryLoading
+                  ? "Generando resumen…"
+                  : summary || "Sin resumen disponible."}
+              </div>
+            )}
+            <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+              <Btn variant="soft" size="sm" icon="refresh" onClick={fetchSummary} disabled={summaryLoading}>
+                Regenerar
+              </Btn>
+              <Btn variant="ghost" size="sm" onClick={() => setSummaryEditable((v) => !v)}>
+                {summaryEditable ? "Listo" : "Editar"}
+              </Btn>
+              <Btn
+                variant="ghost"
+                size="sm"
+                icon="copy"
+                onClick={() => {
+                  navigator.clipboard?.writeText(summary).catch(() => {});
+                  toast.success("Resumen copiado");
+                }}
+                disabled={!summary}
+              >
+                Copiar
+              </Btn>
             </div>
-          </div>
+          </Card>
+
+          {/* Impacto en el lead — cómo queda tras la tipificación: etapa
+              actual → nueva, resultado, toque, y estado de Salesforce. Se
+              actualiza EN VIVO al cambiar la selección (el agente ve el cambio
+              antes de guardar). Placeholder honesto si aún no hay tipificación. */}
+          <Card title="Cómo queda el lead" icon="target" iconColor="var(--green)">
+            {selectedStage ? (
+              <div className="col gap10" style={{ fontSize: 13 }}>
+                <div className="row between" style={{ alignItems: "center" }}>
+                  <span className="dim">Etapa</span>
+                  <span className="row gap8" style={{ alignItems: "center" }}>
+                    {currentStageLabel && (
+                      <>
+                        <span className="pill pill--outline" style={{ opacity: 0.7 }}>
+                          {currentStageLabel}
+                        </span>
+                        <AIcon name="arrowRight" size={14} style={{ color: "var(--text-3)" }} />
+                      </>
+                    )}
+                    <Pill tone={valTone}>{selectedStage.label}</Pill>
+                  </span>
+                </div>
+                {selectedSubStage && (
+                  <div className="row between" style={{ alignItems: "center" }}>
+                    <span className="dim">Resultado</span>
+                    <b>{selectedSubStage.label}</b>
+                  </div>
+                )}
+                <div className="row between" style={{ alignItems: "center" }}>
+                  <span className="dim">Toques</span>
+                  <span className="mono">
+                    {leadTouches} → <b style={{ color: "var(--green)" }}>{leadTouches + 1}</b>
+                  </span>
+                </div>
+                {selectedStage.salesforceValue && (
+                  <div className="row between" style={{ alignItems: "center" }}>
+                    <span className="dim">Salesforce · Estado</span>
+                    <b>{selectedStage.salesforceValue}</b>
+                  </div>
+                )}
+                {tags.length > 0 && (
+                  <div className="row between" style={{ alignItems: "flex-start" }}>
+                    <span className="dim">Tags</span>
+                    <span className="row gap4 wrap" style={{ justifyContent: "flex-end", maxWidth: "68%" }}>
+                      {tags.map((t) => (
+                        <Pill key={t} tone="cyan">
+                          {t}
+                        </Pill>
+                      ))}
+                    </span>
+                  </div>
+                )}
+                <div
+                  className="tl__note"
+                  style={{ margin: 0, fontSize: 11.5, display: "flex", gap: 8, alignItems: "flex-start" }}
+                >
+                  <AIcon name="check" size={13} style={{ color: "var(--green)", flex: "0 0 auto", marginTop: 1 }} />
+                  <span>
+                    Al <b>guardar</b>, la gestión se registra en el lead (etapa,
+                    resultado, toque) y se sincroniza con Salesforce.
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                Elegí una tipificación (Stage → Sub Stage) a la derecha y verás aquí
+                cómo queda el lead: nueva etapa, resultado y qué se sincroniza con
+                Salesforce.
+              </div>
+            )}
+          </Card>
+
+          {/* Próximas acciones sugeridas — derivadas de la disposición. Se
+              auto-oculta si aún no hay una etapa elegida (degradado honesto:
+              no inventamos acciones sin base). */}
+          {nextActions.length > 0 && (
+            <Card title="Próximas acciones sugeridas" icon="target">
+              <div className="col gap8">
+                {nextActions.map((a) => (
+                  <div
+                    key={a.label}
+                    className="row gap11"
+                    style={{
+                      padding: "10px 12px",
+                      border: "1px solid var(--border-1)",
+                      borderRadius: "var(--r-md)",
+                      background: "var(--bg-2)",
+                    }}
+                  >
+                    <div
+                      className="tl__ico"
+                      style={{ ["--_c" as string]: a.color, width: 30, height: 30 }}
+                    >
+                      <AIcon name={a.icon} size={15} />
+                    </div>
+                    <span className="grow" style={{ fontSize: 13 }}>
+                      {a.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="dim" style={{ fontSize: 11, marginTop: 10, lineHeight: 1.45 }}>
+                Sugerencias derivadas de la tipificación elegida. Se ejecutan al
+                guardar (la etapa se refleja en Salesforce; los seguimientos
+                abren el modal de agenda).
+              </div>
+            </Card>
+          )}
+
+          {/* Notas del agente */}
+          <Card
+            title="Notas del agente"
+            icon="fileText"
+            extra={
+              <span className="dim" style={{ fontSize: 11 }}>
+                {agentName || user?.username}
+              </span>
+            }
+          >
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notas internas sobre la llamada…"
+              style={{
+                width: "100%",
+                minHeight: 108,
+                background: "var(--bg-2)",
+                border: "1px solid var(--border-1)",
+                borderRadius: "var(--r-md)",
+                padding: 12,
+                color: "var(--text-1)",
+                resize: "vertical",
+                outline: "none",
+                fontFamily: "var(--font-ui)",
+                fontSize: 13,
+              }}
+            />
+          </Card>
         </div>
 
         <div className="col" style={{ gap: 16 }}>
+          {/* Paso handoff — "Tipificar y cerrar" (encabezado del flujo de
+              cierre; las tarjetas de abajo mantienen la lógica real). */}
+          <div className="wstep">
+            <span
+              className="wstep__n"
+              style={{ background: "var(--accent)", color: "var(--accent-ink)" }}
+            >
+              <AIcon name="check" size={14} />
+            </span>
+            <div className="grow">
+              <b style={{ fontSize: 13.5 }}>Tipificar y cerrar</b>
+              <div className="dim" style={{ fontSize: 11.5, marginTop: 1 }}>
+                Elegí Stage y Sub Stage para registrar la gestión.
+              </div>
+            </div>
+          </div>
+
           {/* Disposition — Stage → Sub Stage */}
           <div className="card">
             <div className="card__head">

@@ -34,7 +34,7 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const { toggleTheme, resolvedTheme } = useTheme();
 
-  // Global ⌘K / Ctrl+K handler
+  // Global ⌘K / Ctrl+K handler + programmatic open (sidebar search button).
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey)) {
@@ -42,8 +42,13 @@ export function CommandPalette() {
         setOpen((o) => !o);
       }
     };
+    const openEv = () => setOpen(true);
     document.addEventListener("keydown", down);
-    return () => document.removeEventListener("keydown", down);
+    window.addEventListener("aria:cmdk", openEv);
+    return () => {
+      document.removeEventListener("keydown", down);
+      window.removeEventListener("aria:cmdk", openEv);
+    };
   }, []);
 
   const run = (fn: () => void) => () => {

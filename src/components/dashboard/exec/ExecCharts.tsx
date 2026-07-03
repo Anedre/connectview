@@ -10,7 +10,7 @@ import type { ExecCampaign, ExecLiveQueue, ExecSlice } from "./execMock";
 
 /* Paleta muteada del handoff (= InsightsPanel.DATA_PALETTE): cian/verde/violeta/
    ámbar/rojo + sus variantes -2 para ciclar. Reemplaza la vívida v2. */
-const MUTED_DATA = ["#0F84A0","#138354","#6253CE","#B8761A","#C0353A","#0a6c84","#0f6e46","#5141b8","#9c6314","#a32a2f"];
+const MUTED_DATA = ["#0E7C86","#1F8A5B","#5B57B8","#B07D2B","#C34A43","#0A626B","#177049","#4A46A0","#8F6420","#A63A34"];
 
 /* ---------- Ranking de agentes ---------- */
 const RANK_COLORS = MUTED_DATA;

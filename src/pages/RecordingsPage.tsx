@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/vox/PageHeader";
+import { HeroBand } from "@/components/aria";
 import { RecordingsWorkspace } from "@/components/recordings/RecordingsWorkspace";
 
 /**
@@ -6,18 +6,20 @@ import { RecordingsWorkspace } from "@/components/recordings/RecordingsWorkspace
  * conversacional (#fase1): lista de contactos + detalle con pestañas por canal
  * embebidas (sin modales) + panel de contexto del lead, todo en una sola vista
  * persistente. La estructura tabla → grid → modales quedó atrás.
+ *
+ * Reskin ARIA: el encabezado ahora es un `HeroBand` premium; el workspace real
+ * (hooks de audio/transcripción/contacto) vive intacto debajo.
  */
 export function RecordingsPage() {
   return (
-    <div className="view" style={{ height: "100%", overflowY: "auto", overflowX: "hidden", paddingBottom: 28 }}>
-      <PageHeader
-        crumb="Crecimiento"
-        title="Historial y Grabaciones"
-        sub="Elegí un contacto y revisá toda su actividad: llamadas con audio y transcripción, WhatsApp, emails y archivos — conectado por su nombre, en un solo lugar."
+    <div className="page" style={{ maxWidth: "none" }}>
+      <HeroBand
+        title="Grabaciones e historial"
+        chip="Expediente 360° · llamadas, WhatsApp, emails y archivos por contacto"
+        chipIcon="mic"
+        chipTone="var(--cyan)"
       />
-      <div style={{ marginTop: 4 }}>
-        <RecordingsWorkspace />
-      </div>
+      <RecordingsWorkspace />
     </div>
   );
 }

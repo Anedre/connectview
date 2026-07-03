@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { useCCP } from "@/hooks/useCCP";
 import { useQueues } from "@/hooks/useQueues";
-import * as Icon from "@/components/vox/primitives";
+import { Btn, Icon } from "@/components/aria";
 
 interface TransferQueueModalProps {
   open: boolean;
@@ -105,106 +105,103 @@ export function TransferQueueModal({
       aria-modal="true"
       aria-label="Transferir a cola"
       onClick={() => !submitting && onClose()}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(8, 10, 16, 0.55)",
-        backdropFilter: "blur(6px)",
-        WebkitBackdropFilter: "blur(6px)",
-        zIndex: 250,
-        display: "grid",
-        placeItems: "center",
-      }}
+      className="scrim"
+      style={{ zIndex: 250, display: "grid", placeItems: "center" }}
     >
       <div
+        className="card card--pop"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: 420,
-          maxHeight: "80vh",
+          maxWidth: "92vw",
+          maxHeight: "84vh",
           display: "flex",
           flexDirection: "column",
-          background: "var(--bg-1)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 14,
-          boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
           overflow: "hidden",
         }}
       >
         <div
+          className="row gap10"
           style={{
             padding: "14px 16px",
             borderBottom: "1px solid var(--border-1)",
-            display: "flex",
             alignItems: "center",
-            gap: 10,
           }}
         >
-          <Icon.Transfer size={16} style={{ color: "var(--accent-cyan)" }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>
+          <div
+            className="tl__ico"
+            style={{ ["--_c" as string]: "var(--accent)", width: 30, height: 30, flex: "0 0 auto" }}
+          >
+            <Icon name="route" size={15} />
+          </div>
+          <div className="grow">
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>
               Transferir {channelLabel}
             </div>
-            <div className="muted" style={{ fontSize: 11 }}>
+            <div className="dim" style={{ fontSize: 11 }}>
               {warmMode
-                ? "Warm transfer — consultas primero y luego cuelgas"
-                : "Blind transfer — la cola recibe el contacto al instante"}
+                ? "Warm — consultas primero y luego cuelgas"
+                : "Blind — la cola recibe el contacto al instante"}
             </div>
           </div>
           <button
             type="button"
-            className="btn btn--ghost btn--sm btn--icon"
+            className="ctab__x"
             onClick={onClose}
             disabled={submitting}
             aria-label="Cerrar"
           >
-            <Icon.Close size={14} />
+            <Icon name="x" size={14} />
           </button>
         </div>
 
-        <div style={{ padding: 12, borderBottom: "1px solid var(--border-1)", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div
+          className="col gap10"
+          style={{ padding: 14, borderBottom: "1px solid var(--border-1)" }}
+        >
           {/* Mode toggle: blind (default) vs warm transfer */}
           <label
+            className="row gap10"
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
               padding: "8px 10px",
-              borderRadius: 8,
-              background: warmMode ? "var(--accent-violet-soft)" : "var(--bg-2)",
-              border: "1px solid",
-              borderColor: warmMode ? "transparent" : "var(--border-1)",
+              borderRadius: "var(--r-md)",
+              background: warmMode ? "var(--iris-soft)" : "var(--bg-2)",
+              border: "1px solid var(--border-1)",
               cursor: "pointer",
-              transition: "background .15s, border-color .15s",
             }}
           >
             <input
               type="checkbox"
               checked={warmMode}
               onChange={(e) => setWarmMode(e.target.checked)}
-              style={{ accentColor: "var(--accent-violet)" }}
+              style={{ accentColor: "var(--iris)" }}
             />
-            <span style={{ flex: 1 }}>
-              <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: warmMode ? "var(--accent-violet)" : "var(--text-1)" }}>
+            <span className="grow">
+              <b
+                style={{
+                  fontSize: 12.5,
+                  color: warmMode ? "var(--iris-2)" : "var(--text-1)",
+                }}
+              >
                 Consultar primero (warm transfer)
-              </span>
-              <span style={{ display: "block", fontSize: 11, color: "var(--text-3)", marginTop: 2, lineHeight: 1.4 }}>
+              </b>
+              <div className="dim" style={{ fontSize: 11, marginTop: 2, lineHeight: 1.4 }}>
                 Conversas con el agente destino antes de soltar la llamada.
-              </span>
+              </div>
             </span>
           </label>
 
           <div
+            className="row gap8"
             style={{
-              display: "flex",
-              gap: 6,
               background: "var(--bg-2)",
               border: "1px solid var(--border-1)",
-              borderRadius: 6,
-              padding: "6px 8px",
-              alignItems: "center",
+              borderRadius: "var(--r-md)",
+              padding: "0 10px",
+              height: 42,
             }}
           >
-            <Icon.Search size={14} style={{ color: "var(--text-3)" }} />
+            <Icon name="search" size={14} style={{ color: "var(--text-3)" }} />
             <input
               ref={filterInputRef}
               value={filter}
@@ -222,11 +219,12 @@ export function TransferQueueModal({
             />
             {filter && (
               <button
-                className="btn btn--ghost btn--sm btn--icon"
+                type="button"
+                className="ctab__x"
                 onClick={() => setFilter("")}
                 title="Limpiar"
               >
-                <Icon.Close size={12} />
+                <Icon name="x" size={12} />
               </button>
             )}
           </div>
@@ -242,8 +240,8 @@ export function TransferQueueModal({
         >
           {loading && (
             <div
-              className="muted"
-              style={{ padding: 24, textAlign: "center", fontSize: 12 }}
+              className="dim"
+              style={{ padding: 24, textAlign: "center", fontSize: 12.5 }}
             >
               Cargando colas…
             </div>
@@ -253,9 +251,9 @@ export function TransferQueueModal({
               style={{
                 margin: 10,
                 padding: 12,
-                background: "var(--accent-red-soft)",
-                color: "var(--accent-red)",
-                borderRadius: 8,
+                background: "var(--red-soft)",
+                color: "var(--red-2)",
+                borderRadius: "var(--r-md)",
                 fontSize: 12,
               }}
             >
@@ -264,8 +262,8 @@ export function TransferQueueModal({
           )}
           {!loading && !error && filtered.length === 0 && (
             <div
-              className="muted"
-              style={{ padding: 24, textAlign: "center", fontSize: 12 }}
+              className="dim"
+              style={{ padding: 24, textAlign: "center", fontSize: 12.5 }}
             >
               {filter ? "Sin coincidencias" : "No hay colas disponibles"}
             </div>
@@ -277,83 +275,53 @@ export function TransferQueueModal({
                 type="button"
                 onClick={() => handleTransfer(q.arn, q.name)}
                 disabled={submitting}
-                className="btn"
+                className="row gap10"
                 style={{
-                  display: "flex",
                   width: "calc(100% - 12px)",
-                  margin: "3px 6px",
+                  margin: "4px 6px",
                   padding: "10px 12px",
-                  justifyContent: "flex-start",
-                  alignItems: "center",
-                  gap: 10,
-                  height: "auto",
+                  borderRadius: "var(--r-sm)",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--border-1)",
+                  cursor: "pointer",
                   textAlign: "left",
-                  borderRadius: 8,
                 }}
               >
-                <span
-                  style={{
-                    display: "grid",
-                    placeItems: "center",
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    background: "var(--accent-cyan-soft)",
-                    color: "var(--accent-cyan)",
-                    flexShrink: 0,
-                  }}
+                <div
+                  className="tl__ico"
+                  style={{ ["--_c" as string]: "var(--cyan)", width: 30, height: 30, flex: "0 0 auto" }}
                 >
-                  <Icon.Users size={14} />
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span
-                    style={{
-                      display: "block",
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: "var(--text-1)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
+                  <Icon name="users" size={14} />
+                </div>
+                <span className="grow" style={{ minWidth: 0 }}>
+                  <b className="trunc" style={{ display: "block", fontSize: 13 }}>
                     {q.name}
-                  </span>
+                  </b>
                   <span
-                    className="muted mono"
-                    style={{
-                      display: "block",
-                      fontSize: 10.5,
-                      marginTop: 2,
-                    }}
+                    className="dim"
+                    style={{ display: "block", fontSize: 11, marginTop: 1 }}
                   >
                     {q.type.toLowerCase()}
                   </span>
                 </span>
                 {submitting ? null : (
-                  <Icon.Transfer size={14} style={{ color: "var(--text-3)" }} />
+                  <Icon name="route" size={14} style={{ color: "var(--text-3)" }} />
                 )}
               </button>
             ))}
         </div>
 
         <div
+          className="row gap8"
           style={{
             padding: "10px 14px",
             borderTop: "1px solid var(--border-1)",
-            display: "flex",
             justifyContent: "flex-end",
-            gap: 8,
           }}
         >
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={onClose}
-            disabled={submitting}
-          >
+          <Btn variant="ghost" onClick={onClose} disabled={submitting}>
             Cancelar
-          </button>
+          </Btn>
         </div>
       </div>
     </div>

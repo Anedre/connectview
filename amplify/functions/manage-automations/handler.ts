@@ -34,6 +34,8 @@ import { getIdentity } from "../_shared/cognitoAuth";
  */
 const dynamo = new DynamoDBClient({});
 const TABLE = process.env.RULES_TABLE || "connectview-automation-rules";
+// Dry-run (testRule): lee el lead real del data plane pooled (tenant fundador).
+const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
 const HDRS = { "Content-Type": "application/json" };
 const ok = (b: unknown) => ({ statusCode: 200, headers: HDRS, body: JSON.stringify(b) });
 const bad = (c: number, e: string) => ({ statusCode: c, headers: HDRS, body: JSON.stringify({ error: e }) });
@@ -43,12 +45,20 @@ export type TriggerType =
   | "lead_stage_changed"
   | "lead_inactive"
   | "wrapup_saved"
-  | "whatsapp_flow_completed";
+  | "whatsapp_flow_completed"
+  | "message_inbound"
+  | "appointment_scheduled"
+  | "tag_applied";
 export type ActionType =
   | "send_whatsapp_template"
   | "move_stage"
   | "schedule_callback"
-  | "webhook";
+  | "webhook"
+  | "send_email"
+  | "apply_tag"
+  | "apply_attribute"
+  | "notify_agent"
+  | "start_journey";
 
 export interface AutomationRule {
   ruleId: string;
@@ -69,12 +79,20 @@ const TRIGGER_TYPES: TriggerType[] = [
   "lead_inactive",
   "wrapup_saved",
   "whatsapp_flow_completed",
+  "message_inbound",
+  "appointment_scheduled",
+  "tag_applied",
 ];
 const ACTION_TYPES: ActionType[] = [
   "send_whatsapp_template",
   "move_stage",
   "schedule_callback",
   "webhook",
+  "send_email",
+  "apply_tag",
+  "apply_attribute",
+  "notify_agent",
+  "start_journey",
 ];
 
 async function queryPrefix(tenantId: string, prefix: string, limit?: number, newestFirst = false) {
@@ -96,6 +114,90 @@ async function queryPrefix(tenantId: string, prefix: string, limit?: number, new
     if (limit && out.length >= limit) break;
   } while (lastKey);
   return limit ? out.slice(0, limit) : out;
+}
+
+// ───────────────────────── dry-run (testRule) ─────────────────────────
+// Réplica MÍNIMA de la lógica del engine (matchesConditions + tokens) para
+// previsualizar una regla SIN ejecutarla ni importar el engine (evita arrastrar
+// sus deps de runtime SDK). Si el engine cambia el operador de condiciones,
+// actualizar acá también.
+
+interface DryCtx {
+  leadId?: string;
+  phone?: string;
+  name?: string;
+  email?: string;
+  stageId?: string;
+  source?: string;
+  attributes?: Record<string, string>;
+}
+
+function fillTokens(s: string, ctx: DryCtx): string {
+  return s
+    .replace(/\{\{\s*name\s*\}\}/gi, ctx.name || "")
+    .replace(/\{\{\s*phone\s*\}\}/gi, ctx.phone || "")
+    .replace(/\{\{\s*stage\s*\}\}/gi, ctx.stageId || "")
+    .replace(/\{\{\s*email\s*\}\}/gi, ctx.email || "");
+}
+
+/** Evalúa cada condición contra el lead; devuelve el desglose (mismo operador
+ *  eq/neq case-insensitive que el engine). */
+function evalConditions(
+  conditions: Array<{ field: string; op: "eq" | "neq"; value: string }>,
+  ctx: DryCtx,
+): { pass: boolean; detail: Array<{ field: string; op: string; value: string; actual: string; pass: boolean }> } {
+  const detail = (conditions || []).map((c) => {
+    const actual = String((ctx as unknown as Record<string, unknown>)[c.field] ?? "").toLowerCase();
+    const expected = String(c.value ?? "").toLowerCase();
+    const pass = c.op === "neq" ? actual !== expected : actual === expected;
+    return { field: c.field, op: c.op, value: c.value, actual, pass };
+  });
+  return { pass: detail.every((d) => d.pass), detail };
+}
+
+/** Preview textual de qué HARÍA una acción (nada se ejecuta). */
+function previewAction(
+  action: { type: ActionType; params?: Record<string, unknown> },
+  ctx: DryCtx,
+): string {
+  const p = action.params || {};
+  const who = ctx.phone || ctx.name || ctx.leadId || "el lead";
+  switch (action.type) {
+    case "send_whatsapp_template": {
+      const vars = (Array.isArray(p.variables) ? p.variables : []).map((v) => fillTokens(String(v), ctx));
+      return `Enviaría la plantilla "${String(p.templateName || "(sin plantilla)")}" a ${who}${
+        vars.length ? ` con variables [${vars.join(", ")}]` : ""
+      }`;
+    }
+    case "move_stage":
+      return `Movería el lead a la etapa "${String(p.stageId || "(sin etapa)")}"`;
+    case "schedule_callback":
+      return `Agendaría un ${String(p.channel || "voice")} para ${who} en ${Number(
+        p.offsetHours ?? 24,
+      )}h${p.notes ? ` (nota: "${fillTokens(String(p.notes), ctx)}")` : ""}`;
+    case "webhook":
+      return `Haría POST al webhook ${String(p.url || "(sin URL)")}`;
+    case "send_email":
+      return ctx.email
+        ? `Enviaría un email a ${ctx.email} con asunto "${fillTokens(String(p.subject || ""), ctx)}"`
+        : `NO enviaría email: el lead no tiene correo`;
+    case "apply_tag":
+      return `Aplicaría la etiqueta "${fillTokens(String(p.tag || "(vacía)"), ctx)}" al lead`;
+    case "apply_attribute":
+      return `Setearía attributes["${String(p.field || "(campo)")}"] = "${fillTokens(
+        String(p.value ?? ""),
+        ctx,
+      )}"`;
+    case "notify_agent":
+      return `Crearía una notificación${p.agent ? ` para ${String(p.agent)}` : " para el equipo"}: "${fillTokens(
+        String(p.message || ""),
+        ctx,
+      )}"`;
+    case "start_journey":
+      return `Inscribiría a ${who} en el journey "${String(p.journeyName || p.journeyId || "(sin elegir)")}"`;
+    default:
+      return `Acción desconocida: ${action.type}`;
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -131,8 +233,69 @@ export const handler: Handler = async (event: any) => {
     }
 
     if (method === "POST") {
+      const rawBody = JSON.parse(event.body || "{}") as Partial<AutomationRule> & {
+        action?: string;
+        ruleId?: string;
+        leadId?: string;
+        sampleLead?: DryCtx;
+      };
+
+      // ── Dry-run: previsualiza la regla contra un lead SIN ejecutar nada ──────
+      // POST { action:"testRule", ruleId, leadId? | sampleLead? }. Solo LEE (no
+      // escribe) → cualquier usuario autenticado del tenant puede probar.
+      if (rawBody.action === "testRule") {
+        if (!rawBody.ruleId) return bad(400, "ruleId requerido");
+        const rr = await dynamo.send(
+          new GetItemCommand({
+            TableName: TABLE,
+            Key: marshall({ tenantId, sk: `rule#${rawBody.ruleId}` }),
+          }),
+        );
+        if (!rr.Item) return bad(404, "regla no encontrada");
+        const rule = unmarshall(rr.Item) as AutomationRule;
+
+        // Contexto del lead: el real (por leadId) o el sampleLead que mande el front.
+        let ctx: DryCtx = rawBody.sampleLead || {};
+        let leadFound = false;
+        if (rawBody.leadId) {
+          const lr = await dynamo.send(
+            new GetItemCommand({ TableName: LEADS_TABLE, Key: { leadId: { S: String(rawBody.leadId) } } }),
+          );
+          if (lr.Item) {
+            const l = unmarshall(lr.Item) as DryCtx & { leadId?: string };
+            leadFound = true;
+            ctx = {
+              leadId: l.leadId,
+              phone: l.phone,
+              name: l.name,
+              email: l.email,
+              stageId: l.stageId,
+              source: l.source,
+              attributes: l.attributes,
+            };
+          }
+        }
+
+        const conds = Array.isArray(rule.conditions) ? rule.conditions : [];
+        const { pass, detail } = evalConditions(conds, ctx);
+        const actions = (Array.isArray(rule.actions) ? rule.actions : []).map((a) => ({
+          type: a.type,
+          preview: previewAction(a, ctx),
+        }));
+        return ok({
+          ok: true,
+          ruleId: rule.ruleId,
+          ruleName: rule.name,
+          trigger: rule.trigger?.type,
+          leadFound: rawBody.leadId ? leadFound : undefined,
+          conditionsPass: pass,
+          conditionsDetail: detail,
+          actions,
+        });
+      }
+
       if (!isAdmin) return bad(403, "Solo administradores pueden editar automatizaciones");
-      const body = JSON.parse(event.body || "{}") as Partial<AutomationRule>;
+      const body = rawBody;
       if (!body.name || !String(body.name).trim()) return bad(400, "name requerido");
       if (!body.trigger || !TRIGGER_TYPES.includes(body.trigger.type))
         return bad(400, "trigger inválido");
