@@ -47,9 +47,12 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 .sb__name {
-  font-weight: 800;
-  font-size: 19px;
-  letter-spacing: -0.03em;
+  /* Wordmark ARIA — Michroma (peso único 400; nada de bold falso). */
+  font-family: "Michroma", system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 .sb__name b {
   background: linear-gradient(135deg, var(--accent-grad-a), var(--accent-grad-b));

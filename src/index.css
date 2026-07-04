@@ -396,9 +396,17 @@ textarea:focus {
   background: var(--bg-1);
 }
 .sb__name {
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  font-size: 14.5px;
+  /* Wordmark ARIA — Michroma (Google Fonts): ancha, futurista, tipo "logo".
+     Un solo peso (400): el <b> del acento NO se pone bold (sería falso), se
+     distingue solo por el gradiente. */
+  font-family: "Michroma", system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.sb__name b {
+  font-weight: 400;
 }
 .sb__name span {
   color: var(--text-3);
@@ -5507,9 +5515,10 @@ textarea:focus {
   line-height: 1.2;
 }
 .vox-auth__brand-name {
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-family: "Michroma", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
   color: #fff;
 }
 .vox-auth__brand-tag {
