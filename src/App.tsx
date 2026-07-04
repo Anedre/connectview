@@ -215,7 +215,7 @@ function LoadingScreen() {
               inset: -22,
               borderRadius: "50%",
               background:
-                "radial-gradient(circle, color-mix(in srgb, var(--accent-amber) 60%, transparent), transparent 70%)",
+                "radial-gradient(circle, color-mix(in srgb, var(--accent-cyan) 60%, transparent), transparent 70%)",
               filter: "blur(20px)",
               pointerEvents: "none",
             }}
@@ -250,8 +250,8 @@ function LoadingScreen() {
             gap: 10,
             padding: "9px 16px",
             borderRadius: 999,
-            border: "1px solid color-mix(in srgb, var(--accent-amber) 35%, transparent)",
-            background: "color-mix(in srgb, var(--accent-amber-soft) 60%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--accent-cyan) 35%, transparent)",
+            background: "color-mix(in srgb, var(--accent-cyan-soft) 60%, transparent)",
             fontSize: 12.5,
             fontWeight: 500,
             color: "var(--text-1)",
@@ -267,7 +267,7 @@ function LoadingScreen() {
               width: 7,
               height: 7,
               borderRadius: "50%",
-              background: "var(--accent-amber)",
+              background: "var(--accent-cyan)",
             }}
           />
           <AnimatePresence mode="wait">
@@ -292,7 +292,7 @@ function LoadingScreen() {
                 width: i <= stageIdx ? 22 : 6,
                 background:
                   i <= stageIdx
-                    ? "var(--accent-amber)"
+                    ? "var(--accent-cyan)"
                     : "color-mix(in srgb, var(--text-3) 35%, transparent)",
               }}
               transition={{ duration: 0.3 }}
