@@ -408,6 +408,26 @@ textarea:focus {
 .sb__name b {
   font-weight: 400;
 }
+
+/* Wordmark ARIA REUTILIZABLE — "el estilo que pusimos" para el nombre ARIA cada
+   vez que aparece como TÍTULO (splash, headers de marca, etc). Michroma, peso
+   único 400, uppercase con tracking; la "IA" (envuelta en <b>) toma el gradiente
+   de marca navy→teal. El font-size lo define cada contexto.
+   Uso: <span class="aria-wordmark">AR<b>IA</b></span>. */
+.aria-wordmark {
+  font-family: "Michroma", system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.aria-wordmark b {
+  font-weight: 400;
+  background: linear-gradient(135deg, var(--accent-grad-a), var(--accent-grad-b));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 .sb__name span {
   color: var(--text-3);
   font-weight: 400;

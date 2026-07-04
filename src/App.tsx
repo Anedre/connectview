@@ -226,16 +226,15 @@ function LoadingScreen() {
         {/* Brand lockup */}
         <div style={{ textAlign: "center" }}>
           <h1
+            className="aria-wordmark"
             style={{
-              fontSize: 30,
-              fontWeight: 700,
-              letterSpacing: "-0.025em",
+              fontSize: 26,
               margin: 0,
               color: "var(--text-1)",
               lineHeight: 1,
             }}
           >
-            ARIA
+            AR<b>IA</b>
           </h1>
           <p style={{ marginTop: 8, fontSize: 13, color: "var(--text-2)" }}>
             Plataforma de contact center
