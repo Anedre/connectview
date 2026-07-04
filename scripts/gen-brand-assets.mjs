@@ -67,26 +67,58 @@ async function keyOutWhite(inputPath, recolor = null) {
 const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
 
 async function main() {
-  // ── Logos con fondo transparente (isotipo "AR") ──
-  const markNavyBuf = await (await keyOutWhite(path.join(B, "aria-isotipo.png")))
-    .trim()
-    .png()
-    .toBuffer();
-  await sharp(markNavyBuf)
-    .resize(160, 160, { fit: "contain", background: TRANSPARENT })
-    .png({ compressionLevel: 9 })
-    .toFile(path.join(B, "aria-mark.png"));
+  // ── Logos con fondo transparente (isotipo "AR"), CENTRADOS ──
+  // `fit:contain` de sharp NO centra bien un recorte no-cuadrado (lo pega a una
+  // esquina). Componemos el recorte ajustado sobre un lienzo transparente
+  // cuadrado con gravity:centre → centrado garantizado.
+  // Recorte TIGHT manual: `sharp.trim()` deja padding por el alpha tenue que
+  // deja el keying en zonas casi-blancas del master. Escaneamos el bbox de los
+  // pixeles con alpha > 24 y extraemos exactamente eso → recorte ajustado.
+  const tightBuf = async (inputPath, recolor) => {
+    const { data, info } = await (await keyOutWhite(inputPath, recolor))
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const W = info.width,
+      H = info.height;
+    let minX = W,
+      minY = H,
+      maxX = 0,
+      maxY = 0;
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        if (data[(y * W + x) * 4 + 3] > 24) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    return sharp(data, { raw: { width: W, height: H, channels: 4 } })
+      .extract({ left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 })
+      .png()
+      .toBuffer();
+  };
+  // Centra un recorte ajustado en un lienzo cuadrado transparente (gravity:centre).
+  const centerOnCanvas = async (tight, size, frac) => {
+    const inner = Math.round(size * frac);
+    const resized = await sharp(tight)
+      .resize(inner, inner, { fit: "inside" })
+      .png()
+      .toBuffer();
+    return sharp({
+      create: { width: size, height: size, channels: 4, background: TRANSPARENT },
+    })
+      .composite([{ input: resized, gravity: "centre" }])
+      .png({ compressionLevel: 9 });
+  };
 
-  const markWhiteBuf = await (
-    await keyOutWhite(path.join(B, "aria-isotipo.png"), [255, 255, 255])
-  )
-    .trim()
-    .png()
-    .toBuffer();
-  await sharp(markWhiteBuf)
-    .resize(160, 160, { fit: "contain", background: TRANSPARENT })
-    .png({ compressionLevel: 9 })
-    .toFile(path.join(B, "aria-mark-white.png"));
+  const markNavyBuf = await tightBuf(path.join(B, "aria-isotipo.png"), null);
+  await (await centerOnCanvas(markNavyBuf, 160, 0.86)).toFile(path.join(B, "aria-mark.png"));
+
+  const markWhiteBuf = await tightBuf(path.join(B, "aria-isotipo.png"), [255, 255, 255]);
+  await (await centerOnCanvas(markWhiteBuf, 160, 0.86)).toFile(
+    path.join(B, "aria-mark-white.png"),
+  );
 
   // ── Lockup horizontal transparente + optimizado ──
   await (await keyOutWhite(path.join(B, "aria-lockup-horizontal.png")))
@@ -129,7 +161,7 @@ async function main() {
   const maskable = async (size, name) => {
     const inner = Math.round(size * 0.6);
     const mark = await sharp(markWhiteBuf)
-      .resize(inner, inner, { fit: "contain", background: TRANSPARENT })
+      .resize(inner, inner, { fit: "inside" })
       .png()
       .toBuffer();
     await sharp({
