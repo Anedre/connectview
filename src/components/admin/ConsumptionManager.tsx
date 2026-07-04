@@ -31,10 +31,11 @@ interface CostReport {
     connectReal: number | null;
     meta: number;
     platform: number;
+    platformReal: number | null;
     total: number;
     realTotal: number | null;
   };
-  realAvailable: { whatsapp: boolean; connect: boolean };
+  realAvailable: { whatsapp: boolean; connect: boolean; platform: boolean };
   notes?: Record<string, string>;
   generatedAt: string;
 }
@@ -411,18 +412,50 @@ export function ConsumptionManager() {
                       </span>
                     </div>
                   )}
-                  {g === "platform" && (
-                    <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border-1)" }}>
-                      <span className="muted" style={{ fontSize: 11.5, lineHeight: 1.55 }}>
-                        <strong style={{ color: "var(--text-1)" }}>Estimado.</strong> La
-                        infraestructura de ARIA (Lambda, base de datos, identidad, logs…) es{" "}
-                        <strong>compartida entre clientes</strong> y corre en la cuenta de la
-                        plataforma; se estima según tu actividad, no hay un cobro real por-cliente
-                        aparte. <strong>IAM es gratis.</strong> El hosting web es un fijo de
-                        plataforma que no se atribuye por cliente.
-                      </span>
-                    </div>
-                  )}
+                  {g === "platform" &&
+                    (data.summary.platformReal != null ? (
+                      <div
+                        style={{
+                          padding: "10px 16px",
+                          borderTop: "1px solid var(--border-1)",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 10,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span
+                          className="muted"
+                          style={{ fontSize: 11.5, maxWidth: 580, lineHeight: 1.5 }}
+                        >
+                          <strong style={{ color: "var(--text-1)" }}>Real de solo ARIA</strong>{" "}
+                          (Cost Explorer filtrado por la etiqueta <code>aria:product=ARIA</code>):
+                          el gasto de <strong>únicamente la infraestructura de ARIA</strong>, sin el
+                          resto de la cuenta. Es el total de la plataforma (compartida entre
+                          tenants); tu estimación es tu porción. <strong>IAM es gratis.</strong>
+                        </span>
+                        <span
+                          style={{ fontWeight: 800, fontSize: 16, color: "var(--accent-violet)" }}
+                        >
+                          {money(data.summary.platformReal)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border-1)" }}>
+                        <span className="muted" style={{ fontSize: 11.5, lineHeight: 1.55 }}>
+                          <strong style={{ color: "var(--text-1)" }}>Estimado.</strong> Para ver el{" "}
+                          <strong>cobro real de solo ARIA</strong>, activá la etiqueta{" "}
+                          <code>aria:product=ARIA</code> como <em>cost allocation tag</em> en
+                          Facturación de AWS (~24 h, no retroactivo) y etiquetá los recursos (los
+                          Lambdas ya están; DynamoDB y demás con{" "}
+                          <code>scripts/tag-resources.mjs</code>
+                          ). Cost Explorer devuelve entonces el gasto de <strong>solo ARIA</strong>,
+                          servicio por servicio. <strong>IAM es gratis.</strong> El hosting web es
+                          un fijo de plataforma que no se atribuye por cliente.
+                        </span>
+                      </div>
+                    ))}
                 </CardBody>
               </Card>
             );

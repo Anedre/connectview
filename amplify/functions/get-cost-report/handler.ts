@@ -79,10 +79,45 @@ async function getTenantMeta(tenantId: string): Promise<TenantMeta> {
 }
 
 /**
+ * Resuelve el cliente de Cost Explorer para la cuenta correcta: BYO asume el rol
+ * cross-account del tenant (su cuenta); fundador/legacy (sin roleArn) usa las creds
+ * del Lambda (cuenta de la plataforma Novasys). Compartido por `connectRealCost`
+ * (gasto de Connect en la cuenta del tenant) y `platformRealByTag` (gasto de la
+ * infra de ARIA — que vive en Novasys; el fundador t_3176 apunta ahí vía su rol).
+ */
+async function resolveCeClient(meta: TenantMeta): Promise<CostExplorerClient> {
+  if (meta.roleArn) {
+    try {
+      const a = await sts.send(
+        new AssumeRoleCommand({
+          RoleArn: meta.roleArn,
+          RoleSessionName: "vox-cost-report",
+          ExternalId: meta.externalId,
+          DurationSeconds: 900,
+        }),
+      );
+      const cr = a.Credentials;
+      if (cr?.AccessKeyId && cr.SecretAccessKey && cr.SessionToken) {
+        return new CostExplorerClient({
+          region: "us-east-1",
+          credentials: {
+            accessKeyId: cr.AccessKeyId,
+            secretAccessKey: cr.SecretAccessKey,
+            sessionToken: cr.SessionToken,
+          },
+        });
+      }
+    } catch (e) {
+      // Sin assume (el rol no extendió ce:) → caemos a las creds legacy.
+      console.warn("cost assume-role falló:", e instanceof Error ? e.message : e);
+    }
+  }
+  return legacyCostExplorer;
+}
+
+/**
  * Cobro REAL de Amazon Connect del período vía AWS Cost Explorer (servicio de
- * facturación). BYO: asume el rol cross-account del tenant para leer SU cuenta;
- * fundador/legacy (sin roleArn): la cuenta de la plataforma con las creds del
- * Lambda. Devuelve el gasto de los servicios de Connect (Amazon Connect + End
+ * facturación). Devuelve el gasto de los servicios de Connect (Amazon Connect + End
  * User Messaging + Contact Lens) o null si no hay permiso `ce:` / no se pudo.
  * NOTA: los datos de CE tienen ~24h de retraso; el día en curso puede ir parcial.
  */
@@ -92,34 +127,7 @@ async function connectRealCost(
   ceEnd: string,
 ): Promise<number | null> {
   try {
-    let ce = legacyCostExplorer;
-    // BYO: si el tenant configuró un rol cross-account, lo asumimos para su cuenta.
-    if (meta.roleArn) {
-      try {
-        const a = await sts.send(
-          new AssumeRoleCommand({
-            RoleArn: meta.roleArn,
-            RoleSessionName: "vox-cost-report",
-            ExternalId: meta.externalId,
-            DurationSeconds: 900,
-          }),
-        );
-        const cr = a.Credentials;
-        if (cr?.AccessKeyId && cr.SecretAccessKey && cr.SessionToken) {
-          ce = new CostExplorerClient({
-            region: "us-east-1",
-            credentials: {
-              accessKeyId: cr.AccessKeyId,
-              secretAccessKey: cr.SecretAccessKey,
-              sessionToken: cr.SessionToken,
-            },
-          });
-        }
-      } catch (e) {
-        // Sin assume (el rol no extendió ce:) → intentamos con las creds legacy.
-        console.warn("cost assume-role falló:", e instanceof Error ? e.message : e);
-      }
-    }
+    const ce = await resolveCeClient(meta);
     const res = await ce.send(
       new GetCostAndUsageCommand({
         TimePeriod: { Start: ceStart, End: ceEnd },
@@ -146,6 +154,61 @@ async function connectRealCost(
     return null;
   }
 }
+
+/**
+ * Cobro REAL de la infraestructura PROPIA de ARIA vía Cost Explorer, filtrado por
+ * la etiqueta de asignación de costos `aria:product=ARIA` y agrupado por servicio
+ * (AWS Lambda, Amazon DynamoDB, …). Así se aísla lo que gasta SOLO ARIA, sin traer
+ * toda la factura de la cuenta. Devuelve `{ byService, total }` o null.
+ *
+ * 🔑 Requiere: (1) los recursos etiquetados con `aria:product=ARIA` (Lambdas ya lo
+ * están vía scripts/tag-lambdas.mjs; DynamoDB y demás vía scripts/tag-resources.mjs);
+ * (2) activar `aria:product` como *cost allocation tag* en la consola de Facturación
+ * (no es retroactivo, ~24 h para poblar). Si no está activa, CE devuelve vacío → null.
+ */
+async function platformRealByTag(
+  meta: TenantMeta,
+  ceStart: string,
+  ceEnd: string,
+): Promise<{ byService: Record<string, number>; total: number } | null> {
+  try {
+    const ce = await resolveCeClient(meta);
+    const res = await ce.send(
+      new GetCostAndUsageCommand({
+        TimePeriod: { Start: ceStart, End: ceEnd },
+        Granularity: "MONTHLY",
+        Metrics: ["UnblendedCost"],
+        Filter: { Tags: { Key: "aria:product", Values: ["ARIA"], MatchOptions: ["EQUALS"] } },
+        GroupBy: [{ Type: "DIMENSION", Key: "SERVICE" }],
+      }),
+    );
+    const byService: Record<string, number> = {};
+    let total = 0;
+    for (const t of res.ResultsByTime || []) {
+      for (const g of t.Groups || []) {
+        const svc = g.Keys?.[0] || "otros";
+        const amt = Number(g.Metrics?.UnblendedCost?.Amount || 0);
+        byService[svc] = (byService[svc] || 0) + amt;
+        total += amt;
+      }
+    }
+    // Sin grupos = la etiqueta no está activa como cost-allocation o no hay costo aún.
+    if (Object.keys(byService).length === 0) return null;
+    return { byService, total: usd(total) };
+  } catch (e) {
+    console.warn("platformRealByTag falló:", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/** Nombre de servicio en Cost Explorer → componente (línea) de plataforma. */
+const CE_SERVICE_TO_COMPONENT: Record<string, string> = {
+  "AWS Lambda": "platform_lambda",
+  "Amazon DynamoDB": "platform_dynamodb",
+  AmazonCloudWatch: "platform_logs",
+  "AWS Secrets Manager": "platform_secrets",
+  "Amazon Cognito": "platform_cognito",
+};
 
 async function getWaToken(tenantId: string): Promise<string | null> {
   try {
@@ -534,6 +597,20 @@ export const handler: Handler = async (event: any) => {
   const ceEnd = new Date(toMs + 86400_000).toISOString().slice(0, 10); // End exclusivo → +1 día
   const connectReal = await connectRealCost(meta, ceStart, ceEnd);
 
+  // ── Cobro REAL de la infra de ARIA (Cost Explorer filtrado por etiqueta) ──────
+  // Solo lo etiquetado `aria:product=ARIA` → el gasto de ARIA aislado, sin el resto
+  // de la cuenta. Mapeamos el real por-servicio a cada línea de plataforma (Estimado
+  // vs Real vs Δ). Es el total de la infra de ARIA (compartida entre tenants).
+  const platformRealTag = await platformRealByTag(meta, ceStart, ceEnd);
+  if (platformRealTag) {
+    for (const [svc, amt] of Object.entries(platformRealTag.byService)) {
+      const comp = CE_SERVICE_TO_COMPONENT[svc];
+      if (!comp) continue;
+      const line = lines.find((l) => l.component === comp);
+      if (line) line.real = usd(amt);
+    }
+  }
+
   // ── Totales + disponibilidad del "real" ───────────────────────────────────
   const sum = (g: string) =>
     usd(lines.filter((l) => l.group === g).reduce((n, l) => n + l.estimated, 0));
@@ -557,6 +634,7 @@ export const handler: Handler = async (event: any) => {
       connectReal, // gasto real de AWS (Cost Explorer) — nivel cuenta/servicio
       meta: metaEst,
       platform, // infra propia de ARIA (estimada, compartida entre tenants)
+      platformReal: platformRealTag?.total ?? null, // real por etiqueta aria:product=ARIA
       total: usd(connect + metaEst + platform),
       realTotal: realTotal != null ? usd(realTotal) : null,
     },
@@ -564,6 +642,9 @@ export const handler: Handler = async (event: any) => {
       whatsapp: waReal != null,
       // Connect real disponible cuando Cost Explorer respondió (permiso ce:).
       connect: connectReal != null,
+      // Platform real disponible cuando la etiqueta aria:product=ARIA está activa como
+      // cost-allocation tag y CE devolvió datos.
+      platform: platformRealTag != null,
     },
     notes: {
       pricingModel: "us-east-1, jun-2026 (scripts/gen-costos-xlsx.mjs)",
