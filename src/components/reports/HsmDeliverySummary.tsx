@@ -56,7 +56,7 @@ function Legend({ rows }: { rows: { color: string; label: string; value: number;
               style={{
                 height: 4,
                 borderRadius: 3,
-                background: "var(--bg-3)",
+                background: "color-mix(in srgb, var(--accent-violet) 12%, transparent)",
                 marginTop: 4,
                 overflow: "hidden",
               }}
@@ -134,14 +134,14 @@ function RingBlock({
           size={168}
           thickness={9}
           gapDeg={3}
-          track="color-mix(in srgb, var(--accent-violet) 10%, var(--bg-3))"
+          track="color-mix(in srgb, var(--accent-violet) 16%, transparent)"
           segments={segments}
           center={
             <SegmentedRing
               size={124}
               thickness={9}
               gapDeg={2}
-              track="color-mix(in srgb, var(--accent-violet) 10%, var(--bg-3))"
+              track="color-mix(in srgb, var(--accent-violet) 16%, transparent)"
               segments={[
                 { value: reached, color: tone },
                 { value: Math.max(0, total - reached), color: "transparent" },
@@ -214,7 +214,7 @@ export function HsmDeliverySummary({
   const cCyan = "var(--accent-cyan)";
   const cRed = "var(--accent-red)";
   const cAmber = "var(--accent-amber)";
-  const cGray = "var(--text-3)";
+  const cNavy = "var(--accent)"; // "Pendientes" en azul de marca (no gris)
 
   const deliveredSegs = [
     ...(tracked ? [{ value: replied, color: cGreen }] : []),
@@ -224,7 +224,7 @@ export function HsmDeliverySummary({
   const undeliveredSegs = [
     { value: failed, color: cRed },
     { value: expired, color: cAmber },
-    { value: pendingRaw, color: cGray },
+    { value: pendingRaw, color: cNavy },
   ];
 
   const kpi = (label: string, value: string, color: string) => (
@@ -266,7 +266,7 @@ export function HsmDeliverySummary({
         {kpi(
           "Nivel de no entregados",
           `${Math.round(pct(undelivered, total))}%`,
-          undelivered > 0 ? cRed : cGray,
+          undelivered > 0 ? cRed : cNavy,
         )}
         {kpi(
           "Tiempo de respuesta prom.",
@@ -299,7 +299,7 @@ export function HsmDeliverySummary({
         />
         <RingBlock
           title="Mensajes no entregados"
-          tone={undelivered > 0 ? cRed : cGray}
+          tone={undelivered > 0 ? cRed : cNavy}
           reached={undelivered}
           total={total}
           pctLabel={`${Math.round(pct(undelivered, total))}% no entregados`}
@@ -307,7 +307,7 @@ export function HsmDeliverySummary({
           legend={[
             { color: cRed, label: "Fallidos", value: failed, of: undelivered },
             { color: cAmber, label: "Expirados", value: expired, of: undelivered },
-            { color: cGray, label: "Pendientes", value: pendingRaw, of: undelivered },
+            { color: cNavy, label: "Pendientes", value: pendingRaw, of: undelivered },
           ]}
         />
       </div>
