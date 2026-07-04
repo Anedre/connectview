@@ -11,18 +11,25 @@
 
 /* ---- Sidebar ---- */
 .sb {
+  /* El ancho lo maneja `width` con `flex-basis: auto` (flex: 0 0 auto): así el
+     tamaño lo dicta `width` y el toggle colapsado/expandido es limpio y
+     transicionable. Meter var() en el basis (`flex: 0 0 var(--nav-w)`) se
+     quedaba "pegado" al alternar — quirk de shorthands con var() + transición. */
   width: var(--nav-w);
-  flex: 0 0 var(--nav-w);
+  flex: 0 0 auto;
   background: var(--bg-1);
   border-right: 1px solid var(--border-1);
   display: flex;
   flex-direction: column;
   height: 100vh;
-  transition: width 0.22s var(--ease);
+  /* Sin `transition: width`: transicionar el ancho de este flex item se
+     atascaba (se quedaba clavado y a veces ni aplicaba el cambio). El toggle
+     colapsado/expandido es instantáneo y 100% confiable (estilo VS Code). */
   position: relative;
   z-index: 30;
 }
 .app[data-collapsed="1"] .sb {
+  /* Con `flex-basis: auto` en la base, basta cambiar el width para angostar. */
   width: var(--nav-w-collapsed);
 }
 .sb__brand {
@@ -62,11 +69,12 @@
 }
 .app[data-collapsed="1"] .sb__name,
 .app[data-collapsed="1"] .sb__search span,
+.app[data-collapsed="1"] .sb__search .kbd,
 .app[data-collapsed="1"] .sb__label,
 .app[data-collapsed="1"] .sb__section,
 .app[data-collapsed="1"] .sb__count,
 .app[data-collapsed="1"] .sb__pinned,
-.app[data-collapsed="1"] .sb__user-txt {
+.app[data-collapsed="1"] .sb__user-meta {
   display: none;
 }
 .app[data-collapsed="1"] .sb__brand {
@@ -102,6 +110,31 @@
 .app[data-collapsed="1"] .sb__search {
   justify-content: center;
   padding: 9px 0;
+}
+
+/* ---- Riel colapsado: footer + menú ---- */
+/* El footer (avatar + nombre + 3 botones) no cabe en 74px: se apila en una
+   columna centrada tipo dock (avatar arriba, tema/notif/cuenta debajo). */
+.app[data-collapsed="1"] .sb__dock {
+  padding: 8px 4px;
+  align-items: center;
+}
+.app[data-collapsed="1"] .sb__footer {
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+  width: 100%;
+}
+/* En colapsado el icono activo se marca solo con el fondo centrado (sin la
+   barrita del borde, que quedaba "flotando" a la izquierda del icono). */
+.app[data-collapsed="1"] .sb__item--active::before {
+  display: none;
+}
+/* El menú de cuenta abre como flyout hacia la derecha, con ancho usable. */
+.app[data-collapsed="1"] .sb__menu {
+  right: auto;
+  left: 6px;
+  min-width: 200px;
 }
 
 .sb__nav {
