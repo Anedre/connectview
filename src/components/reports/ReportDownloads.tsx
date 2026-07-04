@@ -181,10 +181,30 @@ export function ReportDownloads({
       id: "leads",
       label: "Leads",
       icon: "userplus",
-      hint: "Todos los leads del tenant con estado, etapa y programa.",
+      hint: "Cada lead con estado, etapa, programa y sus golpes (WhatsApp/llamadas/emails, primer y último toque).",
       build: async () => {
         const rows = await fetchDataset("leads");
         return { sheet: "Leads", columns: colsFromKeys(rows), rows };
+      },
+    },
+    {
+      id: "leads-history",
+      label: "Historial de leads (golpes)",
+      icon: "history",
+      hint: "El timeline completo: una fila por golpe (gestión, WhatsApp, email, llamada) con fecha, canal y agente.",
+      build: async () => {
+        const rows = await fetchDataset("leads-history");
+        return { sheet: "Historial", columns: colsFromKeys(rows), rows };
+      },
+    },
+    {
+      id: "leads-stages",
+      label: "Leads por etapa (embudo)",
+      icon: "funnel",
+      hint: "Conteo de leads y golpes por etapa del pipeline, con convertidos y golpes promedio.",
+      build: async () => {
+        const rows = await fetchDataset("leads-stages");
+        return { sheet: "Embudo", columns: colsFromKeys(rows), rows };
       },
     },
     {

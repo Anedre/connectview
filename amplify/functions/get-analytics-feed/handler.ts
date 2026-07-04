@@ -39,7 +39,14 @@ const bad = (c: number, e: string) => ({
   body: JSON.stringify({ error: e }),
 });
 
-const DATASETS = ["hsm", "leads", "conversations", "summary"] as const;
+const DATASETS = [
+  "hsm",
+  "leads",
+  "leads-history",
+  "leads-stages",
+  "conversations",
+  "summary",
+] as const;
 type Dataset = (typeof DATASETS)[number];
 
 /** Firma HMAC (base64url, 22 chars) del tenantId. */
@@ -95,6 +102,78 @@ async function scanAll<T>(
 
 const s = (v: unknown): string => (v == null ? "" : String(v));
 
+// ── Golpes / historial de leads (Pilar 2) ────────────────────────────────────
+// Espejo de _shared/leadSync GOLPE_TYPES. Se replica acá (en vez de importar
+// leadSync) para no arrastrar el SDK de Salesforce/Profiles a este Lambda público
+// chico. Si cambian los tipos de golpe allá, sincronizar acá.
+const GOLPE_TYPES = new Set([
+  "gestion",
+  "interaccion",
+  "whatsapp_out",
+  "whatsapp_in",
+  "email_out",
+  "email_opened",
+  "email_clicked",
+  "call",
+]);
+
+type Hist = {
+  ts?: string;
+  type?: string;
+  channel?: string;
+  direction?: string;
+  stageLabel?: string;
+  summary?: string;
+  notes?: string;
+  agent?: string;
+  templateName?: string;
+  outcome?: string;
+};
+
+const histOf = (row: Record<string, unknown>): Hist[] =>
+  Array.isArray(row.history) ? (row.history as Hist[]) : [];
+
+/** Etiqueta de etapa actual: el último stageLabel visto en el history, o el stageId. */
+function stageLabelOf(hist: Hist[], stageId: string): string {
+  for (let i = hist.length - 1; i >= 0; i--) if (hist[i]?.stageLabel) return s(hist[i].stageLabel);
+  return stageId;
+}
+
+/** Etapa legible y uniforme: "no_contactado"/"No contactado" → "No Contactado".
+ *  Los datos traen la misma etapa con casing/guiones distintos (stageId crudo vs
+ *  stageLabel del history); normalizar evita que el embudo la cuente doble. */
+function prettyStage(raw: string): string {
+  const t = (raw || "").replace(/[_-]+/g, " ").trim().replace(/\s+/g, " ");
+  if (!t) return "(sin etapa)";
+  return t.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+/** Clave canónica para agrupar etapas equivalentes (sin casing/espacios/guiones). */
+const stageKey = (raw: string): string => (raw || "").toLowerCase().replace(/[_\s-]+/g, "");
+
+/** Resumen de golpes de un lead desde su history (Pilar 2, sin taxonomía). */
+function golpesOf(hist: Hist[]) {
+  let golpes = 0,
+    wa = 0,
+    call = 0,
+    email = 0,
+    gestion = 0;
+  let firstTouchAt = "",
+    lastTouchAt = "";
+  for (const e of hist) {
+    const t = e.type || "";
+    if (!GOLPE_TYPES.has(t)) continue;
+    golpes++;
+    if (t.startsWith("whatsapp")) wa++;
+    else if (t === "call") call++;
+    else if (t.startsWith("email")) email++;
+    else if (t === "gestion" || t === "interaccion") gestion++;
+    const ts = e.ts || "";
+    if (ts && (!firstTouchAt || ts < firstTouchAt)) firstTouchAt = ts;
+    if (ts && (!lastTouchAt || ts > lastTouchAt)) lastTouchAt = ts;
+  }
+  return { golpes, wa, call, email, gestion, firstTouchAt, lastTouchAt };
+}
+
 async function buildDataset(dataset: Dataset, tenantId: string): Promise<unknown[]> {
   switch (dataset) {
     case "hsm":
@@ -107,19 +186,89 @@ async function buildDataset(dataset: Dataset, tenantId: string): Promise<unknown
         campaign: s(r.campaign || r.campaignId),
       }));
     case "leads":
-      return scanAll(LEADS_TABLE, tenantId, (r) => ({
-        leadId: s(r.leadId || r.id),
-        name: s(r.name),
-        phone: s(r.phone),
-        email: s(r.email),
-        status: s(r.status),
-        stage: s(r.stage || r.subStage),
-        program: s(r.program || r.programId),
-        source: s(r.source),
-        assignedAgent: s(r.assignedAgentUserId || r.owner),
-        createdAt: s(r.createdAt),
-        updatedAt: s(r.updatedAt),
-      }));
+      return scanAll(LEADS_TABLE, tenantId, (r) => {
+        const hist = histOf(r);
+        const g = golpesOf(hist);
+        const stageId = s(r.stageId || r.stage);
+        return {
+          leadId: s(r.leadId || r.id),
+          name: s(r.name),
+          phone: s(r.phone),
+          email: s(r.email),
+          status: s(r.status),
+          stage: prettyStage(stageLabelOf(hist, stageId)),
+          stageId,
+          program: s(r.programId || r.program),
+          source: s(r.source),
+          assignedAgent: s(r.assignedAgentUserId || r.owner),
+          golpes: g.golpes,
+          whatsapp: g.wa,
+          llamadas: g.call,
+          emails: g.email,
+          gestiones: g.gestion,
+          primerToque: g.firstTouchAt,
+          ultimoToque: g.lastTouchAt,
+          createdAt: s(r.createdAt),
+          updatedAt: s(r.updatedAt),
+        };
+      });
+    case "leads-history": {
+      // Una fila por evento del history de cada lead (el timeline completo de golpes).
+      const rows: Record<string, unknown>[] = [];
+      await scanAll(LEADS_TABLE, tenantId, (r) => {
+        const leadId = s(r.leadId || r.id);
+        const name = s(r.name);
+        const phone = s(r.phone);
+        for (const e of histOf(r)) {
+          rows.push({
+            leadId,
+            name,
+            phone,
+            ts: s(e.ts),
+            tipo: s(e.type),
+            golpe: GOLPE_TYPES.has(e.type || "") ? "sí" : "no",
+            canal: s(e.channel),
+            direccion: s(e.direction),
+            etapa: s(e.stageLabel),
+            detalle: s(e.summary || e.notes),
+            agente: s(e.agent),
+            plantilla: s(e.templateName),
+            resultado: s(e.outcome),
+          });
+        }
+        return null; // acumulamos los eventos, no el lead
+      });
+      rows.sort((a, b) => s(a.ts).localeCompare(s(b.ts)));
+      return rows;
+    }
+    case "leads-stages": {
+      // Embudo: conteo de leads + golpes por etapa (con % de conversión).
+      const map = new Map<
+        string,
+        { etapa: string; leads: number; golpes: number; convertidos: number }
+      >();
+      await scanAll(LEADS_TABLE, tenantId, (r) => {
+        const hist = histOf(r);
+        const etapa = prettyStage(stageLabelOf(hist, s(r.stageId || r.stage)));
+        const key = stageKey(etapa); // fusiona "contactado"/"Contactado"/"no_contactado"
+        const g = golpesOf(hist);
+        const m = map.get(key) || { etapa, leads: 0, golpes: 0, convertidos: 0 };
+        m.leads++;
+        m.golpes += g.golpes;
+        if (s(r.status) === "converted") m.convertidos++;
+        map.set(key, m);
+        return null;
+      });
+      return [...map.values()]
+        .sort((a, b) => b.leads - a.leads)
+        .map((m) => ({
+          etapa: m.etapa,
+          leads: m.leads,
+          golpesTotal: m.golpes,
+          golpesProm: m.leads ? Math.round((m.golpes / m.leads) * 10) / 10 : 0,
+          convertidos: m.convertidos,
+        }));
+    }
     case "conversations":
       return scanAll(CONVERSATIONS_TABLE, tenantId, (r) => {
         const msgs = Array.isArray(r.messages) ? (r.messages as unknown[]) : [];
