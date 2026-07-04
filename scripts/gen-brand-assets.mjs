@@ -127,19 +127,29 @@ async function main() {
     .png({ compressionLevel: 9 })
     .toFile(path.join(B, "aria-lockup.png"));
 
-  // ── Favicons desde la "A" sólida (legible a 16px), navy sobre blanco ──
-  const solidTrim = await sharp(path.join(B, "aria-favicon-solidA.png"))
-    .trim({ threshold: 20 })
-    .toBuffer();
-  const faviconPng = (size) =>
-    sharp(solidTrim)
-      .resize(size, size, { fit: "contain", background: WHITE })
-      .flatten({ background: WHITE })
+  // ── Favicon: "A" sólida BLANCA sobre un squircle con gradiente navy->teal
+  //    (esquinas transparentes → nada de fondo blanco feo; se ve bien en
+  //    pestañas claras y oscuras). Legible a 16px. ──
+  const solidAWhite = await tightBuf(path.join(B, "aria-favicon-solidA.png"), [255, 255, 255]);
+  const GRAD_SQUIRCLE = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">` +
+      `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
+      `<stop offset="0" stop-color="#2c5698"/><stop offset="1" stop-color="#158a8c"/>` +
+      `</linearGradient></defs>` +
+      `<rect width="512" height="512" rx="116" fill="url(#g)"/></svg>`,
+  );
+  const faviconPng = async (size) => {
+    const bg = await sharp(GRAD_SQUIRCLE).resize(size, size).png().toBuffer();
+    const inner = Math.round(size * 0.56);
+    const a = await sharp(solidAWhite).resize(inner, inner, { fit: "inside" }).png().toBuffer();
+    return sharp(bg)
+      .composite([{ input: a, gravity: "centre" }])
       .png({ compressionLevel: 9 });
-  for (const s of [16, 32, 48]) await faviconPng(s).toFile(path.join(OUT, `favicon-${s}.png`));
+  };
+  for (const s of [16, 32, 48]) await (await faviconPng(s)).toFile(path.join(OUT, `favicon-${s}.png`));
 
   // favicon.ico multi-resolución (16+32+48)
-  const icoBufs = await Promise.all([16, 32, 48].map((s) => faviconPng(s).toBuffer()));
+  const icoBufs = await Promise.all([16, 32, 48].map(async (s) => (await faviconPng(s)).toBuffer()));
   writeFileSync(path.join(OUT, "favicon.ico"), await pngToIco(icoBufs));
 
   // ── App icon (squircle) → apple-touch + PWA "any". Trim suave + contain
