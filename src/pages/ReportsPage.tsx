@@ -7,6 +7,7 @@ import { useContacts } from "@/hooks/useContacts";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { ContactFilters } from "@/components/reports/ContactFilters";
+import { DateRangePicker, type DateRange } from "@/components/reports/DateRangePicker";
 import { SentimentChart } from "@/components/reports/SentimentChart";
 import { AgentPerformanceReport } from "@/components/reports/AgentPerformanceReport";
 import { HsmOutboundReport } from "@/components/reports/HsmOutboundReport";
@@ -140,7 +141,9 @@ function AhtHistogramEChart({ contacts }: { contacts: ContactRecord[] }) {
       <EChart option={option} height={240} />
       <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 6 }}>
         Mediana:{" "}
-        <span style={{ color: "var(--text-1)", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+        <span
+          style={{ color: "var(--text-1)", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}
+        >
           {median}
         </span>{" "}
         min
@@ -191,52 +194,46 @@ function exportContactsToCsv(contacts: ContactRecord[]) {
   toast.success(`CSV descargado · ${contacts.length} contactos`);
 }
 
-const PERIODS = [
-  { id: "7d", label: "7 días", days: 7 },
-  { id: "14d", label: "14 días", days: 14 },
-  { id: "30d", label: "30 días", days: 30 },
-] as const;
-type PeriodId = (typeof PERIODS)[number]["id"];
-
 /** Categorías para segmentar los reportes en tabs por dominio (antes: una página larga). */
 type ReportTab = "operacion" | "crecimiento" | "whatsapp" | "bot" | "descargas";
-const REPORT_TABS: { id: ReportTab; label: string; icon: IconName; color: string; hint: string }[] = [
-  {
-    id: "operacion",
-    label: "Operación",
-    icon: "headset",
-    color: "var(--accent)",
-    hint: "Volumen, tiempos (AHT), rendimiento por agente y sentiment del contact center.",
-  },
-  {
-    id: "crecimiento",
-    label: "Crecimiento",
-    icon: "trending",
-    color: "var(--green)",
-    hint: "Embudo y conversión por programa, y atribución de los golpes al cierre.",
-  },
-  {
-    id: "whatsapp",
-    label: "WhatsApp",
-    icon: "wa",
-    color: "var(--cyan)",
-    hint: "Entrega de plantillas HSM y analítica directa de la Cloud API de Meta.",
-  },
-  {
-    id: "bot",
-    label: "Agente IA",
-    icon: "sparkle",
-    color: "var(--iris)",
-    hint: "Resolución, derivación, confianza y herramientas del agente de IA.",
-  },
-  {
-    id: "descargas",
-    label: "Descargas",
-    icon: "download",
-    color: "var(--gold)",
-    hint: "Exportá el detalle de conversaciones (Chat detail) y programá reportes por email.",
-  },
-];
+const REPORT_TABS: { id: ReportTab; label: string; icon: IconName; color: string; hint: string }[] =
+  [
+    {
+      id: "operacion",
+      label: "Operación",
+      icon: "headset",
+      color: "var(--accent)",
+      hint: "Volumen, tiempos (AHT), rendimiento por agente y sentiment del contact center.",
+    },
+    {
+      id: "crecimiento",
+      label: "Crecimiento",
+      icon: "trending",
+      color: "var(--green)",
+      hint: "Embudo y conversión por programa, y atribución de los golpes al cierre.",
+    },
+    {
+      id: "whatsapp",
+      label: "WhatsApp",
+      icon: "wa",
+      color: "var(--cyan)",
+      hint: "Entrega de plantillas HSM y analítica directa de la Cloud API de Meta.",
+    },
+    {
+      id: "bot",
+      label: "Agente IA",
+      icon: "sparkle",
+      color: "var(--iris)",
+      hint: "Resolución, derivación, confianza y herramientas del agente de IA.",
+    },
+    {
+      id: "descargas",
+      label: "Descargas",
+      icon: "download",
+      color: "var(--gold)",
+      hint: "Exportá el detalle de conversaciones (Chat detail) y programá reportes por email.",
+    },
+  ];
 
 /** KPIs del período (puro) — reusado para el período actual y el previo (comparación). */
 function computeKpis(contacts: ContactRecord[]) {
@@ -276,7 +273,14 @@ function DeltaChip({ curr, prev, invert }: { curr: number; prev?: number; invert
   const color = good ? "var(--green)" : "var(--coral)";
   return (
     <span
-      style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontWeight: 700, color }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        fontSize: 11.5,
+        fontWeight: 700,
+        color,
+      }}
       title="Comparado con el período inmediatamente anterior del mismo largo"
     >
       {pct > 0 ? "▲" : "▼"} {Math.abs(pct)}%
@@ -287,16 +291,21 @@ function DeltaChip({ curr, prev, invert }: { curr: number; prev?: number; invert
 
 export function ReportsPage() {
   const { contacts, loading, searchContacts } = useContacts();
-  const [period, setPeriod] = useState<PeriodId>("7d");
+  const [range, setRange] = useState<DateRange>(() => {
+    const now = new Date();
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6),
+      end: now,
+      label: "Últimos 7 días",
+    };
+  });
   const [tab, setTab] = useState<ReportTab>("operacion");
   const [showSchedule, setShowSchedule] = useState(false);
 
-  // El segmented re-consulta el rango REAL (antes el botón era decorativo).
+  // El calendario de rango re-consulta el rango REAL elegido.
   useEffect(() => {
-    const days = PERIODS.find((p) => p.id === period)?.days ?? 7;
-    const start = new Date(Date.now() - days * 86400000).toISOString();
-    searchContacts({ startDate: start, endDate: new Date().toISOString() });
-  }, [period, searchContacts]);
+    searchContacts({ startDate: range.start.toISOString(), endDate: range.end.toISOString() });
+  }, [range, searchContacts]);
 
   const kpis = useMemo(() => computeKpis(contacts), [contacts]);
 
@@ -306,10 +315,9 @@ export function ReportsPage() {
   useEffect(() => {
     const ep = getApiEndpoints();
     if (!ep?.queryContacts) return; // sin endpoint no hay comparación (prevKpis queda null)
-    const days = PERIODS.find((p) => p.id === period)?.days ?? 7;
-    const now = Date.now();
-    const prevStart = new Date(now - 2 * days * 86400000).toISOString();
-    const prevEnd = new Date(now - days * 86400000).toISOString();
+    const len = range.end.getTime() - range.start.getTime();
+    const prevStart = new Date(range.start.getTime() - len).toISOString();
+    const prevEnd = range.start.toISOString();
     let cancelled = false;
     authedFetch(
       `${ep.queryContacts}?startDate=${encodeURIComponent(prevStart)}&endDate=${encodeURIComponent(prevEnd)}`,
@@ -324,7 +332,7 @@ export function ReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [period]);
+  }, [range]);
 
   // Spark del KPI de volumen + barras por canal: misma agregación diaria.
   const { volumeSpark, volumeByChannel } = useMemo(() => {
@@ -406,34 +414,10 @@ export function ReportsPage() {
 
       <FeatureNotice feature="contactLens" />
 
-      {/* Período (REAL: re-consulta queryContacts) — pills estilo ARIA. */}
-      <div className="row gap8" role="tablist" aria-label="Período" style={{ marginBottom: 16 }}>
-        {PERIODS.map((p) => {
-          const active = period === p.id;
-          return (
-            <button
-              key={p.id}
-              role="tab"
-              aria-selected={active}
-              onClick={() => setPeriod(p.id)}
-              className="card"
-              style={{
-                padding: "9px 16px",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                cursor: "pointer",
-                border: active ? "1.5px solid var(--accent)" : "1px solid var(--border-1)",
-                background: active ? "var(--accent-soft)" : "var(--bg-1)",
-              }}
-            >
-              <Icon name="calendar" size={15} style={{ color: active ? "var(--accent)" : "var(--text-3)" }} />
-              <span style={{ fontWeight: 700, fontSize: 13, color: active ? "var(--accent)" : "var(--text-1)" }}>
-                {p.label}
-              </span>
-            </button>
-          );
-        })}
+      {/* Período (REAL: re-consulta queryContacts) — calendario de rango con presets. */}
+      <div className="row" style={{ marginBottom: 16, alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 12.5, color: "var(--text-3)", fontWeight: 600 }}>Período</span>
+        <DateRangePicker value={range} onChange={setRange} />
       </div>
 
       {/* KPIs — familia ARIA (Stat + count-up). */}
@@ -525,7 +509,12 @@ export function ReportsPage() {
 
       {/* Tab bar de categorías — segmenta los reportes por dominio (Operación,
           Crecimiento, WhatsApp, Agente IA) en vez de una página larga apilada. */}
-      <div className="row gap8 wrap" role="tablist" aria-label="Categoría de reportes" style={{ marginBottom: 6 }}>
+      <div
+        className="row gap8 wrap"
+        role="tablist"
+        aria-label="Categoría de reportes"
+        style={{ marginBottom: 6 }}
+      >
         {REPORT_TABS.map((t) => {
           const active = tab === t.id;
           return (
@@ -542,7 +531,9 @@ export function ReportsPage() {
                 borderRadius: 10,
                 cursor: "pointer",
                 border: active ? `1.5px solid ${t.color}` : "1px solid var(--border-1)",
-                background: active ? `color-mix(in srgb, ${t.color} 12%, var(--bg-1))` : "var(--bg-1)",
+                background: active
+                  ? `color-mix(in srgb, ${t.color} 12%, var(--bg-1))`
+                  : "var(--bg-1)",
                 color: active ? t.color : "var(--text-2)",
                 fontWeight: active ? 750 : 600,
                 fontSize: 13,
@@ -562,13 +553,27 @@ export function ReportsPage() {
       {tab === "operacion" && (
         <>
           {initialLoading ? (
-            <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+            <div
+              className="grid"
+              style={{ gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}
+            >
               <div className="card" style={{ height: 300 }} />
               <div className="card" style={{ height: 300 }} />
             </div>
           ) : (
-            <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-              <Card title="Volumen por canal" icon="layers" extra={<span className="dim" style={{ fontSize: 12 }}>{contacts.length} contactos</span>}>
+            <div
+              className="grid"
+              style={{ gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}
+            >
+              <Card
+                title="Volumen por canal"
+                icon="layers"
+                extra={
+                  <span className="dim" style={{ fontSize: 12 }}>
+                    {contacts.length} contactos
+                  </span>
+                }
+              >
                 {volumeByChannel.length === 0 ? (
                   <EmptyState
                     icon={<Icon name="chart" size={20} />}
@@ -579,7 +584,15 @@ export function ReportsPage() {
                   <ExecBarsEChart data={volumeByChannel} height={264} />
                 )}
               </Card>
-              <Card title="Distribución de AHT" icon="clock" extra={<span className="dim" style={{ fontSize: 12 }}>minutos</span>}>
+              <Card
+                title="Distribución de AHT"
+                icon="clock"
+                extra={
+                  <span className="dim" style={{ fontSize: 12 }}>
+                    minutos
+                  </span>
+                }
+              >
                 <AhtHistogramEChart contacts={contacts} />
               </Card>
             </div>
@@ -596,12 +609,30 @@ export function ReportsPage() {
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <Card title="Rendimiento de agente" icon="users" extra={<span className="dim" style={{ fontSize: 12 }}>click en columna para ordenar</span>} pad={false}>
+            <Card
+              title="Rendimiento de agente"
+              icon="users"
+              extra={
+                <span className="dim" style={{ fontSize: 12 }}>
+                  click en columna para ordenar
+                </span>
+              }
+              pad={false}
+            >
               <AgentPerformanceReport contacts={contacts} />
             </Card>
           </div>
 
-          <Card title="Historial de contactos" icon="fileText" extra={<span className="dim" style={{ fontSize: 12 }}>{contacts.length} contactos</span>} pad={false}>
+          <Card
+            title="Historial de contactos"
+            icon="fileText"
+            extra={
+              <span className="dim" style={{ fontSize: 12 }}>
+                {contacts.length} contactos
+              </span>
+            }
+            pad={false}
+          >
             <ContactsTable contacts={contacts} />
           </Card>
         </>
@@ -649,9 +680,15 @@ export function ReportsPage() {
             <Card
               title="Detalle de conversaciones · Chat detail"
               icon="fileText"
-              extra={<span className="dim" style={{ fontSize: 12 }}>{contacts.length} conversaciones</span>}
+              extra={
+                <span className="dim" style={{ fontSize: 12 }}>
+                  {contacts.length} conversaciones
+                </span>
+              }
             >
-              <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 14 }}>
+              <div
+                style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 14 }}
+              >
                 Exporta fila por conversación con todos los campos: agente, cola, canal, duración,
                 sentiment, categorías, estado y motivo de cierre — sobre tus contactos reales del
                 período seleccionado. Es el reporte que en Chattigo se descarga como «Chat detail».
