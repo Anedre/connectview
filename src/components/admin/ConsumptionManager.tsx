@@ -26,14 +26,23 @@ interface CostReport {
   period: { from: string; to: string; days: number };
   currency: string;
   lines: CostLine[];
-  summary: { connect: number; connectReal: number | null; meta: number; total: number; realTotal: number | null };
+  summary: {
+    connect: number;
+    connectReal: number | null;
+    meta: number;
+    platform: number;
+    total: number;
+    realTotal: number | null;
+  };
   realAvailable: { whatsapp: boolean; connect: boolean };
   notes?: Record<string, string>;
   generatedAt: string;
 }
 
 const money = (n: number | null | undefined) =>
-  n == null ? "—" : `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  n == null
+    ? "—"
+    : `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const PERIODS = [
   { d: 7, label: "7 días" },
@@ -47,7 +56,17 @@ const GROUP_META: Record<string, { title: string; color: string }> = {
   platform: { title: "Plataforma ARIA", color: "var(--accent-violet)" },
 };
 
-function Kpi({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
+function Kpi({
+  label,
+  value,
+  color,
+  sub,
+}: {
+  label: string;
+  value: string;
+  color: string;
+  sub?: string;
+}) {
   return (
     <div
       style={{
@@ -59,12 +78,26 @@ function Kpi({ label, value, color, sub }: { label: string; value: string; color
         overflow: "hidden",
       }}
     >
-      <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: color }} />
-      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-3)" }}>
+      <span
+        style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: color }}
+      />
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: ".05em",
+          color: "var(--text-3)",
+        }}
+      >
         {label}
       </div>
       <div style={{ fontSize: 26, fontWeight: 800, marginTop: 4, color }}>{value}</div>
-      {sub && <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{sub}</div>}
+      {sub && (
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+          {sub}
+        </div>
+      )}
     </div>
   );
 }
@@ -97,21 +130,42 @@ export function ConsumptionManager() {
     void load();
   }, [load]);
 
-  const groups = ["connect", "meta"] as const;
+  const groups = ["connect", "meta", "platform"] as const;
 
   return (
     <div className="col" style={{ gap: 18 }}>
       {/* Header */}
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
+      <div
+        className="row"
+        style={{
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.01em" }}>Consumo</div>
-          <div className="muted" style={{ fontSize: 12.5, marginTop: 3, maxWidth: 680, lineHeight: 1.5 }}>
-            Lo que gastás en <strong>tu Amazon Connect</strong> y <strong>tu Meta</strong> según tu uso
-            de ARIA. Mostramos la <strong>estimación</strong> (volumen × precios) y, cuando hay fuente,
-            el <strong>cobro real</strong>.
+          <div
+            className="muted"
+            style={{ fontSize: 12.5, marginTop: 3, maxWidth: 720, lineHeight: 1.5 }}
+          >
+            Lo que cuesta tu operación: <strong>tu Amazon Connect</strong>, <strong>tu Meta</strong>{" "}
+            y la <strong>infraestructura de ARIA</strong> (Lambda, base de datos, identidad…) según
+            tu uso. Mostramos la <strong>estimación</strong> (volumen × precios) y, cuando hay
+            fuente, el <strong>cobro real</strong>.
           </div>
         </div>
-        <div className="row" style={{ gap: 6, border: "1px solid var(--border-2)", borderRadius: 8, overflow: "hidden", flex: "0 0 auto" }}>
+        <div
+          className="row"
+          style={{
+            gap: 6,
+            border: "1px solid var(--border-2)",
+            borderRadius: 8,
+            overflow: "hidden",
+            flex: "0 0 auto",
+          }}
+        >
           {PERIODS.map((p) => (
             <button
               key={p.d}
@@ -134,15 +188,17 @@ export function ConsumptionManager() {
         <Card>
           <CardBody>
             <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-              El reporte de consumo se habilita al desplegar el backend <code>get-cost-report</code>.
-              Ya podés ver el modelo de precios en <code>design/consumo.md</code>.
+              El reporte de consumo se habilita al desplegar el backend <code>get-cost-report</code>
+              . Ya podés ver el modelo de precios en <code>design/consumo.md</code>.
             </div>
           </CardBody>
         </Card>
       )}
 
       {endpoint && loading && !data && (
-        <div className="muted" style={{ fontSize: 13, padding: "24px 4px" }}>Calculando consumo…</div>
+        <div className="muted" style={{ fontSize: 13, padding: "24px 4px" }}>
+          Calculando consumo…
+        </div>
       )}
 
       {endpoint && err && (
@@ -156,14 +212,41 @@ export function ConsumptionManager() {
       {data && (
         <>
           {/* KPIs */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
-            <Kpi label="Amazon Connect y AWS" value={money(data.summary.connect)} color="#FF9900" sub={`estimado · ${data.period.days} días`} />
-            <Kpi label="Meta · WhatsApp" value={money(data.summary.meta)} color="#25D366" sub="estimado" />
-            <Kpi label="Total estimado" value={money(data.summary.total)} color="var(--accent-cyan)" sub="Connect + Meta" />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+              gap: 14,
+            }}
+          >
+            <Kpi
+              label="Amazon Connect y AWS"
+              value={money(data.summary.connect)}
+              color="#FF9900"
+              sub={`estimado · ${data.period.days} días`}
+            />
+            <Kpi
+              label="Meta · WhatsApp"
+              value={money(data.summary.meta)}
+              color="#25D366"
+              sub="estimado"
+            />
+            <Kpi
+              label="Plataforma ARIA"
+              value={money(data.summary.platform)}
+              color="var(--accent-violet)"
+              sub="infra · estimado"
+            />
+            <Kpi
+              label="Total estimado"
+              value={money(data.summary.total)}
+              color="var(--accent-cyan)"
+              sub="Connect + Meta + Plataforma"
+            />
             <Kpi
               label="Cobro real (parcial)"
               value={money(data.summary.realTotal)}
-              color="var(--accent-violet)"
+              color="var(--text-1)"
               sub={
                 [
                   data.realAvailable.whatsapp && "WhatsApp (Meta)",
@@ -183,7 +266,9 @@ export function ConsumptionManager() {
                 llamadas, turnos de bot) × los precios del modelo (us-east-1). El{" "}
                 <strong>cobro real</strong> se toma directo de la fuente:{" "}
                 {data.realAvailable.whatsapp ? (
-                  <span style={{ color: "var(--accent-green)" }}>WhatsApp ✓ conectado (Graph de Meta)</span>
+                  <span style={{ color: "var(--accent-green)" }}>
+                    WhatsApp ✓ conectado (Graph de Meta)
+                  </span>
                 ) : (
                   <span>WhatsApp — conectá tu número de Meta para verlo</span>
                 )}
@@ -209,8 +294,18 @@ export function ConsumptionManager() {
             return (
               <Card key={g}>
                 <CardBody flush>
-                  <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border-1)", display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ width: 9, height: 9, borderRadius: "50%", background: gm.color }} />
+                  <div
+                    style={{
+                      padding: "12px 16px",
+                      borderBottom: "1px solid var(--border-1)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span
+                      style={{ width: 9, height: 9, borderRadius: "50%", background: gm.color }}
+                    />
                     <span style={{ fontWeight: 700, fontSize: 14 }}>{gm.title}</span>
                   </div>
                   <div style={{ overflowX: "auto" }}>
@@ -232,25 +327,52 @@ export function ConsumptionManager() {
                               <td>
                                 <div style={{ fontWeight: 600, fontSize: 12.5 }}>{l.label}</div>
                                 {l.note && (
-                                  <div className="muted" style={{ fontSize: 10.5, lineHeight: 1.45, marginTop: 2, maxWidth: 460 }}>
+                                  <div
+                                    className="muted"
+                                    style={{
+                                      fontSize: 10.5,
+                                      lineHeight: 1.45,
+                                      marginTop: 2,
+                                      maxWidth: 460,
+                                    }}
+                                  >
                                     {l.note}
                                   </div>
                                 )}
                               </td>
-                              <td style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 12 }}>
-                                {l.volume.toLocaleString("es-PE")} <span className="muted">{l.unit}</span>
+                              <td
+                                style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 12 }}
+                              >
+                                {l.volume.toLocaleString("es-PE")}{" "}
+                                <span className="muted">{l.unit}</span>
                               </td>
-                              <td style={{ textAlign: "right", whiteSpace: "nowrap", fontWeight: 600, fontSize: 12.5 }}>
+                              <td
+                                style={{
+                                  textAlign: "right",
+                                  whiteSpace: "nowrap",
+                                  fontWeight: 600,
+                                  fontSize: 12.5,
+                                }}
+                              >
                                 {money(l.estimated)}
                               </td>
-                              <td style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 12.5 }}>
+                              <td
+                                style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 12.5 }}
+                              >
                                 {l.real != null ? money(l.real) : <span className="muted">—</span>}
                               </td>
-                              <td style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 12 }}>
+                              <td
+                                style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 12 }}
+                              >
                                 {delta == null ? (
                                   <span className="muted">—</span>
                                 ) : (
-                                  <span style={{ color: delta > 0 ? "var(--accent-red)" : "var(--accent-green)" }}>
+                                  <span
+                                    style={{
+                                      color:
+                                        delta > 0 ? "var(--accent-red)" : "var(--accent-green)",
+                                    }}
+                                  >
                                     {delta > 0 ? "+" : ""}
                                     {money(delta)}
                                   </span>
@@ -274,13 +396,30 @@ export function ConsumptionManager() {
                         flexWrap: "wrap",
                       }}
                     >
-                      <span className="muted" style={{ fontSize: 11.5, maxWidth: 560, lineHeight: 1.5 }}>
+                      <span
+                        className="muted"
+                        style={{ fontSize: 11.5, maxWidth: 560, lineHeight: 1.5 }}
+                      >
                         <strong style={{ color: "var(--text-1)" }}>Cobro real de AWS</strong> (Cost
-                        Explorer): todo el gasto de Amazon Connect y servicios asociados en tu cuenta
-                        este período. La facturación de AWS tiene ~24 h de retraso.
+                        Explorer): todo el gasto de Amazon Connect y servicios asociados en tu
+                        cuenta este período. La facturación de AWS tiene ~24 h de retraso.
                       </span>
-                      <span style={{ fontWeight: 800, fontSize: 16, color: "var(--accent-violet)" }}>
+                      <span
+                        style={{ fontWeight: 800, fontSize: 16, color: "var(--accent-violet)" }}
+                      >
                         {money(data.summary.connectReal)}
+                      </span>
+                    </div>
+                  )}
+                  {g === "platform" && (
+                    <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border-1)" }}>
+                      <span className="muted" style={{ fontSize: 11.5, lineHeight: 1.55 }}>
+                        <strong style={{ color: "var(--text-1)" }}>Estimado.</strong> La
+                        infraestructura de ARIA (Lambda, base de datos, identidad, logs…) es{" "}
+                        <strong>compartida entre clientes</strong> y corre en la cuenta de la
+                        plataforma; se estima según tu actividad, no hay un cobro real por-cliente
+                        aparte. <strong>IAM es gratis.</strong> El hosting web es un fijo de
+                        plataforma que no se atribuye por cliente.
                       </span>
                     </div>
                   )}

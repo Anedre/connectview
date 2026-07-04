@@ -34,12 +34,17 @@ const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connecti
 const HSM_SENDS_TABLE = process.env.HSM_SENDS_TABLE || "connectview-hsm-sends";
 const CONVERSATIONS_TABLE = process.env.CONVERSATIONS_TABLE || "connectview-conversations";
 const AI_CONV_TABLE = process.env.AI_CONVERSATIONS_TABLE || "connectview-ai-conversations";
-const CONNECT_INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "2345d564-4bd4-4318-9cf0-75649bad5197";
+const CONNECT_INSTANCE_ID =
+  process.env.CONNECT_INSTANCE_ID || "2345d564-4bd4-4318-9cf0-75649bad5197";
 const GRAPH = "https://graph.facebook.com/v20.0";
 
 const CORS = { "Content-Type": "application/json" };
 const ok = (b: unknown) => ({ statusCode: 200, headers: CORS, body: JSON.stringify(b) });
-const bad = (c: number, e: string) => ({ statusCode: c, headers: CORS, body: JSON.stringify({ error: e }) });
+const bad = (c: number, e: string) => ({
+  statusCode: c,
+  headers: CORS,
+  body: JSON.stringify({ error: e }),
+});
 
 interface TenantMeta {
   wabaId?: string;
@@ -318,20 +323,25 @@ export const handler: Handler = async (event: any) => {
   });
 
   // ── Amazon Connect · WhatsApp/omnicanal saliente (mensajes) ───────────────
+  // De paso contamos la actividad TOTAL (mensajes + agentes distintos) para estimar
+  // el uso de la infraestructura de plataforma (Lambda/DynamoDB/…) más abajo.
   let waOutMsgs = 0;
+  let convMsgsTotal = 0;
+  const agentSet = new Set<string>();
   try {
-    await scanWindow<{ channel?: string; messages?: { direction?: string }[]; tenantId?: string }>(
-      legacyDynamo,
-      CONVERSATIONS_TABLE,
-      "lastMessageAt",
-      fromIso,
-      toIso,
-      (c) => {
-        if (c.tenantId && c.tenantId !== tenantId) return;
-        if (c.channel !== "whatsapp") return;
-        for (const m of c.messages || []) if (m.direction === "out") waOutMsgs++;
-      },
-    );
+    await scanWindow<{
+      channel?: string;
+      messages?: { direction?: string }[];
+      tenantId?: string;
+      assignedAgentUserId?: string;
+    }>(legacyDynamo, CONVERSATIONS_TABLE, "lastMessageAt", fromIso, toIso, (c) => {
+      if (c.tenantId && c.tenantId !== tenantId) return;
+      for (const m of c.messages || []) {
+        convMsgsTotal++;
+        if (c.channel === "whatsapp" && m.direction === "out") waOutMsgs++;
+      }
+      if (c.assignedAgentUserId) agentSet.add(c.assignedAgentUserId);
+    });
   } catch (e) {
     console.warn("conv scan:", e instanceof Error ? e.message : e);
   }
@@ -400,8 +410,8 @@ export const handler: Handler = async (event: any) => {
     console.warn("ai-conv scan:", e instanceof Error ? e.message : e);
   }
   const botCost =
-    (botTurns * ASSUME.tokInBot / 1000) * PRICES.bedrockHaikuIn +
-    (botTurns * ASSUME.tokOutBot / 1000) * PRICES.bedrockHaikuOut;
+    ((botTurns * ASSUME.tokInBot) / 1000) * PRICES.bedrockHaikuIn +
+    ((botTurns * ASSUME.tokOutBot) / 1000) * PRICES.bedrockHaikuOut;
   lines.push({
     component: "bot_bedrock",
     label: "Agente IA (Bedrock · tokens)",
@@ -414,6 +424,111 @@ export const handler: Handler = async (event: any) => {
     note: `${botTurns} turnos de bot × ~${ASSUME.tokInBot}/${ASSUME.tokOutBot} tokens (Haiku). Corre en tu Bedrock (BYO).`,
   });
 
+  // ── Plataforma ARIA · infraestructura propia (cuenta Novasys) ─────────────
+  // Lo que cuesta OPERAR ARIA para servir a este tenant: Lambda (sus funciones),
+  // DynamoDB (la base que crean los templates), identidad, logs, egreso. Es infra
+  // COMPARTIDA entre tenants → se ESTIMA por-tenant desde su actividad; no hay un
+  // "real" por-tenant (Cost Explorer daría el total mezclado de todos). IAM se
+  // lista a $0 porque roles y políticas no se cobran.
+  const events = (voice?.calls || 0) + convMsgsTotal + botTurns + hsmCount;
+  const periodFrac = days / 30;
+
+  const lambdaInv = Math.round(
+    events * ASSUME.lambdaInvPerEvent + ASSUME.lambdaBaselineMonthly * periodFrac,
+  );
+  const lambdaCost =
+    (lambdaInv / 1e6) * PRICES.lambdaPerReq + lambdaInv * ASSUME.lambdaGBsInv * PRICES.lambdaGBs;
+  lines.push({
+    component: "platform_lambda",
+    label: "Lambda — cómputo (las funciones de ARIA)",
+    group: "platform",
+    volume: lambdaInv,
+    unit: "invocación",
+    unitCost: PRICES.lambdaPerReq,
+    estimated: usd(lambdaCost),
+    real: null,
+    note: `~${ASSUME.lambdaInvPerEvent} invocaciones por evento (webhook→bot→respuesta) + fijas de tareas programadas. Corre en la plataforma de ARIA.`,
+  });
+
+  const ddbOps = Math.round(events * ASSUME.ddbOpsPerEvent);
+  const ddbCost =
+    ((ddbOps * ASSUME.ddbWriteFrac) / 1e6) * PRICES.ddbWRU +
+    ((ddbOps * (1 - ASSUME.ddbWriteFrac)) / 1e6) * PRICES.ddbRRU;
+  lines.push({
+    component: "platform_dynamodb",
+    label: "DynamoDB — base de datos (leads, conversaciones, historial…)",
+    group: "platform",
+    volume: ddbOps,
+    unit: "operación",
+    unitCost: PRICES.ddbRRU,
+    estimated: usd(ddbCost),
+    real: null,
+    note: "Las tablas que ARIA crea con sus templates. On-demand: lectura + escritura estimadas del uso.",
+  });
+
+  const logsGb = (lambdaInv / 1e6) * ASSUME.logsGbPerMillionInv;
+  lines.push({
+    component: "platform_logs",
+    label: "CloudWatch — logs",
+    group: "platform",
+    volume: Math.round(logsGb * 100) / 100,
+    unit: "GB",
+    unitCost: PRICES.cwLogsGB,
+    estimated: usd(logsGb * PRICES.cwLogsGB),
+    real: null,
+    note: "Ingesta de logs de las funciones.",
+  });
+
+  const dtGb = (events / 1000) * ASSUME.dtGbPerThousandEvents;
+  lines.push({
+    component: "platform_transfer",
+    label: "Transferencia de datos (egreso)",
+    group: "platform",
+    volume: Math.round(dtGb * 100) / 100,
+    unit: "GB",
+    unitCost: PRICES.dataTransferGB,
+    estimated: usd(dtGb * PRICES.dataTransferGB),
+    real: null,
+    note: "Salida de datos de la plataforma.",
+  });
+
+  lines.push({
+    component: "platform_secrets",
+    label: "Secrets Manager — tokens y credenciales",
+    group: "platform",
+    volume: ASSUME.secretsTenant,
+    unit: "secreto",
+    unitCost: PRICES.secretsMonth,
+    estimated: usd(ASSUME.secretsTenant * PRICES.secretsMonth * periodFrac),
+    real: null,
+    note: `~${ASSUME.secretsTenant} secretos por tenant (WhatsApp, Salesforce, OAuth…), prorrateado al período.`,
+  });
+
+  const agents = agentSet.size || 1;
+  lines.push({
+    component: "platform_cognito",
+    label: "Cognito — identidad de usuarios",
+    group: "platform",
+    volume: agents,
+    unit: "usuario",
+    unitCost: PRICES.cognitoMAU,
+    estimated: usd(agents * PRICES.cognitoMAU * periodFrac),
+    real: null,
+    note: `${agents} usuario(s) activo(s) en el período. Suele caer en el tramo gratis de Cognito.`,
+  });
+
+  lines.push({
+    component: "platform_iam",
+    label: "IAM — roles y políticas",
+    group: "platform",
+    volume: 0,
+    unit: "recurso",
+    unitCost: 0,
+    estimated: 0,
+    real: null,
+    note: "IAM no tiene costo en AWS: crear roles y políticas es gratis.",
+  });
+
   // ── Cobro REAL de Connect (Cost Explorer) — agregado de servicio, no por-línea ─
   const ceStart = new Date(fromMs).toISOString().slice(0, 10);
   const ceEnd = new Date(toMs + 86400_000).toISOString().slice(0, 10); // End exclusivo → +1 día
@@ -424,6 +539,7 @@ export const handler: Handler = async (event: any) => {
     usd(lines.filter((l) => l.group === g).reduce((n, l) => n + l.estimated, 0));
   const connect = sum("connect");
   const metaEst = sum("meta");
+  const platform = sum("platform");
   // realTotal = suma de los reales por-línea (WhatsApp) + el real agregado de Connect (CE).
   const realPerLine = lines.reduce<number | null>(
     (acc, l) => (l.real != null ? (acc || 0) + l.real : acc),
@@ -440,7 +556,8 @@ export const handler: Handler = async (event: any) => {
       connect,
       connectReal, // gasto real de AWS (Cost Explorer) — nivel cuenta/servicio
       meta: metaEst,
-      total: usd(connect + metaEst),
+      platform, // infra propia de ARIA (estimada, compartida entre tenants)
+      total: usd(connect + metaEst + platform),
       realTotal: realTotal != null ? usd(realTotal) : null,
     },
     realAvailable: {
