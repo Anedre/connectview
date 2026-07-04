@@ -14,11 +14,10 @@ import { ContactDetailModal } from "@/components/workspace/ContactDetailModal";
 import { ContactHistoryPanel } from "@/components/workspace/ContactHistoryPanel";
 import { CasesPanel } from "@/components/workspace/CasesPanel";
 import { AgentNotesPanel } from "@/components/workspace/AgentNotesPanel";
+import { EditProfileModal } from "@/components/workspace/EditProfileModal";
+import { useConnections } from "@/hooks/useConnections";
 import { formatDurationSec } from "@/lib/utils";
-import {
-  displayCustomerName,
-  displayBusinessLine,
-} from "@/lib/customerName";
+import { displayCustomerName, displayBusinessLine } from "@/lib/customerName";
 
 /** Sub-pestañas del Cliente 360° estilo handoff. Sólo se muestran cuando el
  *  panel recibe `contactId` (contexto de un contacto activo) — así puede
@@ -88,6 +87,7 @@ function InlineEditField({
   mono,
   inputType = "text",
   onSaved,
+  propContext,
 }: {
   value: string;
   field: EditableField;
@@ -96,6 +96,9 @@ function InlineEditField({
   mono?: boolean;
   inputType?: string;
   onSaved: () => void;
+  // Si se pasa (campos de nombre), el guardado incluye phone + nombre completo
+  // para que el backend propague el cambio a connectview-leads + conversaciones.
+  propContext?: { phone?: string; buildName: (next: string) => string };
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -145,6 +148,7 @@ function InlineEditField({
           profileId,
           fields: { [field]: next === "" ? null : next },
           actor: agentUsername || "unknown",
+          ...(propContext ? { phone: propContext.phone, name: propContext.buildName(next) } : {}),
         }),
       });
       const data = await r.json().catch(() => ({}));
@@ -187,7 +191,9 @@ function InlineEditField({
   return (
     <button
       type="button"
-      className={"inline-edit__val" + (mono ? " mono" : "") + (canEdit ? "" : " inline-edit__val--ro")}
+      className={
+        "inline-edit__val" + (mono ? " mono" : "") + (canEdit ? "" : " inline-edit__val--ro")
+      }
       onClick={start}
       disabled={!canEdit}
       title={canEdit ? "Click para editar" : undefined}
@@ -244,12 +250,7 @@ export function CustomerProfilePanel({
     <div data-debug-component="Cliente360Tabbed">
       <div className="c360-tabs">
         {TABS.map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={tab === id}
-            onClick={() => setTab(id)}
-          >
+          <button key={id} type="button" aria-pressed={tab === id} onClick={() => setTab(id)}>
             {label}
           </button>
         ))}
@@ -301,6 +302,8 @@ function CustomerProfileContent({
   // Bump local: al guardar un atributo inline forzamos re-fetch del perfil
   // sin depender de que el padre suba el refreshKey.
   const [localRefresh, setLocalRefresh] = useState(0);
+  const [editOpen, setEditOpen] = useState(false);
+  const { config: connConfig } = useConnections();
   const { profile, loading, error } = useCustomerProfile(phone, refreshKey + localRefresh);
   const { contacts: history } = useContactHistory(phone, 90);
   // Tracks which interaction the agent clicked on — opens the detail
@@ -324,10 +327,10 @@ function CustomerProfileContent({
     branch: !phone
       ? "empty"
       : loading && !profile
-      ? "loading"
-      : error || !profile
-      ? "stub"
-      : "full",
+        ? "loading"
+        : error || !profile
+          ? "stub"
+          : "full",
   });
 
   // Stats derived from real history
@@ -336,8 +339,7 @@ function CustomerProfileContent({
       return { last: null as string | null, count: 0, voiceCount: 0 };
     }
     const sorted = [...history].sort(
-      (a, b) =>
-        Date.parse(b.initiationTimestamp) - Date.parse(a.initiationTimestamp)
+      (a, b) => Date.parse(b.initiationTimestamp) - Date.parse(a.initiationTimestamp),
     );
     return {
       last: sorted[0]?.initiationTimestamp ?? null,
@@ -401,8 +403,7 @@ function CustomerProfileContent({
           </div>
         </div>
         <div className="muted" style={{ fontSize: 11.5 }}>
-          Amazon Connect Customer Profiles creará el perfil automáticamente al
-          terminar la llamada.
+          Amazon Connect Customer Profiles creará el perfil automáticamente al terminar la llamada.
         </div>
       </div>
     );
@@ -418,16 +419,13 @@ function CustomerProfileContent({
       email: profile.email,
       phoneNumber: profile.phoneNumber,
     },
-    "Cliente"
+    "Cliente",
   );
   const avatarColor = colorFromName(fullName);
   // Best-effort "role · company" line. We don't always have a job title in
   // Customer Profiles, so fall back gracefully.
   const role =
-    profile.attributes?.role ||
-    profile.attributes?.jobTitle ||
-    profile.partyType ||
-    null;
+    profile.attributes?.role || profile.attributes?.jobTitle || profile.partyType || null;
   // Company line — only show BusinessName when it's a real company name
   // (not a Salesforce-synced account number) AND it's not the same value
   // we're already using as the primary fullName.
@@ -436,17 +434,14 @@ function CustomerProfileContent({
     profile.attributes?.company ||
     (smartBusiness && smartBusiness !== fullName ? smartBusiness : null);
   const subLine =
-    role && company
-      ? `${role} · ${company}`
-      : role || company || profile.phoneNumber || phone;
+    role && company ? `${role} · ${company}` : role || company || profile.phoneNumber || phone;
 
   // Optional attributes
   const segment = profile.attributes?.segment || profile.attributes?.tier;
   const nps = profile.attributes?.nps || profile.attributes?.NPS;
   const arr = profile.attributes?.arr || profile.attributes?.ARR;
   const csat = profile.attributes?.csat || profile.attributes?.CSAT;
-  const openCases =
-    profile.attributes?.openCases || profile.attributes?.casos_abiertos;
+  const openCases = profile.attributes?.openCases || profile.attributes?.casos_abiertos;
   // Products list — stored as a JSON-encoded array in attributes if present
   type Product = { name: string; price: string };
   let products: Product[] = [];
@@ -477,7 +472,7 @@ function CustomerProfileContent({
   const push = (
     label: string,
     value: string | undefined | null,
-    opts: { mono?: boolean; field?: EditableField; inputType?: string; always?: boolean } = {}
+    opts: { mono?: boolean; field?: EditableField; inputType?: string; always?: boolean } = {},
   ) => {
     const has = value !== undefined && value !== null && String(value).trim() !== "";
     if (has || (opts.field && opts.always)) {
@@ -564,7 +559,45 @@ function CustomerProfileContent({
             )}
           </div>
         </div>
+        {profile.profileId && getApiEndpoints()?.updateCustomerProfile && (
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() => setEditOpen(true)}
+            title="Editar todos los datos del cliente"
+            style={{ flexShrink: 0, alignSelf: "flex-start" }}
+          >
+            <Icon.Pencil size={12} /> Editar
+          </button>
+        )}
       </div>
+
+      {editOpen && profile.profileId && (
+        <EditProfileModal
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          profileId={profile.profileId}
+          agentUsername={agentUsername}
+          onSaved={() => {
+            setEditOpen(false);
+            setLocalRefresh((n) => n + 1);
+          }}
+          sfInstanceUrl={connConfig.salesforce?.instanceUrl}
+          initialValues={{
+            FirstName: profile.firstName,
+            MiddleName: profile.middleName,
+            LastName: profile.lastName,
+            BusinessName: profile.businessName,
+            PhoneNumber: profile.phoneNumber,
+            EmailAddress: profile.email,
+            AccountNumber: profile.accountNumber,
+            GenderString: profile.gender,
+            BirthDate: profile.birthDate,
+          }}
+          initialAddress={profile.address as Record<string, string> | undefined}
+          initialAttributes={profile.attributes}
+        />
+      )}
 
       {/* STATS GRID 2×2 — Bug #6: only render the grid when at least ONE
           field has a real value. The all-em-dashes panel used to take 80px
@@ -574,9 +607,7 @@ function CustomerProfileContent({
           {arr && (
             <div className="c360__stat">
               <div className="c360__stat-label">ARR</div>
-              <div className="c360__stat-value">
-                {arr.startsWith("$") ? arr : `$${arr}`}
-              </div>
+              <div className="c360__stat-value">{arr.startsWith("$") ? arr : `$${arr}`}</div>
             </div>
           )}
           {openCases != null && (
@@ -605,7 +636,10 @@ function CustomerProfileContent({
         <div className="section-title">Contacto</div>
         <div className="col" style={{ gap: 6 }}>
           {profile.phoneNumber && (
-            <div className="row" style={{ padding: "8px 10px", background: "var(--bg-2)", borderRadius: 6 }}>
+            <div
+              className="row"
+              style={{ padding: "8px 10px", background: "var(--bg-2)", borderRadius: 6 }}
+            >
               <Icon.Phone size={13} style={{ color: "var(--text-3)" }} />
               <span className="mono" style={{ fontSize: 12 }}>
                 {profile.phoneNumber}
@@ -613,15 +647,19 @@ function CustomerProfileContent({
             </div>
           )}
           {profile.email && (
-            <div className="row" style={{ padding: "8px 10px", background: "var(--bg-2)", borderRadius: 6 }}>
+            <div
+              className="row"
+              style={{ padding: "8px 10px", background: "var(--bg-2)", borderRadius: 6 }}
+            >
               <Icon.Mail size={13} style={{ color: "var(--text-3)" }} />
-              <span style={{ fontSize: 12, color: "var(--text-2)" }}>
-                {profile.email}
-              </span>
+              <span style={{ fontSize: 12, color: "var(--text-2)" }}>{profile.email}</span>
             </div>
           )}
           {profile.address?.City && (
-            <div className="row" style={{ padding: "8px 10px", background: "var(--bg-2)", borderRadius: 6 }}>
+            <div
+              className="row"
+              style={{ padding: "8px 10px", background: "var(--bg-2)", borderRadius: 6 }}
+            >
               <Icon.Globe size={13} style={{ color: "var(--text-3)" }} />
               <span style={{ fontSize: 12, color: "var(--text-2)" }}>
                 {[profile.address.City, profile.address.State, profile.address.Country]
@@ -681,10 +719,7 @@ function CustomerProfileContent({
                   gridTemplateColumns: "minmax(110px, 40%) 1fr",
                   gap: 10,
                   padding: "6px 10px",
-                  borderBottom:
-                    i < profileRows.length - 1
-                      ? "1px solid var(--border-1)"
-                      : "none",
+                  borderBottom: i < profileRows.length - 1 ? "1px solid var(--border-1)" : "none",
                   fontSize: 11.5,
                   alignItems: "center",
                 }}
@@ -699,6 +734,21 @@ function CustomerProfileContent({
                     mono={r.mono}
                     inputType={r.inputType}
                     onSaved={() => setLocalRefresh((n) => n + 1)}
+                    propContext={
+                      r.field === "FirstName"
+                        ? {
+                            phone: profile.phoneNumber,
+                            buildName: (next) =>
+                              [next, profile.lastName].filter(Boolean).join(" ").trim(),
+                          }
+                        : r.field === "LastName"
+                          ? {
+                              phone: profile.phoneNumber,
+                              buildName: (next) =>
+                                [profile.firstName, next].filter(Boolean).join(" ").trim(),
+                            }
+                          : undefined
+                    }
                   />
                 ) : (
                   <span
@@ -742,10 +792,7 @@ function CustomerProfileContent({
                   gridTemplateColumns: "minmax(110px, 40%) 1fr",
                   gap: 10,
                   padding: "8px 10px",
-                  borderBottom:
-                    i < customAttrs.length - 1
-                      ? "1px solid var(--border-1)"
-                      : "none",
+                  borderBottom: i < customAttrs.length - 1 ? "1px solid var(--border-1)" : "none",
                   fontSize: 11.5,
                 }}
               >
@@ -787,10 +834,10 @@ function CustomerProfileContent({
             {history.slice(0, 5).map((h) => {
               const meta = CHANNEL_META[h.channel] ?? CHANNEL_META.VOICE;
               const Icn = meta.Icn;
-              const when = formatDistanceToNow(
-                new Date(h.initiationTimestamp),
-                { addSuffix: false, locale: es }
-              );
+              const when = formatDistanceToNow(new Date(h.initiationTimestamp), {
+                addSuffix: false,
+                locale: es,
+              });
               return (
                 <div
                   key={h.contactId}
@@ -799,10 +846,7 @@ function CustomerProfileContent({
                   style={{ cursor: "pointer" }}
                   title="Click para ver el detalle (grabación, transcripción, adjuntos)"
                 >
-                  <div
-                    className="tl__dot"
-                    style={{ color: meta.color, borderColor: meta.color }}
-                  >
+                  <div className="tl__dot" style={{ color: meta.color, borderColor: meta.color }}>
                     <Icn size={11} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -828,10 +872,7 @@ function CustomerProfileContent({
                           </span>
                         )}
                       </div>
-                      <div
-                        className="muted truncate"
-                        style={{ fontSize: 11 }}
-                      >
+                      <div className="muted truncate" style={{ fontSize: 11 }}>
                         {h.duration ? `${fmtDuration(h.duration)} · ` : ""}
                         {h.queueName || h.disconnectReason || ""}
                       </div>
@@ -903,8 +944,7 @@ function ContactContextCard() {
       style={{
         marginBottom: 12,
         padding: 12,
-        background:
-          "linear-gradient(135deg, rgba(245,165,36,0.08) 0%, rgba(99,102,241,0.06) 100%)",
+        background: "linear-gradient(135deg, rgba(245,165,36,0.08) 0%, rgba(99,102,241,0.06) 100%)",
         border: "1px solid var(--border-1)",
         borderRadius: 8,
       }}

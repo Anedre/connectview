@@ -145,7 +145,7 @@ interface TenantConfig {
 
 async function readTenantConfig(tenantId: string): Promise<TenantConfig | null> {
   const r = await ddb.send(
-    new GetItemCommand({ TableName: CONNECTIONS_TABLE, Key: { tenantId: { S: tenantId } } })
+    new GetItemCommand({ TableName: CONNECTIONS_TABLE, Key: { tenantId: { S: tenantId } } }),
   );
   const json = r.Item?.configJson?.S;
   if (!json) return null;
@@ -174,7 +174,7 @@ const dataPlaneFlagCache = new Map<string, { enabled: boolean; exp: number }>();
  *   real + DP on    → tenant DDB (assumed creds → su cuenta)
  *   real + DP off   → blockedDynamoClient (empty/no-op) ← este
  */
- 
+
 const blockedDynamoClient = new Proxy({} as DynamoDBClient, {
   get(_target, prop) {
     if (prop === "send") {
@@ -207,7 +207,7 @@ const blockedDynamoClient = new Proxy({} as DynamoDBClient, {
  * usuarios. Ahora devolvemos respuestas vacías para todas las operaciones de
  * lectura más comunes.
  */
- 
+
 const blockedConnectClient = new Proxy({} as ConnectClient, {
   get(_target, prop) {
     if (prop === "send") {
@@ -217,42 +217,26 @@ const blockedConnectClient = new Proxy({} as ConnectClient, {
         // List* / Search* / Get*MetricData → arrays/maps vacíos.
         if (name === "GetCurrentMetricDataCommand")
           return { MetricResults: [], DataSnapshotTime: new Date() };
-        if (name === "GetCurrentUserDataCommand")
-          return { UserDataList: [] };
-        if (name === "GetMetricDataV2Command")
-          return { MetricResults: [] };
-        if (name === "GetMetricDataCommand")
-          return { MetricResults: [] };
-        if (name === "ListQueuesCommand")
-          return { QueueSummaryList: [] };
-        if (name === "ListUsersCommand")
-          return { UserSummaryList: [] };
-        if (name === "ListContactFlowsCommand")
-          return { ContactFlowSummaryList: [] };
-        if (name === "ListRoutingProfilesCommand")
-          return { RoutingProfileSummaryList: [] };
+        if (name === "GetCurrentUserDataCommand") return { UserDataList: [] };
+        if (name === "GetMetricDataV2Command") return { MetricResults: [] };
+        if (name === "GetMetricDataCommand") return { MetricResults: [] };
+        if (name === "ListQueuesCommand") return { QueueSummaryList: [] };
+        if (name === "ListUsersCommand") return { UserSummaryList: [] };
+        if (name === "ListContactFlowsCommand") return { ContactFlowSummaryList: [] };
+        if (name === "ListRoutingProfilesCommand") return { RoutingProfileSummaryList: [] };
         if (name === "ListRoutingProfileQueuesCommand")
           return { RoutingProfileQueueConfigSummaryList: [] };
-        if (name === "ListAgentStatusesCommand")
-          return { AgentStatusSummaryList: [] };
+        if (name === "ListAgentStatusesCommand") return { AgentStatusSummaryList: [] };
         if (name === "ListPhoneNumbersCommand" || name === "ListPhoneNumbersV2Command")
           return { PhoneNumberSummaryList: [], ListPhoneNumbersSummaryList: [] };
-        if (name === "SearchContactsCommand")
-          return { Contacts: [] };
-        if (name === "SearchUsersCommand")
-          return { Users: [] };
-        if (name === "SearchQueuesCommand")
-          return { Queues: [] };
-        if (name === "DescribeContactCommand")
-          return { Contact: undefined };
-        if (name === "DescribeUserCommand")
-          return { User: undefined };
-        if (name === "DescribeQueueCommand")
-          return { Queue: undefined };
-        if (name === "DescribeInstanceCommand")
-          return { Instance: undefined };
-        if (name === "ListContactReferencesCommand")
-          return { ReferenceSummaryList: [] };
+        if (name === "SearchContactsCommand") return { Contacts: [] };
+        if (name === "SearchUsersCommand") return { Users: [] };
+        if (name === "SearchQueuesCommand") return { Queues: [] };
+        if (name === "DescribeContactCommand") return { Contact: undefined };
+        if (name === "DescribeUserCommand") return { User: undefined };
+        if (name === "DescribeQueueCommand") return { Queue: undefined };
+        if (name === "DescribeInstanceCommand") return { Instance: undefined };
+        if (name === "ListContactReferencesCommand") return { ReferenceSummaryList: [] };
         // Writes / Starts → silenciosos. Devolvemos ids ficticios para no
         // romper los callers que esperan un ContactId.
         if (name.startsWith("Start") || name.startsWith("Create"))
@@ -316,7 +300,7 @@ const blockedBedrockClient = new Proxy({} as BedrockRuntimeClient, {
       return async () => {
         throw new Error(
           "BEDROCK_NOT_CONFIGURED: la organización no configuró Bedrock (BYO) — " +
-            "conectá Amazon Connect para habilitar bots/resúmenes con tu propia cuenta."
+            "conectá Amazon Connect para habilitar bots/resúmenes con tu propia cuenta.",
         );
       };
     }
@@ -369,7 +353,7 @@ export async function getTenantConnect(tenantId: string): Promise<TenantConnect 
       RoleSessionName: `vox-${tenantId}`.slice(0, 64),
       ExternalId: c.externalId,
       DurationSeconds: 3600,
-    })
+    }),
   );
   const cr = assumed.Credentials;
   if (!cr?.AccessKeyId || !cr.SecretAccessKey || !cr.SessionToken) return null;
@@ -424,7 +408,8 @@ export async function getTenantConnect(tenantId: string): Promise<TenantConnect 
     whatsappPhoneNumberId: cfg?.whatsapp?.phoneNumberId || "",
     whatsappWabaId: cfg?.whatsapp?.wabaId || "",
     whatsappMode: (cfg?.whatsapp as { mode?: string })?.mode === "meta" ? "meta" : "aws",
-    whatsappMetaPhoneNumberId: (cfg?.whatsapp as { metaPhoneNumberId?: string })?.metaPhoneNumberId || "",
+    whatsappMetaPhoneNumberId:
+      (cfg?.whatsapp as { metaPhoneNumberId?: string })?.metaPhoneNumberId || "",
     bedrock,
     instanceId,
     region: c.region,
@@ -446,7 +431,7 @@ export async function resolveConnect(
   headers: HeaderBag,
   legacyClient: ConnectClient,
   legacyInstanceId: string,
-  legacyInstanceArn = ""
+  legacyInstanceArn = "",
 ): Promise<{
   client: ConnectClient;
   instanceId: string;
@@ -491,7 +476,12 @@ export async function resolveConnect(
   // Step 2b: Novasys (tenant fundador) → recursos legacy reales de Vox
   // (tablas pooled + instancia Connect hardcodeada, que son suyos).
   if (isLegacyTenant(tenantId)) {
-    return { client: legacyClient, instanceId: legacyInstanceId, instanceArn: legacyInstanceArn, tenantScoped: false };
+    return {
+      client: legacyClient,
+      instanceId: legacyInstanceId,
+      instanceArn: legacyInstanceArn,
+      tenantScoped: false,
+    };
   }
 
   // Step 3: tenant REAL → SAFE DEFAULT = ambos clients bloqueados. Si después
@@ -544,10 +534,14 @@ export async function resolveConnect(
  */
 export async function resolveDynamo(
   headers: HeaderBag,
-  legacyDynamo: DynamoDBClient
+  legacyDynamo: DynamoDBClient,
+  explicitTenantId?: string,
 ): Promise<{ dynamo: DynamoDBClient; tenantScoped: boolean }> {
-  // Step 1: resolver tenantId del JWT. NO requiere DDB. No throwea ("" en error).
-  const tenantId = await resolveTenantId(headers);
+  // Step 1: tenantId del JWT — o EXPLÍCITO, para llamadas server-to-server SIN JWT
+  // (p.ej. el whatsapp-meta-webhook invocando bot-runtime con body.tenantId). Sin
+  // esto esas llamadas caen a "anónimo" → blockedDynamoClient → loadBot no
+  // encuentra el bot → 400. NO requiere DDB. No throwea ("" en error).
+  const tenantId = explicitTenantId || (await resolveTenantId(headers));
 
   // Step 2a: ANÓNIMO → BLOQUEADO (cierra el leak de las tablas pooled).
   if (!tenantId) {
@@ -590,7 +584,7 @@ export async function resolveWhatsApp(
   headers: HeaderBag,
   legacyClient: SocialMessagingClient,
   legacyPhoneNumberId: string,
-  explicitTenantId?: string
+  explicitTenantId?: string,
 ): Promise<{
   client: SocialMessagingClient;
   phoneNumberId: string;
@@ -603,18 +597,33 @@ export async function resolveWhatsApp(
 
   // Anónimo (sin tenant) → sin número.
   if (!tenantId) {
-    return { client: legacyClient, phoneNumberId: "", mode: "aws", metaPhoneNumberId: "", tenantId: "", tenantScoped: true };
+    return {
+      client: legacyClient,
+      phoneNumberId: "",
+      mode: "aws",
+      metaPhoneNumberId: "",
+      tenantId: "",
+      tenantScoped: true,
+    };
   }
   // Novasys/default → WhatsApp legacy de Vox (su número en env, modo AWS).
   if (isLegacyTenant(tenantId)) {
-    return { client: legacyClient, phoneNumberId: legacyPhoneNumberId, mode: "aws", metaPhoneNumberId: "", tenantId, tenantScoped: false };
+    return {
+      client: legacyClient,
+      phoneNumberId: legacyPhoneNumberId,
+      mode: "aws",
+      metaPhoneNumberId: "",
+      tenantId,
+      tenantScoped: false,
+    };
   }
   // Tenant real → SU End User Messaging (AWS) o Cloud API de Meta, según su modo.
   try {
     const tc = await getTenantConnect(tenantId);
     if (tc) {
       const mode = tc.whatsappMode === "meta" ? "meta" : "aws";
-      const hasNumber = mode === "meta" ? !!tc.whatsappMetaPhoneNumberId : !!tc.whatsappPhoneNumberId;
+      const hasNumber =
+        mode === "meta" ? !!tc.whatsappMetaPhoneNumberId : !!tc.whatsappPhoneNumberId;
       if (hasNumber) {
         return {
           client: tc.socialMessaging,
@@ -630,7 +639,14 @@ export async function resolveWhatsApp(
     console.error("resolveWhatsApp: lectura de config falló:", e);
   }
   // Tenant real sin WhatsApp configurado → sin número.
-  return { client: legacyClient, phoneNumberId: "", mode: "aws", metaPhoneNumberId: "", tenantId, tenantScoped: true };
+  return {
+    client: legacyClient,
+    phoneNumberId: "",
+    mode: "aws",
+    metaPhoneNumberId: "",
+    tenantId,
+    tenantScoped: true,
+  };
 }
 
 /**
@@ -649,7 +665,7 @@ export async function resolveWhatsAppWaba(
   headers: HeaderBag,
   legacyClient: SocialMessagingClient,
   legacyWabaId: string,
-  explicitTenantId?: string
+  explicitTenantId?: string,
 ): Promise<{ client: SocialMessagingClient; wabaId: string; tenantScoped: boolean }> {
   const tenantId = explicitTenantId || (await resolveTenantId(headers));
   if (!tenantId) {
@@ -683,7 +699,7 @@ export async function resolveWhatsAppWaba(
 export async function resolveBedrock(
   headers: HeaderBag,
   legacyClient: BedrockRuntimeClient,
-  explicitTenantId?: string
+  explicitTenantId?: string,
 ): Promise<{ client: BedrockRuntimeClient; tenantScoped: boolean }> {
   const tenantId = explicitTenantId || (await resolveTenantId(headers));
   if (!tenantId || isLegacyTenant(tenantId)) {
@@ -716,7 +732,7 @@ export async function resolveCustomerProfiles(
   headers: HeaderBag,
   legacyClient: CustomerProfilesClient,
   legacyDomain: string,
-  explicitTenantId?: string
+  explicitTenantId?: string,
 ): Promise<{ client: CustomerProfilesClient; domainName: string; tenantScoped: boolean }> {
   const tenantId = explicitTenantId || (await resolveTenantId(headers));
 

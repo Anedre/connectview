@@ -58,19 +58,19 @@ function VoxLogo({ size = 32 }: { size?: number }) {
         width: size,
         height: size,
         borderRadius: size / 4,
-        background: "linear-gradient(135deg, var(--accent-amber), var(--accent-pink) 70%)",
+        background: "linear-gradient(135deg, #2c5698, #158a8c)",
         display: "grid",
         placeItems: "center",
-        boxShadow: "0 0 0 1px rgba(255,255,255,0.08) inset",
+        boxShadow: "0 0 0 1px rgba(255,255,255,0.10) inset, 0 6px 18px -8px rgba(44,86,152,0.6)",
       }}
     >
-      <div
-        style={{
-          width: size * 0.38,
-          height: size * 0.38,
-          borderRadius: "50%",
-          background: "var(--bg-1)",
-        }}
+      <img
+        src="/brand/aria-mark-white.png"
+        alt="ARIA"
+        width={Math.round(size * 0.62)}
+        height={Math.round(size * 0.62)}
+        style={{ objectFit: "contain" }}
+        draggable={false}
       />
     </div>
   );
@@ -340,7 +340,9 @@ function LoginScreen() {
         <div aria-hidden className="vox-auth__grain" />
 
         <div className="vox-auth__brand">
-          <div className="vox-auth__brand-tile">A</div>
+          <div className="vox-auth__brand-tile">
+            <img src="/brand/aria-mark-white.png" alt="" />
+          </div>
           <div className="vox-auth__brand-lockup">
             <span className="vox-auth__brand-name">ARIA</span>
             <span className="vox-auth__brand-tag">BY NOVASYS</span>

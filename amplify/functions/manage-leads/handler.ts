@@ -228,7 +228,7 @@ interface Lead {
 async function propagateById(
   leadId: string,
   sfExtra?: SfPushExtra,
-): Promise<{ sfTaskId?: string | null; sfLeadId?: string }> {
+): Promise<{ sfTaskId?: string | null; sfLeadId?: string; sfAction?: string }> {
   try {
     const got = await dynamo.send(
       new GetItemCommand({ TableName: TABLE, Key: { leadId: { S: leadId } } }),
@@ -256,7 +256,7 @@ async function propagateById(
       `manage-leads SF sync lead=${leadId} sfLead=${res.sf?.leadId || "—"} ` +
         `action=${res.sf?.action || "none"} task=${res.sf?.taskId || "—"}`,
     );
-    return { sfTaskId: res.sf?.taskId, sfLeadId: res.sf?.leadId };
+    return { sfTaskId: res.sf?.taskId, sfLeadId: res.sf?.leadId, sfAction: res.sf?.action };
   } catch (err) {
     console.warn("manage-leads propagate failed", err);
     return {};
@@ -1079,7 +1079,16 @@ export const handler: Handler = async (event: any) => {
           lead: { leadId, phone, name: item.name, stageId: item.stageId, source: item.source },
         });
       }
-      return ok({ lead: item, saved: true, isNew });
+      // Devolvemos el resultado del push a Salesforce para que el frontend pueda
+      // mostrar un toast con un botón "Ver en Salesforce" hacia ese Lead exacto.
+      return ok({
+        lead: item,
+        saved: true,
+        isNew,
+        salesforce: prop.sfLeadId
+          ? { leadId: prop.sfLeadId, action: prop.sfAction || "updated" }
+          : null,
+      });
     }
 
     if (method === "DELETE") {

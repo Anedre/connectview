@@ -12,6 +12,7 @@ import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useCan } from "@/hooks/usePermissions";
 import { useCCP } from "@/hooks/useCCP";
 import { useConnections } from "@/hooks/useConnections";
+import { leadSavedToast } from "@/lib/salesforce";
 import { NotIntegrated } from "@/components/vox/NotIntegrated";
 import { type Valoracion } from "@/lib/dispositions";
 import { initials } from "@/lib/initials";
@@ -396,6 +397,28 @@ export function LeadCard({
             {lead.grade ? ` · ${lead.grade}` : ""}
           </span>
         ) : null}
+        {/* Etiquetas del lead (manuales o aplicadas por automatizaciones) —
+            viven en attributes.tags como CSV. Antes se escribían pero no se veían. */}
+        {(lead.attributes?.tags || "")
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .map((tag) => (
+            <span
+              key={tag}
+              className="chip"
+              title={`Etiqueta: ${tag}`}
+              style={{
+                height: 19,
+                fontSize: 10,
+                fontWeight: 700,
+                background: "var(--accent-violet-soft)",
+                color: "var(--accent-violet)",
+              }}
+            >
+              🏷 {tag}
+            </span>
+          ))}
       </div>
 
       {/* Footer: valor estimado — separado y prominente (deal value). */}
@@ -902,9 +925,7 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
   // Estado derivado del query (sin sincronizar estado con efectos).
   const hasContent =
     !!data &&
-    (data.found ||
-      (data.voxHistory?.length ?? 0) > 0 ||
-      (data.allFields?.length ?? 0) > 0);
+    (data.found || (data.voxHistory?.length ?? 0) > 0 || (data.allFields?.length ?? 0) > 0);
   const state: "loading" | "ok" | "none" | "err" = !configured
     ? "none"
     : error
@@ -1126,7 +1147,9 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
                         }}
                       />
                     ) : (
-                      <span style={{ fontSize: 12, color: "var(--text-1)", wordBreak: "break-word" }}>
+                      <span
+                        style={{ fontSize: 12, color: "var(--text-1)", wordBreak: "break-word" }}
+                      >
                         {fld.value}
                       </span>
                     )}
@@ -1236,6 +1259,7 @@ function LeadDetailModal({
   const [stageId, setStageId] = useState(lead.stageId || stages[0]?.id || "");
   const [sfPushing, setSfPushing] = useState(false);
   const { confirm, confirmDialog } = useConfirm();
+  const { config: conn } = useConnections();
 
   const changeStage = async (next: string) => {
     if (!next || next === stageId) return;
@@ -1262,7 +1286,11 @@ function LeadDetailModal({
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error);
-      toast.success("Lead actualizado");
+      leadSavedToast({
+        message: "Lead actualizado",
+        salesforce: d?.salesforce,
+        instanceUrl: conn.salesforce?.instanceUrl,
+      });
       onSaved({
         ...lead,
         name: f.name,
@@ -1757,7 +1785,8 @@ export function LeadsPage() {
       const d = await r.json();
       if (!r.ok || d.ok === false) {
         throw new Error(
-          d?.error || (d.sfNotConnected ? "Salesforce no está conectado" : "No se pudo sincronizar"),
+          d?.error ||
+            (d.sfNotConnected ? "Salesforce no está conectado" : "No se pudo sincronizar"),
         );
       }
       toast.success(
@@ -2119,10 +2148,13 @@ export function LeadsPage() {
         chipIcon="funnel"
         chipTone="var(--cyan)"
         right={
-          <div className="row gap8" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <div
+            className="row gap8"
+            style={{ flexWrap: "nowrap", justifyContent: "flex-end", minWidth: 0 }}
+          >
             <div
               className="sb__search"
-              style={{ margin: 0, flex: "0 1 240px", minWidth: 180, maxWidth: 260 }}
+              style={{ margin: 0, flex: "0 1 180px", minWidth: 130, maxWidth: 220 }}
             >
               <AIcon name="search" size={15} />
               <input

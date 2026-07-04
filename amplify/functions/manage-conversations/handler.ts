@@ -13,6 +13,8 @@ import {
   getConversation,
   appendOutbound,
   patchConversation,
+  closeConversation,
+  scanOpenConversations,
   setAssignee,
   typifyConversation,
   type Conversation,
@@ -44,10 +46,12 @@ const sm = new SecretsManagerClient({});
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
 const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
 const GRAPH = "https://graph.facebook.com/v20.0";
-/** Auto-cierre por inactividad: una conversación `open` cuyo último movimiento
- *  (updatedAt/lastMessageAt) tenga más de 30 min se cierra sola (closedReason
- *  "inactivity") en el sweep del GET list. */
-const INACTIVITY_MS = 30 * 60 * 1000;
+/** Auto-cierre por inactividad: una conversación `open` YA ATENDIDA (unread=0)
+ *  cuyo último movimiento (updatedAt/lastMessageAt) tenga más de INACTIVITY_MINUTES
+ *  (default 10) se cierra sola (closedReason "inactivity"). Lo dispara el reaper por
+ *  EventBridge (cron) y también el sweep del GET list. Cierra por silencio DEL
+ *  CLIENTE: si hay unread>0, el cliente espera al agente → NO se cierra. */
+const INACTIVITY_MS = Number(process.env.INACTIVITY_MINUTES || 10) * 60 * 1000;
 
 /** Label legible del canal para la línea de tiempo del lead (golpes · Pilar 2). */
 const CH_LABEL: Record<string, string> = {
@@ -176,20 +180,23 @@ async function sweepInactive(conversations: Conversation[], tenantId: string): P
           await sendCourtesyMessage(tenantId, c, COURTESY_MSG);
           await appendOutbound(legacyDynamo, c.conversationId, COURTESY_MSG, "ARIA");
         } catch (e) {
-          console.warn("sweepInactive: aviso de cortesía no enviado", c.conversationId, (e as Error).message);
+          console.warn(
+            "sweepInactive: aviso de cortesía no enviado",
+            c.conversationId,
+            (e as Error).message,
+          );
         }
       }
       // Muta el item de la lista (se devuelve ya cerrado) …
       c.status = "closed";
       c.closedReason = "inactivity";
       c.closedAt = nowIso;
-      // … y persiste el cierre. Best-effort por conversación.
+      c.assignee = "bot";
+      c.ownerAgentId = undefined;
+      c.ownerAgentName = undefined;
+      // … y persiste el cierre UNIFICADO (suelta el dueño → reabre limpio con bot).
       try {
-        await patchConversation(legacyDynamo, c.conversationId, {
-          status: "closed",
-          closedReason: "inactivity",
-          closedAt: nowIso,
-        });
+        await closeConversation(legacyDynamo, c.conversationId, "inactivity");
       } catch (e) {
         console.warn("sweepInactive: cierre no persistió", c.conversationId, (e as Error).message);
       }
@@ -507,7 +514,12 @@ async function sendCourtesyMessage(
     if (!token || !waPhoneId) return;
     await sendWhatsApp(
       { mode: "meta", metaPhoneNumberId: waPhoneId, tenantId },
-      { messaging_product: "whatsapp", to: conv.senderId, type: "text", text: { body: text.slice(0, 1024) } },
+      {
+        messaging_product: "whatsapp",
+        to: conv.senderId,
+        type: "text",
+        text: { body: text.slice(0, 1024) },
+      },
     );
     return;
   }
@@ -531,10 +543,65 @@ const COURTESY_MSG =
   "Cerramos esta conversación por inactividad, pero seguimos acá para ayudarte 🙂. Escribinos cuando quieras y con gusto te atendemos.";
 const COURTESY_ENABLED = !!COURTESY_MSG && COURTESY_MSG.trim().toLowerCase() !== "off";
 
+/**
+ * Reaper de inactividad — lo dispara la EventBridge rule `connectview-conversation-reaper`
+ * (~cada 5min, server-to-server sin JWT). Scan GLOBAL de conversaciones `open` (todos
+ * los tenants, tabla pooled): cierra las YA ATENDIDAS (unread=0) sin movimiento hace
+ * más de INACTIVITY_MS, con aviso de cortesía best-effort. Cierre UNIFICADO (suelta el
+ * dueño → el próximo inbound reabre limpio con el bot). Antes esto SOLO corría cuando
+ * un agente abría el inbox (sweep del GET); ahora corre solo.
+ */
+async function reapInactiveConversations(): Promise<{ scanned: number; closed: number }> {
+  const nowMs = Date.now();
+  const open = await scanOpenConversations(legacyDynamo);
+  const expired = open.filter((c) => {
+    if ((c.unread || 0) > 0) return false; // el cliente espera al agente → no cerrar
+    const last = Date.parse(c.updatedAt || c.lastMessageAt || "");
+    return !Number.isNaN(last) && nowMs - last > INACTIVITY_MS;
+  });
+  let closed = 0;
+  await Promise.all(
+    expired.map(async (c) => {
+      if (COURTESY_ENABLED && c.tenantId) {
+        try {
+          await sendCourtesyMessage(c.tenantId, c, COURTESY_MSG);
+          await appendOutbound(legacyDynamo, c.conversationId, COURTESY_MSG, "ARIA");
+        } catch (e) {
+          console.warn("reaper: cortesía no enviada", c.conversationId, (e as Error).message);
+        }
+      }
+      try {
+        await closeConversation(legacyDynamo, c.conversationId, "inactivity");
+        closed++;
+      } catch (e) {
+        console.warn("reaper: cierre no persistió", c.conversationId, (e as Error).message);
+      }
+    }),
+  );
+  console.log(
+    `reaper: ${open.length} open · ${closed} cerradas por inactividad (>${INACTIVITY_MS / 60000}min)`,
+  );
+  return { scanned: open.length, closed };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   const method = event.requestContext?.http?.method || event.httpMethod || "GET";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
+
+  // Reaper de inactividad (EventBridge cron): cierra conversaciones abiertas ya
+  // atendidas sin respuesta del cliente hace >INACTIVITY_MS. Server-to-server (sin
+  // JWT) → se intercepta ANTES del auth. Global (todos los tenants, tabla pooled).
+  if (event?.reaper) {
+    try {
+      const r = await reapInactiveConversations();
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ ok: true, ...r }) };
+    } catch (e) {
+      console.error("reaper falló:", (e as Error).message);
+      return { statusCode: 500, headers: CORS, body: JSON.stringify({ error: "reaper" }) };
+    }
+  }
+
   const params = event.queryStringParameters || {};
   const tenantId = await resolveTenantId(event?.headers);
   if (!tenantId) return bad(401, "no autorizado");
@@ -636,9 +703,10 @@ export const handler: Handler = async (event: any) => {
             console.warn("encuesta de cierre falló (best-effort):", (e as Error).message);
           }
         }
-        const updated = await patchConversation(legacyDynamo, conversationId, {
-          status: "closed",
-        });
+        // Cierre UNIFICADO: además de status=closed, suelta el dueño → el próximo
+        // inbound del cliente reabre limpio con el bot. reason "manual" = lo cerró
+        // un agente desde el inbox.
+        const updated = await closeConversation(legacyDynamo, conversationId, "manual");
         return ok({ conversation: updated });
       }
 
@@ -709,9 +777,7 @@ export const handler: Handler = async (event: any) => {
       if (body.action === "assign") {
         const assignee = body.assignee === "agent" ? "agent" : body.assignee === "bot" ? "bot" : "";
         if (!assignee) return bad(400, "assignee inválido (bot|agent)");
-        const patch: Partial<
-          Pick<Conversation, "assignee" | "ownerAgentId" | "ownerAgentName">
-        > =
+        const patch: Partial<Pick<Conversation, "assignee" | "ownerAgentId" | "ownerAgentName">> =
           assignee === "agent"
             ? { assignee, ownerAgentId: me, ownerAgentName: myName }
             : { assignee, ownerAgentId: undefined, ownerAgentName: undefined };
@@ -725,9 +791,10 @@ export const handler: Handler = async (event: any) => {
       if (body.action === "assignTo") {
         const agentId = String(body.agentId || "").trim();
         if (!agentId) return bad(400, "agentId requerido");
-        const agentName = typeof body.agentName === "string" && body.agentName.trim()
-          ? body.agentName.trim()
-          : agentId;
+        const agentName =
+          typeof body.agentName === "string" && body.agentName.trim()
+            ? body.agentName.trim()
+            : agentId;
         const conv = await patchConversation(legacyDynamo, conversationId, {
           assignee: "agent",
           ownerAgentId: agentId,
@@ -829,8 +896,7 @@ export const handler: Handler = async (event: any) => {
           }
           let updatedMl = await appendOutbound(legacyDynamo, conversationId, text, actorMl);
           // Un humano respondió → la atiende el agente.
-          updatedMl =
-            (await setAssignee(legacyDynamo, conversationId, "agent")) || updatedMl;
+          updatedMl = (await setAssignee(legacyDynamo, conversationId, "agent")) || updatedMl;
           if (conv.leadId) {
             await appendLeadGolpe(conv.leadId, {
               channel: conv.channel,
@@ -979,13 +1045,10 @@ export const handler: Handler = async (event: any) => {
         }
 
         // Log del saliente con el attachment + caption como texto.
-        const updated = await appendOutbound(
-          legacyDynamo,
-          conversationId,
-          caption || "",
-          actor,
-          { type: mediaType, url: mediaUrl },
-        );
+        const updated = await appendOutbound(legacyDynamo, conversationId, caption || "", actor, {
+          type: mediaType,
+          url: mediaUrl,
+        });
         if (conv.leadId) {
           await appendLeadGolpe(conv.leadId, {
             channel: conv.channel,
@@ -1037,8 +1100,7 @@ export const handler: Handler = async (event: any) => {
         }
         // Render legible del saliente: [Plantilla: nombre] + params.
         const rendered =
-          `[Plantilla: ${templateName}]` +
-          (bodyParams.length ? ` ${bodyParams.join(" · ")}` : "");
+          `[Plantilla: ${templateName}]` + (bodyParams.length ? ` ${bodyParams.join(" · ")}` : "");
         const updated = await appendOutbound(legacyDynamo, conversationId, rendered, actor);
         if (conv.leadId) {
           await appendLeadGolpe(conv.leadId, {

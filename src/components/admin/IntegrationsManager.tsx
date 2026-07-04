@@ -16,10 +16,12 @@ import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import {
   useConnections,
+  effectiveWaNumbers,
   type ConnectionsConfig,
   type ConnectConn,
   type WhatsAppConn,
   type WhatsAppNumber,
+  type WhatsAppNumberRef,
   type SsoConn,
   type MetaConn,
   type MetaAccountRef,
@@ -1190,41 +1192,116 @@ function WhatsAppCard({
   awsNumbers: WhatsAppNumber[];
 }) {
   const wa = config.whatsapp || {};
+  const numbers = effectiveWaNumbers(wa);
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"aws" | "meta">(
-    wa.mode || (awsNumbers.length > 0 ? "aws" : "meta"),
-  );
-  const [selectedAws, setSelectedAws] = useState(
-    wa.metaPhoneNumberId || awsNumbers[0]?.metaPhoneNumberId || "",
-  );
-  const [phoneNumberId, setPhoneNumberId] = useState(
-    wa.mode !== "aws" ? wa.phoneNumberId || "" : "",
-  );
-  const [wabaId, setWabaId] = useState(wa.mode !== "aws" ? wa.wabaId || "" : "");
-  const [token, setToken] = useState("");
+  const [adding, setAdding] = useState(numbers.length === 0);
   const ep = getApiEndpoints();
+  const { confirm, confirmDialog } = useConfirm();
 
-  const isAws = wa.mode === "aws";
-  const connected = isAws ? !!wa.phoneNumberId : !!(wa.phoneNumberId && wa.tokenSet);
-  const tone: Tone = connected ? "ok" : wa.phoneNumberId ? "warn" : "idle";
-  const statusLabel = connected
-    ? isAws
-      ? "Conectado · Connect"
-      : "Conectado · Meta"
-    : wa.phoneNumberId
-      ? "Falta token"
+  // Form de alta de UN número (se agrega a numbers[] vía saveWaNumber).
+  const [mode, setMode] = useState<"aws" | "meta">(awsNumbers.length > 0 ? "aws" : "meta");
+  const [label, setLabel] = useState("");
+  const [selectedAws, setSelectedAws] = useState(awsNumbers[0]?.metaPhoneNumberId || "");
+  const [phoneNumberId, setPhoneNumberId] = useState("");
+  const [wabaId, setWabaId] = useState("");
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const tone: Tone = numbers.length > 0 ? "ok" : "idle";
+  const statusLabel =
+    numbers.length > 0
+      ? `${numbers.length} número${numbers.length > 1 ? "s" : ""}`
       : "No conectado";
 
-  const persist = async (next: WhatsAppConn, secret?: string): Promise<boolean> => {
+  // Acciones aisladas de WhatsApp multi-número → refrescan numbers[] en el config.
+  const callWa = async (payload: Record<string, unknown>): Promise<void> => {
+    if (!ep?.manageConnections) return;
+    const r = await authedFetch(ep.manageConnections, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j?.error || "fallo");
+    update({ whatsapp: { ...wa, numbers: (j.numbers as WhatsAppNumberRef[]) || [] } });
+  };
+
+  const resetForm = () => {
+    setLabel("");
+    setPhoneNumberId("");
+    setWabaId("");
+    setToken("");
+  };
+
+  const onAdd = async () => {
+    let number: Partial<WhatsAppNumberRef>;
+    let secret = "";
+    if (mode === "aws") {
+      const num = awsNumbers.find((n) => n.metaPhoneNumberId === selectedAws);
+      if (!num) {
+        toast.error("Elegí un número de la lista");
+        return;
+      }
+      // Modo AWS: SIN token — AWS End User Messaging maneja la auth de la WABA.
+      number = {
+        label: label.trim() || num.displayName || undefined,
+        mode: "aws",
+        metaPhoneNumberId: num.metaPhoneNumberId,
+        phoneNumberId: num.phoneNumberId || num.metaPhoneNumberId,
+        wabaId: num.wabaId,
+        displayNumber: num.displayPhoneNumber,
+      };
+    } else {
+      if (!phoneNumberId.trim()) {
+        toast.error("Falta el Phone Number ID");
+        return;
+      }
+      number = {
+        label: label.trim() || undefined,
+        mode: "meta",
+        metaPhoneNumberId: phoneNumberId.trim(),
+        wabaId: wabaId.trim() || undefined,
+      };
+      secret = token.trim();
+    }
+    setBusy(true);
+    try {
+      await callWa({ action: "saveWaNumber", number, token: secret || undefined });
+      toast.success("Número guardado");
+      resetForm();
+      setAdding(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo guardar");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRemove = async (n: WhatsAppNumberRef) => {
+    const ok = await confirm({
+      title: `¿Quitar ${n.label || n.metaPhoneNumberId || n.id}?`,
+      description: "Se elimina el número y su token del backend. Su ruteo a un flujo se pierde.",
+      destructive: true,
+      confirmLabel: "Quitar",
+    });
+    if (!ok) return;
+    try {
+      await callWa({ action: "removeWaNumber", id: n.metaPhoneNumberId || n.id });
+      toast.success("Número quitado");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo quitar");
+    }
+  };
+
+  // WhatsApp Flows (bloque común al tenant, no por número): reusa el save genérico
+  // del config sin tocar numbers[].
+  const persistFlows = async (next: WhatsAppConn): Promise<boolean> => {
     if (ep?.manageConnections) {
       try {
         await authedFetch(ep.manageConnections, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            whatsappSecret: secret || undefined,
-            config: { ...config, whatsapp: next },
-          }),
+          body: JSON.stringify({ config: { ...config, whatsapp: next } }),
         });
       } catch {
         toast.error("No se pudo guardar");
@@ -1235,266 +1312,318 @@ function WhatsAppCard({
     return true;
   };
 
-  const onSaveAws = async () => {
-    const num = awsNumbers.find((n) => n.metaPhoneNumberId === selectedAws);
-    if (!num) {
-      toast.error("Elegí un número de la lista");
-      return;
-    }
-    // Modo AWS: SIN token — AWS End User Messaging maneja la auth de la WABA.
-    const ok = await persist({
-      mode: "aws",
-      phoneNumberId: num.phoneNumberId || num.metaPhoneNumberId,
-      metaPhoneNumberId: num.metaPhoneNumberId,
-      wabaId: num.wabaId,
-      tokenSet: true,
-      connectedAt: new Date().toISOString(),
-    });
-    if (ok) toast.success(`WhatsApp conectado · ${num.displayPhoneNumber}`);
-  };
-
-  const onSaveMeta = async () => {
-    if (!phoneNumberId.trim()) {
-      toast.error("Falta el Phone Number ID");
-      return;
-    }
-    const ok = await persist(
-      {
-        mode: "meta",
-        phoneNumberId: phoneNumberId.trim(),
-        wabaId: wabaId.trim() || undefined,
-        tokenSet: !!token || wa.tokenSet,
-        connectedAt: new Date().toISOString(),
-      },
-      token || undefined,
-    );
-    if (ok) {
-      setToken("");
-      toast.success("WhatsApp (número de Meta) guardado");
-    }
-  };
-
   return (
     <ConnCard
       icon={<Icon.WhatsApp size={20} style={{ color: "#25D366" }} />}
       title="WhatsApp"
-      desc="Conectá el número que ya está vinculado a tu Amazon Connect, o usá un número de Meta aparte."
+      desc="Registrá uno o varios números (de Connect o de Meta). El ruteo de cada número a su flujo se decide en Bots → Ruteo."
       tone={tone}
       statusLabel={statusLabel}
       open={open}
       onToggle={() => setOpen((o) => !o)}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* La observación: la diferencia entre los dos tipos de número */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)",
-              background: "color-mix(in srgb, var(--accent-green) 8%, transparent)",
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 12.5,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <CheckCircle2 size={14} style={{ flexShrink: 0, color: "var(--accent-green)" }} />{" "}
-              Número de Connect (AWS)
-            </div>
-            <div className="muted" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.5 }}>
-              Lo atiende un <b>agente</b> en el desktop: entra como contacto, con colas, routing y
-              Contact Lens. Entrante + saliente. Sin token.
-            </div>
-          </div>
-          <div
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid var(--border-1)",
-              background: "var(--bg-2)",
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: 12.5,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <Send size={13} style={{ flexShrink: 0 }} /> Número de Meta aparte
-            </div>
-            <div className="muted" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.5 }}>
-              Envía <b>plantillas</b> (campañas) por Cloud API de Meta. Bots entrantes por webhook{" "}
-              <i>(en construcción)</i>. <b>No</b> tiene agente en vivo de Connect.
-            </div>
-          </div>
-        </div>
-
-        {/* Selector de modo */}
-        <div
-          className="row"
-          style={{
-            gap: 0,
-            border: "1px solid var(--border-2)",
-            borderRadius: 8,
-            overflow: "hidden",
-            width: "fit-content",
-          }}
-        >
-          {(
-            [
-              ["aws", "Número de Connect"],
-              ["meta", "Número de Meta aparte"],
-            ] as const
-          ).map(([m, label]) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              style={{
-                padding: "7px 14px",
-                fontSize: 12.5,
-                fontWeight: 600,
-                background: mode === m ? "var(--bg-3)" : "transparent",
-                color: mode === m ? "var(--text-1)" : "var(--text-3)",
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {mode === "aws" ? (
-          awsNumbers.length > 0 ? (
-            <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {awsNumbers.map((n) => {
-                  const sel = selectedAws === n.metaPhoneNumberId;
-                  return (
-                    <label
-                      key={n.metaPhoneNumberId || n.phoneNumberArn}
-                      className="row"
-                      style={{
-                        gap: 10,
-                        padding: "10px 12px",
-                        borderRadius: 8,
-                        cursor: "pointer",
-                        alignItems: "center",
-                        background: sel ? "var(--accent-green-soft)" : "var(--bg-2)",
-                        border: `1px solid ${sel ? "var(--accent-green)" : "var(--border-1)"}`,
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="wa-aws-number"
-                        checked={sel}
-                        onChange={() => setSelectedAws(n.metaPhoneNumberId || "")}
-                      />
-                      <Icon.WhatsApp size={16} style={{ color: "#25D366" }} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13 }}>
-                          {n.displayPhoneNumber} · {n.displayName}
-                        </div>
-                        <div className="muted" style={{ fontSize: 11 }}>
-                          WABA {n.wabaName || n.wabaId}
-                          {n.qualityRating ? ` · calidad ${n.qualityRating}` : ""}
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-              <div className="row">
-                <button className="btn btn--primary btn--sm" onClick={onSaveAws}>
-                  Usar este número
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="muted" style={{ fontSize: 12.5, padding: "8px 0", lineHeight: 1.6 }}>
-              No detectamos números vinculados a tu Amazon Connect. Vinculá uno en{" "}
-              <b>AWS End User Messaging → WhatsApp</b> (queda atado a tu instancia), o usá un número
-              de Meta aparte en la otra pestaña.
-            </div>
-          )
-        ) : (
-          <>
-            <div
-              className="camp-2col"
-              style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}
-            >
-              <label>
-                <span style={labelStyle}>Phone Number ID</span>
-                <input
-                  style={inputStyle}
-                  autoComplete="off"
-                  name="wa-phone-number-id"
-                  placeholder="1029384756…"
-                  value={phoneNumberId}
-                  onChange={(e) => setPhoneNumberId(e.target.value)}
-                />
-              </label>
-              <label>
-                <span style={labelStyle}>WABA ID (opcional)</span>
-                <input
-                  style={inputStyle}
-                  autoComplete="off"
-                  name="wa-waba-id"
-                  placeholder="ID de la cuenta de WhatsApp Business"
-                  value={wabaId}
-                  onChange={(e) => setWabaId(e.target.value)}
-                />
-              </label>
-            </div>
-            <label>
-              <span style={labelStyle}>
-                Token de acceso {wa.tokenSet ? "(ya guardado — dejá vacío para mantenerlo)" : ""}
-              </span>
-              <input
-                style={inputStyle}
-                type="password"
-                autoComplete="new-password"
-                name="wa-access-token"
-                placeholder={wa.tokenSet ? "••••••••••••" : "Token permanente de Meta"}
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-              />
-              <span
-                className="muted"
+        {/* Números registrados (con el legacy singular incluido como numbers[0]) */}
+        {numbers.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {numbers.map((n) => (
+              <div
+                key={n.id}
+                className="row"
                 style={{
-                  fontSize: 10.5,
-                  marginTop: 3,
-                  display: "flex",
+                  gap: 10,
+                  padding: "10px 12px",
+                  borderRadius: 8,
                   alignItems: "center",
-                  gap: 5,
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--border-1)",
                 }}
               >
-                <Lock size={11} style={{ flexShrink: 0 }} /> El token se guarda cifrado en el
-                backend (Secrets Manager), nunca en tu navegador.
-              </span>
-            </label>
-            <div className="row">
-              <button className="btn btn--primary btn--sm" onClick={onSaveMeta}>
-                Guardar
-              </button>
-            </div>
-          </>
+                <Icon.WhatsApp size={16} style={{ color: "#25D366", flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>
+                    {n.label || n.displayNumber || n.metaPhoneNumberId || n.id}
+                  </div>
+                  <div className="muted" style={{ fontSize: 11 }}>
+                    {n.mode === "aws" ? "Connect (AWS)" : "Meta Cloud API"} ·{" "}
+                    {n.metaPhoneNumberId || n.phoneNumberId || n.id}
+                    {n.mode === "meta" && !n.tokenSet ? " · falta token" : ""}
+                  </div>
+                </div>
+                <span
+                  className="chip"
+                  style={{ fontSize: 10.5, opacity: n.botId ? 1 : 0.6 }}
+                  title={n.botId ? "Ruteado a un flujo" : "Sin flujo — se rutea en Bots → Ruteo"}
+                >
+                  {n.botId ? "Ruteado" : "Sin flujo"}
+                </span>
+                <button
+                  className="btn btn--ghost btn--icon"
+                  onClick={() => void onRemove(n)}
+                  title="Quitar número"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
         )}
 
-        {/* ── Formularios (WhatsApp Flows, #10) — común a ambos modos ──
-            El Flow (las pantallas) se diseña y publica en Meta Business
-            Manager → WhatsApp Manager → Flows; acá se registra su flow_id
-            para que el agente pueda enviarlo desde el chat. La respuesta
-            del cliente vuelve sola al CRM (lead + automatizaciones). */}
-        <WaFlowsEditor wa={wa} persist={persist} />
+        {!adding ? (
+          <button
+            className="btn btn--ghost btn--sm"
+            style={{ width: "fit-content" }}
+            onClick={() => setAdding(true)}
+          >
+            + Agregar número
+          </button>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              borderTop: numbers.length ? "1px solid var(--border-1)" : undefined,
+              paddingTop: numbers.length ? 14 : 0,
+            }}
+          >
+            {/* La observación: la diferencia entre los dos tipos de número */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid color-mix(in srgb, var(--accent-green) 35%, transparent)",
+                  background: "color-mix(in srgb, var(--accent-green) 8%, transparent)",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: 12.5,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <CheckCircle2 size={14} style={{ flexShrink: 0, color: "var(--accent-green)" }} />{" "}
+                  Número de Connect (AWS)
+                </div>
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.5 }}>
+                  Lo atiende un <b>agente</b> en el desktop: entra como contacto, con colas, routing
+                  y Contact Lens. Entrante + saliente. Sin token.
+                </div>
+              </div>
+              <div
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid var(--border-1)",
+                  background: "var(--bg-2)",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: 12.5,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <Send size={13} style={{ flexShrink: 0 }} /> Número de Meta aparte
+                </div>
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.5 }}>
+                  Envía <b>plantillas</b> (campañas) por Cloud API de Meta y corre <b>bots</b>{" "}
+                  entrantes por webhook (el flujo se elige en <b>Bots → Ruteo</b>). <b>No</b> tiene
+                  agente en vivo de Connect.
+                </div>
+              </div>
+            </div>
+
+            {/* Selector de modo */}
+            <div
+              className="row"
+              style={{
+                gap: 0,
+                border: "1px solid var(--border-2)",
+                borderRadius: 8,
+                overflow: "hidden",
+                width: "fit-content",
+              }}
+            >
+              {(
+                [
+                  ["aws", "Número de Connect"],
+                  ["meta", "Número de Meta aparte"],
+                ] as const
+              ).map(([m, label]) => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  style={{
+                    padding: "7px 14px",
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    background: mode === m ? "var(--bg-3)" : "transparent",
+                    color: mode === m ? "var(--text-1)" : "var(--text-3)",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <label>
+              <span style={labelStyle}>Etiqueta (opcional)</span>
+              <input
+                style={inputStyle}
+                autoComplete="off"
+                name="wa-label"
+                placeholder="Admisiones, Cobranzas…"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+              />
+            </label>
+
+            {mode === "aws" ? (
+              awsNumbers.length > 0 ? (
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {awsNumbers.map((n) => {
+                      const sel = selectedAws === n.metaPhoneNumberId;
+                      return (
+                        <label
+                          key={n.metaPhoneNumberId || n.phoneNumberArn}
+                          className="row"
+                          style={{
+                            gap: 10,
+                            padding: "10px 12px",
+                            borderRadius: 8,
+                            cursor: "pointer",
+                            alignItems: "center",
+                            background: sel ? "var(--accent-green-soft)" : "var(--bg-2)",
+                            border: `1px solid ${sel ? "var(--accent-green)" : "var(--border-1)"}`,
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="wa-aws-number"
+                            checked={sel}
+                            onChange={() => setSelectedAws(n.metaPhoneNumberId || "")}
+                          />
+                          <Icon.WhatsApp size={16} style={{ color: "#25D366" }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: 13 }}>
+                              {n.displayPhoneNumber} · {n.displayName}
+                            </div>
+                            <div className="muted" style={{ fontSize: 11 }}>
+                              WABA {n.wabaName || n.wabaId}
+                              {n.qualityRating ? ` · calidad ${n.qualityRating}` : ""}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div
+                  className="muted"
+                  style={{ fontSize: 12.5, padding: "8px 0", lineHeight: 1.6 }}
+                >
+                  No detectamos números vinculados a tu Amazon Connect. Vinculá uno en{" "}
+                  <b>AWS End User Messaging → WhatsApp</b> (queda atado a tu instancia), o usá un
+                  número de Meta aparte en la otra pestaña.
+                </div>
+              )
+            ) : (
+              <>
+                <div
+                  className="camp-2col"
+                  style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}
+                >
+                  <label>
+                    <span style={labelStyle}>Phone Number ID</span>
+                    <input
+                      style={inputStyle}
+                      autoComplete="off"
+                      name="wa-phone-number-id"
+                      placeholder="1029384756…"
+                      value={phoneNumberId}
+                      onChange={(e) => setPhoneNumberId(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span style={labelStyle}>WABA ID (opcional)</span>
+                    <input
+                      style={inputStyle}
+                      autoComplete="off"
+                      name="wa-waba-id"
+                      placeholder="ID de la cuenta de WhatsApp Business"
+                      value={wabaId}
+                      onChange={(e) => setWabaId(e.target.value)}
+                    />
+                  </label>
+                </div>
+                <label>
+                  <span style={labelStyle}>Token de acceso</span>
+                  <input
+                    style={inputStyle}
+                    type="password"
+                    autoComplete="new-password"
+                    name="wa-access-token"
+                    placeholder="Token permanente de Meta"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                  />
+                  <span
+                    className="muted"
+                    style={{
+                      fontSize: 10.5,
+                      marginTop: 3,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
+                    <Lock size={11} style={{ flexShrink: 0 }} /> El token se guarda cifrado en el
+                    backend (Secrets Manager), nunca en tu navegador.
+                  </span>
+                </label>
+              </>
+            )}
+
+            <div className="row" style={{ gap: 8 }}>
+              <button
+                className="btn btn--primary btn--sm"
+                onClick={() => void onAdd()}
+                disabled={busy}
+              >
+                {busy ? "Guardando…" : "Agregar número"}
+              </button>
+              {numbers.length > 0 && (
+                <button
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => {
+                    setAdding(false);
+                    resetForm();
+                  }}
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Formularios (WhatsApp Flows, #10) — común al tenant ──
+            El Flow se diseña/publica en Meta Business Manager → WhatsApp
+            Manager → Flows; acá se registra su flow_id para enviarlo desde
+            el chat. La respuesta vuelve sola al CRM (lead + automatizaciones). */}
+        <WaFlowsEditor wa={wa} persist={persistFlows} />
       </div>
+      {confirmDialog}
     </ConnCard>
   );
 }
@@ -2331,7 +2460,8 @@ function InstagramMessengerCard({
             }}
           >
             El “Login con Facebook” requiere la <b>App de Meta</b> configurada (App ID + Secret). El
-            equipo la activa una vez; después, «Conectar con Facebook» te lleva a elegir tus cuentas.
+            equipo la activa una vez; después, «Conectar con Facebook» te lleva a elegir tus
+            cuentas.
           </div>
         )}
 
@@ -2421,8 +2551,8 @@ function InstagramMessengerCard({
           >
             <div style={{ fontWeight: 800, fontSize: 16 }}>Elegí qué cuentas traer</div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.5 }}>
-              Tildá las páginas de Facebook / Instagram que querés gestionar en ARIA. Podés cambiarlo
-              después.
+              Tildá las páginas de Facebook / Instagram que querés gestionar en ARIA. Podés
+              cambiarlo después.
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: "14px 0" }}>
               {pending.length === 0 && (

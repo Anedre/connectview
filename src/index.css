@@ -353,6 +353,31 @@ textarea:focus {
   border-bottom: 1px solid var(--border-1);
   height: var(--header-h);
 }
+/* Marca ARIA — el isotipo (monograma "AR") sobre un tile blanco redondeado, así
+   se ve nítido y consistente en claro y oscuro. Asset optimizado (12KB) derivado
+   del master public/brand/aria-isotipo.png. */
+.sb__brandmark {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #2c5698, #158a8c);
+  object-fit: contain;
+  padding: 5px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 4px 12px -5px rgba(44, 86, 152, 0.55);
+  transition:
+    transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1),
+    box-shadow 0.18s ease;
+  user-select: none;
+}
+.sb__brandmark:hover {
+  transform: translateY(-1px) rotate(-2deg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 6px 16px -5px rgba(44, 86, 152, 0.7);
+}
 .sb__logo {
   width: 26px;
   height: 26px;
@@ -1915,15 +1940,26 @@ textarea:focus {
    Outer: [sidebar 256] [main 1fr] [inspector 320 collapsible]
    ============================================================ */
 .gcal {
-  position: fixed;
-  inset: var(--header-h) 0 0 var(--sidebar-w);
+  /* Fill the main content area via normal flow — NOT position:fixed.
+     Fixed positioning anchors to the nearest transformed ancestor, and
+     the framer-motion route wrapper (App.tsx <AnimatedRoutes>) holds a
+     transform while the enter animation runs. That would flash the whole
+     calendar ~250px sideways every time you open Citas, then snap back.
+     Normal flow is immune to ancestor transforms and fills `.content`
+     (flex:1; height = viewport − header) flush against the nav. */
+  height: 100%;
   display: grid;
   grid-template-columns: 256px 1fr;
   background: var(--bg-0);
   min-height: 0;
+  overflow: hidden;
 }
 .gcal--sidebar-hidden {
-  grid-template-columns: 0 1fr;
+  /* The sidebar <aside> is unmounted (not just hidden) when toggled off,
+     so `.gcal__main` is the sole grid child — give it one full-width track
+     instead of `0 1fr` (which drops it into the 0px column and squishes
+     the whole calendar to content-width). */
+  grid-template-columns: 1fr;
 }
 .gcal__sidebar {
   display: flex;
@@ -1934,13 +1970,24 @@ textarea:focus {
   min-height: 0;
 }
 .gcal__sidebar-inner {
-  padding: 14px;
+  padding: 16px 14px 14px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 13px;
   overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
   flex: 1;
+  /* thin, unobtrusive scrollbar — the sidebar is dense */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.gcal__sidebar-inner::-webkit-scrollbar {
+  width: 7px;
+}
+.gcal__sidebar-inner::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
 }
 
 /* Big "+ Crear" button — the most prominent affordance in the sidebar */
@@ -1956,6 +2003,9 @@ textarea:focus {
   font-size: 14px;
   font-weight: 600;
   align-self: flex-start;
+  /* Clear the app-nav collapse toggle (.sb__collapse) that floats over
+     the seam at the sidebar's top-left corner. */
+  margin-left: 22px;
   box-shadow:
     0 1px 3px rgba(0, 0, 0, 0.25),
     0 4px 12px -6px var(--accent-cyan);
@@ -3177,9 +3227,15 @@ textarea:focus {
   flex-shrink: 0;
 }
 
-@media (max-width: 1180px) {
+/* Narrow the sidebar first, so the calendar keeps priority as width shrinks. */
+@media (max-width: 1440px) {
+  .gcal:not(.gcal--sidebar-hidden) {
+    grid-template-columns: 232px 1fr;
+  }
+}
+@media (max-width: 1240px) {
   .gcal {
-    grid-template-columns: 0 1fr;
+    grid-template-columns: 1fr;
   }
   .gcal__sidebar {
     display: none;
@@ -5268,10 +5324,10 @@ textarea:focus {
   --auth-line2: #dde0ea;
   --auth-paper: #fbfaf9;
   --auth-card: #ffffff;
-  --auth-brand-a: #f5a524;
-  --auth-brand-b: #e0608b;
-  --auth-brand-c: #9b6bd8;
-  --auth-accent: #e0608b;
+  --auth-brand-a: #2c5698;
+  --auth-brand-b: #1b7f8e;
+  --auth-brand-c: #47c2cf;
+  --auth-accent: #158a8c;
   --auth-field: #f2f4f9;
   --auth-field-focus: #ffffff;
   --auth-err: #e5484d;
@@ -5359,7 +5415,7 @@ textarea:focus {
   height: 520px;
   left: -120px;
   top: -120px;
-  background: radial-gradient(circle, #f5a524, transparent 65%);
+  background: radial-gradient(circle, var(--auth-brand-a), transparent 65%);
   animation: vox-auth-float1 16s ease-in-out infinite;
 }
 .vox-auth__aurora .a2 {
@@ -5367,7 +5423,7 @@ textarea:focus {
   height: 480px;
   right: -100px;
   top: 60px;
-  background: radial-gradient(circle, #e0608b, transparent 65%);
+  background: radial-gradient(circle, var(--auth-brand-b), transparent 65%);
   animation: vox-auth-float2 19s ease-in-out infinite;
 }
 .vox-auth__aurora .a3 {
@@ -5375,7 +5431,7 @@ textarea:focus {
   height: 520px;
   left: 80px;
   bottom: -180px;
-  background: radial-gradient(circle, #9b6bd8, transparent 65%);
+  background: radial-gradient(circle, var(--auth-brand-c), transparent 65%);
   animation: vox-auth-float3 22s ease-in-out infinite;
 }
 @keyframes vox-auth-float1 {
@@ -5438,6 +5494,12 @@ textarea:focus {
   font-size: 20px;
   font-weight: 800;
   color: #fff;
+  overflow: hidden;
+}
+.vox-auth__brand-tile img {
+  width: 64%;
+  height: 64%;
+  object-fit: contain;
 }
 .vox-auth__brand-lockup {
   display: flex;
@@ -6012,10 +6074,10 @@ textarea:focus {
   --auth-line2: #dde0ea;
   --auth-paper: #fbfaf9;
   --auth-card: #ffffff;
-  --auth-brand-a: #f5a524;
-  --auth-brand-b: #e0608b;
-  --auth-brand-c: #9b6bd8;
-  --auth-accent: #e0608b;
+  --auth-brand-a: #2c5698;
+  --auth-brand-b: #1b7f8e;
+  --auth-brand-c: #47c2cf;
+  --auth-accent: #158a8c;
   --auth-field: #f2f4f9;
 
   position: relative;
@@ -7915,7 +7977,11 @@ textarea.vox-field {
   align-items: center;
   gap: 9px;
   padding: 10px 12px 9px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 60%, transparent), transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-2) 60%, transparent),
+    transparent
+  );
 }
 .fb-node__icon {
   display: grid;
@@ -11605,20 +11671,24 @@ textarea.vox-field {
   background: var(--bg-1);
 }
 
-.cal {
+/* Mini-month calendar (Grabaciones · CallPlayerView left panel). Namespaced
+   `.mcal` — NOT `.cal`, which collides with the timeline calendar in
+   aria-components.css (`.cal{display:grid;grid-template-columns:56px …}`)
+   and was squashing the header into a 56px column. */
+.mcal {
   border: 1px solid var(--border-1);
   border-radius: 12px;
   padding: 12px;
   background: var(--bg-1);
   flex: 0 0 auto;
 }
-.cal__head {
+.mcal__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
 }
-.cal__head button {
+.mcal__head button {
   display: grid;
   place-items: center;
   width: 26px;
@@ -11629,32 +11699,32 @@ textarea.vox-field {
   cursor: pointer;
   color: var(--text-2);
 }
-.cal__head button:hover {
+.mcal__head button:hover {
   border-color: var(--border-2);
   color: var(--text-1);
 }
-.cal__month {
+.mcal__month {
   font-size: 13px;
   font-weight: 700;
   color: var(--text-1);
 }
-.cal__wd {
+.mcal__wd {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 4px;
   margin-bottom: 5px;
 }
-.cal__wd span {
+.mcal__wd span {
   font-size: 10px;
   color: var(--text-3);
   text-align: center;
 }
-.cal__grid {
+.mcal__grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 4px;
 }
-.cal__cell {
+.mcal__cell {
   position: relative;
   height: 38px;
   display: flex;
@@ -11670,22 +11740,22 @@ textarea.vox-field {
   color: var(--text-1);
   padding: 0;
 }
-.cal__cell:hover {
+.mcal__cell:hover {
   border-color: var(--border-2);
 }
-.cal__cell--empty {
+.mcal__cell--empty {
   border: none;
   background: transparent;
   cursor: default;
 }
-.cal__cell--has {
+.mcal__cell--has {
   font-weight: 700;
 }
-.cal__cell--sel {
+.mcal__cell--sel {
   border: 2px solid var(--accent-cyan);
   background: var(--accent-cyan-soft);
 }
-.cal__cnt {
+.mcal__cnt {
   font-size: 9.5px;
   font-weight: 700;
   line-height: 1;
@@ -11694,7 +11764,7 @@ textarea.vox-field {
   background: var(--accent-cyan-soft);
   color: var(--accent-cyan);
 }
-.cal__cell--sel .cal__cnt {
+.mcal__cell--sel .mcal__cnt {
   background: var(--accent-cyan);
   color: #fff;
 }
@@ -12792,7 +12862,9 @@ textarea.vox-field {
   background: var(--bg-1);
   color: var(--text-1);
   font-size: 13px;
-  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  transition:
+    border-color 0.15s var(--ease),
+    box-shadow 0.15s var(--ease);
 }
 .wf-input:focus {
   outline: none;
@@ -13684,7 +13756,11 @@ textarea.vox-field {
   overflow: auto;
   padding: 34px 24px 80px;
   background:
-    radial-gradient(circle at 50% 0, color-mix(in srgb, var(--jb) 5%, transparent), transparent 60%),
+    radial-gradient(
+      circle at 50% 0,
+      color-mix(in srgb, var(--jb) 5%, transparent),
+      transparent 60%
+    ),
     var(--bg-1);
 }
 .jb-lifeline {
@@ -14113,4 +14189,474 @@ textarea.vox-field {
   font-size: 11px;
   color: var(--text-3);
   line-height: 1.5;
+}
+
+/* ============================================================
+   Hint / Tooltip premium (componente <Hint>) — estilo propio con
+   tokens --text-1/--bg-0 (el proyecto no define los tokens shadcn).
+   Reglas sin @layer → ganan a las utilidades Tailwind del TooltipContent.
+   ============================================================ */
+.aria-hint {
+  background: var(--text-1);
+  color: var(--bg-0);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  padding: 7px 11px;
+  border-radius: 9px;
+  max-width: 260px;
+  text-align: left;
+  box-shadow:
+    0 10px 30px -10px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+  animation: aria-hint-in 0.13s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.aria-hint b,
+.aria-hint strong {
+  color: #fff;
+  font-weight: 750;
+}
+.aria-hint .aria-hint__k {
+  display: block;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 700;
+  opacity: 0.6;
+  margin-bottom: 2px;
+}
+@keyframes aria-hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aria-hint {
+    animation: none;
+  }
+}
+
+/* ===== Campana de notificaciones (NotificationsBell) ===== */
+.aria-notif-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent-red, #e5484d);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--bg-1);
+  animation: aria-badge-pop 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes aria-badge-pop {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.aria-notif-panel {
+  animation: aria-hint-in 0.14s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.aria-notif-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-1);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  transition: background 0.12s ease;
+}
+.aria-notif-item:last-child {
+  border-bottom: none;
+}
+.aria-notif-item:hover {
+  background: var(--bg-hover);
+}
+.aria-notif-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  margin-top: 5px;
+  flex: 0 0 auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .aria-notif-badge,
+  .aria-notif-panel {
+    animation: none;
+  }
+}
+
+/* ============================================================
+   FlowHelpWizard (.fhw) — ayuda del constructor de bots en modal
+   con pasos guiados + atajos. Reemplaza el banner plano .fb-tips.
+   ============================================================ */
+.fhw-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg-0) 55%, transparent);
+  backdrop-filter: blur(4px);
+  animation: fhw-fade 0.16s ease;
+}
+.fhw {
+  width: min(620px, 100%);
+  max-height: min(88vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--border-2);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow:
+    0 24px 70px -24px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  animation: fhw-pop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes fhw-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fhw-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fhw__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border-1);
+}
+.fhw__head-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, #2c5698, #158a8c);
+  box-shadow: 0 4px 12px -4px color-mix(in srgb, #2c5698 70%, transparent);
+}
+.fhw__head-title {
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+}
+.fhw__head-sub {
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-top: 1px;
+}
+.fhw__head-txt {
+  flex: 1;
+  min-width: 0;
+}
+.fhw__x {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  border: 1px solid transparent;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
+}
+.fhw__x:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+.fhw__tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 14px 0;
+}
+.fhw__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  border-radius: 9px 9px 0 0;
+  border-bottom: 2px solid transparent;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease,
+    border-color 0.14s ease;
+}
+.fhw__tab:hover {
+  color: var(--text-1);
+  background: var(--bg-hover);
+}
+.fhw__tab--on {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.fhw__body {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--border-1);
+}
+.fhw__rail {
+  list-style: none;
+  margin: 0;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-right: 1px solid var(--border-1);
+  background: var(--bg-2);
+  overflow-y: auto;
+}
+.fhw__railitem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--text-2);
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
+}
+.fhw__railitem:hover {
+  background: var(--bg-hover);
+}
+.fhw__railnum {
+  width: 27px;
+  height: 27px;
+  border-radius: 8px;
+  flex: 0 0 27px;
+  display: grid;
+  place-items: center;
+  background: var(--bg-1);
+  border: 1px solid var(--border-2);
+  color: var(--text-3);
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease;
+}
+.fhw__railtxt {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.fhw__railitem--on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.fhw__railitem--on .fhw__railnum {
+  background: linear-gradient(135deg, #2c5698, #158a8c);
+  border-color: transparent;
+  color: #fff;
+}
+.fhw__railitem--done .fhw__railnum {
+  color: var(--accent-green);
+  border-color: color-mix(in srgb, var(--accent-green) 40%, transparent);
+}
+.fhw__stage {
+  padding: 26px 26px 22px;
+  overflow-y: auto;
+  animation: fhw-stage 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes fhw-stage {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fhw__stage-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  margin-bottom: 14px;
+}
+.fhw__stage-step {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+.fhw__stage-title {
+  font-size: 18px;
+  font-weight: 780;
+  letter-spacing: -0.02em;
+  color: var(--text-1);
+  margin-top: 4px;
+}
+.fhw__stage-body {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+  margin-top: 8px;
+}
+.fhw__stage-body b {
+  color: var(--text-1);
+  font-weight: 700;
+}
+.fhw__tip {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin-top: 16px;
+  padding: 11px 13px;
+  border-radius: 11px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.fhw__tip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  margin-top: 5px;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-cyan) 22%, transparent);
+}
+.fhw__shortcuts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 18px;
+  padding: 18px 20px;
+  overflow-y: auto;
+}
+.fhw__sc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px;
+}
+.fhw__sc-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.fhw__kbd {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 2px 6px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.fhw__sc-or {
+  font-size: 10px;
+  color: var(--text-3);
+}
+.fhw__sc-desc {
+  font-size: 12px;
+  color: var(--text-2);
+}
+.fhw__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border-1);
+  background: var(--bg-2);
+}
+.fhw__dots {
+  display: inline-flex;
+  gap: 6px;
+}
+.fhw__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  transition:
+    background 0.16s ease,
+    transform 0.16s ease,
+    width 0.16s ease;
+}
+.fhw__dot:hover {
+  transform: scale(1.25);
+}
+.fhw__dot--on {
+  background: var(--accent);
+  width: 20px;
+  border-radius: 4px;
+}
+.fhw__foot-btns {
+  display: inline-flex;
+  gap: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fhw-overlay,
+  .fhw,
+  .fhw__stage {
+    animation: none;
+  }
+}
+@media (max-width: 620px) {
+  .fhw__body {
+    grid-template-columns: 1fr;
+  }
+  .fhw__rail {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border-1);
+  }
+  .fhw__railtxt {
+    display: none;
+  }
+  .fhw__shortcuts {
+    grid-template-columns: 1fr;
+  }
 }

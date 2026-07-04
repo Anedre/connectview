@@ -2,12 +2,46 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Marca ARIA · by Novasys — favicons + app icon (gen: scripts/gen-brand-assets.mjs) -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#2C5698" />
+
+    <title>ARIA · Plataforma de contact center</title>
+    <meta
+      name="description"
+      content="ARIA · by Novasys — contact center con IA: llamadas, WhatsApp, leads, campañas y reportes en una sola plataforma."
+    />
+    <!-- Open Graph / redes (preview de links).
+         OJO: og:url y og:image deben ser URL ABSOLUTAS con el host de prod para
+         que WhatsApp/Slack/LinkedIn muestren el preview. Al fijar dominio,
+         reemplazar el placeholder o inyectarlo en build (VITE_PUBLIC_ORIGIN). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ARIA" />
+    <meta property="og:locale" content="es_PE" />
+    <meta property="og:title" content="ARIA · Plataforma de contact center" />
+    <meta property="og:description" content="Contact center con IA — by Novasys." />
+    <meta property="og:image" content="/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="ARIA · by Novasys — contact center con IA" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ARIA · Plataforma de contact center" />
+    <meta
+      name="twitter:description"
+      content="Contact center con IA — by Novasys: llamadas, WhatsApp, leads y reportes en una plataforma."
+    />
+    <meta name="twitter:image" content="/og-image.jpg" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-    <title>ARIA · Plataforma de contact center</title>
   </head>
   <body>
     <div id="root"></div>

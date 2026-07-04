@@ -102,13 +102,20 @@ function callbackToAppt(c: CallbackRecord): Appt {
   // (keeps the status filter chips + the EventDetailPopover untouched).
   const status: string = (() => {
     switch (c.status) {
-      case "SCHEDULED": return "scheduled";
-      case "DUE": return "scheduled"; // still pending, just due now
-      case "RINGING": return "scheduled";
-      case "COMPLETED": return "done";
-      case "CANCELLED": return "cancelled";
-      case "FAILED": return "no_show";
-      default: return "scheduled";
+      case "SCHEDULED":
+        return "scheduled";
+      case "DUE":
+        return "scheduled"; // still pending, just due now
+      case "RINGING":
+        return "scheduled";
+      case "COMPLETED":
+        return "done";
+      case "CANCELLED":
+        return "cancelled";
+      case "FAILED":
+        return "no_show";
+      default:
+        return "scheduled";
     }
   })();
   return {
@@ -129,10 +136,7 @@ function callbackToAppt(c: CallbackRecord): Appt {
 
 function apptLabel(a: Appt) {
   return (
-    a.title?.trim() ||
-    a.customerName?.trim() ||
-    a.customerPhone ||
-    channelMeta(a.channel).label
+    a.title?.trim() || a.customerName?.trim() || a.customerPhone || channelMeta(a.channel).label
   );
 }
 
@@ -169,10 +173,7 @@ type Pending = {
   anchorY: number;
 };
 
-const STATUS_META: Record<
-  string,
-  { label: string; color: string; soft: string }
-> = {
+const STATUS_META: Record<string, { label: string; color: string; soft: string }> = {
   scheduled: { label: "Agendadas", color: "var(--accent-cyan)", soft: "var(--accent-cyan-soft)" },
   done: { label: "Completadas", color: "var(--accent-green)", soft: "var(--accent-green-soft)" },
   cancelled: { label: "Canceladas", color: "var(--accent-red)", soft: "var(--accent-red-soft)" },
@@ -192,8 +193,18 @@ const EMIN = END_HOUR * 60;
 const DAYS_ES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const DAYS_MINI = ["D", "L", "M", "X", "J", "V", "S"];
 const MONTHS_ES = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
 ];
 
 function startOfDay(d: Date) {
@@ -262,10 +273,7 @@ export function AppointmentsPage() {
     cancel: cancelCallbackRow,
     complete: completeCallbackRow,
   } = useCallbacks({ limit: 200, pollIntervalSec: 60 });
-  const appts = useMemo<Appt[]>(
-    () => callbacks.map(callbackToAppt),
-    [callbacks]
-  );
+  const appts = useMemo<Appt[]>(() => callbacks.map(callbackToAppt), [callbacks]);
   const { config } = useConnections();
   const { confirm, confirmDialog } = useConfirm();
   // Las citas persisten como callbacks en la base de datos del tenant (BYO Data
@@ -277,9 +285,7 @@ export function AppointmentsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [activeStatuses, setActiveStatuses] = useState<Set<string>>(
-    () => new Set(STATUS_ORDER)
-  );
+  const [activeStatuses, setActiveStatuses] = useState<Set<string>>(() => new Set(STATUS_ORDER));
   // Anchor for the mini calendar — independent from the main `anchor`
   // so the user can browse a different month in the mini without
   // changing the main grid.
@@ -321,8 +327,7 @@ export function AppointmentsPage() {
   const setStatus = async (apptId: string, status: string) => {
     try {
       if (status === "done") await completeCallbackRow(apptId);
-      else if (status === "cancelled" || status === "no_show")
-        await cancelCallbackRow(apptId);
+      else if (status === "cancelled" || status === "no_show") await cancelCallbackRow(apptId);
       else return; // unknown status — no-op
       refetchCallbacks();
     } catch (e) {
@@ -362,7 +367,9 @@ export function AppointmentsPage() {
         if (cur.templateVariables) {
           try {
             payload.templateVariables = JSON.parse(cur.templateVariables);
-          } catch { /* keep undefined */ }
+          } catch {
+            /* keep undefined */
+          }
         }
       }
       const r = await fetch(ep.scheduleCallback, {
@@ -372,7 +379,9 @@ export function AppointmentsPage() {
       });
       if (!r.ok) throw new Error((await r.json())?.error || `HTTP ${r.status}`);
       // Cancel the original now that the replacement is queued.
-      await cancelCallbackRow(apptId).catch(() => { /* best-effort */ });
+      await cancelCallbackRow(apptId).catch(() => {
+        /* best-effort */
+      });
       refetchCallbacks();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo reprogramar");
@@ -385,7 +394,7 @@ export function AppointmentsPage() {
   // cancel-callback Lambda later.
   const updateAppt = async (
     apptId: string,
-    fields: Partial<Pick<Appt, "title" | "notes" | "customerName">>
+    fields: Partial<Pick<Appt, "title" | "notes" | "customerName">>,
   ) => {
     const cur = callbacks.find((c) => c.callbackId === apptId);
     if (!cur) return;
@@ -408,7 +417,9 @@ export function AppointmentsPage() {
         body: JSON.stringify(payload),
       });
       if (!r.ok) throw new Error((await r.json())?.error || `HTTP ${r.status}`);
-      await cancelCallbackRow(apptId).catch(() => { /* best-effort */ });
+      await cancelCallbackRow(apptId).catch(() => {
+        /* best-effort */
+      });
       refetchCallbacks();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo actualizar");
@@ -416,7 +427,14 @@ export function AppointmentsPage() {
   };
 
   const del = async (apptId: string) => {
-    if (!(await confirm({ title: "¿Eliminar esta cita?", destructive: true, confirmLabel: "Eliminar" }))) return;
+    if (
+      !(await confirm({
+        title: "¿Eliminar esta cita?",
+        destructive: true,
+        confirmLabel: "Eliminar",
+      }))
+    )
+      return;
     try {
       await cancelCallbackRow(apptId);
       setSelectedId(null);
@@ -459,7 +477,7 @@ export function AppointmentsPage() {
   // need to render even disabled-status events.
   const visibleAppts = useMemo(
     () => appts.filter((a) => activeStatuses.has(a.status)),
-    [appts, activeStatuses]
+    [appts, activeStatuses],
   );
 
   const apptsForDay = (d: Date) =>
@@ -472,8 +490,8 @@ export function AppointmentsPage() {
       view === "day"
         ? addDays(a, dir)
         : view === "week"
-        ? addDays(a, dir * 7)
-        : new Date(a.getFullYear(), a.getMonth() + dir, 1)
+          ? addDays(a, dir * 7)
+          : new Date(a.getFullYear(), a.getMonth() + dir, 1),
     );
 
   /** Open the Google-style quick-create popover at the click anchor.
@@ -487,11 +505,11 @@ export function AppointmentsPage() {
 
   const hours = useMemo(
     () => Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i),
-    []
+    [],
   );
   const gridHeight = (END_HOUR - START_HOUR) * HOUR_PX;
   const upcomingCount = appts.filter(
-    (a) => a.status === "scheduled" && new Date(a.whenISO) >= startOfDay(now)
+    (a) => a.status === "scheduled" && new Date(a.whenISO) >= startOfDay(now),
   ).length;
 
   // Per-status counts for the sidebar filter chips.
@@ -541,17 +559,13 @@ export function AppointmentsPage() {
 
   const pointToSlot = (
     clientX: number,
-    clientY: number
+    clientY: number,
   ): { dayIndex: number; minutes: number } | null => {
     const el = gridRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
     const colW = (rect.width - GUTTER) / days.length;
-    const dayIndex = clamp(
-      Math.floor((clientX - rect.left - GUTTER) / colW),
-      0,
-      days.length - 1
-    );
+    const dayIndex = clamp(Math.floor((clientX - rect.left - GUTTER) / colW), 0, days.length - 1);
     let minutes = SMIN + ((clientY - rect.top) / HOUR_PX) * 60;
     minutes = clamp(Math.round(minutes / SNAP) * SNAP, SMIN, EMIN);
     return { dayIndex, minutes };
@@ -619,13 +633,13 @@ export function AppointmentsPage() {
         reschedule(
           op.apptId,
           dateAtMin(days[pv.dayIndex], pv.startMin).toISOString(),
-          Math.max(SNAP, pv.endMin - pv.startMin)
+          Math.max(SNAP, pv.endMin - pv.startMin),
         );
       else
         reschedule(
           op.apptId,
           dateAtMin(days[pv.dayIndex], pv.startMin).toISOString(),
-          op.durationMin
+          op.durationMin,
         );
     };
     window.addEventListener("pointermove", onMove);
@@ -643,12 +657,8 @@ export function AppointmentsPage() {
     // Try to find today's column in the current view; fall back to col 0.
     const dayIdx = days.findIndex((d) => sameDay(d, now));
     const rect = anchorEl?.getBoundingClientRect();
-    const anchorX = rect
-      ? rect.right
-      : Math.floor(window.innerWidth / 2);
-    const anchorY = rect
-      ? rect.top + rect.height / 2
-      : Math.floor(window.innerHeight / 2);
+    const anchorX = rect ? rect.right : Math.floor(window.innerWidth / 2);
+    const anchorY = rect ? rect.top + rect.height / 2 : Math.floor(window.innerHeight / 2);
     openPopover({
       dayIndex: dayIdx >= 0 ? dayIdx : 0,
       startMin,
@@ -660,248 +670,234 @@ export function AppointmentsPage() {
 
   return (
     <>
-    {!loading && appts.length === 0 && !dataPlaneEnabled && (
-      <div style={{ padding: "14px 22px 0" }}>
-        <NotIntegrated
-          title="Todavía no integraste tu base de datos"
-          message="Tus citas y seguimientos se guardan en TU cuenta AWS (BYO Data Plane). Activala en Integraciones para agendar y ver tu calendario con datos."
-          ctaLabel="Conectar base de datos"
-        />
-      </div>
-    )}
-    <div className={`gcal${sidebarOpen ? "" : " gcal--sidebar-hidden"}`}>
-      {/* ───────── SIDEBAR ───────── */}
-      {sidebarOpen && (
-        <aside className="gcal__sidebar">
-          <div className="gcal__sidebar-inner">
-            <button
-              className="gcal__create"
-              onClick={(e) => startNewNow(e.currentTarget)}
-            >
-              <span className="gcal__create-icon">
-                <Icon.Plus size={14} />
-              </span>
-              Crear
-            </button>
-
-            {/* ARIA explainer — captación agenda framing */}
-            <CitasExplain />
-
-            <MiniMonth
-              anchor={miniAnchor}
-              selected={anchor}
-              today={now}
-              appts={visibleAppts}
-              onPrev={() => setMiniAnchor((a) => new Date(a.getFullYear(), a.getMonth() - 1, 1))}
-              onNext={() => setMiniAnchor((a) => new Date(a.getFullYear(), a.getMonth() + 1, 1))}
-              onPick={(d) => {
-                setAnchor(d);
-                if (view === "month") setMiniAnchor(d);
-              }}
-            />
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <div className="gcal__section-title">Mis filtros</div>
-              {STATUS_ORDER.map((s) => {
-                const meta = statusMeta(s);
-                const on = activeStatuses.has(s);
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`gcal__check${on ? " gcal__check--on" : ""}`}
-                    onClick={() => toggleStatus(s)}
-                    style={{ ["--gc" as string]: meta.color }}
-                  >
-                    <span className="gcal__check-box">
-                      <Icon.Check size={10} />
-                    </span>
-                    <span className="gcal__check-label">{meta.label}</span>
-                    <span className="gcal__check-count">{statusCounts[s] || 0}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* ARIA KPI strip — real numbers from the agent's callbacks */}
-            <CitasStatGrid stats={citasStats} />
-
-            {/* ARIA channel legend */}
-            <CitasLegend />
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <div className="gcal__section-title">Próximamente</div>
-              <div
-                style={{
-                  fontSize: 11.5,
-                  color: "var(--text-3)",
-                  lineHeight: 1.5,
-                  padding: "0 4px",
-                }}
-              >
-                {upcomingCount > 0 ? (
-                  <>
-                    Tienes <b style={{ color: "var(--accent-cyan)" }}>{upcomingCount}</b> cita
-                    {upcomingCount === 1 ? "" : "s"} agendada{upcomingCount === 1 ? "" : "s"}.
-                  </>
-                ) : (
-                  "No tienes citas próximas."
-                )}
-              </div>
-            </div>
-          </div>
-        </aside>
+      {!loading && appts.length === 0 && !dataPlaneEnabled && (
+        <div style={{ padding: "14px 22px 0" }}>
+          <NotIntegrated
+            title="Todavía no integraste tu base de datos"
+            message="Tus citas y seguimientos se guardan en TU cuenta AWS (BYO Data Plane). Activala en Integraciones para agendar y ver tu calendario con datos."
+            ctaLabel="Conectar base de datos"
+          />
+        </div>
       )}
-
-      {/* ───────── MAIN ───────── */}
-      <div className="gcal__main">
-        {/* TOPBAR */}
-        <div className="gcal__bar">
-          <button
-            type="button"
-            className="gcal__bar-sidetoggle"
-            onClick={() => setSidebarOpen((s) => !s)}
-            title={sidebarOpen ? "Ocultar menú" : "Mostrar menú"}
-            aria-label="Menú lateral"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18M3 12h18M3 18h18" />
-            </svg>
-          </button>
-          <Btn
-            variant="soft"
-            size="sm"
-            onClick={() => {
-              setAnchor(new Date());
-              setMiniAnchor(new Date());
-            }}
-          >
-            Hoy
-          </Btn>
-          <Btn
-            variant="ghost"
-            size="sm"
-            icon="chevL"
-            onClick={() => go(-1)}
-            title="Anterior"
-            aria-label="Anterior"
-          />
-          <Btn
-            variant="ghost"
-            size="sm"
-            icon="chevR"
-            onClick={() => go(1)}
-            title="Siguiente"
-            aria-label="Siguiente"
-          />
-          <span className="gcal__bar-title">{title}</span>
-          <div className="gcal__bar-spacer" />
-          <Pill tone="cyan">{upcomingCount} próximas</Pill>
-          <Btn
-            variant="ghost"
-            size="sm"
-            icon="refresh"
-            onClick={load}
-            disabled={loading}
-            title="Recargar"
-            aria-label="Recargar"
-          />
-          <div className="gcal__bar-view" role="tablist">
-            {(["day", "week", "month"] as View[]).map((v) => (
-              <button
-                key={v}
-                role="tab"
-                aria-selected={view === v}
-                className={`gcal__bar-view-opt${view === v ? " gcal__bar-view-opt--active" : ""}`}
-                onClick={() => setView(v)}
-              >
-                {v === "day" ? "Día" : v === "week" ? "Semana" : "Mes"}
+      <div className={`gcal${sidebarOpen ? "" : " gcal--sidebar-hidden"}`}>
+        {/* ───────── SIDEBAR ───────── */}
+        {sidebarOpen && (
+          <aside className="gcal__sidebar">
+            <div className="gcal__sidebar-inner">
+              <button className="gcal__create" onClick={(e) => startNewNow(e.currentTarget)}>
+                <span className="gcal__create-icon">
+                  <Icon.Plus size={14} />
+                </span>
+                Crear
               </button>
-            ))}
-          </div>
-        </div>
 
-        {/* PANE — calendar only. Popovers are the single surface for
+              {/* ARIA explainer — captación agenda framing */}
+              <CitasExplain />
+
+              <MiniMonth
+                anchor={miniAnchor}
+                selected={anchor}
+                today={now}
+                appts={visibleAppts}
+                onPrev={() => setMiniAnchor((a) => new Date(a.getFullYear(), a.getMonth() - 1, 1))}
+                onNext={() => setMiniAnchor((a) => new Date(a.getFullYear(), a.getMonth() + 1, 1))}
+                onPick={(d) => {
+                  setAnchor(d);
+                  if (view === "month") setMiniAnchor(d);
+                }}
+              />
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div className="gcal__section-title">Mis filtros</div>
+                {STATUS_ORDER.map((s) => {
+                  const meta = statusMeta(s);
+                  const on = activeStatuses.has(s);
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      className={`gcal__check${on ? " gcal__check--on" : ""}`}
+                      onClick={() => toggleStatus(s)}
+                      style={{ ["--gc" as string]: meta.color }}
+                    >
+                      <span className="gcal__check-box">
+                        <Icon.Check size={10} />
+                      </span>
+                      <span className="gcal__check-label">{meta.label}</span>
+                      <span className="gcal__check-count">{statusCounts[s] || 0}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* ARIA KPI strip — real numbers from the agent's callbacks */}
+              <CitasStatGrid stats={citasStats} />
+
+              {/* ARIA channel legend */}
+              <CitasLegend />
+            </div>
+          </aside>
+        )}
+
+        {/* ───────── MAIN ───────── */}
+        <div className="gcal__main">
+          {/* TOPBAR */}
+          <div className="gcal__bar">
+            <button
+              type="button"
+              className="gcal__bar-sidetoggle"
+              onClick={() => setSidebarOpen((s) => !s)}
+              title={sidebarOpen ? "Ocultar menú" : "Mostrar menú"}
+              aria-label="Menú lateral"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 6h18M3 12h18M3 18h18" />
+              </svg>
+            </button>
+            <Btn
+              variant="soft"
+              size="sm"
+              onClick={() => {
+                setAnchor(new Date());
+                setMiniAnchor(new Date());
+              }}
+            >
+              Hoy
+            </Btn>
+            <Btn
+              variant="ghost"
+              size="sm"
+              icon="chevL"
+              onClick={() => go(-1)}
+              title="Anterior"
+              aria-label="Anterior"
+            />
+            <Btn
+              variant="ghost"
+              size="sm"
+              icon="chevR"
+              onClick={() => go(1)}
+              title="Siguiente"
+              aria-label="Siguiente"
+            />
+            <span className="gcal__bar-title">{title}</span>
+            <div className="gcal__bar-spacer" />
+            <Pill tone="cyan">{upcomingCount} próximas</Pill>
+            <Btn
+              variant="ghost"
+              size="sm"
+              icon="refresh"
+              onClick={load}
+              disabled={loading}
+              title="Recargar"
+              aria-label="Recargar"
+            />
+            <div className="gcal__bar-view" role="tablist">
+              {(["day", "week", "month"] as View[]).map((v) => (
+                <button
+                  key={v}
+                  role="tab"
+                  aria-selected={view === v}
+                  className={`gcal__bar-view-opt${view === v ? " gcal__bar-view-opt--active" : ""}`}
+                  onClick={() => setView(v)}
+                >
+                  {v === "day" ? "Día" : v === "week" ? "Semana" : "Mes"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* PANE — calendar only. Popovers are the single surface for
             create / detail (no persistent right inspector). */}
-        <div className="gcal__pane gcal__pane--no-inspector">
-          <div className="gcal__calendar">
-            {view === "month" ? (
-              <MonthView
-                days={days}
-                anchor={anchor}
-                now={now}
-                apptsForDay={apptsForDay}
-                selectedId={selectedId}
-                onSelectAt={(apptId, x, y) => {
-                  setEventPopover({ apptId, anchorX: x, anchorY: y });
-                  setSelectedId(apptId);
-                }}
-                onCreateAt={(d, x, y) => {
-                  openPopover({
-                    dayIndex: days.indexOf(d),
-                    startMin: 9 * 60,
-                    endMin: 10 * 60,
-                    anchorX: x,
-                    anchorY: y,
-                  });
-                }}
-              />
-            ) : (
-              <WeekView
-                days={days}
-                hours={hours}
-                gridHeight={gridHeight}
-                now={now}
-                apptsForDay={apptsForDay}
-                selectedId={selectedId}
-                preview={preview}
-                pending={pending}
-                gridRef={gridRef}
-                beginDrag={beginDrag}
-                pointToSlot={pointToSlot}
-              />
-            )}
+          <div className="gcal__pane gcal__pane--no-inspector">
+            <div className="gcal__calendar">
+              {view === "month" ? (
+                <MonthView
+                  days={days}
+                  anchor={anchor}
+                  now={now}
+                  apptsForDay={apptsForDay}
+                  selectedId={selectedId}
+                  onSelectAt={(apptId, x, y) => {
+                    setEventPopover({ apptId, anchorX: x, anchorY: y });
+                    setSelectedId(apptId);
+                  }}
+                  onCreateAt={(d, x, y) => {
+                    openPopover({
+                      dayIndex: days.indexOf(d),
+                      startMin: 9 * 60,
+                      endMin: 10 * 60,
+                      anchorX: x,
+                      anchorY: y,
+                    });
+                  }}
+                />
+              ) : (
+                <WeekView
+                  days={days}
+                  hours={hours}
+                  gridHeight={gridHeight}
+                  now={now}
+                  apptsForDay={apptsForDay}
+                  selectedId={selectedId}
+                  preview={preview}
+                  pending={pending}
+                  gridRef={gridRef}
+                  beginDrag={beginDrag}
+                  pointToSlot={pointToSlot}
+                />
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Quick-create popover — anchored to the click position */}
-      {pending && (
-        <QuickCreatePopover
-          pending={pending}
-          day={days[pending.dayIndex]}
-          defaultAgent={user?.username}
-          defaultAgentUserId={user?.userId}
-          onClose={() => setPending(null)}
-          onBooked={() => {
-            setPending(null);
-            load();
-          }}
-        />
-      )}
-
-      {/* Event-detail popover — anchored to an existing event */}
-      {eventPopover && (() => {
-        const appt = appts.find((a) => a.apptId === eventPopover.apptId);
-        if (!appt) return null;
-        return (
-          <EventDetailPopover
-            appt={appt}
-            anchorX={eventPopover.anchorX}
-            anchorY={eventPopover.anchorY}
-            onClose={() => {
-              setEventPopover(null);
-              setSelectedId(null);
+        {/* Quick-create popover — anchored to the click position */}
+        {pending && (
+          <QuickCreatePopover
+            pending={pending}
+            day={days[pending.dayIndex]}
+            defaultAgent={user?.username}
+            defaultAgentUserId={user?.userId}
+            onClose={() => setPending(null)}
+            onBooked={() => {
+              setPending(null);
+              load();
             }}
-            onStatus={setStatus}
-            onUpdate={updateAppt}
-            onReschedule={reschedule}
-            onDelete={del}
           />
-        );
-      })()}
-    </div>
-    {confirmDialog}
+        )}
+
+        {/* Event-detail popover — anchored to an existing event */}
+        {eventPopover &&
+          (() => {
+            const appt = appts.find((a) => a.apptId === eventPopover.apptId);
+            if (!appt) return null;
+            return (
+              <EventDetailPopover
+                appt={appt}
+                anchorX={eventPopover.anchorX}
+                anchorY={eventPopover.anchorY}
+                onClose={() => {
+                  setEventPopover(null);
+                  setSelectedId(null);
+                }}
+                onStatus={setStatus}
+                onUpdate={updateAppt}
+                onReschedule={reschedule}
+                onDelete={del}
+              />
+            );
+          })()}
+      </div>
+      {confirmDialog}
     </>
   );
 }
@@ -930,7 +926,7 @@ function MiniMonth({
   const gridStart = useMemo(() => startOfWeekSun(startOfMonth(anchor)), [anchor]);
   const cells = useMemo(
     () => Array.from({ length: 42 }, (_, i) => addDays(gridStart, i)),
-    [gridStart]
+    [gridStart],
   );
   // Densidad por día: cuántas citas tiene cada celda visible → hasta 3 dots,
   // para que el agente vea la carga de la semana/mes de un vistazo.
@@ -1049,9 +1045,7 @@ function WeekView({
               key={i}
               className={`gcal__weekhead-day${today ? " gcal__weekhead-day--today" : ""}`}
             >
-              <span className="gcal__weekhead-dow">
-                {DAYS_ES[(d.getDay() + 6) % 7]}
-              </span>
+              <span className="gcal__weekhead-dow">{DAYS_ES[(d.getDay() + 6) % 7]}</span>
               <span className="gcal__weekhead-dnum">{d.getDate()}</span>
             </div>
           );
@@ -1078,10 +1072,7 @@ function WeekView({
             const weekendIdx = (d.getDay() + 6) % 7;
             const isWeekend = weekendIdx === 5 || weekendIdx === 6;
             return (
-              <div
-                key={di}
-                className={`gcal__col${isWeekend ? " gcal__col--weekend" : ""}`}
-              >
+              <div key={di} className={`gcal__col${isWeekend ? " gcal__col--weekend" : ""}`}>
                 {hours.slice(0, -1).map((h) => (
                   <div
                     key={h}
@@ -1111,10 +1102,7 @@ function WeekView({
                     className="gcal__ghost"
                     style={{
                       top: ((preview.startMin - SMIN) / 60) * HOUR_PX,
-                      height: Math.max(
-                        16,
-                        ((preview.endMin - preview.startMin) / 60) * HOUR_PX
-                      ),
+                      height: Math.max(16, ((preview.endMin - preview.startMin) / 60) * HOUR_PX),
                     }}
                   >
                     {hhmmMin(preview.startMin)}–{hhmmMin(preview.endMin)}
@@ -1125,10 +1113,7 @@ function WeekView({
                     className="gcal__pending"
                     style={{
                       top: ((pending.startMin - SMIN) / 60) * HOUR_PX,
-                      height: Math.max(
-                        24,
-                        ((pending.endMin - pending.startMin) / 60) * HOUR_PX
-                      ),
+                      height: Math.max(24, ((pending.endMin - pending.startMin) / 60) * HOUR_PX),
                     }}
                   >
                     <span className="gcal__pending-title">(Sin título)</span>
@@ -1221,7 +1206,8 @@ function WeekView({
         </div>
       </div>
       <div className="gcal__hint">
-        Arrastra para mover · estira el borde inferior para la duración · arrastra en un hueco para crear
+        Arrastra para mover · estira el borde inferior para la duración · arrastra en un hueco para
+        crear
       </div>
     </>
   );
@@ -1285,10 +1271,7 @@ function MonthView({
                         {
                           "--ev-soft": m.soft,
                           "--ev-color": m.color,
-                          outline:
-                            selectedId === a.apptId
-                              ? `1px solid ${m.color}`
-                              : undefined,
+                          outline: selectedId === a.apptId ? `1px solid ${m.color}` : undefined,
                         } as React.CSSProperties
                       }
                       onClick={(e) => {
@@ -1297,16 +1280,12 @@ function MonthView({
                       }}
                     >
                       <span className="gcal__month-chip__dot" />
-                      <span className="gcal__month-chip__time">
-                        {hhmm(new Date(a.whenISO))}
-                      </span>
+                      <span className="gcal__month-chip__time">{hhmm(new Date(a.whenISO))}</span>
                       {apptLabel(a)}
                     </div>
                   );
                 })}
-                {list.length > 4 && (
-                  <div className="gcal__month-more">+{list.length - 4} más</div>
-                )}
+                {list.length > 4 && <div className="gcal__month-more">+{list.length - 4} más</div>}
               </div>
             </div>
           );
@@ -1337,10 +1316,7 @@ function EventDetailPopover({
   anchorY: number;
   onClose: () => void;
   onStatus: (id: string, s: string) => void;
-  onUpdate: (
-    id: string,
-    fields: Partial<Pick<Appt, "title" | "notes" | "customerName">>
-  ) => void;
+  onUpdate: (id: string, fields: Partial<Pick<Appt, "title" | "notes" | "customerName">>) => void;
   onReschedule: (id: string, whenISO: string, durationMin?: number) => void;
   onDelete: (id: string) => void;
 }) {
@@ -1364,8 +1340,7 @@ function EventDetailPopover({
       };
       window.addEventListener("mousedown", onDown);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).__gcalEvOff = () =>
-        window.removeEventListener("mousedown", onDown);
+      (window as any).__gcalEvOff = () => window.removeEventListener("mousedown", onDown);
     }, 120);
     return () => {
       clearTimeout(id);
@@ -1378,8 +1353,7 @@ function EventDetailPopover({
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node))
-        setMenuOpen(false);
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     };
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
@@ -1449,11 +1423,7 @@ function EventDetailPopover({
           <Icon.Trash size={14} />
         </button>
         {digits && (
-          <a
-            className="gcal-evpop__act"
-            href={`tel:${digits}`}
-            title="Llamar al cliente"
-          >
+          <a className="gcal-evpop__act" href={`tel:${digits}`} title="Llamar al cliente">
             <Icon.Phone size={14} />
           </a>
         )}
@@ -1492,10 +1462,7 @@ function EventDetailPopover({
                       toast.success("Cita marcada como hecha");
                     }}
                   >
-                    <Icon.Check
-                      size={13}
-                      style={{ color: "var(--accent-green)" }}
-                    />
+                    <Icon.Check size={13} style={{ color: "var(--accent-green)" }} />
                     Marcar hecha
                   </button>
                   <button
@@ -1506,10 +1473,7 @@ function EventDetailPopover({
                       setMenuOpen(false);
                     }}
                   >
-                    <Icon.Close
-                      size={13}
-                      style={{ color: "var(--accent-amber)" }}
-                    />
+                    <Icon.Close size={13} style={{ color: "var(--accent-amber)" }} />
                     No asistió
                   </button>
                   <button
@@ -1520,10 +1484,7 @@ function EventDetailPopover({
                       setMenuOpen(false);
                     }}
                   >
-                    <Icon.Close
-                      size={13}
-                      style={{ color: "var(--accent-red)" }}
-                    />
+                    <Icon.Close size={13} style={{ color: "var(--accent-red)" }} />
                     Cancelar cita
                   </button>
                 </>
@@ -1646,10 +1607,7 @@ function EventDetailPopover({
 
         {/* Status chip */}
         <div style={{ display: "flex", justifyContent: "flex-start" }}>
-          <span
-            className="gcal-evpop__chip"
-            style={{ background: m.soft, color: m.color }}
-          >
+          <span className="gcal-evpop__chip" style={{ background: m.soft, color: m.color }}>
             <span
               style={{
                 width: 7,
@@ -1667,15 +1625,13 @@ function EventDetailPopover({
           <span className="gcal-evpop__row-icon">
             <Icon.User size={14} />
           </span>
-          <div className="gcal-evpop__row-text" style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <span style={{ fontWeight: 500 }}>
-              {appt.customerName || appt.customerPhone}
-            </span>
+          <div
+            className="gcal-evpop__row-text"
+            style={{ display: "flex", flexDirection: "column", gap: 1 }}
+          >
+            <span style={{ fontWeight: 500 }}>{appt.customerName || appt.customerPhone}</span>
             {appt.customerName && appt.customerPhone && (
-              <span
-                className="mono"
-                style={{ color: "var(--text-3)", fontSize: 11.5 }}
-              >
+              <span className="mono" style={{ color: "var(--text-3)", fontSize: 11.5 }}>
                 {appt.customerPhone}
               </span>
             )}
@@ -1687,9 +1643,7 @@ function EventDetailPopover({
           <span className="gcal-evpop__row-icon">
             <Icon.Clock size={14} />
           </span>
-          <span className="gcal-evpop__row-text">
-            Duración · {appt.durationMin || 30} min
-          </span>
+          <span className="gcal-evpop__row-text">Duración · {appt.durationMin || 30} min</span>
         </div>
 
         {/* Notes (when set) */}
@@ -1770,9 +1724,7 @@ function QuickCreatePopover({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   // Lead / Customer Profile autocomplete state
-  const [customerSuggestions, setCustomerSuggestions] = useState<
-    CustomerSuggestion[]
-  >([]);
+  const [customerSuggestions, setCustomerSuggestions] = useState<CustomerSuggestion[]>([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [pickedProfileId, setPickedProfileId] = useState<string | null>(null);
   const nameDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -1799,7 +1751,7 @@ function QuickCreatePopover({
     if (!ep?.listRecentCustomers || !me) return;
     try {
       const r = await fetch(
-        `${ep.listRecentCustomers}?agentUsername=${encodeURIComponent(me)}&limit=20`
+        `${ep.listRecentCustomers}?agentUsername=${encodeURIComponent(me)}&limit=20`,
       );
       const j = await r.json();
       const items = Array.isArray(j.items) ? j.items : [];
@@ -1816,7 +1768,7 @@ function QuickCreatePopover({
               email: it.email || (phoneIsEmail ? it.customerPhone : undefined),
               phoneNumber: phoneIsEmail ? undefined : it.customerPhone,
             },
-            it.customerPhone
+            it.customerPhone,
           ),
           phone: phoneIsEmail ? undefined : it.customerPhone,
           email: it.email || (phoneIsEmail ? it.customerPhone : undefined),
@@ -1847,9 +1799,7 @@ function QuickCreatePopover({
       const ep = getApiEndpoints();
       if (!ep?.searchCustomerProfiles) return;
       try {
-        const r = await fetch(
-          `${ep.searchCustomerProfiles}?q=${encodeURIComponent(trimmed)}`
-        );
+        const r = await fetch(`${ep.searchCustomerProfiles}?q=${encodeURIComponent(trimmed)}`);
         const j = await r.json();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mapped: CustomerSuggestion[] = (j.results || []).map((s: any) => ({
@@ -1862,7 +1812,7 @@ function QuickCreatePopover({
               email: s.email,
               phoneNumber: s.phoneNumber,
             },
-            "(sin nombre)"
+            "(sin nombre)",
           ),
           phone: s.phoneNumber,
           email: s.email,
@@ -1919,8 +1869,7 @@ function QuickCreatePopover({
       };
       window.addEventListener("mousedown", onDown);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).__gcalPopupOff = () =>
-        window.removeEventListener("mousedown", onDown);
+      (window as any).__gcalPopupOff = () => window.removeEventListener("mousedown", onDown);
     }, 120);
     return () => {
       clearTimeout(id);
@@ -1965,8 +1914,8 @@ function QuickCreatePopover({
         channel === "email"
           ? "Falta el email del cliente"
           : channel === "task"
-          ? ""
-          : "Falta el teléfono del cliente"
+            ? ""
+            : "Falta el teléfono del cliente",
       );
       return;
     }
@@ -2031,12 +1980,7 @@ function QuickCreatePopover({
         <span className="gcal-pop__handle" aria-hidden="true">
           ⋮⋮
         </span>
-        <button
-          type="button"
-          className="gcal-pop__close"
-          onClick={onClose}
-          aria-label="Cerrar"
-        >
+        <button type="button" className="gcal-pop__close" onClick={onClose} aria-label="Cerrar">
           <Icon.Close size={14} />
         </button>
       </div>
@@ -2065,11 +2009,7 @@ function QuickCreatePopover({
                 type="button"
                 className={`gcal-pop__tab${active ? " gcal-pop__tab--active" : ""}`}
                 onClick={() => setChannel(c)}
-                style={
-                  active
-                    ? { background: meta.soft, color: meta.color }
-                    : undefined
-                }
+                style={active ? { background: meta.soft, color: meta.color } : undefined}
               >
                 <Icn size={13} /> {meta.label}
               </button>
@@ -2193,12 +2133,10 @@ function QuickCreatePopover({
                       color: "var(--text-1)",
                     }}
                     onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.background =
-                        "var(--bg-hover)";
+                      (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
                     }}
                     onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.background =
-                        "transparent";
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
                     }}
                   >
                     <span
@@ -2278,10 +2216,7 @@ function QuickCreatePopover({
               <Icon.Phone
                 size={14}
                 style={{
-                  color:
-                    channel === "whatsapp"
-                      ? "var(--accent-cyan)"
-                      : "var(--accent-green)",
+                  color: channel === "whatsapp" ? "var(--accent-cyan)" : "var(--accent-green)",
                 }}
               />
             </span>
@@ -2289,9 +2224,7 @@ function QuickCreatePopover({
               <input
                 className="gcal-pop__row-input"
                 placeholder={
-                  channel === "task"
-                    ? "Teléfono (opcional)"
-                    : "Teléfono · ej. +51953730189"
+                  channel === "task" ? "Teléfono (opcional)" : "Teléfono · ej. +51953730189"
                 }
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
@@ -2350,12 +2283,7 @@ function QuickCreatePopover({
       </div>
 
       <div className="gcal-pop__foot">
-        <button
-          type="button"
-          className="gcal-pop__more"
-          onClick={onClose}
-          title="Cancelar"
-        >
+        <button type="button" className="gcal-pop__more" onClick={onClose} title="Cancelar">
           Cancelar
         </button>
         <button

@@ -748,19 +748,22 @@ function evalCond(data: Record<string, unknown>, vars: Record<string, string>): 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  // Warmer (EventBridge ~cada 5min): mantiene el contenedor caliente para matar el
+  // cold start. Sale al instante, sin resolver tenant ni cargar bot.
+  if (event?.warmer) return { statusCode: 200, headers: CORS, body: "warm" };
+
   const method = event.requestContext?.http?.method || event.httpMethod || "POST";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
 
-  // BYO Data Plane (#46): tenant primero, fallback Vox. OJO: este Lambda es
-  // hand-managed (deploy-lambda.mjs) — si quedó con _shared viejo, resolveDynamo
-  // no resuelve el data-plane del tenant y el RAG vuelve vacío. Re-deployá tras
-  // tocar tenantConnect/cognitoAuth.
-  ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
-
   try {
     const body = JSON.parse(event.body || "{}");
-    // BYO Bedrock: el playground (authed) trae el tenant en el JWT; una llamada
-    // server-to-server desde el Contact Flow del cliente lo pasa en body.tenantId.
+    // BYO Data Plane (#46) + Bedrock: el tenant viene del JWT (playground authed) o
+    // de body.tenantId en llamadas server-to-server (whatsapp-meta-webhook, Contact
+    // Flow del cliente). SIN body.tenantId, resolveDynamo cae a "anónimo" →
+    // blockedDynamoClient → loadBot no encuentra el bot → 400 (el flujo por WhatsApp
+    // no responde). OJO: hand-managed (deploy-lambda.mjs) — re-deployá tras tocar
+    // tenantConnect/cognitoAuth.
+    ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo, body?.tenantId));
     ({ client: bedrock } = await resolveBedrock(event?.headers, legacyBedrock, body?.tenantId));
     let bot: Bot | null = body.bot && Array.isArray(body.bot.nodes) ? (body.bot as Bot) : null;
     if (!bot && body.botId) bot = await loadBot(String(body.botId));

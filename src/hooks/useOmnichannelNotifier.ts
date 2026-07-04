@@ -153,7 +153,7 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
           const notif = new Notification(title, {
             body: newContactBody(c),
             tag: `contact-${c.contactId}`,
-            icon: "/favicon.svg",
+            icon: "/icon-192.png",
           });
           notif.onclick = () => {
             window.focus();
@@ -228,7 +228,7 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
               const notif = new Notification(title, {
                 body,
                 tag: `msg-${contact.contactId}`,
-                icon: "/favicon.svg",
+                icon: "/icon-192.png",
               });
               notif.onclick = () => {
                 window.focus();

@@ -1,12 +1,10 @@
 import type { Handler } from "aws-lambda";
-import {
-  CustomerProfilesClient,
-  UpdateProfileCommand,
-} from "@aws-sdk/client-customer-profiles";
+import { CustomerProfilesClient, UpdateProfileCommand } from "@aws-sdk/client-customer-profiles";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "node:crypto";
 import { ConnectClient } from "@aws-sdk/client-connect";
 import { resolveConnect } from "../_shared/tenantConnect";
+import { upsertLeadNameByPhone, propagateNameToConversations } from "../_shared/nameSync";
 
 /**
  * update-customer-profile — Connect Customer Profiles writer. The agent
@@ -25,10 +23,14 @@ const legacyProfiles = new CustomerProfilesClient({});
 let profiles: CustomerProfilesClient = legacyProfiles;
 const legacyDynamo = new DynamoDBClient({});
 let dynamo: DynamoDBClient = legacyDynamo;
-const LEGACY_DOMAIN =
-  process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+const LEGACY_DOMAIN = process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
 let DOMAIN_NAME = LEGACY_DOMAIN;
 const AUDIT_TABLE = process.env.ADMIN_AUDIT_TABLE || "connectview-admin-audit";
+// Uniformización del nombre: el lead (connectview-leads) es lo que leen Leads y
+// Grabaciones; las conversaciones cachean customerName. Al editar el Customer
+// Profile desde el Agent Desktop, propagamos el nombre nuevo a esos dos almacenes.
+const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
+const CONVERSATIONS_TABLE = process.env.CONVERSATIONS_TABLE || "connectview-conversations";
 
 // CORS is handled by the Function URL's own CORS config (duplicated
 // headers cause the browser to reject the response).
@@ -53,6 +55,21 @@ const ALLOWED_FIELDS = [
   "AccountNumber",
   "AdditionalInformation",
   "BirthDate",
+  // Género como texto libre (GenderString; el enum Gender rechaza valores fuera de
+  // MALE/FEMALE/UNSPECIFIED). El frontend manda GenderString.
+  "GenderString",
+] as const;
+
+// Subcampos de dirección que aceptamos (Amazon Connect Customer Profiles `Address`
+// es un objeto anidado). El frontend manda `address: { Address1, City, ... }`.
+const ADDRESS_KEYS = [
+  "Address1",
+  "Address2",
+  "City",
+  "State",
+  "Province",
+  "Country",
+  "PostalCode",
 ] as const;
 
 async function audit(
@@ -60,7 +77,7 @@ async function audit(
   profileId: string,
   fields: Record<string, unknown>,
   result: "success" | "error",
-  errorMsg?: string
+  errorMsg?: string,
 ): Promise<void> {
   try {
     await dynamo.send(
@@ -75,7 +92,7 @@ async function audit(
           result: { S: result },
           errorMsg: { S: errorMsg || "" },
         },
-      })
+      }),
     );
   } catch (err) {
     console.warn("audit write failed:", err);
@@ -86,7 +103,14 @@ interface UpdateBody {
   profileId: string;
   fields: Record<string, string | null | undefined>;
   attributes?: Record<string, string | null>;
+  // Dirección (objeto anidado de Customer Profiles).
+  address?: Record<string, string | null>;
   actor?: string;
+  // Para propagar el nombre a connectview-leads + conversaciones (uniformización):
+  // el frontend manda el teléfono del cliente y su nombre completo resultante.
+  phone?: string;
+  name?: string;
+  email?: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -100,9 +124,7 @@ export const handler: Handler = async (event: any) => {
     const r = await resolveConnect(event?.headers, legacyConnect, "");
     profiles = r.customerProfiles || legacyProfiles;
     // Fail-closed: tenant real sin CP resuelto → "" → NO escribimos en Novasys.
-    DOMAIN_NAME = r.tenantScoped
-      ? r.customerProfilesDomain || ""
-      : LEGACY_DOMAIN;
+    DOMAIN_NAME = r.tenantScoped ? r.customerProfilesDomain || "" : LEGACY_DOMAIN;
     dynamo = r.dynamo || legacyDynamo;
   }
 
@@ -152,38 +174,79 @@ export const handler: Handler = async (event: any) => {
     updates[key] = v === null ? "" : String(v);
   }
 
+  // Dirección (objeto anidado) + atributos personalizados (bolsón clave-valor).
+  const cmdExtra: Record<string, unknown> = {};
+  if (body.address && typeof body.address === "object") {
+    const addr: Record<string, string> = {};
+    for (const k of ADDRESS_KEYS) {
+      const v = body.address[k];
+      if (v !== undefined) addr[k] = v === null ? "" : String(v);
+    }
+    if (Object.keys(addr).length) cmdExtra.Address = addr;
+  }
+  if (body.attributes && typeof body.attributes === "object") {
+    // UpdateProfile REEMPLAZA el mapa completo de `Attributes`. El frontend manda
+    // el set deseado ya mergeado (los quitados no vienen); acá filtramos vacíos.
+    const attrs: Record<string, string> = {};
+    for (const [k, v] of Object.entries(body.attributes)) {
+      if (v != null && String(v).trim() !== "") attrs[k.trim()] = String(v);
+    }
+    cmdExtra.Attributes = attrs;
+  }
+
   try {
-    // Customer Profiles UpdateProfile fields are pass-through. Attributes
-    // map is merged separately; passing `Attributes` in the request fully
-    // replaces existing attributes, so we don't expose attribute editing
-    // here (would be lossy without a get-then-merge step).
+    // Customer Profiles UpdateProfile: los campos base son pass-through; `Address`
+    // es un objeto anidado; `Attributes` reemplaza el mapa completo (el front manda
+    // el set ya mergeado).
     await profiles.send(
       new UpdateProfileCommand({
         DomainName: DOMAIN_NAME,
         ProfileId: body.profileId,
         ...updates,
-      })
+        ...cmdExtra,
+      }),
     );
-    await audit(
-      body.actor || "unknown",
-      body.profileId,
-      updates,
-      "success"
-    );
+    await audit(body.actor || "unknown", body.profileId, updates, "success");
+    // Uniformización del nombre: propagar a connectview-leads (update-if-exists por
+    // teléfono) + a las conversaciones del inbox, para que Leads / Grabaciones /
+    // Conversaciones muestren el mismo nombre que se editó acá. Best-effort: un
+    // fallo de propagación NO invalida el guardado del Customer Profile.
+    let propagatedLeadId: string | null = null;
+    if (body.phone && body.name) {
+      try {
+        propagatedLeadId = await upsertLeadNameByPhone(
+          dynamo,
+          LEADS_TABLE,
+          body.phone,
+          body.name,
+          body.email,
+        );
+        await propagateNameToConversations(
+          legacyDynamo,
+          CONVERSATIONS_TABLE,
+          propagatedLeadId,
+          body.phone,
+          body.name,
+        );
+      } catch (e) {
+        console.warn(
+          "propagación de nombre falló (no crítico):",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
-      body: JSON.stringify({ profileId: body.profileId, updated: true }),
+      body: JSON.stringify({
+        profileId: body.profileId,
+        updated: true,
+        propagatedToLead: !!propagatedLeadId,
+      }),
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await audit(
-      body.actor || "unknown",
-      body.profileId,
-      updates,
-      "error",
-      msg
-    );
+    await audit(body.actor || "unknown", body.profileId, updates, "error", msg);
     console.error("update-customer-profile error", err);
     return {
       statusCode: 500,

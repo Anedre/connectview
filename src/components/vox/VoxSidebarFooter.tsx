@@ -6,6 +6,7 @@ import { useCCP } from "@/hooks/useCCP";
 import { roleLabelOf } from "@/types/auth";
 import * as Icon from "./primitives";
 import { initialsOf } from "./primitives";
+import { NotificationsBell } from "@/components/layout/NotificationsBell";
 
 /**
  * VoxSidebarFooter — el "dock" al pie del sidebar: identidad del usuario + tema,
@@ -15,10 +16,15 @@ import { initialsOf } from "./primitives";
  */
 
 const PRESENCE: Record<string, string> = {
-  Available: "var(--accent-green)", Routable: "var(--accent-green)",
-  Busy: "var(--accent-cyan)", CallingCustomer: "var(--accent-cyan)",
-  AfterCallWork: "var(--accent-amber)", PendingBusy: "var(--accent-amber)",
-  Offline: "var(--text-3)", Init: "var(--text-3)", Error: "var(--accent-red)",
+  Available: "var(--accent-green)",
+  Routable: "var(--accent-green)",
+  Busy: "var(--accent-cyan)",
+  CallingCustomer: "var(--accent-cyan)",
+  AfterCallWork: "var(--accent-amber)",
+  PendingBusy: "var(--accent-amber)",
+  Offline: "var(--text-3)",
+  Init: "var(--text-3)",
+  Error: "var(--accent-red)",
 };
 
 export function VoxSidebarFooter() {
@@ -47,14 +53,8 @@ export function VoxSidebarFooter() {
         <button className="sb__dockbtn" title="Tema" onClick={toggleTheme}>
           {resolvedTheme === "dark" ? <Icon.Sun size={15} /> : <Icon.Moon size={15} />}
         </button>
-        <button className="sb__dockbtn" title="Notificaciones">
-          <Icon.Bell size={15} />
-        </button>
-        <button
-          className="sb__dockbtn"
-          title="Cuenta"
-          onClick={() => setUserMenu((o) => !o)}
-        >
+        <NotificationsBell placement="up" buttonClassName="sb__dockbtn" iconSize={15} />
+        <button className="sb__dockbtn" title="Cuenta" onClick={() => setUserMenu((o) => !o)}>
           <Icon.User size={15} />
         </button>
       </div>
@@ -70,7 +70,10 @@ export function VoxSidebarFooter() {
             type="button"
             className="sb__item"
             style={{ margin: 4, padding: "8px 10px" }}
-            onClick={() => { setUserMenu(false); signOut(); }}
+            onClick={() => {
+              setUserMenu(false);
+              signOut();
+            }}
           >
             <Icon.Logout className="sb__icon" size={14} />
             <span className="sb__label">Cerrar sesión</span>
@@ -79,7 +82,10 @@ export function VoxSidebarFooter() {
       )}
 
       {userMenu && (
-        <div onClick={() => setUserMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
+        <div
+          onClick={() => setUserMenu(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 150 }}
+        />
       )}
     </div>
   );

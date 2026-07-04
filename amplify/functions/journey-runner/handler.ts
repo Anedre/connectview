@@ -407,7 +407,13 @@ async function sendEmail(
   }
   const subject = String(params.subject || "ARIA");
   const bodyText = String(params.body || "");
-  const baseHtml = `<p>${bodyText.replace(/\n/g, "<br>")}</p>`;
+  const brandEmailHtml = (bodyHtml: string) =>
+    `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e7e9f0;border-radius:12px;overflow:hidden">` +
+    `<div style="background:linear-gradient(135deg,#2c5698,#158a8c);padding:16px 22px"><span style="color:#ffffff;font-weight:800;font-size:18px;letter-spacing:-0.02em">ARIA</span><span style="color:rgba(255,255,255,0.72);font-size:11px;margin-left:7px">by Novasys</span></div>` +
+    `<div style="padding:22px;color:#141c2b;font-size:14px;line-height:1.62">${bodyHtml}</div>` +
+    `<div style="padding:12px 22px;background:#fbfaf9;border-top:1px solid #e7e9f0;color:#7c879e;font-size:11px">Enviado por ARIA · by Novasys</div>` +
+    `</div>`;
+  const baseHtml = brandEmailHtml(bodyText.replace(/\n/g, "<br>"));
 
   // Tracking: token → a quién apunta; HTML con pixel + links envueltos.
   let html = baseHtml;

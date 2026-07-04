@@ -36,7 +36,14 @@ import {
   patchConversation,
   setAssignee,
   wantsHuman,
+  closeConversation,
 } from "../_shared/conversations";
+import {
+  findWaNumber,
+  normalizeWaNumbers,
+  type WhatsAppConfig,
+  type WhatsAppNumber,
+} from "../_shared/whatsappNumbers";
 
 /**
  * whatsapp-meta-webhook — webhook de Meta Cloud API para números de WhatsApp
@@ -147,9 +154,13 @@ interface TenantWa {
   tenantId: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   whatsapp: any;
+  /** El número específico que recibió el mensaje (con su ruteo `botId`). */
+  number?: WhatsAppNumber;
 }
 
-/** Encuentra el tenant cuyo WhatsApp (modo meta) tiene este phone_number_id. */
+/** Encuentra el tenant + el número (modo meta) que tiene este phone_number_id.
+ *  Multi-número: matchea sobre whatsapp.numbers[] (con retrocompat del singular).
+ *  El ruteo número→flujo (botId) vive en el número devuelto, no global del tenant. */
 async function findTenantByMetaPhone(phoneNumberId: string): Promise<TenantWa | null> {
   let lastKey: Record<string, unknown> | undefined;
   do {
@@ -160,9 +171,10 @@ async function findTenantByMetaPhone(phoneNumberId: string): Promise<TenantWa | 
       const row = unmarshall(it) as { tenantId?: string; configJson?: string };
       try {
         const cfg = JSON.parse(row.configJson || "{}");
-        const wa = cfg.whatsapp || {};
-        if (wa.mode === "meta" && wa.metaPhoneNumberId === phoneNumberId) {
-          return { tenantId: row.tenantId || "", whatsapp: wa };
+        const wa = (cfg.whatsapp || {}) as WhatsAppConfig;
+        const number = findWaNumber(normalizeWaNumbers(wa), phoneNumberId);
+        if (number && (number.mode || "meta") === "meta") {
+          return { tenantId: row.tenantId || "", whatsapp: wa, number };
         }
       } catch {
         /* config malformada → seguimos */
@@ -422,9 +434,7 @@ async function handleInbound(
   const convChannelId = convId("whatsapp", from);
   const takenByHuman =
     mirrored?.assignee === "agent" ||
-    (mirrored?.assignee == null &&
-      !!mirrored?.assignedAgent &&
-      mirrored.assignedAgent !== "bot");
+    (mirrored?.assignee == null && !!mirrored?.assignedAgent && mirrored.assignedAgent !== "bot");
   if (takenByHuman) {
     console.log(`WhatsApp ${from}: en manos de un humano → bot omitido`);
     return;
@@ -450,8 +460,7 @@ async function handleInbound(
     } catch (e) {
       console.error("escalado a agente (setAssignee) falló:", e);
     }
-    const HANDOFF_TEXT =
-      "¡Claro! Te comunico con un asesor humano. En un momento te atienden 🙂";
+    const HANDOFF_TEXT = "¡Claro! Te comunico con un asesor humano. En un momento te atienden 🙂";
     try {
       await sendWhatsApp(
         { mode: "meta" as const, metaPhoneNumberId: phoneNumberId, tenantId: t.tenantId },
@@ -471,7 +480,9 @@ async function handleInbound(
     return; // el bot NO genera su respuesta RAG: el humano atiende
   }
 
-  const botId = await pickBotId(dynamo, t.whatsapp?.botId);
+  // El flujo del NÚMERO que recibió el mensaje (ruteo por número). Si ese número
+  // no tiene flujo linkeado, cae al fallback (primer bot publicado / agente humano).
+  const botId = await pickBotId(dynamo, t.number?.botId ?? t.whatsapp?.botId);
   if (!botId) {
     // Sin flujo linkeado ni publicado → NO auto-respondemos con un bot: la
     // conversación va DIRECTO a un agente humano. La dejamos en estado "Agente"
@@ -512,6 +523,9 @@ async function handleInbound(
           state,
           input: choice ? { choice } : text ? { text } : undefined,
           source: "whatsapp",
+          // Sin JWT (server-to-server): bot-runtime resuelve el data-plane + Bedrock
+          // del tenant por este tenantId. Sin él, loadBot cae a blocked → 400.
+          tenantId: t.tenantId,
         }),
       });
       d = await resp.json();
@@ -577,6 +591,17 @@ async function handleInbound(
     } catch (e) {
       console.error("escalado por handoff del bot (setAssignee) falló:", e);
     }
+  } else if (d.done === true || d.done === "true") {
+    // Fin del flujo / Agente IA (done sin handoff): el bot ya se despidió en su
+    // último mensaje → CERRAMOS la conversación (reason "resolved"). El cierre
+    // unificado suelta el dueño → el próximo inbound del cliente la reabre limpia
+    // con el bot (no queda "cerrada para siempre" ni pegada a un agente).
+    console.log(`WhatsApp ${from}: bot-runtime terminó (done) → cierro la conversación`);
+    try {
+      await closeConversation(legacyDynamo, convChannelId, "resolved");
+    } catch (e) {
+      console.error("cierre por fin del bot falló:", e);
+    }
   }
 }
 
@@ -641,6 +666,10 @@ async function handleStatus(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  // Warmer (EventBridge ~cada 5min): mantiene el contenedor caliente para matar el
+  // cold start del 1er WhatsApp. Sale al instante, sin procesar nada.
+  if (event?.warmer) return { statusCode: 200, body: "warm" };
+
   const method = event?.requestContext?.http?.method || event?.httpMethod || "GET";
 
   // 1) Verificación del webhook (Meta lo llama al configurarlo).
@@ -683,15 +712,13 @@ export const handler: Handler = async (event: any) => {
           // `text` legible (el título) se espeja al inbox.
           const br = msg.interactive?.button_reply;
           const lr = msg.interactive?.list_reply;
-          const choice = br?.id ? `b:${br.id}` : lr?.id ? `r:${lr.id}` : undefined;
-          const text =
-            msg.text?.body ||
-            br?.title ||
-            lr?.title ||
-            msg.button?.text ||
-            "";
-          if (phoneNumberId && from)
-            await handleInbound(phoneNumberId, from, text, msg.id, choice);
+          // bot-runtime YA emite los ids de botón/fila CON su prefijo ("b:"/"r:"),
+          // y buildMetaMessage los manda tal cual como reply.id → Meta los devuelve
+          // igual. Usarlos directo: re-prefijar daba "b:b:maestrias" y ningún edge
+          // del grafo matcheaba → el bot no avanzaba al tocar un botón.
+          const choice = br?.id || lr?.id || undefined;
+          const text = msg.text?.body || br?.title || lr?.title || msg.button?.text || "";
+          if (phoneNumberId && from) await handleInbound(phoneNumberId, from, text, msg.id, choice);
         }
         // Pilar 4 — recibos de entrega (delivered/read/failed) llegan en el mismo
         // webhook, en value.statuses[]. Avanzan el estado del HSM + cuarentena.

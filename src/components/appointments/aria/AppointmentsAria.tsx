@@ -26,15 +26,14 @@ export interface CitasStats {
  *  global `.explain` class (no new CSS). */
 export function CitasExplain() {
   return (
-    <div className="explain" style={{ marginBottom: 0 }}>
-      <div className="explain__ico">
-        <Icon name="calendar" size={16} />
+    <div className="explain" style={{ marginBottom: 0, padding: "11px 13px", gap: 11 }}>
+      <div className="explain__ico" style={{ width: 30, height: 30 }}>
+        <Icon name="calendar" size={15} />
       </div>
       <div>
         <div className="explain__title">Tu agenda de captación</div>
-        <div className="explain__txt">
-          Cada cita queda ligada a un cliente o lead. Arrastra un bloque para
-          reagendar; ARIA envía recordatorios para bajar el no-show.
+        <div className="explain__txt" style={{ marginTop: 1 }}>
+          Cada cita queda ligada a un lead. ARIA envía recordatorios para bajar el no-show.
         </div>
       </div>
     </div>
@@ -86,18 +85,8 @@ export function CitasStatGrid({ stats }: { stats: CitasStats }) {
       <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <Stat icon="calendar" color="var(--accent)" label="Hoy" value={stats.today} />
         <Stat icon="layers" color="var(--cyan)" label="Semana" value={stats.week} />
-        <Stat
-          icon="check"
-          color="var(--green)"
-          label="Confirm."
-          value={`${stats.confirmedPct}%`}
-        />
-        <Stat
-          icon="missed"
-          color="var(--coral)"
-          label="No-show"
-          value={`${stats.noShowPct}%`}
-        />
+        <Stat icon="check" color="var(--green)" label="Confirm." value={`${stats.confirmedPct}%`} />
+        <Stat icon="missed" color="var(--coral)" label="No-show" value={`${stats.noShowPct}%`} />
       </div>
     </div>
   );

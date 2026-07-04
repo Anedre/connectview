@@ -73,8 +73,53 @@ export interface WhatsAppConn {
    *  número de Meta aparte (Cloud API, solo plantillas/bots). */
   mode?: "aws" | "meta";
   metaPhoneNumberId?: string;
+  /** Ruteo del número singular legacy → flujo. Multi-número: vive en numbers[].botId. */
+  botId?: string;
+  /** Multi-número: varios números de Meta/Connect por tenant (fuente de verdad).
+   *  El legacy singular de arriba se trata como numbers[0] vía effectiveWaNumbers. */
+  numbers?: WhatsAppNumberRef[];
   /** Formularios (WhatsApp Flows, #10) disponibles para enviar desde el chat. */
   flows?: WaFlowDef[];
+}
+
+/** Un número de WhatsApp registrado por el tenant (multi-número). El access token
+ *  vive en Secrets Manager (connectview/tenant/<id>/whatsapp), NUNCA acá. El ruteo
+ *  número→flujo es `botId`, decidido en la vista de Ruteo (sección Bots). Espejo de
+ *  `WhatsAppNumber` de amplify/functions/_shared/whatsappNumbers.ts. */
+export interface WhatsAppNumberRef {
+  id: string; // = metaPhoneNumberId (meta) o phoneNumberId (aws)
+  label?: string;
+  mode: "aws" | "meta";
+  metaPhoneNumberId?: string;
+  phoneNumberId?: string;
+  wabaId?: string;
+  displayNumber?: string;
+  botId?: string; // flujo/agente anclado (ruteo)
+  tokenSet?: boolean;
+  addedAt?: string;
+  connectedAt?: string;
+}
+
+/** Números del tenant, con el legacy singular incluido como numbers[0] si todavía
+ *  no migró (retrocompat, espejo de normalizeWaNumbers del backend). Sin tokens. */
+export function effectiveWaNumbers(wa: WhatsAppConn | undefined | null): WhatsAppNumberRef[] {
+  if (!wa) return [];
+  const out: WhatsAppNumberRef[] = Array.isArray(wa.numbers) ? [...wa.numbers] : [];
+  const legacyId = wa.metaPhoneNumberId || wa.phoneNumberId;
+  if (legacyId && !out.some((n) => (n.metaPhoneNumberId || n.id || n.phoneNumberId) === legacyId)) {
+    out.push({
+      id: legacyId,
+      label: "Número principal",
+      mode: wa.mode || "meta",
+      metaPhoneNumberId: wa.metaPhoneNumberId,
+      phoneNumberId: wa.phoneNumberId,
+      wabaId: wa.wabaId,
+      botId: wa.botId,
+      tokenSet: wa.tokenSet,
+      connectedAt: wa.connectedAt,
+    });
+  }
+  return out;
 }
 
 /** Número de WhatsApp ya vinculado a la instancia de Connect (AWS End User

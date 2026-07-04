@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
+import { Hint } from "@/components/ui/Hint";
 import { useCountUp, useMounted, useSvgId } from "./execUtils";
 
 /** Icono agnóstico de librería: acepta lucide, Phosphor, Tabler o los custom
@@ -41,13 +42,7 @@ export function ExecSpark({
   }, [data, w, h]);
 
   return (
-    <svg
-      width={w}
-      height={h}
-      viewBox={`0 0 ${w} ${h}`}
-      style={{ overflow: "visible" }}
-      aria-hidden
-    >
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: "visible" }} aria-hidden>
       <defs>
         <linearGradient id={id + "l"} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor={color} stopOpacity="0.5" />
@@ -99,6 +94,8 @@ export interface ExecStatProps {
   /** Índice para el stagger de entrada. */
   index?: number;
   onClick?: () => void;
+  /** Texto de ayuda en hover (qué significa el KPI). */
+  tip?: ReactNode;
 }
 
 /**
@@ -123,6 +120,7 @@ export function ExecStat({
   period,
   index = 0,
   onClick,
+  tip,
 }: ExecStatProps) {
   const display = useCountUp(value, { deps: [period], decimals });
   const fmt = (n: number) =>
@@ -142,7 +140,7 @@ export function ExecStat({
           ? "exec-delta--down"
           : "exec-delta--flat";
 
-  return (
+  const card = (
     <button
       type="button"
       className="exec-stat exec-anim"
@@ -170,10 +168,7 @@ export function ExecStat({
         {delta != null ? (
           <span className={`exec-delta ${deltaCls}`}>
             {delta > 0 ? "▲" : delta < 0 ? "▼" : "■"} {delta > 0 ? "+" : ""}
-            {delta}{" "}
-            <span style={{ color: "var(--e-t3)", fontWeight: 400 }}>
-              {deltaSuffix}
-            </span>
+            {delta} <span style={{ color: "var(--e-t3)", fontWeight: 400 }}>{deltaSuffix}</span>
           </span>
         ) : note ? (
           <span className="exec-stat__note">{note}</span>
@@ -181,15 +176,10 @@ export function ExecStat({
           <span />
         )}
         {spark && (
-          <ExecSpark
-            data={spark}
-            color={sparkColor || accent}
-            period={period}
-            w={92}
-            h={32}
-          />
+          <ExecSpark data={spark} color={sparkColor || accent} period={period} w={92} h={32} />
         )}
       </div>
     </button>
   );
+  return tip ? <Hint label={tip}>{card}</Hint> : card;
 }

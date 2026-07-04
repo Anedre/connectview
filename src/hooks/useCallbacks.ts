@@ -23,18 +23,14 @@ export interface CallbackRecord {
    *  COMPLETED → voice fired OK, OR email/whatsapp attended by agent
    *  FAILED    → voice dispatch threw
    *  CANCELLED → soft-cancelled */
-  status:
-    | "SCHEDULED"
-    | "DUE"
-    | "RINGING"
-    | "COMPLETED"
-    | "FAILED"
-    | "CANCELLED";
+  status: "SCHEDULED" | "DUE" | "RINGING" | "COMPLETED" | "FAILED" | "CANCELLED";
   assignedAgentUserId?: string;
   notes?: string;
   /** Default "voice" when missing (legacy rows). `task` is a generic
-   *  reminder with no auto-dispatch — the agent just sees it as a to-do. */
-  channel?: "voice" | "email" | "whatsapp" | "task";
+   *  reminder with no auto-dispatch — the agent just sees it as a to-do.
+   *  `notification` = in-app aviso creado por una automatización (notify_agent);
+   *  el dispatcher no lo toca, solo se muestra en la campana. */
+  channel?: "voice" | "email" | "whatsapp" | "task" | "notification";
   /** Free-text title / asunto — added for Citas. Optional; if missing,
    *  the UI derives a label from the channel + customer name. */
   title?: string;
@@ -71,7 +67,7 @@ interface UseCallbacksOptions {
    *  (most useful for the drawer). */
   status?: CallbackRecord["status"] | "PENDING";
   /** Filter by channel. */
-  channel?: "voice" | "email" | "whatsapp" | "task";
+  channel?: "voice" | "email" | "whatsapp" | "task" | "notification";
   /** Max rows returned. Default: 50, cap 200. */
   limit?: number;
   /** Auto-poll every N seconds. 0 = no auto-refresh. Default: 60. */
@@ -95,16 +91,8 @@ interface UseCallbacksReturn {
   available: boolean;
 }
 
-export function useCallbacks(
-  options: UseCallbacksOptions = {}
-): UseCallbacksReturn {
-  const {
-    agentUserId,
-    status,
-    channel,
-    limit = 50,
-    pollIntervalSec = 60,
-  } = options;
+export function useCallbacks(options: UseCallbacksOptions = {}): UseCallbacksReturn {
+  const { agentUserId, status, channel, limit = 50, pollIntervalSec = 60 } = options;
   const { user } = useAuth();
   const [callbacks, setCallbacks] = useState<CallbackRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -115,11 +103,7 @@ export function useCallbacks(
   const listUrl = endpoints?.listCallbacks;
   const cancelUrl = endpoints?.cancelCallback;
   const effectiveUserId =
-    agentUserId === null
-      ? null
-      : agentUserId !== undefined
-      ? agentUserId
-      : user?.userId;
+    agentUserId === null ? null : agentUserId !== undefined ? agentUserId : user?.userId;
   const available = !!listUrl;
 
   const refetch = useCallback(() => setRefreshTick((t) => t + 1), []);
@@ -178,16 +162,16 @@ export function useCallbacks(
         throw new Error(data?.error || `HTTP ${r.status}`);
       }
     },
-    [cancelUrl, user]
+    [cancelUrl, user],
   );
 
   const cancel = useCallback(
     (callbackId: string) => callMutation(callbackId, "cancel"),
-    [callMutation]
+    [callMutation],
   );
   const complete = useCallback(
     (callbackId: string) => callMutation(callbackId, "complete"),
-    [callMutation]
+    [callMutation],
   );
 
   return { callbacks, loading, error, refetch, cancel, complete, available };

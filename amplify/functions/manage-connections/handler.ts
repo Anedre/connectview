@@ -12,11 +12,7 @@
  *   - dynamodb CRUD sobre connectview-connections
  *   - secretsmanager Create/Put/GetSecretValue sobre connectview/tenant/*
  */
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  PutItemCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, GetItemCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import {
   SecretsManagerClient,
   CreateSecretCommand,
@@ -38,6 +34,14 @@ import {
   type MetaAccount,
   type MetaConfig,
 } from "../_shared/metaAccounts";
+import {
+  normalizeWaNumbers,
+  waNumberKey,
+  readWaSecret,
+  writeWaSecret,
+  type WhatsAppNumber as WaNumber,
+  type WhatsAppConfig,
+} from "../_shared/whatsappNumbers";
 
 const REGION = process.env.AWS_REGION || "us-east-1";
 const TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
@@ -66,9 +70,7 @@ async function detectWhatsAppNumbers(client: SocialMessagingClient): Promise<Wha
     for (const a of accts.linkedAccounts || []) {
       if (!a.id) continue;
       try {
-        const det = await client.send(
-          new GetLinkedWhatsAppBusinessAccountCommand({ id: a.id })
-        );
+        const det = await client.send(new GetLinkedWhatsAppBusinessAccountCommand({ id: a.id }));
         for (const p of det.account?.phoneNumbers || []) {
           out.push({
             displayPhoneNumber: p.displayPhoneNumber,
@@ -137,10 +139,7 @@ async function readStoredConfig(tenantId: string): Promise<Record<string, unknow
   }
   return {};
 }
-async function writeStoredConfig(
-  tenantId: string,
-  config: Record<string, unknown>,
-): Promise<void> {
+async function writeStoredConfig(tenantId: string, config: Record<string, unknown>): Promise<void> {
   await ddb.send(
     new PutItemCommand({
       TableName: TABLE,
@@ -182,7 +181,7 @@ export const handler = async (event: FnEvent) => {
   try {
     if (method === "GET") {
       const r = await ddb.send(
-        new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } })
+        new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } }),
       );
       const json = r.Item?.configJson?.S;
       const config = (json ? JSON.parse(json) : {}) as Record<string, unknown>;
@@ -196,7 +195,7 @@ export const handler = async (event: FnEvent) => {
       let sfConnected = false;
       try {
         const sec = await sm.send(
-          new GetSecretValueCommand({ SecretId: `connectview/tenant/${tenantId}/salesforce` })
+          new GetSecretValueCommand({ SecretId: `connectview/tenant/${tenantId}/salesforce` }),
         );
         try {
           sfConnected = !!JSON.parse(sec.SecretString || "{}").refreshToken;
@@ -212,7 +211,9 @@ export const handler = async (event: FnEvent) => {
       if (!sfConnected) {
         try {
           const master = await sm.send(
-            new GetSecretValueCommand({ SecretId: process.env.SF_SECRET_NAME || "connectview/salesforce" })
+            new GetSecretValueCommand({
+              SecretId: process.env.SF_SECRET_NAME || "connectview/salesforce",
+            }),
           );
           try {
             const p = JSON.parse(master.SecretString || "{}");
@@ -250,6 +251,10 @@ export const handler = async (event: FnEvent) => {
         action?: string;
         pageIds?: unknown[];
         pageId?: string;
+        number?: Partial<WaNumber>;
+        token?: string;
+        id?: string;
+        botId?: string;
       };
 
       // Provisión/ROTACIÓN del token de ENTRADA de Salesforce (SF→Vox). Mina un
@@ -271,7 +276,7 @@ export const handler = async (event: FnEvent) => {
         let stored: Record<string, unknown> = {};
         try {
           const r = await ddb.send(
-            new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } })
+            new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } }),
           );
           if (r.Item?.configJson?.S) stored = JSON.parse(r.Item.configJson.S);
         } catch {
@@ -291,7 +296,7 @@ export const handler = async (event: FnEvent) => {
               configJson: { S: JSON.stringify(stored) },
               updatedAt: { S: new Date().toISOString() },
             },
-          })
+          }),
         );
         // SEGURIDAD: el plaintext viaja UNA vez en esta respuesta y NUNCA se
         // persiste en DynamoDB (sólo el flag). No loguearlo.
@@ -399,6 +404,113 @@ export const handler = async (event: FnEvent) => {
         return resp(200, { ok: true, accounts: meta.accounts, tenantId });
       }
 
+      // ── WhatsApp multi-número (Meta Cloud API · varios números por tenant) ──
+      // Acciones AISLADAS (mergean SOLO el bloque whatsapp, sin pisar el resto del
+      // configJson). El access token de cada número vive en el secret
+      // connectview/tenant/<id>/whatsapp (numberTokens[<phoneNumberId>]), NUNCA en
+      // DynamoDB ni en el navegador. El ruteo número→flujo es number.botId (se decide
+      // en la vista de Ruteo, sección Bots). Retrocompat: normalizeWaNumbers trata el
+      // número singular viejo como numbers[0], sin migración manual.
+
+      // listWaNumbers → números registrados (con el legacy singular incluido). Sin tokens.
+      if (body.action === "listWaNumbers") {
+        const stored = await readStoredConfig(tenantId);
+        const wa = (stored.whatsapp as WhatsAppConfig) || {};
+        return resp(200, { numbers: normalizeWaNumbers(wa), tenantId });
+      }
+
+      // saveWaNumber → alta/edición de UN número (upsert por id = phone_number_id).
+      // Si viene `token`, se guarda en el secret (numberTokens[id]) + tokenSet=true.
+      if (body.action === "saveWaNumber") {
+        const n = (body.number || {}) as Partial<WaNumber>;
+        const mode = n.mode === "aws" ? "aws" : "meta";
+        const id = String(n.metaPhoneNumberId || n.phoneNumberId || n.id || "").trim();
+        if (!id) return resp(400, { error: "phoneNumberId requerido" });
+        const stored = await readStoredConfig(tenantId);
+        const wa = (stored.whatsapp as WhatsAppConfig) || {};
+        const numbers = normalizeWaNumbers(wa); // migra el singular a numbers[] al primer save
+        const now = new Date().toISOString();
+        const token = typeof body.token === "string" ? body.token.trim() : "";
+        if (token) {
+          const secret = await readWaSecret(sm, tenantId);
+          secret.numberTokens = { ...(secret.numberTokens || {}), [id]: token };
+          await writeWaSecret(sm, tenantId, secret);
+        }
+        const idx = numbers.findIndex((x) => waNumberKey(x) === id || x.id === id);
+        const prev = idx >= 0 ? numbers[idx] : undefined;
+        const merged: WaNumber = {
+          id,
+          label: (n.label ?? prev?.label)?.toString().trim() || undefined,
+          mode,
+          metaPhoneNumberId:
+            mode === "meta" ? id : (n.metaPhoneNumberId ?? prev?.metaPhoneNumberId),
+          phoneNumberId: n.phoneNumberId ?? prev?.phoneNumberId,
+          wabaId: (n.wabaId ?? prev?.wabaId)?.toString().trim() || undefined,
+          displayNumber: (n.displayNumber ?? prev?.displayNumber)?.toString().trim() || undefined,
+          botId: n.botId !== undefined ? n.botId || undefined : prev?.botId,
+          tokenSet: token ? true : prev?.tokenSet,
+          addedAt: prev?.addedAt || now,
+          connectedAt: prev?.connectedAt || now,
+        };
+        if (idx >= 0) numbers[idx] = merged;
+        else numbers.push(merged);
+        stored.whatsapp = { ...wa, numbers }; // conserva legacy singular; normalize deduplica
+        await writeStoredConfig(tenantId, stored);
+        return resp(200, { ok: true, numbers, tenantId });
+      }
+
+      // removeWaNumber → quitar un número (metadata + su token del secret).
+      if (body.action === "removeWaNumber") {
+        const id = String(body.id || body.number?.id || "").trim();
+        if (!id) return resp(400, { error: "id requerido" });
+        const stored = await readStoredConfig(tenantId);
+        const wa = (stored.whatsapp as WhatsAppConfig) || {};
+        const numbers = normalizeWaNumbers(wa).filter((x) => waNumberKey(x) !== id && x.id !== id);
+        const nextWa: WhatsAppConfig = { ...wa, numbers };
+        // Si el legacy singular apuntaba a este número, limpiarlo (si no,
+        // normalizeWaNumbers lo re-agregaría en la próxima lectura).
+        if ((wa.metaPhoneNumberId || wa.phoneNumberId) === id) {
+          nextWa.metaPhoneNumberId = undefined;
+          nextWa.phoneNumberId = undefined;
+          nextWa.mode = undefined;
+          nextWa.botId = undefined;
+          nextWa.wabaId = undefined;
+          nextWa.tokenSet = undefined;
+        }
+        stored.whatsapp = nextWa;
+        await writeStoredConfig(tenantId, stored);
+        try {
+          const secret = await readWaSecret(sm, tenantId);
+          if (secret.numberTokens && secret.numberTokens[id]) {
+            delete secret.numberTokens[id];
+            await writeWaSecret(sm, tenantId, secret);
+          }
+        } catch (e) {
+          console.error("removeWaNumber secret:", e instanceof Error ? e.name : String(e));
+        }
+        return resp(200, { ok: true, numbers, tenantId });
+      }
+
+      // setWaNumberBot → anclar (rutear) un número a un flujo/bot. Es la vista de
+      // Ruteo: el ruteo vive en el número, no en las credenciales. botId "" = sin flujo.
+      if (body.action === "setWaNumberBot") {
+        const id = String(body.id || "").trim();
+        if (!id) return resp(400, { error: "id requerido" });
+        const botId = typeof body.botId === "string" ? body.botId.trim() : "";
+        const stored = await readStoredConfig(tenantId);
+        const wa = (stored.whatsapp as WhatsAppConfig) || {};
+        const numbers = normalizeWaNumbers(wa);
+        const idx = numbers.findIndex((x) => waNumberKey(x) === id || x.id === id);
+        if (idx < 0) return resp(404, { error: "número no encontrado" });
+        numbers[idx] = { ...numbers[idx], botId: botId || undefined };
+        const nextWa: WhatsAppConfig = { ...wa, numbers };
+        // Alinear el legacy singular si es ese número (para que normalize no lo pise).
+        if ((wa.metaPhoneNumberId || wa.phoneNumberId) === id) nextWa.botId = botId || undefined;
+        stored.whatsapp = nextWa;
+        await writeStoredConfig(tenantId, stored);
+        return resp(200, { ok: true, numbers, tenantId });
+      }
+
       const config = (body.config || {}) as Record<string, unknown>;
 
       // El secreto de WhatsApp va a Secrets Manager; en DynamoDB solo el flag.
@@ -417,7 +529,7 @@ export const handler = async (event: FnEvent) => {
             new PutSecretValueCommand({
               SecretId: `connectview/tenant/${tenantId}/salesforce`,
               SecretString: JSON.stringify({ disconnected: true }),
-            })
+            }),
           );
         } catch (e) {
           if (!(e instanceof Error && e.name === "ResourceNotFoundException")) {
@@ -435,7 +547,7 @@ export const handler = async (event: FnEvent) => {
             configJson: { S: JSON.stringify(config) },
             updatedAt: { S: new Date().toISOString() },
           },
-        })
+        }),
       );
       return resp(200, { ok: true, config, tenantId });
     }

@@ -77,7 +77,11 @@ let leadsDynamo: DynamoDBClient = legacyDynamo;
 
 const HDRS = { "Content-Type": "application/json" };
 const ok = (b: unknown) => ({ statusCode: 200, headers: HDRS, body: JSON.stringify(b) });
-const bad = (c: number, e: string) => ({ statusCode: c, headers: HDRS, body: JSON.stringify({ error: e }) });
+const bad = (c: number, e: string) => ({
+  statusCode: c,
+  headers: HDRS,
+  body: JSON.stringify({ error: e }),
+});
 
 // ───────────────────────── tipos ─────────────────────────
 type TriggerType =
@@ -179,7 +183,7 @@ async function loadTenantRules(tenantId: string): Promise<Rule[]> {
         KeyConditionExpression: "tenantId = :t AND begins_with(sk, :p)",
         ExpressionAttributeValues: marshall({ ":t": tenantId, ":p": "rule#" }),
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
     for (const it of res.Items || []) out.push(unmarshall(it) as Rule);
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
@@ -199,7 +203,7 @@ async function loadAllRules(): Promise<Rule[]> {
         FilterExpression: "begins_with(sk, :p)",
         ExpressionAttributeValues: marshall({ ":p": "rule#" }),
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
     for (const it of res.Items || []) out.push(unmarshall(it) as Rule);
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
@@ -245,7 +249,9 @@ async function setupTenant(tenantId: string, strict = true): Promise<void> {
     return;
   }
   if (strict) throw new Error(`tenant ${tenantId} sin Connect/Data Plane configurado`);
-  console.warn(`automation: tenant ${tenantId} sin Data Plane — evento procesado contra pooled (CP off)`);
+  console.warn(
+    `automation: tenant ${tenantId} sin Data Plane — evento procesado contra pooled (CP off)`,
+  );
   leadsDynamo = legacyDynamo;
   setActiveDynamo(null);
   setActiveProfiles(cpFailClosed, "");
@@ -262,9 +268,7 @@ function firstFailedCondition(
   ctx: Ctx,
 ): { field: string; op: string; value: string; actual: string } | null {
   for (const c of rule.conditions || []) {
-    const actual = String(
-      (ctx as unknown as Record<string, unknown>)[c.field] ?? ""
-    ).toLowerCase();
+    const actual = String((ctx as unknown as Record<string, unknown>)[c.field] ?? "").toLowerCase();
     const expected = String(c.value ?? "").toLowerCase();
     if (c.op === "eq" && actual !== expected)
       return { field: c.field, op: c.op, value: c.value, actual };
@@ -327,9 +331,12 @@ function ctxFromEvent(ev: AutomationEvent): Ctx {
   };
 }
 
-/** Tokens {{name}}/{{phone}}/{{stage}}/{{email}} en variables, notas y emails. */
+/** Tokens {{name}}/{{phone}}/{{stage}}/{{email}} en variables, notas y emails.
+ *  Acepta también [[name]] (el formato que muestra la UI de Automatizaciones):
+ *  normalizamos [[token]] → {{token}} antes de reemplazar. */
 function fillTokens(s: string, ctx: Ctx): string {
   return s
+    .replace(/\[\[\s*(\w+)\s*\]\]/g, "{{$1}}")
     .replace(/\{\{\s*name\s*\}\}/gi, ctx.name || "")
     .replace(/\{\{\s*phone\s*\}\}/gi, ctx.phone || "")
     .replace(/\{\{\s*stage\s*\}\}/gi, ctx.stageId || "")
@@ -341,7 +348,7 @@ async function findLeadByPhone(phone: string): Promise<LeadItem | null> {
   let lastKey: Record<string, unknown> | undefined;
   do {
     const res = await leadsDynamo.send(
-      new ScanCommand({ TableName: LEADS_TABLE, ExclusiveStartKey: lastKey as never })
+      new ScanCommand({ TableName: LEADS_TABLE, ExclusiveStartKey: lastKey as never }),
     );
     for (const it of res.Items || []) {
       const l = unmarshall(it) as LeadItem;
@@ -354,7 +361,7 @@ async function findLeadByPhone(phone: string): Promise<LeadItem | null> {
 
 async function getLead(leadId: string): Promise<LeadItem | null> {
   const r = await leadsDynamo.send(
-    new GetItemCommand({ TableName: LEADS_TABLE, Key: { leadId: { S: leadId } } })
+    new GetItemCommand({ TableName: LEADS_TABLE, Key: { leadId: { S: leadId } } }),
   );
   return r.Item ? (unmarshall(r.Item) as LeadItem) : null;
 }
@@ -368,7 +375,7 @@ async function actSendTemplate(ctx: Ctx, params: Record<string, unknown>): Promi
   const templateName = String(params.templateName || "");
   if (!templateName) return "templateName requerido";
   const variables = (Array.isArray(params.variables) ? params.variables : []).map((v) =>
-    fillTokens(String(v), ctx)
+    fillTokens(String(v), ctx),
   );
   const r = await fetch(SEND_WA_URL, {
     method: "POST",
@@ -413,7 +420,7 @@ async function actMoveStage(ctx: Ctx, params: Record<string, unknown>): Promise<
       UpdateExpression: "SET stageId = :s, updatedAt = :t",
       ExpressionAttributeValues: { ":s": { S: stageId }, ":t": { S: now } },
       ConditionExpression: "attribute_exists(leadId)",
-    })
+    }),
   );
   const stageLabel = await stageIdToLabel(stageId);
   await appendLeadHistory(leadId, {
@@ -435,7 +442,7 @@ async function actMoveStage(ctx: Ctx, params: Record<string, unknown>): Promise<
           source: l.source || "Vox Leads",
           attributes: l.attributes,
         },
-        { origin: "vox" }
+        { origin: "vox" },
       );
     }
   } catch (err) {
@@ -444,10 +451,12 @@ async function actMoveStage(ctx: Ctx, params: Record<string, unknown>): Promise<
   return null;
 }
 
-async function actScheduleCallback(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
+async function actScheduleCallback(
+  ctx: Ctx,
+  params: Record<string, unknown>,
+): Promise<string | null> {
   // G6: el callback-dispatcher es pooled/legacy hoy → solo tenant fundador.
-  if (!isLegacyTenant(ctx.tenantId))
-    return "schedule_callback aún no soportado para tenants BYO";
+  if (!isLegacyTenant(ctx.tenantId)) return "schedule_callback aún no soportado para tenants BYO";
   const phone = (ctx.phone || "").trim();
   if (!phone) return "lead sin teléfono";
   const offsetHours = Number(params.offsetHours ?? 24);
@@ -483,7 +492,7 @@ async function actWebhook(
   ctx: Ctx,
   params: Record<string, unknown>,
   ruleName: string,
-  ruleId?: string
+  ruleId?: string,
 ): Promise<string | null> {
   const url = String(params.url || "");
   if (!/^https?:\/\//.test(url)) return "url inválida";
@@ -507,8 +516,15 @@ async function actWebhook(
       await sqs.send(
         new SendMessageCommand({
           QueueUrl: WEBHOOK_QUEUE_URL,
-          MessageBody: JSON.stringify({ kind: "new", url, payload, tenantId: ctx.tenantId, ruleId, ruleName }),
-        })
+          MessageBody: JSON.stringify({
+            kind: "new",
+            url,
+            payload,
+            tenantId: ctx.tenantId,
+            ruleId,
+            ruleName,
+          }),
+        }),
       );
       return null;
     } catch (err) {
@@ -580,7 +596,13 @@ async function actSendEmail(ctx: Ctx, params: Record<string, unknown>): Promise<
       /* gate best-effort: si falla la evaluación, seguimos con el envío */
     }
   }
-  const html = `<p>${bodyText.replace(/\n/g, "<br>")}</p>`;
+  const brandEmailHtml = (bodyHtml: string) =>
+    `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e7e9f0;border-radius:12px;overflow:hidden">` +
+    `<div style="background:linear-gradient(135deg,#2c5698,#158a8c);padding:16px 22px"><span style="color:#ffffff;font-weight:800;font-size:18px;letter-spacing:-0.02em">ARIA</span><span style="color:rgba(255,255,255,0.72);font-size:11px;margin-left:7px">by Novasys</span></div>` +
+    `<div style="padding:22px;color:#141c2b;font-size:14px;line-height:1.62">${bodyHtml}</div>` +
+    `<div style="padding:12px 22px;background:#fbfaf9;border-top:1px solid #e7e9f0;color:#7c879e;font-size:11px">Enviado por ARIA · by Novasys</div>` +
+    `</div>`;
+  const html = brandEmailHtml(bodyText.replace(/\n/g, "<br>"));
   await ses.send(
     new SendEmailCommand({
       FromEmailAddress: FROM_EMAIL,
@@ -699,32 +721,37 @@ async function actApplyAttribute(
  * así que no genera llamadas ni WhatsApp: solo aparece como tarea del agente.
  */
 async function actNotifyAgent(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
-  // Solo tenant fundador: la tabla de callbacks es pooled/legacy hoy (igual que
-  // actScheduleCallback). Para BYO sería una tabla en su Data Plane (follow-up).
-  if (!isLegacyTenant(ctx.tenantId))
-    return "notify_agent aún no soportado para tenants BYO";
   const message = fillTokens(String(params.message || ""), ctx).trim();
   if (!message) return "message requerido";
   const nowIso = new Date().toISOString();
-  const item: Record<string, { S: string } | { N: string }> = {
-    callbackId: { S: randomUUID() },
-    phone: { S: (ctx.phone || "").trim() },
-    customerName: { S: ctx.name || "" },
-    scheduledAt: { S: nowIso }, // "ahora": es un aviso, no un futuro
-    assignedAgentUserId: { S: String(params.agent || "") },
-    notes: { S: message.slice(0, 1024) },
-    channel: { S: "notification" },
-    actionType: { S: "none" }, // el dispatcher no la toca (ni voz ni wa)
-    campaignId: { S: "" },
-    contactFlowId: { S: "" },
-    sourcePhoneNumber: { S: "" },
-    customAttributes: { S: JSON.stringify({ automation: "1", kind: "notification" }) },
-    status: { S: "SCHEDULED" },
-    attempts: { N: "0" },
-    createdAt: { S: nowIso },
-    updatedAt: { S: nowIso },
-  };
-  await legacyDynamo.send(new PutItemCommand({ TableName: CALLBACKS_TABLE, Item: item }));
+  // assignedAgentUserId es KEY del GSI agent-scheduledAt-index → NO puede ser ""
+  // (rompe el PutItem con "parameter values are not valid"). Sin agente asignado se
+  // OMITE (aviso general, visible para admins/supervisores en la campana). Los demás
+  // campos vacíos también se omiten vía removeUndefinedValues.
+  const item = marshall(
+    {
+      callbackId: randomUUID(),
+      phone: (ctx.phone || "").trim() || undefined,
+      customerName: ctx.name || undefined,
+      scheduledAt: nowIso, // "ahora": es un aviso, no un futuro
+      assignedAgentUserId: String(params.agent || "").trim() || undefined,
+      notes: message.slice(0, 1024),
+      channel: "notification",
+      actionType: "none", // el dispatcher no la toca (ni voz ni wa)
+      customAttributes: JSON.stringify({ automation: "1", kind: "notification" }),
+      status: "SCHEDULED",
+      attempts: 0,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    },
+    { removeUndefinedValues: true },
+  );
+  // La notificación (channel="notification") vive en la tabla de callbacks del
+  // DATA PLANE del tenant (leadsDynamo, igual que apply_tag/apply_attribute):
+  // pooled para Novasys/default, la cuenta del cliente para BYO. Antes estaba
+  // gateada a solo-fundador; ya no. Si la tabla no existe en el BYO, el PutItem
+  // tira y el motor lo registra como error de acción (degrada, no rompe la regla).
+  await leadsDynamo.send(new PutItemCommand({ TableName: CALLBACKS_TABLE, Item: item }));
   return null;
 }
 
@@ -838,7 +865,7 @@ async function logRun(
       new PutItemCommand({
         TableName: RULES_TABLE,
         Item: marshall(run, { removeUndefinedValues: true }),
-      })
+      }),
     )
     .catch((e) => console.warn("logRun failed", e));
 }
@@ -851,7 +878,7 @@ async function bumpRule(tenantId: string, ruleId: string): Promise<void> {
         Key: marshall({ tenantId, sk: `rule#${ruleId}` }),
         UpdateExpression: "SET firedCount = if_not_exists(firedCount, :z) + :one, lastFiredAt = :t",
         ExpressionAttributeValues: marshall({ ":z": 0, ":one": 1, ":t": new Date().toISOString() }),
-      })
+      }),
     )
     .catch((e) => console.warn("bumpRule failed", e));
 }
@@ -931,11 +958,12 @@ async function executeRule(rule: Rule, triggerType: string, ctx: Ctx): Promise<n
 async function processEvent(ev: AutomationEvent): Promise<{ matched: number; fired: number }> {
   if (!ev?.type || !ev?.tenantId) return { matched: 0, fired: 0 };
   const rules = (await loadTenantRules(ev.tenantId)).filter(
-    (r) => r.trigger.type !== "lead_inactive" && matchesTrigger(r, ev)
+    (r) => r.trigger.type !== "lead_inactive" && matchesTrigger(r, ev),
   );
   const ctx = ctxFromEvent(ev);
   const matched: Rule[] = [];
-  const skipped: Array<{ rule: Rule; fail: NonNullable<ReturnType<typeof firstFailedCondition>> }> = [];
+  const skipped: Array<{ rule: Rule; fail: NonNullable<ReturnType<typeof firstFailedCondition>> }> =
+    [];
   for (const r of rules) {
     const fail = firstFailedCondition(r, ctx);
     if (fail) skipped.push({ rule: r, fail });
@@ -957,6 +985,19 @@ async function processEvent(ev: AutomationEvent): Promise<{ matched: number; fir
   if (matched.length === 0) return { matched: 0, fired: 0 };
 
   await setupTenant(ev.tenantId, false); // eventos: fallback pooled (no estricto)
+  // Enriquecer el ctx con el lead resuelto (por leadId/teléfono) cuando el evento
+  // no trajo nombre — así los tokens {{name}}/{{email}}/{{stage}} de las acciones
+  // (notify_agent, send_email…) funcionan aunque el disparador solo mande el
+  // teléfono (p.ej. message_inbound del webhook manda `lead: { phone }`).
+  if (!ctx.name && (ctx.phone || ctx.leadId)) {
+    const lead = await resolveLead(ctx);
+    if (lead) {
+      ctx.name = ctx.name || lead.name;
+      ctx.email = ctx.email || lead.email;
+      ctx.stageId = ctx.stageId || lead.stageId;
+      ctx.leadId = ctx.leadId || lead.leadId;
+    }
+  }
   let fired = 0;
   for (const rule of matched) fired += await executeRule(rule, ev.type, ctx);
   return { matched: matched.length, fired };
@@ -969,7 +1010,7 @@ async function scanLeads(): Promise<LeadItem[]> {
   let lastKey: Record<string, unknown> | undefined;
   do {
     const res = await leadsDynamo.send(
-      new ScanCommand({ TableName: LEADS_TABLE, ExclusiveStartKey: lastKey as never })
+      new ScanCommand({ TableName: LEADS_TABLE, ExclusiveStartKey: lastKey as never }),
     );
     for (const it of res.Items || []) out.push(unmarshall(it) as LeadItem);
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
@@ -989,7 +1030,7 @@ async function writeFiredMarker(leadId: string, ruleId: string): Promise<void> {
         Key: key,
         UpdateExpression: "SET attributes = if_not_exists(attributes, :empty)",
         ExpressionAttributeValues: { ":empty": { M: {} } },
-      })
+      }),
     )
     .catch(() => {});
   await leadsDynamo.send(
@@ -999,7 +1040,7 @@ async function writeFiredMarker(leadId: string, ruleId: string): Promise<void> {
       UpdateExpression: "SET attributes.#k = :now",
       ExpressionAttributeNames: { "#k": `autoFired_${ruleId}` },
       ExpressionAttributeValues: { ":now": { S: new Date().toISOString() } },
-    })
+    }),
   );
 }
 
@@ -1085,7 +1126,8 @@ export const handler: Handler = async (event: any) => {
     } catch {
       return bad(400, "JSON inválido");
     }
-    if (!body.event?.type || !body.event?.tenantId) return bad(400, "event.type y event.tenantId requeridos");
+    if (!body.event?.type || !body.event?.tenantId)
+      return bad(400, "event.type y event.tenantId requeridos");
     try {
       const res = await processEvent(body.event);
       return ok({ ok: true, ...res });
@@ -1103,6 +1145,8 @@ export const handler: Handler = async (event: any) => {
 
   // 3. Tick de EventBridge (scheduled) o invoke pelado.
   const res = await processTick();
-  console.log(`automation tick: tenants=${res.tenants} fired=${res.fired} skipped=${res.skipped.join(",") || "—"}`);
+  console.log(
+    `automation tick: tenants=${res.tenants} fired=${res.fired} skipped=${res.skipped.join(",") || "—"}`,
+  );
   return { ok: true, ...res };
 };

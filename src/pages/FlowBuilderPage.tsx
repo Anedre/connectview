@@ -4,6 +4,7 @@ import { Trash2 } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { FlowBuilder } from "@/components/bots/FlowBuilder";
 import { BotTemplateGallery } from "@/components/bots/BotTemplateGallery";
+import { WaRouting } from "@/components/bots/WaRouting";
 import { type Bot } from "@/lib/botFlow";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -40,7 +41,14 @@ const STATUS_TONE: Record<string, "green" | "gold" | "outline"> = {
 // Acento por bot — variedad visual (como los colores por etapa del embudo de
 // Leads) en vez de todo violeta. Cicla por índice.
 const BOT_ACCENTS = [
-  "#9B8CF0", "#6366F1", "#38BDF8", "#06B6D4", "#14B8A6", "#10B981", "#A855F7", "#EC4899",
+  "#9B8CF0",
+  "#6366F1",
+  "#38BDF8",
+  "#06B6D4",
+  "#14B8A6",
+  "#10B981",
+  "#A855F7",
+  "#EC4899",
 ];
 export function botColor(i: number): string {
   return BOT_ACCENTS[i % BOT_ACCENTS.length];
@@ -55,6 +63,7 @@ export function FlowBuilderPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "draft" | "paused">("all");
   const [picking, setPicking] = useState(false);
   const [autoTest, setAutoTest] = useState(false);
+  const [routing, setRouting] = useState(false);
 
   const ep = getApiEndpoints();
   const { confirm, confirmDialog } = useConfirm();
@@ -69,7 +78,11 @@ export function FlowBuilderPage() {
       const r = await fetch(ep.manageBot);
       const d = await r.json();
       // Agents live in their own hub (/agente); keep this list to visual bots.
-      setList(Array.isArray(d.bots) ? d.bots.filter((b: BotSummary & { kind?: string }) => b.kind !== "agent") : []);
+      setList(
+        Array.isArray(d.bots)
+          ? d.bots.filter((b: BotSummary & { kind?: string }) => b.kind !== "agent")
+          : [],
+      );
     } catch {
       toast.error("No se pudieron cargar los bots");
     } finally {
@@ -126,7 +139,15 @@ export function FlowBuilderPage() {
   const remove = async (botId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!ep?.manageBot) return;
-    if (!(await confirm({ title: "¿Eliminar este bot?", description: "No se puede deshacer.", destructive: true, confirmLabel: "Eliminar" }))) return;
+    if (
+      !(await confirm({
+        title: "¿Eliminar este bot?",
+        description: "No se puede deshacer.",
+        destructive: true,
+        confirmLabel: "Eliminar",
+      }))
+    )
+      return;
     try {
       await fetch(`${ep.manageBot}?botId=${encodeURIComponent(botId)}`, { method: "DELETE" });
       toast.success("Bot eliminado");
@@ -155,6 +176,11 @@ export function FlowBuilderPage() {
     );
   }
 
+  // ── Ruteo de WhatsApp (número → flujo) ──
+  if (routing) {
+    return <WaRouting onBack={() => setRouting(false)} />;
+  }
+
   // ── Template picker (premium Kommo-style gallery) ──
   if (picking) {
     return (
@@ -180,7 +206,7 @@ export function FlowBuilderPage() {
   const kept = list.filter(
     (b) =>
       (!q || (b.name || "").toLowerCase().includes(q.toLowerCase())) &&
-      (statusFilter === "all" || b.status === statusFilter)
+      (statusFilter === "all" || b.status === statusFilter),
   );
   const FILTERS: { key: typeof statusFilter; label: string }[] = [
     { key: "all", label: "Todos" },
@@ -204,6 +230,9 @@ export function FlowBuilderPage() {
         chipTone="var(--accent)"
         right={
           <div className="row gap10">
+            <Btn variant="ghost" size="sm" icon="flow" onClick={() => setRouting(true)}>
+              Ruteo WhatsApp
+            </Btn>
             <Btn variant="ghost" size="sm" icon="refresh" onClick={loadList} disabled={loading}>
               Actualizar
             </Btn>
@@ -215,7 +244,10 @@ export function FlowBuilderPage() {
       />
 
       {loading ? (
-        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+        <div
+          className="grid"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}
+        >
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="skel" style={{ height: 168, borderRadius: 14 }} />
           ))}
@@ -227,9 +259,15 @@ export function FlowBuilderPage() {
             Todavía no hay bots
           </div>
           <div style={{ marginTop: 4, fontSize: 12.5 }}>
-            Construí flujos sin código para automatizar chats, calificar leads y derivar a un agente.
+            Construí flujos sin código para automatizar chats, calificar leads y derivar a un
+            agente.
           </div>
-          <Btn variant="primary" icon="plus" style={{ marginTop: 16 }} onClick={() => setPicking(true)}>
+          <Btn
+            variant="primary"
+            icon="plus"
+            style={{ marginTop: 16 }}
+            onClick={() => setPicking(true)}
+          >
             Crear el primero
           </Btn>
         </div>
@@ -238,9 +276,19 @@ export function FlowBuilderPage() {
           {/* KPIs — familia ARIA (Stat + count-up). */}
           <div
             className="grid"
-            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}
+            style={{
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 16,
+              marginBottom: 20,
+            }}
           >
-            <Stat icon="bot" color="var(--accent)" label="Bots" value={<Num value={counts.all} />} sub="flujos creados" />
+            <Stat
+              icon="bot"
+              color="var(--accent)"
+              label="Bots"
+              value={<Num value={counts.all} />}
+              sub="flujos creados"
+            />
             <Stat
               icon="check"
               color="var(--green)"
@@ -248,12 +296,29 @@ export function FlowBuilderPage() {
               value={<Num value={counts.active} />}
               sub={`${counts.draft} borradores`}
             />
-            <Stat icon="grip" color="var(--iris)" label="Borradores" value={<Num value={counts.draft} />} sub="sin publicar" />
-            <Stat icon="flow" color="var(--gold)" label="Pasos totales" value={<Num value={totalSteps} />} sub="en todos los bots" />
+            <Stat
+              icon="grip"
+              color="var(--iris)"
+              label="Borradores"
+              value={<Num value={counts.draft} />}
+              sub="sin publicar"
+            />
+            <Stat
+              icon="flow"
+              color="var(--gold)"
+              label="Pasos totales"
+              value={<Num value={totalSteps} />}
+              sub="en todos los bots"
+            />
           </div>
 
           {/* Filtros de estado — pills estilo ARIA. */}
-          <div className="row gap8" role="tablist" aria-label="Estado" style={{ marginBottom: 16, flexWrap: "wrap" }}>
+          <div
+            className="row gap8"
+            role="tablist"
+            aria-label="Estado"
+            style={{ marginBottom: 16, flexWrap: "wrap" }}
+          >
             {FILTERS.map((f) => {
               const active = statusFilter === f.key;
               return (
@@ -273,10 +338,19 @@ export function FlowBuilderPage() {
                     background: active ? "var(--accent-soft)" : "var(--bg-1)",
                   }}
                 >
-                  <span style={{ fontWeight: 700, fontSize: 13, color: active ? "var(--accent)" : "var(--text-1)" }}>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      fontSize: 13,
+                      color: active ? "var(--accent)" : "var(--text-1)",
+                    }}
+                  >
                     {f.label}
                   </span>
-                  <span className="tnum" style={{ fontSize: 12, color: active ? "var(--accent)" : "var(--text-3)" }}>
+                  <span
+                    className="tnum"
+                    style={{ fontSize: 12, color: active ? "var(--accent)" : "var(--text-3)" }}
+                  >
                     {counts[f.key]}
                   </span>
                 </button>
@@ -288,7 +362,14 @@ export function FlowBuilderPage() {
           <div className="row gap8" style={{ marginBottom: 16 }}>
             <div
               className="card"
-              style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flex: 1, maxWidth: 360 }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                flex: 1,
+                maxWidth: 360,
+              }}
             >
               <Icon name="search" size={15} style={{ color: "var(--text-3)" }} />
               <input
@@ -309,18 +390,33 @@ export function FlowBuilderPage() {
 
           {/* Card grid — familia ARIA (card + card__accent-bar + Pill). */}
           {kept.length === 0 ? (
-            <div className="card" style={{ padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>
+            <div
+              className="card"
+              style={{ padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}
+            >
               Ningún bot coincide con el filtro.
             </div>
           ) : (
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+            <div
+              className="grid"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}
+            >
               {kept.map((b, i) => {
                 const accent = botColor(i);
                 return (
                   <div
                     key={b.botId}
                     className="card card__accent-bar"
-                    style={{ "--_c": accent, padding: "16px 18px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 12 } as React.CSSProperties}
+                    style={
+                      {
+                        "--_c": accent,
+                        padding: "16px 18px",
+                        cursor: "pointer",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 12,
+                      } as React.CSSProperties
+                    }
                     onClick={() => openBot(b.botId)}
                     role="button"
                     tabIndex={0}
@@ -340,23 +436,42 @@ export function FlowBuilderPage() {
                       >
                         <CardIcon size={19} />
                       </span>
-                      <Pill tone={STATUS_TONE[b.status]} icon={b.status === "active" ? "dot" : undefined}>
+                      <Pill
+                        tone={STATUS_TONE[b.status]}
+                        icon={b.status === "active" ? "dot" : undefined}
+                      >
                         {STATUS_LABEL[b.status] || b.status}
                       </Pill>
                     </div>
 
-                    <div style={{ fontWeight: 750, fontSize: 15, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div
+                      style={{
+                        fontWeight: 750,
+                        fontSize: 15,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       {b.name || "Sin nombre"}
                     </div>
 
                     {/* Riel de pasos — indicador visual del tamaño del flujo. */}
                     <div className="row gap6" aria-hidden style={{ alignItems: "center" }}>
-                      {Array.from({ length: Math.max(1, Math.min(b.stepCount || 1, 7)) }).map((_, j) => (
-                        <span
-                          key={j}
-                          style={{ width: 18, height: 4, borderRadius: 3, background: `color-mix(in srgb, ${accent} 55%, var(--border-1))` }}
-                        />
-                      ))}
+                      {Array.from({ length: Math.max(1, Math.min(b.stepCount || 1, 7)) }).map(
+                        (_, j) => (
+                          <span
+                            key={j}
+                            style={{
+                              width: 18,
+                              height: 4,
+                              borderRadius: 3,
+                              background: `color-mix(in srgb, ${accent} 55%, var(--border-1))`,
+                            }}
+                          />
+                        ),
+                      )}
                     </div>
 
                     <div className="row gap6 wrap" style={{ alignItems: "center" }}>
@@ -368,10 +483,22 @@ export function FlowBuilderPage() {
                       </Pill>
                     </div>
 
-                    <div className="row between" style={{ alignItems: "center", marginTop: "auto", fontSize: 11.5, color: "var(--text-3)" }}>
+                    <div
+                      className="row between"
+                      style={{
+                        alignItems: "center",
+                        marginTop: "auto",
+                        fontSize: 11.5,
+                        color: "var(--text-3)",
+                      }}
+                    >
                       <span className="tnum">
                         {b.updatedAt
-                          ? new Date(b.updatedAt).toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" })
+                          ? new Date(b.updatedAt).toLocaleDateString("es-PE", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })
                           : "—"}
                       </span>
                       <div className="row gap6" style={{ alignItems: "center" }}>

@@ -187,9 +187,14 @@ export function VoxSidebar({ collapsed, onToggleCollapse }: VoxSidebarProps) {
         </button>
       )}
       <div className="sb__brand">
-        <div className="sb__logo">
-          <Lightning size={19} weight="fill" />
-        </div>
+        <img
+          className="sb__brandmark"
+          src="/brand/aria-mark-white.png"
+          alt="ARIA"
+          width={30}
+          height={30}
+          draggable={false}
+        />
         <div className="sb__name">
           {name.slice(0, splitAt)}
           <b>{name.slice(splitAt)}</b>

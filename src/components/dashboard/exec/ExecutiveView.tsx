@@ -31,12 +31,7 @@ import {
   ChatCircleDots as PhChat,
   UsersThree as PhUsers,
 } from "@phosphor-icons/react";
-import {
-  ExecAreaEChart,
-  ExecBarsEChart,
-  ExecDonutEChart,
-  ExecGaugeEChart,
-} from "./ExecEcharts";
+import { ExecAreaEChart, ExecBarsEChart, ExecDonutEChart, ExecGaugeEChart } from "./ExecEcharts";
 import {
   ExecCampaigns,
   ExecFunnel,
@@ -48,6 +43,7 @@ import {
 import type { ExecData, ExecInsight, ExecPeriod, ExecSlice } from "./execMock";
 import { useTopBarActions } from "@/components/layout/TopBarSlot";
 import { initialsOf } from "@/components/vox/primitives";
+import { Hint } from "@/components/ui/Hint";
 import "@/styles/exec.css";
 
 /**
@@ -181,7 +177,10 @@ function ExecSkeleton() {
     <div className="exec">
       <div className="exec-bar" style={{ marginBottom: 18 }}>
         <div className="exec-skel" style={{ width: 280, height: 40, borderRadius: 12 }} />
-        <div className="exec-skel" style={{ flex: 1, maxWidth: 420, height: 22, borderRadius: 999, marginLeft: "auto" }} />
+        <div
+          className="exec-skel"
+          style={{ flex: 1, maxWidth: 420, height: 22, borderRadius: 999, marginLeft: "auto" }}
+        />
       </div>
       <div className="exec-row exec-row--main" style={{ marginBottom: 18 }}>
         <div className="exec-skel" style={{ height: 84, borderRadius: 16 }} />
@@ -202,12 +201,15 @@ function ExecSkeleton() {
 
 function ExecPanel({
   title,
+  titleTip,
   hint,
   right,
   onOpen,
   children,
 }: {
   title: string;
+  /** Ayuda en hover sobre el título del panel (aclara datos no obvios). */
+  titleTip?: React.ReactNode;
   hint?: string;
   right?: React.ReactNode;
   /** Si se pasa, el header muestra un enlace "Ver →" que navega a la sección. */
@@ -217,7 +219,15 @@ function ExecPanel({
   return (
     <div className="exec-panel">
       <div className="exec-panel__head">
-        <div className="exec-panel__title">{title}</div>
+        {titleTip ? (
+          <Hint label={titleTip}>
+            <div className="exec-panel__title" style={{ cursor: "help" }}>
+              {title}
+            </div>
+          </Hint>
+        ) : (
+          <div className="exec-panel__title">{title}</div>
+        )}
         {(hint || right || onOpen) && <div className="exec-panel__spacer" />}
         {right}
         {hint && <span className="exec-panel__hint">{hint}</span>}
@@ -269,9 +279,7 @@ function DonutLegend({ data, total }: { data: ExecSlice[]; total: number }) {
           <span className="exec-legend__sw" style={{ background: s.color }} />
           <span className="exec-legend__name">{s.name}</span>
           <span className="exec-legend__val">{s.value}</span>
-          <span className="exec-legend__pct">
-            {Math.round((s.value / total) * 100)}%
-          </span>
+          <span className="exec-legend__pct">{Math.round((s.value / total) * 100)}%</span>
         </div>
       ))}
     </div>
@@ -316,12 +324,14 @@ export function ExecutiveView({
   // Estado en vivo + Actualizar → top bar (chrome conectado al sidebar).
   useTopBarActions(
     <>
-      <span className="chip chip--green"><span className="dot" /> Live · {clock}</span>
+      <span className="chip chip--green">
+        <span className="dot" /> Live · {clock}
+      </span>
       <button className="btn" onClick={onRefresh}>
         <RefreshCw size={14} /> Actualizar
       </button>
     </>,
-    [clock, onRefresh]
+    [clock, onRefresh],
   );
 
   if (loading) return <ExecSkeleton />;
@@ -339,12 +349,17 @@ export function ExecutiveView({
     !data.volumeByChannel.some((d) => d.voz + d.wa + d.chat + d.email + d.sms > 0);
   // heatmap es opcional: si se omite (mock /inicio-demo) ExecHeatmap muestra su
   // patrón demo → NO es "vacío". Solo es vacío si viene con grid real todo en 0.
-  const heatmapEmpty = !!data.heatmap && data.heatmap.grid.every((row) => row.every((c) => c === 0));
+  const heatmapEmpty =
+    !!data.heatmap && data.heatmap.grid.every((row) => row.every((c) => c === 0));
 
   // Tira "en vivo" (guía: mockup) — pulso operativo derivado de data real.
   const enCola = data.liveQueues.reduce((s, q) => s + q.enCola, 0);
-  const toSec = (s: string) => { const [m, ss] = s.split(":").map(Number); return (m || 0) * 60 + (ss || 0); };
-  const maxWait = [...data.liveQueues].sort((a, b) => toSec(b.espera) - toSec(a.espera))[0]?.espera || "0:00";
+  const toSec = (s: string) => {
+    const [m, ss] = s.split(":").map(Number);
+    return (m || 0) * 60 + (ss || 0);
+  };
+  const maxWait =
+    [...data.liveQueues].sort((a, b) => toSec(b.espera) - toSec(a.espera))[0]?.espera || "0:00";
   // Avatares siempre visibles: el ranking del período si lo hay, si no los
   // agentes de Connect (poblado por el contenedor en `data.liveAgents`).
   const liveAgents = data.liveAgents?.length ? data.liveAgents : data.agentRank.map((a) => a.name);
@@ -371,25 +386,47 @@ export function ExecutiveView({
           ))}
         </div>
         <div className="exec-live-strip">
-          <span className="exec-live-tag"><span className="exec-live-pulse" /> EN VIVO</span>
+          <Hint label="Métricas en tiempo real desde Amazon Connect. Se refrescan solas.">
+            <span className="exec-live-tag">
+              <span className="exec-live-pulse" /> EN VIVO
+            </span>
+          </Hint>
           {topAgents.length > 0 && (
             <>
               <span className="exec-ops-sep" />
               <div className="exec-avatars">
                 {topAgents.map((name, i) => (
-                  <span key={i} className="exec-avatar" title={name}>{initialsOf(name)}</span>
+                  <Hint key={i} label={name}>
+                    <span className="exec-avatar">{initialsOf(name)}</span>
+                  </Hint>
                 ))}
               </div>
             </>
           )}
-          <span className="exec-live-stat"><b>{data.agentsOnline}</b> en línea</span>
+          <Hint label="Agentes conectados a Amazon Connect en este momento.">
+            <span className="exec-live-stat">
+              <b>{data.agentsOnline}</b> en línea
+            </span>
+          </Hint>
           <span className="exec-ops-sep" />
-          <span className={`exec-live-stat ${enCola > 0 ? "warn" : ""}`}><Headphones size={14} /> <b>{enCola}</b> en cola</span>
-          <span className="exec-live-stat"><Clock size={14} /> {maxWait} máx</span>
+          <Hint label="Contactos esperando ser atendidos ahora mismo en las colas.">
+            <span className={`exec-live-stat ${enCola > 0 ? "warn" : ""}`}>
+              <Headphones size={14} /> <b>{enCola}</b> en cola
+            </span>
+          </Hint>
+          <Hint label="La espera más larga entre los contactos que están en cola.">
+            <span className="exec-live-stat">
+              <Clock size={14} /> {maxWait} máx
+            </span>
+          </Hint>
           {data.sla != null && (
             <>
               <span className="exec-ops-sep" />
-              <span className={`exec-live-stat ${data.sla < 90 ? "warn" : "ok"}`}><Target size={14} /> SLA <b>{data.sla}%</b></span>
+              <Hint label="Nivel de servicio: % de contactos del período efectivamente atendidos (duración > 0).">
+                <span className={`exec-live-stat ${data.sla < 90 ? "warn" : "ok"}`}>
+                  <Target size={14} /> SLA <b>{data.sla}%</b>
+                </span>
+              </Hint>
             </>
           )}
         </div>
@@ -402,13 +439,85 @@ export function ExecutiveView({
           peso y tamaño para todos sin pasar props uno por uno). */}
       <PhIconContext.Provider value={{ weight: "duotone", size: 18 }}>
         <div className="exec-kpis">
-          <ExecStat index={0} period={period} label="Contactos" icon={PhHeadset} accent="var(--e-cyan)" value={k.contactos.value} delta={k.contactos.delta} onClick={() => onNavigate?.("/reports")} />
-          <ExecStat index={1} period={period} label="Sentiment +" icon={PhSmiley} accent="var(--e-green)" value={k.sentimentPos.value} unit="%" note="del total analizado" onClick={() => onNavigate?.("/reports")} />
-          <ExecStat index={2} period={period} label="AHT promedio" icon={PhTimer} accent="var(--e-violet)" value={k.aht.seconds} note="meta 3:00 min" formatter={ahtFmt} onClick={() => onNavigate?.("/reports")} />
-          <ExecStat index={3} period={period} label="Leads" icon={PhLightning} accent="var(--e-amber)" value={k.leads.value} delta={k.leads.delta} onClick={() => onNavigate?.("/leads")} />
-          <ExecStat index={4} period={period} label="Citas próximas" icon={PhCalendar} accent="var(--e-cyan)" value={k.citas.value} note={`de ${k.citas.total} agendadas`} onClick={() => onNavigate?.("/appointments")} />
-          <ExecStat index={5} period={period} label="Plantillas WA" icon={PhChat} accent="var(--e-green)" value={k.plantillasWA.value} note="envíos aprobados" onClick={() => onNavigate?.("/campaigns")} />
-          <ExecStat index={6} period={period} label="Agentes" icon={PhUsers} accent="var(--e-violet)" value={k.agentes.available} note={`${k.agentes.online} online`} onClick={() => onNavigate?.("/queue")} />
+          <ExecStat
+            index={0}
+            period={period}
+            label="Contactos"
+            icon={PhHeadset}
+            accent="var(--e-cyan)"
+            value={k.contactos.value}
+            delta={k.contactos.delta}
+            onClick={() => onNavigate?.("/reports")}
+            tip="Total de contactos (llamadas, chats, etc.) del período. Clic para abrir Reportes."
+          />
+          <ExecStat
+            index={1}
+            period={period}
+            label="Sentiment +"
+            icon={PhSmiley}
+            accent="var(--e-green)"
+            value={k.sentimentPos.value}
+            unit="%"
+            note="del total analizado"
+            onClick={() => onNavigate?.("/reports")}
+            tip="% de contactos con tono positivo según Contact Lens, sobre el total analizado."
+          />
+          <ExecStat
+            index={2}
+            period={period}
+            label="AHT promedio"
+            icon={PhTimer}
+            accent="var(--e-violet)"
+            value={k.aht.seconds}
+            note="meta 3:00 min"
+            formatter={ahtFmt}
+            onClick={() => onNavigate?.("/reports")}
+            tip="Tiempo promedio de manejo (Average Handle Time) por contacto atendido. Meta: 3:00 min."
+          />
+          <ExecStat
+            index={3}
+            period={period}
+            label="Leads"
+            icon={PhLightning}
+            accent="var(--e-amber)"
+            value={k.leads.value}
+            delta={k.leads.delta}
+            onClick={() => onNavigate?.("/leads")}
+            tip="Leads nuevos o actualizados en el período. Clic para ir a Leads."
+          />
+          <ExecStat
+            index={4}
+            period={period}
+            label="Citas próximas"
+            icon={PhCalendar}
+            accent="var(--e-cyan)"
+            value={k.citas.value}
+            note={`de ${k.citas.total} agendadas`}
+            onClick={() => onNavigate?.("/appointments")}
+            tip="Citas agendadas a futuro (no canceladas). Clic para abrir la agenda."
+          />
+          <ExecStat
+            index={5}
+            period={period}
+            label="Plantillas WA"
+            icon={PhChat}
+            accent="var(--e-green)"
+            value={k.plantillasWA.value}
+            note="envíos aprobados"
+            onClick={() => onNavigate?.("/campaigns")}
+            tip="Plantillas de WhatsApp (HSM) enviadas y aprobadas por Meta."
+          />
+          <ExecStat
+            index={6}
+            period={period}
+            label="Agentes"
+            icon={PhUsers}
+            accent="var(--e-violet)"
+            value={k.agentes.available}
+            note={`${k.agentes.online} online`}
+            onClick={() => onNavigate?.("/queue")}
+            tip="Agentes disponibles para recibir contactos ahora, y total conectados a Connect."
+          />
         </div>
       </PhIconContext.Provider>
 
@@ -417,6 +526,11 @@ export function ExecutiveView({
         <ExecPanel
           onOpen={() => onNavigate?.("/reports")}
           title={mainChart === "compare" ? "Volumen de contactos" : "Volumen por canal"}
+          titleTip={
+            mainChart === "compare"
+              ? "Contactos por día. La línea tenue es el período anterior, para comparar."
+              : "Contactos por día desglosados por canal (voz, WhatsApp, chat, email, SMS)."
+          }
           right={
             <div className="exec-toggle">
               <button
@@ -474,7 +588,11 @@ export function ExecutiveView({
 
       {/* Vivid row: CSAT gauge + ranking + por cola */}
       <div className="exec-row exec-row--vivid">
-        <ExecPanel title="Satisfacción (CSAT)" onOpen={() => onNavigate?.("/reports")}>
+        <ExecPanel
+          title="Satisfacción (CSAT)"
+          titleTip="Proxy de CSAT: usamos el % de contactos con sentiment positivo (aún no hay encuestas de satisfacción integradas)."
+          onOpen={() => onNavigate?.("/reports")}
+        >
           {data.csat.encuestas > 0 ? (
             <div style={{ display: "grid", placeItems: "center", padding: "6px 0" }}>
               <div style={{ width: "100%", maxWidth: 220 }}>
@@ -504,7 +622,12 @@ export function ExecutiveView({
             />
           )}
         </ExecPanel>
-        <ExecPanel title="Ranking de agentes" hint={data.agentRank.length ? "por contactos" : undefined} onOpen={() => onNavigate?.("/queue")}>
+        <ExecPanel
+          title="Ranking de agentes"
+          titleTip="Agentes ordenados por cantidad de contactos atendidos en el período."
+          hint={data.agentRank.length ? "por contactos" : undefined}
+          onOpen={() => onNavigate?.("/queue")}
+        >
           {data.agentRank.length > 0 ? (
             <ExecRank data={data.agentRank} />
           ) : (
@@ -515,7 +638,12 @@ export function ExecutiveView({
             />
           )}
         </ExecPanel>
-        <ExecPanel title="Contactos por cola" hint={queueTotal > 0 ? `${queueTotal} total` : undefined} onOpen={() => onNavigate?.("/queue")}>
+        <ExecPanel
+          title="Contactos por cola"
+          titleTip="Cómo se reparten los contactos entre las colas de atención de Amazon Connect."
+          hint={queueTotal > 0 ? `${queueTotal} total` : undefined}
+          onOpen={() => onNavigate?.("/queue")}
+        >
           {data.byQueue.length > 0 ? (
             <ExecPillBars data={data.byQueue} />
           ) : (
@@ -553,7 +681,11 @@ export function ExecutiveView({
             />
           )}
         </ExecPanel>
-        <ExecPanel title="Embudo de leads" hint={funnelTotal > 0 ? `${funnelTotal} leads` : undefined} onOpen={() => onNavigate?.("/leads")}>
+        <ExecPanel
+          title="Embudo de leads"
+          hint={funnelTotal > 0 ? `${funnelTotal} leads` : undefined}
+          onOpen={() => onNavigate?.("/leads")}
+        >
           {funnelTotal > 0 ? (
             <ExecFunnel data={data.funnel} />
           ) : (
@@ -594,7 +726,11 @@ export function ExecutiveView({
 
       {/* Heatmap */}
       <div className="exec-row" style={{ gridTemplateColumns: "1fr" }}>
-        <ExecPanel title="Contactos por hora × día de semana" hint={heatmapEmpty ? undefined : "08:00 – 20:00"} onOpen={() => onNavigate?.("/reports")}>
+        <ExecPanel
+          title="Contactos por hora × día de semana"
+          hint={heatmapEmpty ? undefined : "08:00 – 20:00"}
+          onOpen={() => onNavigate?.("/reports")}
+        >
           {heatmapEmpty ? (
             <ExecEmpty
               icon={Calendar}

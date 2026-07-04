@@ -1,0 +1,159 @@
+/* ============================================================
+   ARIA · Sistema de motion global
+   ------------------------------------------------------------
+   Micro-interacciones CONSISTENTES en todas las secciones: entrada
+   en cascada por página + hovers/transiciones en los primitivos
+   compartidos (cards, filas, chips, CTAs, botones de icono).
+   Pensado, no recargado. Se importa AL FINAL (main.tsx) para ganar
+   la cascada. Respeta prefers-reduced-motion.
+
+   Nota: la entrada usa `animation-fill-mode: backwards` (no forwards)
+   a propósito — con forwards, el estado final "congelado" pisaría los
+   `:hover { transform }` posteriores. Con backwards, tras la entrada el
+   elemento vuelve a sus estilos normales y el hover funciona.
+   ============================================================ */
+
+@keyframes aria-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Cada bloque directo de una página entra escalonado (el fade de página
+   lo hace el wrapper de ruta de framer en App.tsx). */
+.page > * {
+  animation: aria-rise 0.44s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+.page > *:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.page > *:nth-child(2) {
+  animation-delay: 0.07s;
+}
+.page > *:nth-child(3) {
+  animation-delay: 0.12s;
+}
+.page > *:nth-child(4) {
+  animation-delay: 0.17s;
+}
+.page > *:nth-child(5) {
+  animation-delay: 0.22s;
+}
+.page > *:nth-child(n + 6) {
+  animation-delay: 0.26s;
+}
+
+/* ---- Cards: transición suave; hover sutil universal + lift si son
+   interactivas (button/a/.card--tap/tabindex/role=button). ---- */
+.card {
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.card:hover {
+  border-color: var(--border-2);
+}
+button.card,
+a.card,
+.card--tap,
+.card[tabindex],
+.card[role="button"] {
+  cursor: pointer;
+}
+button.card:hover,
+a.card:hover,
+.card--tap:hover,
+.card[tabindex]:hover,
+.card[role="button"]:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow:
+    0 14px 34px -20px rgba(11, 11, 13, 0.42),
+    0 2px 6px rgba(11, 11, 13, 0.05);
+}
+button.card:active,
+a.card:active,
+.card--tap:active,
+.card[tabindex]:active,
+.card[role="button"]:active {
+  transform: translateY(-1px);
+}
+
+/* ---- Filas de tabla ---- */
+tbody tr {
+  transition: background-color 0.13s ease;
+}
+tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+/* ---- Chips / pills interactivos ---- */
+button.chip,
+a.chip,
+button.pill,
+a.pill {
+  transition:
+    transform 0.14s cubic-bezier(0.2, 0.7, 0.2, 1),
+    box-shadow 0.14s ease,
+    background-color 0.14s ease,
+    border-color 0.14s ease;
+}
+button.chip:hover,
+a.chip:hover,
+button.pill:hover,
+a.pill:hover {
+  transform: translateY(-1px);
+}
+
+/* ---- CTAs sólidos: micro-lift táctil (ghost/sm quedan sin lift para no
+   recargar). ---- */
+.btn--primary:hover,
+.btn--success:hover,
+.btn--danger:hover {
+  transform: translateY(-1px);
+}
+.btn--primary:active,
+.btn--success:active,
+.btn--danger:active {
+  transform: translateY(0.5px);
+}
+
+/* ---- Botones de icono ---- */
+.btn--icon {
+  transition:
+    transform 0.14s cubic-bezier(0.2, 0.7, 0.2, 1),
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
+}
+.btn--icon:hover {
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page > * {
+    animation: none !important;
+  }
+  .card:hover,
+  button.card:hover,
+  a.card:hover,
+  .card--tap:hover,
+  .card[tabindex]:hover,
+  .card[role="button"]:hover,
+  button.chip:hover,
+  a.chip:hover,
+  button.pill:hover,
+  a.pill:hover,
+  .btn--primary:hover,
+  .btn--success:hover,
+  .btn--danger:hover,
+  .btn--icon:hover {
+    transform: none;
+  }
+}

@@ -49,7 +49,9 @@ function nowIso() {
 /** Próxima corrida: la siguiente ocurrencia de hourUtc según la frecuencia. */
 export function computeNextRun(freq: string, hourUtc: number, fromMs: number): string {
   const d = new Date(fromMs);
-  const next = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hourUtc, 0, 0, 0));
+  const next = new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hourUtc, 0, 0, 0),
+  );
   if (next.getTime() <= fromMs) {
     if (freq === "weekly") next.setUTCDate(next.getUTCDate() + 7);
     else if (freq === "monthly") next.setUTCMonth(next.getUTCMonth() + 1);
@@ -64,7 +66,7 @@ async function fetchLeads(): Promise<Record<string, unknown>[]> {
   let lastKey: Record<string, unknown> | undefined;
   do {
     const r = await dynamo.send(
-      new ScanCommand({ TableName: LEADS_TABLE, ExclusiveStartKey: lastKey as never })
+      new ScanCommand({ TableName: LEADS_TABLE, ExclusiveStartKey: lastKey as never }),
     );
     for (const it of r.Items || []) rows.push(unmarshall(it));
     lastKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
@@ -107,7 +109,11 @@ async function buildSheet(dataset: string): Promise<SheetSpec> {
     };
   }
   // dataset desconocido → hoja vacía con un aviso.
-  return { title: "Export", columns: [{ header: "Aviso", key: "msg", width: 50 }], rows: [{ msg: `Dataset '${dataset}' no soportado aún.` }] };
+  return {
+    title: "Export",
+    columns: [{ header: "Aviso", key: "msg", width: 50 }],
+    rows: [{ msg: `Dataset '${dataset}' no soportado aún.` }],
+  };
 }
 
 /** Genera el XLSX como Buffer. */
@@ -117,7 +123,7 @@ async function buildXlsx(spec: SheetSpec): Promise<Buffer> {
   const ws = wb.addWorksheet(spec.title);
   ws.columns = spec.columns;
   ws.getRow(1).font = { bold: true };
-  ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF7C5CFF" } };
+  ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2C5698" } };
   ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
   for (const r of spec.rows) ws.addRow(r);
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: spec.columns.length } };
@@ -126,7 +132,13 @@ async function buildXlsx(spec: SheetSpec): Promise<Buffer> {
 }
 
 /** Construye un email MIME multipart con el XLSX adjunto. */
-function buildRawEmail(to: string[], subject: string, bodyText: string, filename: string, xlsx: Buffer): Buffer {
+function buildRawEmail(
+  to: string[],
+  subject: string,
+  bodyText: string,
+  filename: string,
+  xlsx: Buffer,
+): Buffer {
   const boundary = "ARIA_BOUNDARY_" + Math.floor(xlsx.length).toString(36);
   const b64 = xlsx.toString("base64").replace(/(.{76})/g, "$1\r\n");
   const lines = [
@@ -156,7 +168,9 @@ function buildRawEmail(to: string[], subject: string, bodyText: string, filename
 }
 
 /** Corre un job: dataset → XLSX → email. Devuelve un resumen. */
-async function runExport(job: ScheduledExport): Promise<{ ok: boolean; rows: number; messageId?: string; error?: string }> {
+async function runExport(
+  job: ScheduledExport,
+): Promise<{ ok: boolean; rows: number; messageId?: string; error?: string }> {
   try {
     const spec = await buildSheet(job.dataset);
     const xlsx = await buildXlsx(spec);
@@ -178,7 +192,8 @@ async function persistResult(job: ScheduledExport, result: { ok: boolean; error?
     new UpdateItemCommand({
       TableName: EXPORTS_TABLE,
       Key: { exportId: { S: job.exportId } },
-      UpdateExpression: "SET lastRunAt = :r, lastStatus = :s, nextRunAt = :n, lastError = :e, updatedAt = :u",
+      UpdateExpression:
+        "SET lastRunAt = :r, lastStatus = :s, nextRunAt = :n, lastError = :e, updatedAt = :u",
       ExpressionAttributeValues: marshall({
         ":r": now,
         ":s": result.ok ? "ok" : "error",
@@ -186,12 +201,14 @@ async function persistResult(job: ScheduledExport, result: { ok: boolean; error?
         ":e": result.error || "",
         ":u": now,
       }),
-    })
+    }),
   );
 }
 
 async function loadJob(exportId: string): Promise<ScheduledExport | null> {
-  const r = await dynamo.send(new GetItemCommand({ TableName: EXPORTS_TABLE, Key: { exportId: { S: exportId } } }));
+  const r = await dynamo.send(
+    new GetItemCommand({ TableName: EXPORTS_TABLE, Key: { exportId: { S: exportId } } }),
+  );
   return r.Item ? (unmarshall(r.Item) as ScheduledExport) : null;
 }
 
@@ -206,7 +223,7 @@ async function dueJobs(): Promise<ScheduledExport[]> {
         FilterExpression: "enabled = :t AND nextRunAt <= :now",
         ExpressionAttributeValues: marshall({ ":t": true, ":now": now }),
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
     for (const it of r.Items || []) out.push(unmarshall(it) as ScheduledExport);
     lastKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;

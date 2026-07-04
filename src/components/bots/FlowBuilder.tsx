@@ -30,7 +30,6 @@ import {
   Network,
   Braces,
   HelpCircle,
-  X,
   GripVertical,
   Undo2,
   Redo2,
@@ -55,6 +54,7 @@ import { BuilderCtx } from "@/components/bots/builderCtx";
 import { BotTester } from "@/components/bots/BotTester";
 import { NodePicker } from "@/components/bots/NodePicker";
 import { PlusEdge, branchColor } from "@/components/bots/PlusEdge";
+import { FlowHelpWizard } from "@/components/bots/FlowHelpWizard";
 import {
   NodePreview,
   ConditionPreview,
@@ -415,21 +415,18 @@ function FlowBuilderInner({
   const onNodeDragStart = useCallback(() => {
     dragSnapshot.current = snapshot();
   }, [snapshot]);
-  const onNodeDragStop = useCallback(
-    (_e: unknown, node: Node) => {
-      const before = dragSnapshot.current;
-      dragSnapshot.current = null;
-      if (!before) return;
-      const prev = before.nodes.find((n) => n.id === node.id);
-      // Sin movimiento real (click sin drag) → no ensuciamos el historial.
-      if (prev && prev.position.x === node.position.x && prev.position.y === node.position.y) return;
-      past.current.push(before);
-      if (past.current.length > HISTORY_LIMIT) past.current.shift();
-      future.current = [];
-      setHistoryTick((t) => t + 1);
-    },
-    [],
-  );
+  const onNodeDragStop = useCallback((_e: unknown, node: Node) => {
+    const before = dragSnapshot.current;
+    dragSnapshot.current = null;
+    if (!before) return;
+    const prev = before.nodes.find((n) => n.id === node.id);
+    // Sin movimiento real (click sin drag) → no ensuciamos el historial.
+    if (prev && prev.position.x === node.position.x && prev.position.y === node.position.y) return;
+    past.current.push(before);
+    if (past.current.length > HISTORY_LIMIT) past.current.shift();
+    future.current = [];
+    setHistoryTick((t) => t + 1);
+  }, []);
 
   // Borrado nativo de React Flow (tecla Supr/Backspace sobre lo seleccionado):
   // estas callbacks corren ANTES de aplicar el cambio, así que un commit toma el
@@ -470,7 +467,12 @@ function FlowBuilderInner({
     commit();
     setNodes((nds) => [
       ...nds,
-      { id: node.id, type: "step", position: node.position, data: { ...node.data, kind: clip.kind } },
+      {
+        id: node.id,
+        type: "step",
+        position: node.position,
+        data: { ...node.data, kind: clip.kind },
+      },
     ]);
     setSelectedId(node.id);
   }, [setNodes, commit]);
@@ -493,10 +495,7 @@ function FlowBuilderInner({
       if (!t) return false;
       const tag = t.tagName;
       return (
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        tag === "SELECT" ||
-        t.isContentEditable === true
+        tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable === true
       );
     };
     const onKeyDown = (e: KeyboardEvent) => {
@@ -957,10 +956,7 @@ function FlowBuilderInner({
           {onBack && (
             <button
               onClick={() => {
-                if (
-                  dirty &&
-                  !window.confirm("Tenés cambios sin guardar. ¿Salir y descartarlos?")
-                )
+                if (dirty && !window.confirm("Tenés cambios sin guardar. ¿Salir y descartarlos?"))
                   return;
                 onBack();
               }}
@@ -1046,11 +1042,7 @@ function FlowBuilderInner({
             >
               <Play size={13} /> Probar
             </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="btn btn--primary btn--sm"
-            >
+            <button onClick={handleSave} disabled={saving} className="btn btn--primary btn--sm">
               <Save size={13} /> {saving ? "Guardando…" : dirty ? "Guardar •" : "Guardar"}
             </button>
           </div>
@@ -1074,105 +1066,11 @@ function FlowBuilderInner({
           </div>
         )}
 
-        {showHelp && (
-          <div className="fb-tips">
-            <div className="fb-tips__head">
-              <HelpCircle size={14} /> Primeros pasos
-              <button className="fb-tips__close" onClick={() => setShowHelp(false)} title="Cerrar">
-                <X size={14} />
-              </button>
-            </div>
-            <ul className="fb-tips__list">
-              <li>Arrastrá pasos desde la izquierda al lienzo (o hacé click para agregarlos).</li>
-              <li>
-                Conectá dos pasos tirando una línea de un punto al siguiente — o soltá un paso cerca
-                de la salida de otro y se conecta solo.
-              </li>
-              <li>
-                Guardá datos con «Preguntar y guardar» y reutilizalos con «Insertar variable».
-              </li>
-              <li>
-                Mirá la «Vista previa» del inspector para ver cómo le llega el mensaje al cliente.
-              </li>
-              <li>Tocá «Ordenar» para acomodar el flujo y «Probar» para chatear con el bot.</li>
-            </ul>
-
-            <div className="fb-tips__subhead">Atajos de teclado</div>
-            <div className="fb-shortcuts">
-              <div className="fb-shortcut">
-                <span className="fb-shortcut__keys">
-                  <kbd>Ctrl</kbd>
-                  <kbd>Z</kbd>
-                </span>
-                <span className="fb-shortcut__desc">Deshacer</span>
-              </div>
-              <div className="fb-shortcut">
-                <span className="fb-shortcut__keys">
-                  <kbd>Ctrl</kbd>
-                  <kbd>Shift</kbd>
-                  <kbd>Z</kbd>
-                </span>
-                <span className="fb-shortcut__desc">Rehacer</span>
-              </div>
-              <div className="fb-shortcut">
-                <span className="fb-shortcut__keys">
-                  <kbd>Ctrl</kbd>
-                  <kbd>Y</kbd>
-                </span>
-                <span className="fb-shortcut__desc">Rehacer (alternativo)</span>
-              </div>
-              <div className="fb-shortcut">
-                <span className="fb-shortcut__keys">
-                  <kbd>Ctrl</kbd>
-                  <kbd>C</kbd>
-                </span>
-                <span className="fb-shortcut__desc">Copiar el paso</span>
-              </div>
-              <div className="fb-shortcut">
-                <span className="fb-shortcut__keys">
-                  <kbd>Ctrl</kbd>
-                  <kbd>V</kbd>
-                </span>
-                <span className="fb-shortcut__desc">Pegar el paso</span>
-              </div>
-              <div className="fb-shortcut">
-                <span className="fb-shortcut__keys">
-                  <kbd>Ctrl</kbd>
-                  <kbd>D</kbd>
-                </span>
-                <span className="fb-shortcut__desc">Duplicar el paso</span>
-              </div>
-              <div className="fb-shortcut">
-                <span className="fb-shortcut__keys">
-                  <kbd>Supr</kbd>
-                  <span className="fb-shortcut__or">/</span>
-                  <kbd>Backspace</kbd>
-                </span>
-                <span className="fb-shortcut__desc">Borrar lo seleccionado</span>
-              </div>
-              <div className="fb-shortcut">
-                <span className="fb-shortcut__keys">
-                  <kbd>arrastrar</kbd>
-                  <span className="fb-shortcut__or">→</span>
-                  <kbd>vacío</kbd>
-                </span>
-                <span className="fb-shortcut__desc">Conectar y crear un paso</span>
-              </div>
-              <div className="fb-shortcut">
-                <span className="fb-shortcut__keys">
-                  <kbd>+</kbd>
-                </span>
-                <span className="fb-shortcut__desc">Insertar un paso en la conexión</span>
-              </div>
-              <div className="fb-shortcut">
-                <span className="fb-shortcut__keys">
-                  <kbd>?</kbd>
-                </span>
-                <span className="fb-shortcut__desc">Abrir / cerrar esta ayuda</span>
-              </div>
-            </div>
-          </div>
-        )}
+        <FlowHelpWizard
+          key={showHelp ? "help-open" : "help-closed"}
+          open={showHelp}
+          onClose={() => setShowHelp(false)}
+        />
 
         {/* Body: palette | canvas | inspector */}
         <div style={{ flex: 1, display: "flex", minHeight: 0 }}>

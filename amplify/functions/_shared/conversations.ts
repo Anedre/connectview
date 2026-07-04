@@ -29,10 +29,7 @@ export function extractContact(text: string): { phone?: string; email?: string }
 /** Normaliza para matching robusto: minúsculas + sin tildes/diacríticos. Así
  *  "Asesor", "asesór" y "ASESOR" caen todos en "asesor". */
 function deburr(text: string): string {
-  return (text || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
+  return (text || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 
 /** Frases de intención "quiero un humano" (ya deburr-eadas: sin tildes, minúsculas). */
@@ -310,6 +307,12 @@ export async function appendInbound(
     conv.reopenedAt = now;
     conv.closedReason = undefined;
     conv.closedAt = undefined;
+    // Reabrir LIMPIO: soltar el dueño anterior. Si un agente la cerró (o se cerró
+    // por inactividad tras una derivación), al reabrir vuelve al bot SIN quedar
+    // pegada a ese agente — si no, el bot/Agente IA no la volvía a atender.
+    conv.ownerAgentId = undefined;
+    conv.ownerAgentName = undefined;
+    conv.assignedAgent = undefined;
   }
   conv.updatedAt = now;
   await put(dynamo, conv);
@@ -459,6 +462,52 @@ export async function patchConversation(
   Object.assign(conv, patch, { updatedAt: new Date().toISOString() });
   await put(dynamo, conv);
   return conv;
+}
+
+/**
+ * Cierre UNIFICADO de una conversación. Lo usan los 3 disparadores: el botón del
+ * agente humano (manage-conversations `close`), el fin del Agente IA/bot (webhook,
+ * reason="resolved") y el reaper de inactividad (reason="inactivity"). Marca
+ * status="closed" + motivo/instante y SUELTA el dueño (ownerAgentId/Name +
+ * assignedAgent) dejando assignee="bot" → así el próximo inbound del cliente la
+ * reabre LIMPIA (el bot vuelve a atender, sin quedar pegada al agente anterior).
+ * null si la conversación no existe. Idempotente (cerrar una cerrada no rompe). */
+export async function closeConversation(
+  dynamo: DynamoDBClient,
+  conversationId: string,
+  reason: "manual" | "inactivity" | "resolved" = "manual",
+): Promise<Conversation | null> {
+  return patchConversation(dynamo, conversationId, {
+    status: "closed",
+    closedReason: reason,
+    closedAt: new Date().toISOString(),
+    assignee: "bot",
+    ownerAgentId: undefined,
+    ownerAgentName: undefined,
+    assignedAgent: undefined,
+  });
+}
+
+/** Scan de TODAS las conversaciones `open` (todos los tenants, tabla pooled). Para
+ *  el reaper de inactividad (cron EventBridge), que corre sin un tenant en contexto.
+ *  Pagina el scan; devuelve solo las `open`. */
+export async function scanOpenConversations(dynamo: DynamoDBClient): Promise<Conversation[]> {
+  const out: Conversation[] = [];
+  let ESK: Record<string, unknown> | undefined;
+  do {
+    const r = await dynamo.send(
+      new ScanCommand({
+        TableName: CONV_TABLE,
+        FilterExpression: "#s = :open",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: marshall({ ":open": "open" }),
+        ExclusiveStartKey: ESK as never,
+      }),
+    );
+    for (const it of r.Items || []) out.push(unmarshall(it) as Conversation);
+    ESK = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (ESK);
+  return out;
 }
 
 /**

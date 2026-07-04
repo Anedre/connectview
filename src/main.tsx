@@ -13,6 +13,9 @@ import "./index.css";
 // cascade (Tailwind requires @import at top, which would lose ordering).
 import "./styles/aria-base.css";
 import "./styles/aria-components.css";
+// Motion system global (micro-interacciones consistentes en todas las secciones)
+// — al final para ganar la cascada sin !important.
+import "./styles/motion.css";
 
 Amplify.configure(outputs);
 // Adjunta el ID token de Cognito a todas las llamadas a nuestra API (tenant scoping).
@@ -37,5 +40,5 @@ createRoot(document.getElementById("root")!).render(
       {/* DevTools de TanStack Query solo en desarrollo (panel flotante). */}
       {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
-  </StrictMode>
+  </StrictMode>,
 );
