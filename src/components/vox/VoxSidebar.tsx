@@ -183,7 +183,11 @@ export function VoxSidebar({ collapsed, onToggleCollapse }: VoxSidebarProps) {
           title={collapsed ? "Expandir menú" : "Colapsar menú"}
           aria-label={collapsed ? "Expandir menú" : "Colapsar menú"}
         >
-          {collapsed ? <CaretRight size={13} /> : <CaretLeft size={13} />}
+          {collapsed ? (
+            <CaretRight size={14} weight="bold" />
+          ) : (
+            <CaretLeft size={14} weight="bold" />
+          )}
         </button>
       )}
       <div className="sb__brand">
