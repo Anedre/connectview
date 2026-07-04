@@ -40,6 +40,7 @@ const NODE_META: Record<JourneyNodeKind, { icon: IconName; label: string }> = {
   send: { icon: "send", label: "Enviar" },
   wait: { icon: "clock", label: "Espera" },
   branch: { icon: "filter", label: "Ramifica" },
+  split: { icon: "sliders", label: "A/B" },
   action: { icon: "zap", label: "Acción" },
   exit: { icon: "target", label: "Fin" },
 };
@@ -301,7 +302,10 @@ export function JourneysPage() {
             </Btn>
           }
         />
-        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 16 }}>
+        <div
+          className="grid"
+          style={{ gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 16 }}
+        >
           {TEMPLATES.map((t) => (
             <div
               key={t.key}
@@ -334,7 +338,10 @@ export function JourneysPage() {
               >
                 {t.desc}
               </div>
-              <div className="row gap6" style={{ marginTop: 4, color: t.accent, fontSize: 11.5, fontWeight: 700 }}>
+              <div
+                className="row gap6"
+                style={{ marginTop: 4, color: t.accent, fontSize: 11.5, fontWeight: 700 }}
+              >
                 Usar esta plantilla <Icon name="arrowRight" size={14} />
               </div>
             </div>
@@ -349,7 +356,12 @@ export function JourneysPage() {
     <div className="page">
       <HeroBand
         title="Journeys"
-        chip={<>Engagement Studio · {journeys.length} {journeys.length === 1 ? "recorrido" : "recorridos"}</>}
+        chip={
+          <>
+            Engagement Studio · {journeys.length}{" "}
+            {journeys.length === 1 ? "recorrido" : "recorridos"}
+          </>
+        }
         chipIcon="flow"
         chipTone="var(--green)"
         right={
@@ -364,13 +376,19 @@ export function JourneysPage() {
         }
       />
 
-      <div className="dim" style={{ fontSize: 13, marginTop: -8, marginBottom: 18, maxWidth: 720, lineHeight: 1.55 }}>
+      <div
+        className="dim"
+        style={{ fontSize: 13, marginTop: -8, marginBottom: 18, maxWidth: 720, lineHeight: 1.55 }}
+      >
         Recorridos automáticos multi-paso: entrar → enviar → esperar → ramificar → salir. El motor
         de engagement que reemplaza a Pardot.
       </div>
 
       {loading ? (
-        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))", gap: 16 }}>
+        <div
+          className="grid"
+          style={{ gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))", gap: 16 }}
+        >
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="skel" style={{ height: 176, borderRadius: 14 }} />
           ))}
@@ -392,10 +410,21 @@ export function JourneysPage() {
             >
               <Icon name="flow" size={26} />
             </div>
-            <div style={{ marginTop: 14, fontSize: 15, fontWeight: 700 }}>Todavía no hay journeys</div>
-            <div className="dim" style={{ marginTop: 6, fontSize: 12.5, maxWidth: 420, marginInline: "auto", lineHeight: 1.5 }}>
-              Armá recorridos automáticos que nutren a cada lead con el mensaje correcto en el momento
-              correcto — sin escribir código.
+            <div style={{ marginTop: 14, fontSize: 15, fontWeight: 700 }}>
+              Todavía no hay journeys
+            </div>
+            <div
+              className="dim"
+              style={{
+                marginTop: 6,
+                fontSize: 12.5,
+                maxWidth: 420,
+                marginInline: "auto",
+                lineHeight: 1.5,
+              }}
+            >
+              Armá recorridos automáticos que nutren a cada lead con el mensaje correcto en el
+              momento correcto — sin escribir código.
             </div>
             <div className="row" style={{ justifyContent: "center", marginTop: 18 }}>
               <Btn variant="primary" size="sm" icon="plus" onClick={() => setPicking(true)}>
@@ -415,10 +444,34 @@ export function JourneysPage() {
               marginBottom: 20,
             }}
           >
-            <Stat icon="flow" color="var(--green)" label="Journeys" value={<Num value={counts.all} />} sub="recorridos totales" />
-            <Stat icon="dot" color="var(--green)" label="Activos" value={<Num value={counts.active} />} sub="corriendo ahora" />
-            <Stat icon="fileText" color="var(--text-3)" label="Borradores" value={<Num value={counts.draft} />} sub="sin publicar" />
-            <Stat icon="clock" color="var(--gold)" label="Pausados" value={<Num value={counts.paused} />} sub="en pausa" />
+            <Stat
+              icon="flow"
+              color="var(--green)"
+              label="Journeys"
+              value={<Num value={counts.all} />}
+              sub="recorridos totales"
+            />
+            <Stat
+              icon="dot"
+              color="var(--green)"
+              label="Activos"
+              value={<Num value={counts.active} />}
+              sub="corriendo ahora"
+            />
+            <Stat
+              icon="fileText"
+              color="var(--text-3)"
+              label="Borradores"
+              value={<Num value={counts.draft} />}
+              sub="sin publicar"
+            />
+            <Stat
+              icon="clock"
+              color="var(--gold)"
+              label="Pausados"
+              value={<Num value={counts.paused} />}
+              sub="en pausa"
+            />
           </div>
 
           {/* Filtros + búsqueda — pills estilo ARIA. */}
@@ -486,7 +539,10 @@ export function JourneysPage() {
               </div>
             </Card>
           ) : (
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 16 }}>
+            <div
+              className="grid"
+              style={{ gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 16 }}
+            >
               {kept.map((j, i) => {
                 const nodes = Array.isArray(j.nodes) ? j.nodes : [];
                 const steps = nodes.length;
@@ -502,7 +558,13 @@ export function JourneysPage() {
                   <div
                     key={j.journeyId}
                     className="card card__accent-bar"
-                    style={{ "--_c": accent, padding: "16px 18px", cursor: "pointer" } as React.CSSProperties}
+                    style={
+                      {
+                        "--_c": accent,
+                        padding: "16px 18px",
+                        cursor: "pointer",
+                      } as React.CSSProperties
+                    }
                     onClick={() => setCurrent(j)}
                     role="button"
                     tabIndex={0}
@@ -547,22 +609,38 @@ export function JourneysPage() {
                           </div>
                         </div>
                       </div>
-                      <Pill tone={STATUS_TONE[j.status] || "outline"} icon={j.status === "active" ? "dot" : undefined}>
+                      <Pill
+                        tone={STATUS_TONE[j.status] || "outline"}
+                        icon={j.status === "active" ? "dot" : undefined}
+                      >
                         {STATUS_LABEL[j.status] || j.status}
                       </Pill>
                     </div>
 
-                    <div className="row gap6 wrap" style={{ alignItems: "center", marginBottom: 12, minHeight: 30 }}>
+                    <div
+                      className="row gap6 wrap"
+                      style={{ alignItems: "center", marginBottom: 12, minHeight: 30 }}
+                    >
                       {rail.map((n, k) => {
-                        const meta = NODE_META[n.kind] || { icon: "dot" as IconName, label: n.kind };
+                        const meta = NODE_META[n.kind] || {
+                          icon: "dot" as IconName,
+                          label: n.kind,
+                        };
                         return (
                           <span key={n.id || k} style={{ display: "contents" }}>
-                            <span className="pill pill--outline" style={{ height: 28, gap: 6, fontSize: 11.5 }}>
+                            <span
+                              className="pill pill--outline"
+                              style={{ height: 28, gap: 6, fontSize: 11.5 }}
+                            >
                               <Icon name={meta.icon} size={13} style={{ color: accent }} />
                               {meta.label}
                             </span>
                             {k < rail.length - 1 && (
-                              <Icon name="chevR" size={14} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
+                              <Icon
+                                name="chevR"
+                                size={14}
+                                style={{ color: "var(--text-3)", flex: "0 0 auto" }}
+                              />
                             )}
                           </span>
                         );

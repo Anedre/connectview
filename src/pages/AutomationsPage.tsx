@@ -52,6 +52,7 @@ const ACTION_COLOR: Record<ActionType, string> = {
   move_stage: "var(--accent)",
   webhook: "var(--text-3)",
   schedule_callback: "var(--gold)",
+  start_journey: "var(--green)",
 };
 const colorForAction = (t: ActionType): string => ACTION_COLOR[t] ?? "var(--accent)";
 
@@ -216,7 +217,10 @@ function FieldsBlock({
   return (
     <div className="wf-fields" style={{ ["--wf-c" as string]: accent }}>
       {fields.map((f) => (
-        <label key={f.key} className={"wf-field" + (f.type === "textarea" ? " wf-field--wide" : "")}>
+        <label
+          key={f.key}
+          className={"wf-field" + (f.type === "textarea" ? " wf-field--wide" : "")}
+        >
           <span className="wf-field__label">
             {f.label}
             {f.required && <span style={{ color: "var(--red)" }}> *</span>}
@@ -546,7 +550,9 @@ export function AutomationsPage() {
             <FieldsBlock
               fields={trig.fields}
               params={editing.trigger.params || {}}
-              onParams={(p) => setEditing({ ...editing, trigger: { ...editing.trigger, params: p } })}
+              onParams={(p) =>
+                setEditing({ ...editing, trigger: { ...editing.trigger, params: p } })
+              }
               ctx={ctx}
               accent="var(--gold)"
             />
@@ -670,8 +676,7 @@ export function AutomationsPage() {
             icon={<Icon name="bolt" size={16} />}
             right={
               <span className="wf-step__count">
-                {editing.actions.length}{" "}
-                {editing.actions.length === 1 ? "acción" : "acciones"}
+                {editing.actions.length} {editing.actions.length === 1 ? "acción" : "acciones"}
               </span>
             }
           >
@@ -792,7 +797,10 @@ export function AutomationsPage() {
                       const params: Record<string, unknown> = {};
                       for (const f of d.fields)
                         if (f.defaultValue !== undefined) params[f.key] = f.defaultValue;
-                      setEditing({ ...editing, actions: [...editing.actions, { type: t, params }] });
+                      setEditing({
+                        ...editing,
+                        actions: [...editing.actions, { type: t, params }],
+                      });
                     }}
                   >
                     <Icn size={13} />
@@ -997,7 +1005,9 @@ export function AutomationsPage() {
         <div className="card">
           <EmptyState
             icon={<Plus />}
-            title={rules.length === 0 ? "Todavía no hay automatizaciones" : "Ninguna regla coincide"}
+            title={
+              rules.length === 0 ? "Todavía no hay automatizaciones" : "Ninguna regla coincide"
+            }
             description="Creá reglas tipo «lead nuevo del form web → plantilla de bienvenida por WhatsApp» y dejá que el embudo trabaje solo."
             action={
               <Btn variant="primary" icon="plus" onClick={() => setPicking(true)}>

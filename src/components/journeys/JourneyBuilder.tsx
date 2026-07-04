@@ -131,7 +131,11 @@ interface BuiltTree {
 }
 
 /** Primer edge que sale de `id` por el conector `handle`. */
-function succ(edges: JourneyEdge[], id: string, handle: "out" | "yes" | "no"): string | null {
+function succ(
+  edges: JourneyEdge[],
+  id: string,
+  handle: "out" | "yes" | "no" | "a" | "b",
+): string | null {
   const e = edges.find((x) => x.from === id && (x.on || "out") === handle);
   return e ? e.to : null;
 }
@@ -163,12 +167,27 @@ function buildTree(nodes: JourneyNode[], edges: JourneyEdge[]): BuiltTree {
         const legs: ForkLeg[] =
           node.kind === "branch"
             ? [
-                { on: "yes", label: "SÍ · cumple", tone: "yes", items: walk(succ(edges, cur, "yes")) },
-                { on: "no", label: "NO · no cumple", tone: "no", items: walk(succ(edges, cur, "no")) },
+                {
+                  on: "yes",
+                  label: "SÍ · cumple",
+                  tone: "yes",
+                  items: walk(succ(edges, cur, "yes")),
+                },
+                {
+                  on: "no",
+                  label: "NO · no cumple",
+                  tone: "no",
+                  items: walk(succ(edges, cur, "no")),
+                },
               ]
             : [
                 { on: "a", label: `A · ${pct}%`, tone: "a", items: walk(succ(edges, cur, "a")) },
-                { on: "b", label: `B · ${100 - pct}%`, tone: "b", items: walk(succ(edges, cur, "b")) },
+                {
+                  on: "b",
+                  label: `B · ${100 - pct}%`,
+                  tone: "b",
+                  items: walk(succ(edges, cur, "b")),
+                },
               ];
         items.push({ type: "fork", node, legs });
         break;
@@ -217,7 +236,10 @@ function validateJourney(nodes: JourneyNode[], edges: JourneyEdge[]) {
       !edges.some((e) => e.to === n.id) &&
       nodes.some((x) => x.kind === "entry")
     )
-      out.push({ message: `Paso "${JOURNEY_KINDS[n.kind].label}" suelto (sin entrada).`, nodeId: n.id });
+      out.push({
+        message: `Paso "${JOURNEY_KINDS[n.kind].label}" suelto (sin entrada).`,
+        nodeId: n.id,
+      });
   }
   return out;
 }
@@ -299,7 +321,9 @@ export function JourneyBuilder({
       return [...ns, ...extra];
     });
     setEdges((es) => {
-      let next = es.filter((e) => !(e.from === fromId && (e.on || "out") === handle && e.to === toId));
+      let next = es.filter(
+        (e) => !(e.from === fromId && (e.on || "out") === handle && e.to === toId),
+      );
       if (kind === "branch" || kind === "split") {
         const contOn = kind === "branch" ? "yes" : "a";
         const exitOn = kind === "branch" ? "no" : "b";
@@ -575,10 +599,7 @@ function ColumnView({
         );
       })}
       {tailFrom && (
-        <Inserter
-          onPick={(k) => onInsert(tailFrom!.id, tailFrom!.handle, null, k)}
-          allowExit
-        />
+        <Inserter onPick={(k) => onInsert(tailFrom!.id, tailFrom!.handle, null, k)} allowExit />
       )}
     </div>
   );
@@ -636,7 +657,11 @@ function WaitTram({
   const p = (node.params as NodeParams) || {};
   const until = Array.isArray(p.untilRule) && p.untilRule.length;
   const d = Number(p.days ?? 0);
-  const label = until ? "hasta que se cumpla" : d > 0 ? `${d} día${d === 1 ? "" : "s"}` : "sin definir";
+  const label = until
+    ? "hasta que se cumpla"
+    : d > 0
+      ? `${d} día${d === 1 ? "" : "s"}`
+      : "sin definir";
   return (
     <button
       className={`jb-tram ${selected ? "jb-tram--sel" : ""}`}
@@ -748,7 +773,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function RuleRows({ rules, onChange }: { rules: FilterRule[]; onChange: (r: FilterRule[]) => void }) {
+function RuleRows({
+  rules,
+  onChange,
+}: {
+  rules: FilterRule[];
+  onChange: (r: FilterRule[]) => void;
+}) {
   const set = (i: number, patch: Partial<FilterRule>) =>
     onChange(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   return (
@@ -848,7 +879,9 @@ function JourneyInspector({
         </div>
         {stats && stats.total > 0 && (
           <div style={{ marginTop: 18 }}>
-            <div className="jb-inspect__h">Actividad · {stats.total} inscrito{stats.total === 1 ? "" : "s"}</div>
+            <div className="jb-inspect__h">
+              Actividad · {stats.total} inscrito{stats.total === 1 ? "" : "s"}
+            </div>
             <div style={{ display: "flex", gap: 6, margin: "8px 0 14px" }}>
               <span className="jb-chip jb-chip--ok">{stats.byStatus.active || 0} activos</span>
               <span className="jb-chip">{stats.byStatus.done || 0} completados</span>
@@ -890,7 +923,11 @@ function JourneyInspector({
         </span>
         <span className="jb-inspect__title">{def.label}</span>
         {node.kind !== "entry" && (
-          <button onClick={() => onDelete(node.id)} title="Eliminar paso" className="jb-inspect__del">
+          <button
+            onClick={() => onDelete(node.id)}
+            title="Eliminar paso"
+            className="jb-inspect__del"
+          >
             <Trash2 size={15} />
           </button>
         )}
@@ -905,7 +942,8 @@ function JourneyInspector({
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === "manual") onEntry({ manual: true });
-                  else if (v === "segment") onEntry({ segmentId: segments[0]?.segmentId, manual: false });
+                  else if (v === "segment")
+                    onEntry({ segmentId: segments[0]?.segmentId, manual: false });
                   else onEntry({ trigger: v, manual: false });
                 }}
                 style={jbInput()}
@@ -934,7 +972,11 @@ function JourneyInspector({
               </Field>
             )}
             <label className="jb-check">
-              <input type="checkbox" checked={reenroll} onChange={(e) => onReenroll(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={reenroll}
+                onChange={(e) => onReenroll(e.target.checked)}
+              />
               Permitir re-inscripción (volver a entrar si ya pasó)
             </label>
             <div className="jb-note">
@@ -947,7 +989,11 @@ function JourneyInspector({
         {node.kind === "send" && (
           <>
             <Field label="Canal">
-              <select value={String(p.channel || "whatsapp")} onChange={(e) => set({ channel: e.target.value })} style={jbInput()}>
+              <select
+                value={String(p.channel || "whatsapp")}
+                onChange={(e) => set({ channel: e.target.value })}
+                style={jbInput()}
+              >
                 <option value="whatsapp">WhatsApp</option>
                 <option value="email">Email</option>
               </select>
@@ -955,15 +1001,32 @@ function JourneyInspector({
             {p.channel === "email" ? (
               <>
                 <Field label="Asunto">
-                  <input value={String(p.subject || "")} onChange={(e) => set({ subject: e.target.value })} placeholder="Asunto del correo" style={jbInput()} />
+                  <input
+                    value={String(p.subject || "")}
+                    onChange={(e) => set({ subject: e.target.value })}
+                    placeholder="Asunto del correo"
+                    style={jbInput()}
+                  />
                 </Field>
                 <Field label="Cuerpo">
-                  <textarea value={String(p.body || "")} onChange={(e) => set({ body: e.target.value })} rows={4} placeholder="Texto del correo…" style={{ ...jbInput(), resize: "vertical", fontFamily: "inherit" }} />
+                  <textarea
+                    value={String(p.body || "")}
+                    onChange={(e) => set({ body: e.target.value })}
+                    rows={4}
+                    placeholder="Texto del correo…"
+                    style={{ ...jbInput(), resize: "vertical", fontFamily: "inherit" }}
+                  />
                 </Field>
               </>
             ) : (
               <Field label="Plantilla de WhatsApp">
-                <input list="jb-templates" value={String(p.templateName || "")} onChange={(e) => set({ templateName: e.target.value })} placeholder="nombre_de_la_plantilla" style={jbInput()} />
+                <input
+                  list="jb-templates"
+                  value={String(p.templateName || "")}
+                  onChange={(e) => set({ templateName: e.target.value })}
+                  placeholder="nombre_de_la_plantilla"
+                  style={jbInput()}
+                />
                 <datalist id="jb-templates">
                   {templates.map((t) => (
                     <option key={t.name} value={t.name} />
@@ -971,7 +1034,9 @@ function JourneyInspector({
                 </datalist>
               </Field>
             )}
-            <div className="jb-note">El envío pasa por el gate de supresión (no le manda a un DNC).</div>
+            <div className="jb-note">
+              El envío pasa por el gate de supresión (no le manda a un DNC).
+            </div>
           </>
         )}
 
@@ -995,11 +1060,20 @@ function JourneyInspector({
             </Field>
             {Array.isArray(p.untilRule) ? (
               <Field label="Esperar hasta que (todas)">
-                <RuleRows rules={p.untilRule as FilterRule[]} onChange={(r) => set({ untilRule: r })} />
+                <RuleRows
+                  rules={p.untilRule as FilterRule[]}
+                  onChange={(r) => set({ untilRule: r })}
+                />
               </Field>
             ) : (
               <Field label="Días a esperar">
-                <input type="number" min={0} value={Number(p.days ?? 1)} onChange={(e) => set({ days: Math.max(0, Number(e.target.value)) })} style={jbInput(90)} />
+                <input
+                  type="number"
+                  min={0}
+                  value={Number(p.days ?? 1)}
+                  onChange={(e) => set({ days: Math.max(0, Number(e.target.value)) })}
+                  style={jbInput(90)}
+                />
               </Field>
             )}
           </>
@@ -1008,13 +1082,20 @@ function JourneyInspector({
         {node.kind === "branch" && (
           <>
             <Field label="Coincidir">
-              <select value={String(p.match || "all")} onChange={(e) => set({ match: e.target.value })} style={jbInput()}>
+              <select
+                value={String(p.match || "all")}
+                onChange={(e) => set({ match: e.target.value })}
+                style={jbInput()}
+              >
                 <option value="all">Todas las condiciones (Y)</option>
                 <option value="any">Cualquier condición (O)</option>
               </select>
             </Field>
             <Field label="Condiciones">
-              <RuleRows rules={(p.rules as FilterRule[]) || []} onChange={(r) => set({ rules: r })} />
+              <RuleRows
+                rules={(p.rules as FilterRule[]) || []}
+                onChange={(r) => set({ rules: r })}
+              />
             </Field>
             <div className="jb-note">
               <strong>Sí</strong> = el lead cumple · <strong>No</strong> = no cumple.
@@ -1030,7 +1111,9 @@ function JourneyInspector({
                 min={0}
                 max={100}
                 value={Number(p.percent ?? 50)}
-                onChange={(e) => set({ percent: Math.max(0, Math.min(100, Number(e.target.value))) })}
+                onChange={(e) =>
+                  set({ percent: Math.max(0, Math.min(100, Number(e.target.value))) })
+                }
                 style={jbInput(90)}
               />
             </Field>
@@ -1044,7 +1127,11 @@ function JourneyInspector({
         {node.kind === "action" && (
           <>
             <Field label="Tipo de acción">
-              <select value={String(p.type || "moveStage")} onChange={(e) => set({ type: e.target.value })} style={jbInput()}>
+              <select
+                value={String(p.type || "moveStage")}
+                onChange={(e) => set({ type: e.target.value })}
+                style={jbInput()}
+              >
                 <option value="moveStage">Mover a etapa</option>
                 <option value="webhook">Llamar webhook</option>
                 <option value="enqueueDialer">Llamar (encolar al dialer)</option>
@@ -1052,15 +1139,30 @@ function JourneyInspector({
             </Field>
             {p.type === "webhook" ? (
               <Field label="URL del webhook">
-                <input value={String(p.url || "")} onChange={(e) => set({ url: e.target.value })} placeholder="https://…" style={jbInput()} />
+                <input
+                  value={String(p.url || "")}
+                  onChange={(e) => set({ url: e.target.value })}
+                  placeholder="https://…"
+                  style={jbInput()}
+                />
               </Field>
             ) : p.type === "enqueueDialer" ? (
               <Field label="Campaña (id, opcional)">
-                <input value={String(p.campaignId || "")} onChange={(e) => set({ campaignId: e.target.value })} placeholder="id de campaña" style={jbInput()} />
+                <input
+                  value={String(p.campaignId || "")}
+                  onChange={(e) => set({ campaignId: e.target.value })}
+                  placeholder="id de campaña"
+                  style={jbInput()}
+                />
               </Field>
             ) : (
               <Field label="Etapa destino (stageId)">
-                <input value={String(p.stageId || "")} onChange={(e) => set({ stageId: e.target.value })} placeholder='p.ej. "won"' style={jbInput()} />
+                <input
+                  value={String(p.stageId || "")}
+                  onChange={(e) => set({ stageId: e.target.value })}
+                  placeholder='p.ej. "won"'
+                  style={jbInput()}
+                />
               </Field>
             )}
           </>
