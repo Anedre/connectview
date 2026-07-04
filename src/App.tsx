@@ -134,7 +134,7 @@ function LoadingScreen() {
             height: 420,
             borderRadius: "50%",
             background:
-              "radial-gradient(circle, color-mix(in srgb, var(--accent-amber) 35%, transparent), transparent 70%)",
+              "radial-gradient(circle, color-mix(in srgb, #2c5698 40%, transparent), transparent 70%)",
             filter: "blur(60px)",
           }}
         />
@@ -149,7 +149,7 @@ function LoadingScreen() {
             height: 380,
             borderRadius: "50%",
             background:
-              "radial-gradient(circle, color-mix(in srgb, var(--accent-pink) 32%, transparent), transparent 70%)",
+              "radial-gradient(circle, color-mix(in srgb, #158a8c 36%, transparent), transparent 70%)",
             filter: "blur(70px)",
           }}
         />
