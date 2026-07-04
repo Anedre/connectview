@@ -128,39 +128,55 @@ function RingBlock({
         {title}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+        {/* Doble anillo concéntrico (como Chattigo): exterior = desglose,
+            interior = la tasa (arco de progreso). */}
         <SegmentedRing
-          size={160}
-          thickness={11}
+          size={168}
+          thickness={9}
           gapDeg={3}
-          track="color-mix(in srgb, var(--accent-violet) 9%, var(--bg-3))"
+          track="color-mix(in srgb, var(--accent-violet) 10%, var(--bg-3))"
           segments={segments}
           center={
-            <div>
-              <div
-                style={{
-                  fontSize: 34,
-                  fontWeight: 800,
-                  color: tone,
-                  lineHeight: 1,
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {reached}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 3 }}>/ {total}</div>
-              <div
-                style={{
-                  fontSize: 10.5,
-                  color: "var(--text-3)",
-                  marginTop: 5,
-                  maxWidth: 92,
-                  lineHeight: 1.3,
-                  fontWeight: 600,
-                }}
-              >
-                {pctLabel}
-              </div>
-            </div>
+            <SegmentedRing
+              size={124}
+              thickness={9}
+              gapDeg={2}
+              track="color-mix(in srgb, var(--accent-violet) 10%, var(--bg-3))"
+              segments={[
+                { value: reached, color: tone },
+                { value: Math.max(0, total - reached), color: "transparent" },
+              ]}
+              center={
+                <div>
+                  <div
+                    style={{
+                      fontSize: 30,
+                      fontWeight: 800,
+                      color: tone,
+                      lineHeight: 1,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {reached}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>
+                    / {total}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 9.5,
+                      color: "var(--text-3)",
+                      marginTop: 4,
+                      maxWidth: 78,
+                      lineHeight: 1.3,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {pctLabel}
+                  </div>
+                </div>
+              }
+            />
           }
         />
         <Legend rows={legend} />
