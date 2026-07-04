@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
+import { HsmDeliverySummary } from "./HsmDeliverySummary";
 
 /**
  * HsmOutboundReport — WhatsApp template (HSM) Outbound report (roadmap #6),
@@ -150,6 +151,9 @@ export function HsmOutboundReport() {
 
   return (
     <div>
+      {/* Resumen visual de entrega (donas) — la "estrella" del reporte HSM. */}
+      <HsmDeliverySummary totals={data.totals} response={data.response} rates={data.rates} />
+
       {/* KPI strip — ciclo de entrega (delivered/read/failed los llena el
           status-webhook desde números Meta no anclados a Connect, Pilar 4). */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
