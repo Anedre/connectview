@@ -8,8 +8,14 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import { initCCP } from "@/lib/connect";
+import { initCCP, terminateCCP } from "@/lib/connect";
 import { CONNECT_INSTANCE_URL } from "@/lib/constants";
+import {
+  claimSoftphone,
+  takeOverSoftphone,
+  onYieldRequested,
+  type SoftphoneRole,
+} from "@/lib/softphoneTabLock";
 import { ROLE_HIERARCHY } from "@/types/auth";
 import type { AuthUser, UserRole } from "@/types/auth";
 import { getApiEndpoints } from "@/lib/api";
@@ -38,6 +44,14 @@ interface ConnectAuthContextValue {
    *  los orígenes aprobados, o no hay sesión SSO). La app funciona igual; solo
    *  las features de voz/chat en vivo quedan inertes. */
   softphoneUnavailable: boolean;
+  /** Rol de ESTA pestaña respecto al softphone (guard multi-pestaña). "owner" =
+   *  maneja el CCP; "secondary" = otra pestaña ya lo tiene, así que esta NO inicia
+   *  el CCP (si no, pelean el "master" de Connect y AMBAS se cuelgan en
+   *  "Conectando…"). "pending" = resolviendo. El banner usa esto para "Usar acá". */
+  softphoneTabRole: "pending" | SoftphoneRole;
+  /** "Usar acá": mueve la propiedad del softphone a esta pestaña (traspaso limpio,
+   *  con reload para reinicializar el CCP sin contención). */
+  takeOverSoftphone: () => void;
   /** Despedida de chat/WhatsApp configurable por tenant
    *  (`config.messaging.chatFarewell`). "" = el consumidor (CCPContext) usa su
    *  default genérico. De-Novasys-ificación: antes era una constante hardcodeada
@@ -56,7 +70,7 @@ const ConnectAuthContext = createContext<ConnectAuthContextValue | null>(null);
  *  Fail-closed: si no hay grupos válidos, queda como Agente — NUNCA admin. */
 function rolesFromVoxGroups(groups: string[] | undefined): UserRole[] {
   const valid = (groups || []).filter(
-    (g): g is UserRole => g === "Agents" || g === "Supervisors" || g === "Admins"
+    (g): g is UserRole => g === "Agents" || g === "Supervisors" || g === "Admins",
   );
   return valid.length ? valid : ["Agents"];
 }
@@ -73,6 +87,8 @@ function getHighestRole(groups: UserRole[]): UserRole {
 // Module-level guard so React StrictMode (dev) doesn't double-init the CCP iframe.
 // The CCP iframe must live for the full page lifetime — we never tear it down on cleanup.
 let ccpInitialized = false;
+// Guard aparte para el reclamo de propiedad multi-pestaña (corre ANTES del init).
+let ccpClaimStarted = false;
 
 export function ConnectAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -94,8 +110,7 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
     signOut: voxSignOut,
   } = useVoxAuth();
 
-  const tenantInstanceUrl =
-    integrations?.connect?.instanceUrl?.trim().replace(/\/$/, "") || "";
+  const tenantInstanceUrl = integrations?.connect?.instanceUrl?.trim().replace(/\/$/, "") || "";
   // Tenant real (no "default" ni vacío). Un tenant real SIN instancia está en
   // onboarding → no hay softphone (resolvedInstanceUrl = ""). El tenant legacy
   // "default" usa la instancia del .env (Novasys).
@@ -105,6 +120,8 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
   // ¿El softphone arrancó el iframe del CCP pero todavía no autenticó? Lo
   // marcamos para que la UI muestre "softphone no disponible" sin bloquear.
   const [softphoneUnavailable, setSoftphoneUnavailable] = useState(false);
+  // Guard multi-pestaña: rol de esta pestaña respecto al softphone.
+  const [softphoneTabRole, setSoftphoneTabRole] = useState<"pending" | SoftphoneRole>("pending");
 
   useEffect(() => {
     // Esperar a que Vox (Cognito) Y la config del tenant terminen de cargar.
@@ -140,8 +157,8 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const container = ccpContainerRef.current;
-    if (!container || ccpInitialized) return;
-    ccpInitialized = true;
+    if (!container || ccpClaimStarted) return;
+    ccpClaimStarted = true;
 
     const initWithMaybeFederation = async () => {
       let federationSignInUrl: string | undefined;
@@ -172,10 +189,48 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
       });
     };
 
-    void initWithMaybeFederation().catch((e) => {
-      // El softphone es opcional: si initCCP falla, la app sigue funcionando.
-      console.warn("CCP (softphone) init falló — la app sigue sin softphone:", e);
-      setSoftphoneUnavailable(true);
+    const doInit = () => {
+      if (ccpInitialized) return;
+      ccpInitialized = true;
+      void initWithMaybeFederation().catch((e) => {
+        // El softphone es opcional: si initCCP falla, la app sigue funcionando.
+        console.warn("CCP (softphone) init falló — la app sigue sin softphone:", e);
+        setSoftphoneUnavailable(true);
+      });
+    };
+
+    // Guard multi-pestaña (#softphone): SOLO la pestaña "dueña" inicia el CCP. Si
+    // varias pestañas de ARIA lo inician a la vez, pelean el "master" de Connect
+    // (SharedWorker por origen) y las perdedoras se cuelgan en "Conectando…". Las
+    // secundarias NO inician el CCP y el SoftphoneBanner ofrece "Usar acá".
+    void claimSoftphone({
+      onLost: () => {
+        // Nos robaron el softphone (otra pestaña hizo "Usar acá") → soltamos el CCP
+        // y quedamos secundarias (el banner lo refleja).
+        terminateCCP();
+        ccpInitialized = false;
+        setSoftphoneTabRole("secondary");
+      },
+      onPromoted: () => {
+        // La pestaña dueña se cerró → tomamos el relevo automáticamente.
+        setSoftphoneTabRole("owner");
+        doInit();
+      },
+    }).then(({ role }) => {
+      setSoftphoneTabRole(role);
+      if (role === "owner") {
+        doInit();
+        // Como dueña, escuchamos si otra pestaña pide el control → recargamos para
+        // soltar el lock limpio (al recargar quedamos secundarias).
+        onYieldRequested(() => {
+          try {
+            location.reload();
+          } catch {
+            /* noop */
+          }
+        });
+      }
+      // role === "secondary": NO iniciamos el CCP → cero contención.
     });
     // Sin cleanup: el iframe del CCP es singleton del page lifetime, no del
     // ciclo de vida del componente.
@@ -208,10 +263,22 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
       instanceUrl: resolvedInstanceUrl,
       isOnboarding: !resolvedInstanceUrl,
       softphoneUnavailable,
+      softphoneTabRole,
+      takeOverSoftphone,
       chatFarewell,
       productName,
     }),
-    [user, loading, error, signOut, resolvedInstanceUrl, softphoneUnavailable, chatFarewell, productName]
+    [
+      user,
+      loading,
+      error,
+      signOut,
+      resolvedInstanceUrl,
+      softphoneUnavailable,
+      softphoneTabRole,
+      chatFarewell,
+      productName,
+    ],
   );
 
   // White-label: el título de la pestaña del navegador refleja la marca del tenant.
@@ -219,11 +286,7 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
     if (productName) document.title = productName;
   }, [productName]);
 
-  return (
-    <ConnectAuthContext.Provider value={value}>
-      {children}
-    </ConnectAuthContext.Provider>
-  );
+  return <ConnectAuthContext.Provider value={value}>{children}</ConnectAuthContext.Provider>;
 }
 
 export function useConnectAuth() {
