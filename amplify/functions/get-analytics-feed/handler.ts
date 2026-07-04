@@ -175,8 +175,12 @@ export const handler: Handler = async (event: any) => {
     });
   }
 
-  // ── Modo DATOS (Power BI): valida el token de la URL y sirve el dataset ─────
-  const tenantId = verifyToken(q.token || "");
+  // ── Modo DATOS: Power BI usa ?token=; la app (autenticada) puede pedir el
+  //    mismo dataset con su Bearer de Cognito (para el catálogo de Descargas). ──
+  let tenantId = verifyToken(q.token || "");
+  if (!tenantId && event?.headers?.authorization) {
+    tenantId = await resolveTenantId(event.headers);
+  }
   if (!tenantId) return bad(401, "token inválido o ausente");
   const dataset = (q.dataset || "hsm") as Dataset;
   if (!DATASETS.includes(dataset)) {

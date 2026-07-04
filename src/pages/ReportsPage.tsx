@@ -4,6 +4,7 @@ import type { EChartsOption } from "echarts";
 import { Modal } from "@/components/ui/modal";
 import { ScheduledExportsPanel } from "@/components/reports/ScheduledExportsPanel";
 import { PowerBiFeedPanel } from "@/components/reports/PowerBiFeedPanel";
+import { ReportDownloads } from "@/components/reports/ReportDownloads";
 import { useContacts } from "@/hooks/useContacts";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
@@ -679,30 +680,28 @@ export function ReportsPage() {
         <>
           <div style={{ marginBottom: 16 }}>
             <Card
-              title="Detalle de conversaciones · Chat detail"
-              icon="fileText"
+              title="Descargar reportes"
+              icon="download"
               extra={
                 <span className="dim" style={{ fontSize: 12 }}>
-                  {contacts.length} conversaciones
+                  {contacts.length} contactos en el período
                 </span>
               }
             >
               <div
-                style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 14 }}
+                style={{
+                  fontSize: 12.5,
+                  color: "var(--text-2)",
+                  lineHeight: 1.6,
+                  marginBottom: 14,
+                }}
               >
-                Exporta fila por conversación con todos los campos: agente, cola, canal, duración,
-                sentiment, categorías, estado y motivo de cierre — sobre tus contactos reales del
-                período seleccionado. Es el reporte que en Chattigo se descarga como «Chat detail».
+                Bajá cualquier reporte como <strong>Excel</strong> o <strong>CSV</strong>. Los de
+                contactos (chat detail, agentes, llamadas, canal) respetan el{" "}
+                <strong>período</strong> elegido arriba; HSM, leads y conversaciones traen todo el
+                histórico.
               </div>
-              <Btn
-                variant="primary"
-                size="sm"
-                icon="download"
-                disabled={contacts.length === 0}
-                onClick={() => exportContactsToCsv(contacts)}
-              >
-                Descargar CSV · {contacts.length} conversaciones
-              </Btn>
+              <ReportDownloads contacts={contacts} range={range} />
             </Card>
           </div>
           <Card title="Exports programados · XLSX por email" icon="calendar">
