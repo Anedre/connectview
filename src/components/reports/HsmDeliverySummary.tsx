@@ -129,22 +129,33 @@ function RingBlock({
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
         <SegmentedRing
-          size={150}
-          thickness={15}
+          size={160}
+          thickness={11}
+          gapDeg={3}
+          track="color-mix(in srgb, var(--accent-violet) 9%, var(--bg-3))"
           segments={segments}
           center={
             <div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: tone, lineHeight: 1 }}>
+              <div
+                style={{
+                  fontSize: 34,
+                  fontWeight: 800,
+                  color: tone,
+                  lineHeight: 1,
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
                 {reached}
               </div>
-              <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>/ {total}</div>
+              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 3 }}>/ {total}</div>
               <div
                 style={{
                   fontSize: 10.5,
                   color: "var(--text-3)",
-                  marginTop: 4,
-                  maxWidth: 84,
+                  marginTop: 5,
+                  maxWidth: 92,
                   lineHeight: 1.3,
+                  fontWeight: 600,
                 }}
               >
                 {pctLabel}
