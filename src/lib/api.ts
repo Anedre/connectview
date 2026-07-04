@@ -203,6 +203,9 @@ interface ApiEndpoints {
   // fuente (WhatsApp vía Graph; Connect vía Cost Explorer, build-ahead). Ver
   // design/consumo.md.
   getCostReport?: string;
+  /** Feed de datos para Power BI/Excel/BI (get-analytics-feed). Dual: `?meta=1`
+   *  autenticado devuelve token+URL; `?token=&dataset=` sirve el JSON. */
+  getAnalyticsFeed?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

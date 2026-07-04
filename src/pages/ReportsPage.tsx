@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import type { EChartsOption } from "echarts";
 import { Modal } from "@/components/ui/modal";
 import { ScheduledExportsPanel } from "@/components/reports/ScheduledExportsPanel";
+import { PowerBiFeedPanel } from "@/components/reports/PowerBiFeedPanel";
 import { useContacts } from "@/hooks/useContacts";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
@@ -707,6 +708,9 @@ export function ReportsPage() {
           <Card title="Exports programados · XLSX por email" icon="calendar">
             <ScheduledExportsPanel />
           </Card>
+          <div style={{ marginTop: 16 }}>
+            <PowerBiFeedPanel />
+          </div>
         </>
       )}
     </div>
