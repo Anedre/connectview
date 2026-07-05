@@ -301,4 +301,17 @@ El header de `deploy-lambda.mjs:12` documenta `--all-changed` pero **no lo imple
 - **BUG-A1 (RMW→UpdateItem completo):** en la Ola 2 se hace solo el `ConditionExpression` del cierre; el refactor total del patch de `conversations.ts` a `UpdateItem`/`list_append` queda para un cambio dedicado (alto riesgo en un `_shared` muy bundleado).
 - **Deuda de IAM:** `connectview-campaign-lambda-role` está en el límite (10 managed + inline 10240 B) → consolidar policies es prerequisito de varios go-lives.
 
-### ⏳ Ola 2 (ALTOS) y Ola 3 (perf/limpieza): en curso.
+### ✅ Ola 2 — ALTOS (cerrada, desplegada, verificada)
+
+24 Lambdas redeployados (+ `save-agent-notes` amplify-managed con su long-name). Verificado en vivo: el feed del tenant real `t_3176` devuelve leads=38, hsm=16 (SEC-A1 activo **sin** regresión gracias al backfill).
+
+- **SEC-A1** (tenantId en filas pooled + filtro + backfill de 37 leads/16 HSM a `t_3176`), **BUG-A2** (cierre condicional + integración del reaper), **BUG-M1** (opt-out con `ADD` a String Set + migración List→SS), **SEC-A5** (rol Admins en suppression/scheduled-exports), **BUG-M2** (timeout SF), **DEBT-A2** (iniciales unificadas), **HOOK-A1/A2**: hechos y desplegados.
+- **SEC-A2** (bot-runtime gate) y **SEC-A4** (email open-redirect firmado): desplegados en **modo degradado** (sin `VOX_INTERNAL_SECRET`/`EMAIL_TRACKING_SECRET` → inertes, no rompen). Se activan al cablear el secreto + los callers/firma.
+- **Descubrimiento**: `anedre123` es tenant **real** `t_3176` (no legacy) → el aislamiento no es hipotético; sus conversaciones ya llevaban `tenantId`, sus leads/HSM no (por eso SEC-A1 era real).
+
+### 🔶 Diferidos añadidos en Ola 2
+
+- **DEBT-A1 (`normalizePhone`)**: revertido — quitar el `+51` regresionaría a UDEP (peruano). Fix correcto = `defaultCountry` por-tenant (nuevo campo en la config del tenant) antes de onboardear un tenant no-Perú.
+- **SEC-A2/A4 activación**: cablear `VOX_INTERNAL_SECRET` en bot-runtime + que los webhooks (`whatsapp-meta-webhook:519`, `agent-channel-adapter:149`) manden el header; firmar el link en `_shared/emailTracking.ts buildTrackedHtml` + setear `EMAIL_TRACKING_SECRET`. (Va junto con la rotación del secreto — Ola 0.)
+
+### ⏳ Ola 3 (perf/limpieza): en curso.
