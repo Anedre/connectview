@@ -26,6 +26,7 @@ import {
   UpdateWhatsAppMessageTemplateCommand,
   DeleteWhatsAppMessageTemplateCommand,
   ListLinkedWhatsAppBusinessAccountsCommand,
+  ListWhatsAppFlowsCommand,
 } from "@aws-sdk/client-socialmessaging";
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import type { WhatsAppAccount } from "./tenantConnect";
@@ -444,6 +445,45 @@ export async function routeForAccount(
     return { route: { mode: "meta", wabaId: account.wabaId, token, tenantId }, account };
   }
   return { route: { mode: "aws", wabaId: account.wabaId, client, tenantId }, account };
+}
+
+export interface FlowBrief {
+  id?: string;
+  name?: string;
+  status?: string;
+  categories?: unknown;
+}
+
+/** Lista los WhatsApp Flows (formularios nativos) de una WABA, dual-mode. */
+export async function listFlows(route: TemplateRoute): Promise<FlowBrief[]> {
+  if (route.mode === "meta") {
+    if (!route.token) throw new Error("WhatsApp (Meta): no hay token guardado para el tenant");
+    const page = await graph(`${route.wabaId}/flows`, route.token, {
+      query: { fields: "id,name,status,categories", limit: "200" },
+    });
+    const data = Array.isArray(page.data) ? (page.data as Array<Record<string, unknown>>) : [];
+    return data.map((f) => ({
+      id: f.id != null ? String(f.id) : undefined,
+      name: typeof f.name === "string" ? f.name : undefined,
+      status: typeof f.status === "string" ? f.status : undefined,
+      categories: f.categories,
+    }));
+  }
+  if (!route.client) throw new Error("WhatsApp (AWS): cliente no resuelto");
+  // ListWhatsAppFlows no está en todas las versiones del SDK del runtime de
+  // Lambda (AWS End User Messaging Social) → sin él, [] en vez de crashear.
+  if (typeof ListWhatsAppFlowsCommand !== "function") return [];
+  const wabaForApi = await awsWabaFor(route.client, route.wabaId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const out: any = await route.client.send(new ListWhatsAppFlowsCommand({ id: wabaForApi }));
+  const raw = out.flows || out.Flows || [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (raw as any[]).map((f) => ({
+    id: f.id || f.flowId || f.metaFlowId,
+    name: f.name || f.flowName,
+    status: f.status || f.flowStatus,
+    categories: f.categories,
+  }));
 }
 
 /** app_id asociado a un token, vía debug_token. Cache por vida del contenedor. */

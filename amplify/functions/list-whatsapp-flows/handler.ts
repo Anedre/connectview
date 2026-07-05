@@ -1,17 +1,16 @@
 import type { Handler } from "aws-lambda";
-import {
-  SocialMessagingClient,
-  ListWhatsAppFlowsCommand,
-  ListLinkedWhatsAppBusinessAccountsCommand,
-} from "@aws-sdk/client-socialmessaging";
-import { resolveWhatsAppWaba } from "../_shared/tenantConnect";
+import { SocialMessagingClient } from "@aws-sdk/client-socialmessaging";
+import { resolveWhatsAppAccounts } from "../_shared/tenantConnect";
+import { listFlows, routeForAccount } from "../_shared/whatsappTemplatesApi";
 
 /**
  * list-whatsapp-flows — lista los WhatsApp Flows (formularios nativos de Meta) de
- * la WABA del TENANT, para poder elegir uno al agregar un botón FLOW a una
- * plantilla. BYO: la WABA sale del JWT (resolveWhatsAppWaba), igual que list-templates.
+ * la WABA del TENANT, para elegir uno al agregar un botón FLOW a una plantilla.
+ * DUAL-MODE: para un número de Meta standalone usa la Graph API (/{wabaId}/flows);
+ * para el número anclado a Connect usa AWS End User Messaging. `?account=<wabaId>`
+ * elige la cuenta (sin él, la activa). Ver _shared/whatsappTemplatesApi.ts.
  *
- * Devuelve { flows: [{ id, name, status, categories }] }. Si no hay flows → [].
+ * Devuelve { flows: [{ id, name, status, categories }] }. Sin flows → [].
  */
 const legacyClient = new SocialMessagingClient({});
 const LEGACY_WABA_ID = process.env.WABA_ID || "waba-5a7f5911ddc34005bc32620e8bd9e2f2";
@@ -24,45 +23,24 @@ export const handler: Handler = async (event: any) => {
     return { statusCode: 200, headers: CORS, body: "" };
   }
 
-  const { client, wabaId: WABA_ID } = await resolveWhatsAppWaba(
+  const accountKey = event?.queryStringParameters?.account || undefined;
+  const { accounts, client, tenantId } = await resolveWhatsAppAccounts(
     event?.headers,
     legacyClient,
-    LEGACY_WABA_ID
+    LEGACY_WABA_ID,
   );
-  if (!WABA_ID) {
+  const resolved = await routeForAccount(accounts, client, tenantId, accountKey);
+  if (!resolved) {
     return resp(200, { flows: [], note: "WhatsApp no configurado para esta organización." });
-  }
-  let wabaForApi = WABA_ID;
-  if (!/^waba-/.test(WABA_ID) && !/^arn:/.test(WABA_ID)) {
-    try {
-      const linked = await client.send(new ListLinkedWhatsAppBusinessAccountsCommand({}));
-      const match = (linked.linkedAccounts || []).find(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (a: any) => a.wabaId === WABA_ID || a.id === WABA_ID
-      );
-      if (match?.id) wabaForApi = match.id;
-      else if (match?.arn) wabaForApi = match.arn;
-    } catch {
-      /* seguimos con el original */
-    }
   }
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const out: any = await client.send(new ListWhatsAppFlowsCommand({ id: wabaForApi }));
-    const raw = out.flows || out.Flows || [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const flows = (raw as any[]).map((f) => ({
-      id: f.id || f.flowId || f.metaFlowId,
-      name: f.name || f.flowName,
-      status: f.status || f.flowStatus,
-      categories: f.categories,
-    }));
-    return resp(200, { flows });
+    const flows = await listFlows(resolved.route);
+    return resp(200, { flows, activeAccount: resolved.account.key });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("list-whatsapp-flows error", err);
-    return resp(500, { error: msg });
+    return resp(200, { flows: [], error: msg });
   }
 };
 

@@ -252,21 +252,22 @@ export function WhatsAppTemplatesManager() {
   // usuario está viendo las plantillas).
   const effectiveAccount = selectedAccount || accounts.find((a) => a.active)?.key || "";
 
-  // Cargar los WhatsApp Flows del tenant una vez (para el botón de formulario).
+  // Cargar los WhatsApp Flows de la cuenta elegida (para el botón de formulario).
   useEffect(() => {
     const ep = getApiEndpoints();
     const flowsUrl = ep?.listWhatsAppFlows;
     if (!flowsUrl) return;
+    const acc = effectiveAccount ? `?account=${encodeURIComponent(effectiveAccount)}` : "";
     (async () => {
       try {
-        const r = await authedFetch(flowsUrl);
+        const r = await authedFetch(`${flowsUrl}${acc}`);
         const j = await r.json();
         setFlows(Array.isArray(j.flows) ? j.flows : []);
       } catch {
         /* sin flows → el botón de formulario queda deshabilitado */
       }
     })();
-  }, []);
+  }, [effectiveAccount]);
 
   // Variables {{n}} detectadas en el body → tantos inputs de ejemplo.
   const varCount = useMemo(
