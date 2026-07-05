@@ -31,6 +31,17 @@ interface WaTemplate {
   buttons?: { type: string; text: string; url?: string; phoneNumber?: string }[];
 }
 
+/** Una cuenta de WhatsApp del tenant (WABA): la de Meta standalone o la del
+ *  número anclado a Connect. Cada una tiene su propio juego de plantillas. */
+interface WaAccount {
+  key: string;
+  label: string;
+  mode: "aws" | "meta";
+  wabaId: string;
+  displayNumber?: string;
+  active?: boolean;
+}
+
 const STATUS_META: Record<string, { label: string; chip: string }> = {
   APPROVED: { label: "Aprobada", chip: "chip--green" },
   PENDING: { label: "Pendiente", chip: "chip--amber" },
@@ -164,6 +175,11 @@ export function WhatsAppTemplatesManager() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
+  // Cuentas de WhatsApp del tenant (Meta standalone y/o Connect) + la elegida.
+  // "" = la cuenta activa por defecto (el backend la resuelve).
+  const [accounts, setAccounts] = useState<WaAccount[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   // Form de la nueva plantilla.
   const [name, setName] = useState("");
@@ -211,20 +227,30 @@ export function WhatsAppTemplatesManager() {
       return;
     }
     setLoading(true);
+    setLoadError("");
     try {
-      const r = await authedFetch(`${ep.listWhatsAppTemplates}?includeAll=true`);
+      // selectedAccount "" → el backend usa la cuenta activa y devuelve activeAccount.
+      const acc = selectedAccount ? `&account=${encodeURIComponent(selectedAccount)}` : "";
+      const r = await authedFetch(`${ep.listWhatsAppTemplates}?includeAll=true${acc}`);
       const j = await r.json();
+      if (Array.isArray(j.accounts)) setAccounts(j.accounts);
       setTemplates(Array.isArray(j.templates) ? j.templates : []);
+      if (j.error) setLoadError(String(j.error));
     } catch {
       /* mantenemos lo último bueno */
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedAccount]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // La cuenta EFECTIVA sobre la que se crea/edita/borra/sube: la elegida, o la
+  // marcada como activa por el backend (para que la operación caiga donde el
+  // usuario está viendo las plantillas).
+  const effectiveAccount = selectedAccount || accounts.find((a) => a.active)?.key || "";
 
   // Cargar los WhatsApp Flows del tenant una vez (para el botón de formulario).
   useEffect(() => {
@@ -354,7 +380,12 @@ export function WhatsAppTemplatesManager() {
     const r = await authedFetch(ep.uploadWhatsAppTemplateMedia, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileBase64: base64, contentType: file.type, fileName: file.name }),
+      body: JSON.stringify({
+        fileBase64: base64,
+        contentType: file.type,
+        fileName: file.name,
+        account: effectiveAccount || undefined,
+      }),
     });
     const j = await r.json();
     if (!r.ok || !j.metaHeaderHandle) throw new Error(j.error || `HTTP ${r.status}`);
@@ -696,8 +727,8 @@ export function WhatsAppTemplatesManager() {
     setCreating(true);
     try {
       const payload = isEdit
-        ? { metaTemplateId: editingId, ...contentPayload }
-        : { name, language, ...contentPayload };
+        ? { metaTemplateId: editingId, account: effectiveAccount || undefined, ...contentPayload }
+        : { name, language, account: effectiveAccount || undefined, ...contentPayload };
       const r = await authedFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -742,6 +773,7 @@ export function WhatsAppTemplatesManager() {
         body: JSON.stringify({
           templateName: deleteTarget.name,
           metaTemplateId: deleteTarget.metaTemplateId,
+          account: effectiveAccount || undefined,
         }),
       });
       const j = await r.json();
@@ -800,6 +832,66 @@ export function WhatsAppTemplatesManager() {
             , ya se puede usar en Campañas, Bots y seguimientos. Salen de la WABA de tu
             organización.
           </div>
+
+          {/* Selector de cuenta — separa las plantillas por WABA (Meta standalone
+              vs número anclado a Connect). Solo aparece si el tenant tiene más de
+              una cuenta de WhatsApp. */}
+          {accounts.length > 1 && (
+            <div
+              role="tablist"
+              aria-label="Cuenta de WhatsApp"
+              style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}
+            >
+              {accounts.map((a) => {
+                const on = effectiveAccount === a.key;
+                return (
+                  <button
+                    key={a.key}
+                    role="tab"
+                    aria-selected={on}
+                    onClick={() => setSelectedAccount(a.key)}
+                    className={"chip" + (on ? " chip--green" : "")}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 7,
+                      cursor: "pointer",
+                      padding: "6px 12px",
+                      fontSize: 12,
+                      fontWeight: on ? 700 : 500,
+                    }}
+                    title={`WABA ${a.wabaId} · ${a.mode === "meta" ? "Meta Cloud API" : "Amazon Connect"}`}
+                  >
+                    <Icon.WhatsApp size={13} />
+                    {a.label}
+                    <span
+                      style={{
+                        fontSize: 9.5,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.4,
+                        opacity: 0.7,
+                        border: "1px solid currentColor",
+                        borderRadius: 5,
+                        padding: "0 4px",
+                      }}
+                    >
+                      {a.mode === "meta" ? "Meta" : "Connect"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Aviso si la cuenta elegida no pudo listar (error de Meta/AWS). */}
+          {loadError && (
+            <div
+              className="chip chip--red"
+              style={{ marginBottom: 12, fontSize: 11.5, display: "inline-flex" }}
+            >
+              No se pudieron cargar las plantillas de esta cuenta: {loadError}
+            </div>
+          )}
 
           {/* Editor */}
           {showEditor && (

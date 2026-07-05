@@ -1,10 +1,7 @@
 import type { Handler } from "aws-lambda";
-import {
-  SocialMessagingClient,
-  CreateWhatsAppMessageTemplateCommand,
-  ListLinkedWhatsAppBusinessAccountsCommand,
-} from "@aws-sdk/client-socialmessaging";
-import { resolveWhatsAppWaba } from "../_shared/tenantConnect";
+import { SocialMessagingClient } from "@aws-sdk/client-socialmessaging";
+import { resolveWhatsAppAccounts } from "../_shared/tenantConnect";
+import { createTemplate, routeForAccount } from "../_shared/whatsappTemplatesApi";
 import {
   buildTemplateComponents,
   type ButtonIn,
@@ -75,48 +72,33 @@ export const handler: Handler = async (event: any) => {
   });
   if (!built.ok) return resp(400, { error: built.error });
 
-  // Resolver la WABA del tenant (BYO).
-  const { client, wabaId: WABA_ID } = await resolveWhatsAppWaba(
+  // Resolver la CUENTA del tenant (BYO, dual-mode). `account` (del body) elige
+  // a qué WABA va — Meta standalone o el número anclado a Connect.
+  const accountKey = body.account ? String(body.account) : undefined;
+  const { accounts, client, tenantId } = await resolveWhatsAppAccounts(
     event?.headers,
     legacyClient,
     LEGACY_WABA_ID,
   );
-  if (!WABA_ID) {
+  const resolved = await routeForAccount(accounts, client, tenantId, accountKey);
+  if (!resolved) {
     return resp(400, {
       error:
-        "WhatsApp no está configurado para esta organización. Cargá tu WABA en Configuración → Integraciones.",
+        "WhatsApp no está configurado para esta organización. Cargá tu número en Configuración → Integraciones.",
     });
   }
-  // El WABA guardado puede ser el ID crudo de Meta; la API de AWS espera el ID
-  // de AWS (waba-...) o el ARN. Lo resolvemos vía las cuentas linkeadas.
-  let wabaForApi = WABA_ID;
-  if (!/^waba-/.test(WABA_ID) && !/^arn:/.test(WABA_ID)) {
-    try {
-      const linked = await client.send(new ListLinkedWhatsAppBusinessAccountsCommand({}));
-      const match = (linked.linkedAccounts || []).find(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (a: any) => a.wabaId === WABA_ID || a.id === WABA_ID,
-      );
-      if (match?.id) wabaForApi = match.id;
-      else if (match?.arn) wabaForApi = match.arn;
-    } catch {
-      /* si falla, seguimos con el original — el error de Meta será claro */
-    }
-  }
-
-  const definition = { name, language, category, components: built.components };
 
   try {
-    const res = await client.send(
-      new CreateWhatsAppMessageTemplateCommand({
-        id: wabaForApi,
-        templateDefinition: new TextEncoder().encode(JSON.stringify(definition)),
-      }),
-    );
+    const res = await createTemplate(resolved.route, {
+      name,
+      language,
+      category,
+      components: built.components,
+    });
     return resp(200, {
       ok: true,
       metaTemplateId: res.metaTemplateId,
-      status: res.templateStatus, // normalmente "PENDING"
+      status: res.status, // normalmente "PENDING"
       category: res.category,
     });
   } catch (err) {

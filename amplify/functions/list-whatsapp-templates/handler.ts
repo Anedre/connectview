@@ -1,124 +1,27 @@
 import type { Handler } from "aws-lambda";
-import {
-  SocialMessagingClient,
-  ListWhatsAppMessageTemplatesCommand,
-  GetWhatsAppMessageTemplateCommand,
-  ListLinkedWhatsAppBusinessAccountsCommand,
-} from "@aws-sdk/client-socialmessaging";
-import { resolveWhatsAppWaba } from "../_shared/tenantConnect";
+import { SocialMessagingClient } from "@aws-sdk/client-socialmessaging";
+import { resolveWhatsAppAccounts } from "../_shared/tenantConnect";
+import { listTemplates, routeForAccount } from "../_shared/whatsappTemplatesApi";
 
 /**
- * list-whatsapp-templates — lists Meta-approved WhatsApp templates
- * the campaign wizard can choose from. For each template we also
- * pull the body text + variable placeholders so the UI knows how
- * many parameters the agent needs to map from the CSV.
+ * list-whatsapp-templates — lista las plantillas (HSM) aprobadas del tenant para
+ * el gestor/wizard. Ahora es DUAL-MODE y multi-cuenta:
  *
- * Filters out PENDING / REJECTED templates by default — the wizard
- * only renders APPROVED ones the manager can actually send.
+ *  · Devuelve `accounts[]` — todas las cuentas (WABAs) del tenant: la de Meta
+ *    standalone (mode="meta") y/o la del número anclado a Connect (mode="aws").
+ *  · `?account=<wabaId>` lista las plantillas de ESA cuenta por su propio modo
+ *    (Graph API de Meta o AWS End User Messaging). Sin `account`, usa la activa.
  *
- * WhatsApp BYO: las plantillas salen de la WABA del CLIENTE (resolveWhatsAppWaba
- * lee el JWT → su socialMessaging + su wabaId). Sin WABA configurada → lista
- * vacía (NO las plantillas de Vox, que llevarían a envíos que Meta rechaza).
+ * Antes SIEMPRE consultaba AWS SocialMessaging → para un número de Meta la WABA
+ * no existe en AWS y devolvía lista vacía. Ver _shared/whatsappTemplatesApi.ts.
+ *
+ * WhatsApp BYO: las cuentas salen del JWT (tenant). Sin cuentas → lista vacía
+ * (NO las de Vox, que llevarían a envíos que Meta rechaza).
  */
-// Cliente + WABA LEGACY de Vox — solo para Novasys/fallback. Los tenants reales
-// listan SUS plantillas desde SU WABA vía resolveWhatsAppWaba.
 const legacyClient = new SocialMessagingClient({});
 const LEGACY_WABA_ID = process.env.WABA_ID || "waba-5a7f5911ddc34005bc32620e8bd9e2f2";
 
-const CORS: Record<string, string> = {
-  "Content-Type": "application/json",
-};
-
-interface TemplateButton {
-  type: string; // QUICK_REPLY · URL · PHONE_NUMBER · COPY_CODE
-  text: string;
-  url?: string;
-  phoneNumber?: string;
-}
-
-interface TemplateBrief {
-  name: string;
-  metaTemplateId?: string;
-  language?: string;
-  category?: string;
-  status?: string;
-  bodyText?: string;
-  variableCount?: number;
-  headerText?: string;
-  headerFormat?: string;
-  footerText?: string;
-  buttons?: TemplateButton[];
-  /** Fase 4 · F4.2b — tarjetas del carousel (si es un template CAROUSEL). */
-  cards?: { bodyText?: string; headerFormat?: string; buttons?: TemplateButton[] }[];
-}
-
-function extractBody(definition: unknown): {
-  bodyText?: string;
-  variableCount: number;
-  headerText?: string;
-  headerFormat?: string;
-  footerText?: string;
-  buttons?: TemplateButton[];
-  cards?: { bodyText?: string; headerFormat?: string; buttons?: TemplateButton[] }[];
-} {
-  if (!definition || typeof definition !== "object") {
-    return { variableCount: 0 };
-  }
-  const def = definition as { components?: Array<Record<string, unknown>> };
-  let bodyText: string | undefined;
-  let headerText: string | undefined;
-  let headerFormat: string | undefined;
-  let footerText: string | undefined;
-  let buttons: TemplateButton[] | undefined;
-  let cards: { bodyText?: string; headerFormat?: string; buttons?: TemplateButton[] }[] | undefined;
-  const parseButtons = (arr: unknown): TemplateButton[] =>
-    (Array.isArray(arr) ? (arr as Array<Record<string, unknown>>) : []).map((b) => ({
-      type: String(b.type || ""),
-      text: String(b.text || ""),
-      url: typeof b.url === "string" ? b.url : undefined,
-      phoneNumber:
-        typeof b.phone_number === "string"
-          ? b.phone_number
-          : typeof b.phoneNumber === "string"
-            ? b.phoneNumber
-            : undefined,
-    }));
-  for (const c of def.components || []) {
-    const t = String(c.type || "").toUpperCase();
-    const txt = typeof c.text === "string" ? c.text : undefined;
-    if (t === "BODY") bodyText = txt;
-    if (t === "HEADER") {
-      headerText = txt;
-      headerFormat = typeof c.format === "string" ? c.format : undefined;
-    }
-    if (t === "FOOTER") footerText = txt;
-    if (t === "BUTTONS" && Array.isArray(c.buttons)) buttons = parseButtons(c.buttons);
-    // Fase 4 · F4.2b — carousel: extraer body/header/botones de cada tarjeta.
-    if (t === "CAROUSEL" && Array.isArray(c.cards)) {
-      cards = (c.cards as Array<{ components?: Array<Record<string, unknown>> }>).map((card) => {
-        let cb: string | undefined;
-        let cf: string | undefined;
-        let cbtn: TemplateButton[] | undefined;
-        for (const cc of card.components || []) {
-          const ct = String(cc.type || "").toUpperCase();
-          if (ct === "BODY") cb = typeof cc.text === "string" ? cc.text : undefined;
-          if (ct === "HEADER") cf = typeof cc.format === "string" ? cc.format : undefined;
-          if (ct === "BUTTONS") cbtn = parseButtons(cc.buttons);
-        }
-        return { bodyText: cb, headerFormat: cf, buttons: cbtn };
-      });
-    }
-  }
-  // Count {{N}} placeholders in the body — that's how many CSV cols
-  // the manager has to map when configuring the campaign.
-  const variableCount = bodyText
-    ? Array.from(bodyText.matchAll(/\{\{\s*(\d+)\s*\}\}/g)).reduce(
-        (max, m) => Math.max(max, Number(m[1] || 0)),
-        0,
-      )
-    : 0;
-  return { bodyText, variableCount, headerText, headerFormat, footerText, buttons, cards };
-}
+const CORS: Record<string, string> = { "Content-Type": "application/json" };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
@@ -129,109 +32,54 @@ export const handler: Handler = async (event: any) => {
   const includeAll =
     event?.queryStringParameters?.includeAll === "true" ||
     event?.queryStringParameters?.includeAll === "1";
+  const accountKey = event?.queryStringParameters?.account || undefined;
 
-  // WhatsApp BYO: resolvemos la WABA del TENANT (sus plantillas). El frontend va
-  // authed → tenant del JWT.
-  const { client, wabaId: WABA_ID } = await resolveWhatsAppWaba(
+  const { accounts, client, tenantId } = await resolveWhatsAppAccounts(
     event?.headers,
     legacyClient,
     LEGACY_WABA_ID,
   );
-  if (!WABA_ID) {
-    // Tenant real sin WABA cargada → no mostramos plantillas ajenas.
+
+  const resolved = await routeForAccount(accounts, client, tenantId, accountKey);
+  if (!resolved) {
     return {
       statusCode: 200,
       headers: CORS,
       body: JSON.stringify({
         templates: [],
+        accounts: [],
         wabaId: "",
-        note: "WhatsApp no está configurado para esta organización. Cargá tu WABA ID en Configuración → Integraciones.",
+        note: "WhatsApp no está configurado para esta organización. Cargá tu número en Configuración → Integraciones.",
       }),
     };
   }
 
-  // El WABA_ID guardado puede ser el ID CRUDO de Meta (ej. "2370402863397858"),
-  // pero la API de AWS End User Messaging Social espera el ID de AWS ("waba-...")
-  // o el ARN. Si no viene en formato AWS, lo resolvemos vía las cuentas linkeadas.
-  let wabaForApi = WABA_ID;
-  if (!/^waba-/.test(WABA_ID) && !/^arn:/.test(WABA_ID)) {
-    try {
-      const linked = await client.send(new ListLinkedWhatsAppBusinessAccountsCommand({}));
-      const match = (linked.linkedAccounts || []).find(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (a: any) => a.wabaId === WABA_ID || a.id === WABA_ID,
-      );
-      if (match?.id) wabaForApi = match.id;
-      else if (match?.arn) wabaForApi = match.arn;
-    } catch {
-      /* si falla, seguimos con el original — el error será claro */
-    }
-  }
-
   try {
-    const res = await client.send(new ListWhatsAppMessageTemplatesCommand({ id: wabaForApi }));
-
-    // For each template, fetch full definition so we get body + vars.
-    // The list response only returns the metadata, not the components.
-    const templates: TemplateBrief[] = [];
-    for (const t of res.templates ?? []) {
-      const status = t.templateStatus || "UNKNOWN";
-      if (!includeAll && status !== "APPROVED") continue;
-      try {
-        const details = await client.send(
-          new GetWhatsAppMessageTemplateCommand({
-            id: wabaForApi,
-            metaTemplateId: t.metaTemplateId,
-          }),
-        );
-        // The Lambda runtime gives us templateDefinition as Uint8Array;
-        // decode it to JSON for the body / variable inspection.
-        let definition: unknown = undefined;
-        if (details.template) {
-          try {
-            const raw =
-              typeof details.template === "string"
-                ? details.template
-                : new TextDecoder().decode(details.template as Uint8Array);
-            definition = JSON.parse(raw);
-          } catch {
-            definition = undefined;
-          }
-        }
-        const body = extractBody(definition);
-        templates.push({
-          name: (definition as { name?: string })?.name || t.metaTemplateId,
-          metaTemplateId: t.metaTemplateId,
-          language: (definition as { language?: string })?.language,
-          category: t.category,
-          status,
-          ...body,
-        });
-      } catch (innerErr) {
-        // Couldn't load this one — return the bare metadata so the
-        // wizard still sees it.
-        templates.push({
-          name: t.metaTemplateId || "",
-          metaTemplateId: t.metaTemplateId,
-          category: t.category,
-          status,
-        });
-        console.warn("Get template failed:", innerErr);
-      }
-    }
-
+    const templates = await listTemplates(resolved.route, includeAll);
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ templates, wabaId: WABA_ID }),
+      body: JSON.stringify({
+        templates,
+        accounts,
+        activeAccount: resolved.account.key,
+        wabaId: resolved.account.wabaId,
+      }),
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("list-whatsapp-templates error", err);
+    // Devolvemos las cuentas igual (para que el selector funcione) + el error.
     return {
-      statusCode: 500,
+      statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ error: msg }),
+      body: JSON.stringify({
+        templates: [],
+        accounts,
+        activeAccount: resolved.account.key,
+        wabaId: resolved.account.wabaId,
+        error: msg,
+      }),
     };
   }
 };

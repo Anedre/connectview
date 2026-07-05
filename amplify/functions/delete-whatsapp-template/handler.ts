@@ -1,10 +1,7 @@
 import type { Handler } from "aws-lambda";
-import {
-  SocialMessagingClient,
-  DeleteWhatsAppMessageTemplateCommand,
-  ListLinkedWhatsAppBusinessAccountsCommand,
-} from "@aws-sdk/client-socialmessaging";
-import { resolveWhatsAppWaba } from "../_shared/tenantConnect";
+import { SocialMessagingClient } from "@aws-sdk/client-socialmessaging";
+import { resolveWhatsAppAccounts } from "../_shared/tenantConnect";
+import { deleteTemplate, routeForAccount } from "../_shared/whatsappTemplatesApi";
 
 /**
  * delete-whatsapp-template — borra una plantilla de la WABA del TENANT. BYO: la
@@ -42,41 +39,24 @@ export const handler: Handler = async (event: any) => {
     return resp(400, { error: "Falta el nombre de la plantilla a borrar." });
   }
 
-  // Resolver la WABA del tenant (BYO).
-  const { client, wabaId: WABA_ID } = await resolveWhatsAppWaba(
+  // Resolver la CUENTA del tenant (BYO, dual-mode).
+  const accountKey = body.account ? String(body.account) : undefined;
+  const { accounts, client, tenantId } = await resolveWhatsAppAccounts(
     event?.headers,
     legacyClient,
-    LEGACY_WABA_ID
+    LEGACY_WABA_ID,
   );
-  if (!WABA_ID) {
+  const resolved = await routeForAccount(accounts, client, tenantId, accountKey);
+  if (!resolved) {
     return resp(400, {
-      error: "WhatsApp no está configurado para esta organización. Cargá tu WABA en Configuración → Integraciones.",
+      error:
+        "WhatsApp no está configurado para esta organización. Cargá tu número en Configuración → Integraciones.",
     });
-  }
-  let wabaForApi = WABA_ID;
-  if (!/^waba-/.test(WABA_ID) && !/^arn:/.test(WABA_ID)) {
-    try {
-      const linked = await client.send(new ListLinkedWhatsAppBusinessAccountsCommand({}));
-      const match = (linked.linkedAccounts || []).find(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (a: any) => a.wabaId === WABA_ID || a.id === WABA_ID
-      );
-      if (match?.id) wabaForApi = match.id;
-      else if (match?.arn) wabaForApi = match.arn;
-    } catch {
-      /* si falla, seguimos con el original — el error de Meta será claro */
-    }
   }
 
   try {
-    await client.send(
-      new DeleteWhatsAppMessageTemplateCommand({
-        id: wabaForApi,
-        templateName,
-        ...(metaTemplateId ? { metaTemplateId } : {}),
-        // deleteAllLanguages se deja en false (default) — borra solo esta versión.
-      })
-    );
+    // Con metaTemplateId borra solo esa versión de idioma; sin él, todas.
+    await deleteTemplate(resolved.route, templateName, metaTemplateId || undefined);
     return resp(200, { ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

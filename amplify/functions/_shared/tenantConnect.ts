@@ -21,7 +21,10 @@ import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
 import { ConnectClient } from "@aws-sdk/client-connect";
 import { S3Client } from "@aws-sdk/client-s3";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
-import { SocialMessagingClient } from "@aws-sdk/client-socialmessaging";
+import {
+  SocialMessagingClient,
+  ListLinkedWhatsAppBusinessAccountsCommand,
+} from "@aws-sdk/client-socialmessaging";
 import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
 import { resolveTenantId, isLegacyTenant } from "./cognitoAuth";
 
@@ -683,6 +686,104 @@ export async function resolveWhatsAppWaba(
     console.error("resolveWhatsAppWaba: lectura de config falló:", e);
   }
   return { client: legacyClient, wabaId: "", tenantScoped: true };
+}
+
+/** Una "cuenta" de WhatsApp del tenant = una WABA. Un tenant puede tener la WABA
+ *  de su número anclado a Connect (mode="aws") y/o una WABA de Meta standalone
+ *  (mode="meta", número suelto en la Graph API). El gestor de plantillas las
+ *  separa por cuenta; cada una lista/gestiona sus plantillas por su propio modo. */
+export interface WhatsAppAccount {
+  /** Identificador estable de la cuenta = wabaId crudo de Meta. */
+  key: string;
+  label: string;
+  mode: "aws" | "meta";
+  wabaId: string;
+  displayNumber?: string;
+  /** La cuenta activa por defecto del tenant (bloque whatsapp de su config). */
+  active?: boolean;
+}
+
+/**
+ * Enumera las cuentas de WhatsApp (WABAs) del tenant: la cuenta activa de su
+ * config (puede ser mode="meta") + las WABAs vinculadas a AWS End User Messaging
+ * (el número anclado a Connect). Dedup por wabaId. Devuelve también el cliente
+ * SocialMessaging del tenant, que las cuentas mode="aws" usan para operar.
+ *
+ * Cierra la brecha de "una sola WABA vía AWS": ahora el gestor ve TODAS las
+ * cuentas y opera cada una por su modo (AWS SocialMessaging o Graph de Meta).
+ */
+export async function resolveWhatsAppAccounts(
+  headers: HeaderBag,
+  legacyClient: SocialMessagingClient,
+  legacyWabaId: string,
+  explicitTenantId?: string,
+): Promise<{ accounts: WhatsAppAccount[]; client: SocialMessagingClient; tenantId: string }> {
+  const tenantId = explicitTenantId || (await resolveTenantId(headers));
+  if (!tenantId) return { accounts: [], client: legacyClient, tenantId: "" };
+  if (isLegacyTenant(tenantId)) {
+    return {
+      accounts: legacyWabaId
+        ? [
+            {
+              key: legacyWabaId,
+              label: "WhatsApp",
+              mode: "aws",
+              wabaId: legacyWabaId,
+              active: true,
+            },
+          ]
+        : [],
+      client: legacyClient,
+      tenantId,
+    };
+  }
+
+  let client = legacyClient;
+  const accounts: WhatsAppAccount[] = [];
+  const seen = new Set<string>();
+  try {
+    const tc = await getTenantConnect(tenantId);
+    if (tc) {
+      client = tc.socialMessaging;
+      // Cuenta activa (bloque whatsapp del tenant) — respeta su modo.
+      if (tc.whatsappWabaId) {
+        const mode = tc.whatsappMode === "meta" ? "meta" : "aws";
+        accounts.push({
+          key: tc.whatsappWabaId,
+          label: mode === "meta" ? "WhatsApp (Meta)" : "WhatsApp (Connect)",
+          mode,
+          wabaId: tc.whatsappWabaId,
+          active: true,
+        });
+        seen.add(tc.whatsappWabaId);
+      }
+      // WABAs vinculadas a AWS End User Messaging (número anclado a Connect).
+      try {
+        const linked = await tc.socialMessaging.send(
+          new ListLinkedWhatsAppBusinessAccountsCommand({}),
+        );
+        for (const a of linked.linkedAccounts || []) {
+          const wid = a.wabaId || a.id || "";
+          if (!wid || seen.has(wid)) continue;
+          seen.add(wid);
+          accounts.push({
+            key: wid,
+            label: a.wabaName || "WhatsApp (Connect)",
+            mode: "aws",
+            wabaId: wid,
+          });
+        }
+      } catch (e) {
+        console.warn(
+          "resolveWhatsAppAccounts: ListLinked falló:",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+  } catch (e) {
+    console.error("resolveWhatsAppAccounts: lectura de config falló:", e);
+  }
+  return { accounts, client, tenantId };
 }
 
 /**

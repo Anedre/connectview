@@ -1,10 +1,7 @@
 import type { Handler } from "aws-lambda";
-import {
-  SocialMessagingClient,
-  UpdateWhatsAppMessageTemplateCommand,
-  ListLinkedWhatsAppBusinessAccountsCommand,
-} from "@aws-sdk/client-socialmessaging";
-import { resolveWhatsAppWaba } from "../_shared/tenantConnect";
+import { SocialMessagingClient } from "@aws-sdk/client-socialmessaging";
+import { resolveWhatsAppAccounts } from "../_shared/tenantConnect";
+import { updateTemplate, routeForAccount } from "../_shared/whatsappTemplatesApi";
 import { buildTemplateComponents, type ButtonIn } from "../_shared/waTemplateComponents";
 
 /**
@@ -45,7 +42,9 @@ export const handler: Handler = async (event: any) => {
   }
 
   const metaTemplateId = String(body.metaTemplateId || "").trim();
-  const category = String(body.category || "UTILITY").trim().toUpperCase();
+  const category = String(body.category || "UTILITY")
+    .trim()
+    .toUpperCase();
 
   if (!/^[0-9]+$/.test(metaTemplateId)) {
     return resp(400, { error: "Falta el identificador de la plantilla (metaTemplateId)." });
@@ -60,49 +59,33 @@ export const handler: Handler = async (event: any) => {
     headerHandle: body.headerHandle ? String(body.headerHandle) : "",
     footerText: body.footerText ? String(body.footerText) : "",
     buttons: Array.isArray(body.buttons) ? (body.buttons as ButtonIn[]) : [],
-    variableExamples: Array.isArray(body.variableExamples) ? (body.variableExamples as unknown[]).map(String) : [],
+    variableExamples: Array.isArray(body.variableExamples)
+      ? (body.variableExamples as unknown[]).map(String)
+      : [],
     addSecurityRecommendation: !!body.addSecurityRecommendation,
     codeExpirationMinutes: Number(body.codeExpirationMinutes || 0),
     otpButtonText: body.otpButtonText ? String(body.otpButtonText) : "",
   });
   if (!built.ok) return resp(400, { error: built.error });
 
-  // Resolver la WABA del tenant (BYO).
-  const { client, wabaId: WABA_ID } = await resolveWhatsAppWaba(
+  // Resolver la CUENTA del tenant (BYO, dual-mode).
+  const accountKey = body.account ? String(body.account) : undefined;
+  const { accounts, client, tenantId } = await resolveWhatsAppAccounts(
     event?.headers,
     legacyClient,
-    LEGACY_WABA_ID
+    LEGACY_WABA_ID,
   );
-  if (!WABA_ID) {
+  const resolved = await routeForAccount(accounts, client, tenantId, accountKey);
+  if (!resolved) {
     return resp(400, {
-      error: "WhatsApp no está configurado para esta organización. Cargá tu WABA en Configuración → Integraciones.",
+      error:
+        "WhatsApp no está configurado para esta organización. Cargá tu número en Configuración → Integraciones.",
     });
-  }
-  let wabaForApi = WABA_ID;
-  if (!/^waba-/.test(WABA_ID) && !/^arn:/.test(WABA_ID)) {
-    try {
-      const linked = await client.send(new ListLinkedWhatsAppBusinessAccountsCommand({}));
-      const match = (linked.linkedAccounts || []).find(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (a: any) => a.wabaId === WABA_ID || a.id === WABA_ID
-      );
-      if (match?.id) wabaForApi = match.id;
-      else if (match?.arn) wabaForApi = match.arn;
-    } catch {
-      /* si falla, seguimos con el original — el error de Meta será claro */
-    }
   }
 
   try {
-    await client.send(
-      new UpdateWhatsAppMessageTemplateCommand({
-        id: wabaForApi,
-        metaTemplateId,
-        templateCategory: category,
-        templateComponents: new TextEncoder().encode(JSON.stringify(built.components)),
-      })
-    );
-    // Update devuelve 200 vacío; el estado pasa a PENDING (re-revisión de Meta).
+    await updateTemplate(resolved.route, metaTemplateId, category, built.components);
+    // El estado pasa a PENDING (re-revisión de Meta).
     return resp(200, { ok: true, status: "PENDING" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
