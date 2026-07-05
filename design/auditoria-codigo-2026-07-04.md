@@ -282,3 +282,23 @@ El header de `deploy-lambda.mjs:12` documenta `--all-changed` pero **no lo imple
 
 - INFRA-A2: tooling `--all-changed` real + manifiesto de infra hand-managed. INFRA-M1: migrar cron a IaC.
 - INFRA-M3: secret-scan + bundle-smoke en CI. DEBT-M2: test de drift de `pricing.ts`. Tests de backend para los caminos críticos (`tenantConnect`, `conversations`, `suppression`).
+
+---
+
+## Estado de remediación (2026-07-04)
+
+### ✅ Ola 1 — CRÍTICOS (cerrada, desplegada, verificada)
+
+13 Lambdas redeployados; TSC/ESLint/Build en verde. Verificación en vivo: la bandeja de Novasys sigue cargando sus conversaciones (el aislamiento no regresionó al legacy).
+
+- **SEC-C1/C2** (aislamiento inbox), **SEC-C4/M4** (constant-time), **SEC-C6** (auth `admin-*` + `useAdminActions`), **BUG-C1** (journeys `tenantId`), **BUG-C2** (dialer paginado): hechos y desplegados.
+- **SEC-C5** (firma webhooks): código desplegado, **build-ahead** — valida al crear el secret `connectview/meta` + attachear la managed policy `connectview-meta-secret-access` (ya creada) al rol. Ver `project_blocked_on_client` #6.
+- **SEC-C3** (secretos en git): **acción del usuario** (rotar + purgar historial), no es código.
+
+### 🔶 Diferidos (invasivos — requieren decisión/infra)
+
+- **BUG-A3 (GSI de leads):** el dedup por Scan sigue; un GSI por teléfono es cambio de esquema con costo/backfill → tarea de infra aparte.
+- **BUG-A1 (RMW→UpdateItem completo):** en la Ola 2 se hace solo el `ConditionExpression` del cierre; el refactor total del patch de `conversations.ts` a `UpdateItem`/`list_append` queda para un cambio dedicado (alto riesgo en un `_shared` muy bundleado).
+- **Deuda de IAM:** `connectview-campaign-lambda-role` está en el límite (10 managed + inline 10240 B) → consolidar policies es prerequisito de varios go-lives.
+
+### ⏳ Ola 2 (ALTOS) y Ola 3 (perf/limpieza): en curso.
