@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 // PERF-A2 · echarts SELECTIVO: en vez de `echarts-for-react` (que arrastra TODO
 // echarts, ~330KB gz), importamos el core tree-shakeable y registramos SOLO lo
 // que la app usa realmente. El wrapper liviano vive en `echarts-for-react/lib/core`.
-import ReactEChartsCore from "echarts-for-react/lib/core";
+import ReactEChartsCoreImport from "echarts-for-react/lib/core";
 import * as echarts from "echarts/core";
 import {
   BarChart,
@@ -27,6 +27,13 @@ import {
 } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 import type { EChartsOption } from "echarts";
+
+// `echarts-for-react/lib/core` es CJS (`exports.default = Component`). Según el
+// interop CJS/ESM de Vite/rolldown, el import default puede traer el objeto módulo
+// (`{ default: Component }`) en vez del componente → "Element type is invalid: …
+// got: object". Normalizamos tomando `.default` si vino envuelto.
+const ReactEChartsCore = ((ReactEChartsCoreImport as { default?: typeof ReactEChartsCoreImport })
+  .default ?? ReactEChartsCoreImport) as typeof ReactEChartsCoreImport;
 
 /**
  * EChart — thin, theme-aware Apache ECharts wrapper for Connectview.
