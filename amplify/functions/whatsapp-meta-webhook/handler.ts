@@ -44,6 +44,7 @@ import {
   type WhatsAppConfig,
   type WhatsAppNumber,
 } from "../_shared/whatsappNumbers";
+import { loadMetaAppSecret, verifyMetaSignature } from "../_shared/metaSignature";
 
 /**
  * whatsapp-meta-webhook — webhook de Meta Cloud API para números de WhatsApp
@@ -684,10 +685,31 @@ export const handler: Handler = async (event: any) => {
   if (method !== "POST") return TEXT(200, "ok");
 
   // 2) Mensajes entrantes.
+  // SEC-C5 — validar la firma HMAC de Meta (X-Hub-Signature-256) sobre el body
+  // CRUDO antes de procesar. Sin esto, cualquiera con la URL pública podría
+  // inyectar eventos falsos (mensajes/estados). El GET de verificación (arriba)
+  // va por otro camino y no lleva firma.
+  const hdrs = (event.headers || {}) as Record<string, string | undefined>;
+  const rawBody: string =
+    typeof event.body === "string"
+      ? event.isBase64Encoded
+        ? Buffer.from(event.body, "base64").toString("utf8")
+        : event.body
+      : JSON.stringify(event.body || {});
+  const sig = hdrs["x-hub-signature-256"] || hdrs["X-Hub-Signature-256"];
+  // TODO(deploy): cablear META_APP_SECRET en el env de este Lambda
+  const appSecret = await loadMetaAppSecret();
+  if (!appSecret) {
+    console.warn("meta signature: sin app secret, saltando validación");
+  } else if (!verifyMetaSignature(rawBody, sig, appSecret)) {
+    console.warn("meta signature inválida — rechazando POST");
+    return TEXT(403, "forbidden");
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let body: any = {};
   try {
-    body = typeof event.body === "string" ? JSON.parse(event.body) : event.body || {};
+    body = rawBody ? JSON.parse(rawBody) : {};
   } catch {
     return TEXT(200, "ok");
   }

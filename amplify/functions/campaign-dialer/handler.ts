@@ -264,22 +264,31 @@ async function countAgentInFlight(campaignId: string, userId: string): Promise<n
   let total = 0;
   for (const status of ["dialing", "connected"]) {
     try {
-      const res = await dynamo.send(
-        new QueryCommand({
-          TableName: CONTACTS_TABLE,
-          IndexName: "campaignId-status-index",
-          KeyConditionExpression: "campaignId = :cid AND #st = :s",
-          ExpressionAttributeNames: { "#st": "status" },
-          ExpressionAttributeValues: {
-            ":cid": { S: campaignId },
-            ":s": { S: status },
-            ":uid": { S: userId },
-          },
-          FilterExpression: "assignedAgentUserId = :uid",
-          Select: "COUNT",
-        }),
-      );
-      total += res.Count || 0;
+      // COUNT + FilterExpression PAGINA obligatorio: DynamoDB filtra DESPUÉS de
+      // leer ≤1MB por página, así que Count es solo de la primera página. Sin el
+      // bucle de LastEvaluatedKey subestima los contactos en vuelo y el dialer
+      // termina sobre-marcando (viola maxConcurrency/maxPerAgent).
+      let lastKey: Record<string, unknown> | undefined;
+      do {
+        const res = await dynamo.send(
+          new QueryCommand({
+            TableName: CONTACTS_TABLE,
+            IndexName: "campaignId-status-index",
+            KeyConditionExpression: "campaignId = :cid AND #st = :s",
+            ExpressionAttributeNames: { "#st": "status" },
+            ExpressionAttributeValues: {
+              ":cid": { S: campaignId },
+              ":s": { S: status },
+              ":uid": { S: userId },
+            },
+            FilterExpression: "assignedAgentUserId = :uid",
+            Select: "COUNT",
+            ExclusiveStartKey: lastKey as never,
+          }),
+        );
+        total += res.Count || 0;
+        lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (lastKey);
     } catch (err) {
       console.warn("countAgentInFlight:", err);
     }

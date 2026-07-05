@@ -287,6 +287,9 @@ export async function appendInbound(
   conv.lastMessageAt = now;
   conv.lastMessagePreview = (m.text || "").slice(0, 120) || "[adjunto]";
   if (m.customerName) conv.customerName = m.customerName;
+  // SEC-C1: persistimos el `tenantId` del webhook receptor (dueño de la fila en
+  // la tabla pooled) para que el listado pueda filtrar por tenant. Novasys legacy
+  // pasa "" (fila sin dueño) → queda sin `tenantId` y el listado legacy la incluye.
   if (m.tenantId) conv.tenantId = m.tenantId;
   // Fase C: si el cliente escribió su teléfono/email en el DM, lo guardamos como
   // pista de identidad para auto-vincular después (no pisa lo ya conocido).
@@ -604,17 +607,46 @@ export async function typifyConversation(
   return conv;
 }
 
-/** Lista de conversaciones (scan, ordenada por último mensaje desc). Para el inbox. */
+/**
+ * Lista de conversaciones (scan, ordenada por último mensaje desc). Para el inbox.
+ *
+ * SEC-C1 (fuga cross-tenant): la tabla `connectview-conversations` es POOLED
+ * (compartida entre tenants en modo Meta) y los ids son determinísticos
+ * (`whatsapp#<telefono>`, `messenger#<psid>`…). El scan DEBE filtrarse por el
+ * `tenantId` del solicitante o un tenant vería las conversaciones de otro.
+ *
+ * · `opts.tenantId` (verificado del JWT en el caller) → FilterExpression
+ *   `tenantId = :t`.
+ * · `opts.legacy: true` (Novasys/"default", el tenant fundador) → las filas
+ *   ANTIGUAS pueden NO tener `tenantId` guardado. Para no dejar de mostrárselas,
+ *   en modo legacy incluimos también los items SIN `tenantId`
+ *   (`attribute_not_exists(tenantId) OR tenantId = :t`). Para un tenant REAL
+ *   exigimos match exacto (nunca ve las filas sin dueño).
+ *
+ * Sin `tenantId` (no debería pasar: el caller siempre lo resuelve) devuelve
+ * vacío — fail-closed, jamás el scan completo.
+ */
 export async function listConversations(
   dynamo: DynamoDBClient,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; tenantId?: string; legacy?: boolean } = {},
 ): Promise<Conversation[]> {
   const out: Conversation[] = [];
+  const tenantId = opts.tenantId || "";
+  // Fail-closed: sin tenant no devolvemos nada (evita el scan sin filtro).
+  if (!tenantId) return out;
+  // Legacy (Novasys): match exacto O filas viejas sin tenantId. Tenant real:
+  // solo match exacto.
+  const filter = opts.legacy ? "attribute_not_exists(tenantId) OR tenantId = :t" : "tenantId = :t";
   let ESK: Record<string, unknown> | undefined;
   try {
     do {
       const r = await dynamo.send(
-        new ScanCommand({ TableName: CONV_TABLE, ExclusiveStartKey: ESK as never }),
+        new ScanCommand({
+          TableName: CONV_TABLE,
+          FilterExpression: filter,
+          ExpressionAttributeValues: marshall({ ":t": tenantId }),
+          ExclusiveStartKey: ESK as never,
+        }),
       );
       for (const it of r.Items || []) out.push(unmarshall(it) as Conversation);
       ESK = r.LastEvaluatedKey as Record<string, unknown> | undefined;

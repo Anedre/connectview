@@ -7,7 +7,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
-import { resolveTenantId, getIdentity } from "../_shared/cognitoAuth";
+import { resolveTenantId, getIdentity, isLegacyTenant } from "../_shared/cognitoAuth";
 import {
   listConversations,
   getConversation,
@@ -210,6 +210,27 @@ const bad = (c: number, e: string) => ({
   headers: CORS,
   body: JSON.stringify({ error: e }),
 });
+
+/**
+ * SEC-C2 (IDOR del inbox omnicanal): la tabla `connectview-conversations` es
+ * POOLED y los ids son determinísticos (`whatsapp#<telefono>`, `messenger#<psid>`…),
+ * así que cualquier tenant podría adivinar el id de la conversación de OTRO y
+ * operarla (GET/reply/typify/assign/close/…). Este guard compara el `tenantId`
+ * DUEÑO de la conversación contra el `tenantId` verificado del solicitante.
+ *
+ * · `conv.tenantId` presente y distinto → NO pasa (return false).
+ * · `conv.tenantId` ausente → filas ANTIGUAS de Novasys legacy sin dueño: las
+ *   dejamos pasar para no romper la retrocompat (los inbounds nuevos ya persisten
+ *   tenantId, así que a futuro estas filas se vuelven raras).
+ *
+ * Los callers deben responder `bad(404, …)` (NO 403) para no confirmar que la
+ * conversación existe.
+ */
+function assertTenant(conv: Conversation | null | undefined, tenantId: string): boolean {
+  if (!conv) return false;
+  if (conv.tenantId && conv.tenantId !== tenantId) return false;
+  return true;
+}
 
 async function getTenantMeta(tenantId: string): Promise<{
   token?: string;
@@ -623,6 +644,9 @@ export const handler: Handler = async (event: any) => {
     if (method === "GET") {
       if (params.conversationId) {
         let conv = await getConversation(legacyDynamo, String(params.conversationId));
+        // SEC-C2: guard de IDOR. La conversación de OTRO tenant se trata como
+        // inexistente (404, no 403 → no confirmamos que exista).
+        if (!assertTenant(conv, tenantId)) return bad(404, "conversación no encontrada");
         // Auto-vínculo perezoso + REFRESCO del nombre (Fase C / uniformización):
         // el nombre del LEAD es la fuente de verdad. Si hay teléfono, resolvemos el
         // lead (por leadId si ya está vinculada, o por teléfono si no) y refrescamos
@@ -651,7 +675,13 @@ export const handler: Handler = async (event: any) => {
         }
         return ok({ conversation: conv });
       }
-      const conversations = await listConversations(legacyDynamo, { limit: 500 });
+      // SEC-C1: el listado se filtra por el `tenantId` verificado. Novasys legacy
+      // ve también las filas antiguas sin `tenantId`; un tenant real solo las suyas.
+      const conversations = await listConversations(legacyDynamo, {
+        limit: 500,
+        tenantId,
+        legacy: isLegacyTenant(tenantId),
+      });
       // Auto-cierre por inactividad ANTES de devolver: cierra (y persiste) las
       // `open` vencidas (con aviso de cortesía); la lista sale ya con "Cerrado".
       await sweepInactive(conversations, tenantId);
@@ -672,6 +702,9 @@ export const handler: Handler = async (event: any) => {
       if (!conversationId) return bad(400, "conversationId requerido");
 
       if (body.action === "markRead") {
+        // SEC-C2: verificar dueño ANTES de mutar (patchConversation no chequea tenant).
+        const target = await getConversation(legacyDynamo, conversationId);
+        if (!assertTenant(target, tenantId)) return bad(404, "conversación no encontrada");
         // 1) marcar leída localmente (como siempre).
         const conv = await patchConversation(legacyDynamo, conversationId, { unread: 0 });
         // 2) recibo de lectura HACIA EL CLIENTE cuando el canal lo soporta.
@@ -689,7 +722,7 @@ export const handler: Handler = async (event: any) => {
         // Encuesta de cierre opcional: si viene `survey`, la enviamos ANTES de
         // cerrar (reutiliza el envío interactivo por canal). Degrada elegante.
         const conv = await getConversation(legacyDynamo, conversationId);
-        if (!conv) return bad(404, "conversación no encontrada");
+        if (!assertTenant(conv, tenantId)) return bad(404, "conversación no encontrada");
         const survey = body.survey as { body?: string; options?: unknown } | undefined;
         const surveyBody = String(survey?.body || "").trim();
         const surveyOptions = Array.isArray(survey?.options)
@@ -734,6 +767,9 @@ export const handler: Handler = async (event: any) => {
           typeof d.valoracion === "string" && d.valoracion ? d.valoracion : undefined;
         const notes = typeof d.notes === "string" && d.notes ? d.notes : undefined;
 
+        // SEC-C2: verificar dueño antes de tipificar (typifyConversation no chequea).
+        if (!assertTenant(await getConversation(legacyDynamo, conversationId), tenantId))
+          return bad(404, "conversación no encontrada");
         let conv = await typifyConversation(legacyDynamo, conversationId, {
           stageId,
           stageLabel,
@@ -777,6 +813,9 @@ export const handler: Handler = async (event: any) => {
       if (body.action === "assign") {
         const assignee = body.assignee === "agent" ? "agent" : body.assignee === "bot" ? "bot" : "";
         if (!assignee) return bad(400, "assignee inválido (bot|agent)");
+        // SEC-C2: no reasignar la conversación de otro tenant.
+        if (!assertTenant(await getConversation(legacyDynamo, conversationId), tenantId))
+          return bad(404, "conversación no encontrada");
         const patch: Partial<Pick<Conversation, "assignee" | "ownerAgentId" | "ownerAgentName">> =
           assignee === "agent"
             ? { assignee, ownerAgentId: me, ownerAgentName: myName }
@@ -791,6 +830,9 @@ export const handler: Handler = async (event: any) => {
       if (body.action === "assignTo") {
         const agentId = String(body.agentId || "").trim();
         if (!agentId) return bad(400, "agentId requerido");
+        // SEC-C2: no traspasar la conversación de otro tenant.
+        if (!assertTenant(await getConversation(legacyDynamo, conversationId), tenantId))
+          return bad(404, "conversación no encontrada");
         const agentName =
           typeof body.agentName === "string" && body.agentName.trim()
             ? body.agentName.trim()
@@ -807,6 +849,9 @@ export const handler: Handler = async (event: any) => {
       // Soltar a la cola de agentes (sin dueño): limpia el dueño pero mantiene
       // assignee="agent" (queda disponible para que otro agente la tome).
       if (body.action === "release") {
+        // SEC-C2: no soltar a la cola la conversación de otro tenant.
+        if (!assertTenant(await getConversation(legacyDynamo, conversationId), tenantId))
+          return bad(404, "conversación no encontrada");
         const conv = await patchConversation(legacyDynamo, conversationId, {
           assignee: "agent",
           ownerAgentId: undefined,
@@ -821,6 +866,9 @@ export const handler: Handler = async (event: any) => {
       if (body.action === "link") {
         const leadId = String(body.leadId || "");
         if (!leadId) return bad(400, "leadId requerido");
+        // SEC-C2: no vincular identidades en la conversación de otro tenant.
+        if (!assertTenant(await getConversation(legacyDynamo, conversationId), tenantId))
+          return bad(404, "conversación no encontrada");
         const patch: Partial<Pick<Conversation, "leadId" | "phone" | "email" | "customerName">> = {
           leadId,
         };
@@ -838,6 +886,9 @@ export const handler: Handler = async (event: any) => {
         return ok({ conversation: conv });
       }
       if (body.action === "unlink") {
+        // SEC-C2: no desvincular en la conversación de otro tenant.
+        if (!assertTenant(await getConversation(legacyDynamo, conversationId), tenantId))
+          return bad(404, "conversación no encontrada");
         const conv = await patchConversation(legacyDynamo, conversationId, { leadId: "" });
         return ok({ conversation: conv });
       }
@@ -852,7 +903,9 @@ export const handler: Handler = async (event: any) => {
         const text = String(body.text || "").trim();
         if (!text) return bad(400, "text requerido");
         const conv = await getConversation(legacyDynamo, conversationId);
-        if (!conv) return bad(404, "conversación no encontrada");
+        // SEC-C2: guard de IDOR cross-tenant (404, no confirma existencia). Va
+        // ANTES del chequeo de ownership por agente (que es intra-tenant).
+        if (!assertTenant(conv, tenantId)) return bad(404, "conversación no encontrada");
         // Defensa de ownership: no podés responder el chat de OTRO agente. Si la
         // conversación tiene dueño y no sos vos (ni sos admin/supervisor), 403.
         // (No aplica a assignTo/release/markRead — esos sí pueden reasignarla.)
@@ -990,7 +1043,8 @@ export const handler: Handler = async (event: any) => {
       //   Comentarios FB/IG y Mercado Libre no soportan media saliente → error claro.
       if (body.action === "sendMedia") {
         const conv = await getConversation(legacyDynamo, conversationId);
-        if (!conv) return bad(404, "conversación no encontrada");
+        // SEC-C2: guard de IDOR cross-tenant antes del ownership por agente.
+        if (!assertTenant(conv, tenantId)) return bad(404, "conversación no encontrada");
         // Defensa de ownership: no podés mandar adjuntos en el chat de OTRO agente.
         if (conv.ownerAgentId && conv.ownerAgentId !== me && !privileged)
           return bad(403, "owned_by_other");
@@ -1064,7 +1118,8 @@ export const handler: Handler = async (event: any) => {
       // la ventana de 24h o mandar utilitarios. Otros canales → error claro.
       if (body.action === "sendTemplate") {
         const conv = await getConversation(legacyDynamo, conversationId);
-        if (!conv) return bad(404, "conversación no encontrada");
+        // SEC-C2: guard de IDOR cross-tenant.
+        if (!assertTenant(conv, tenantId)) return bad(404, "conversación no encontrada");
         if (conv.channel !== "whatsapp")
           return bad(400, "las plantillas HSM son solo para WhatsApp");
         const templateName = String(body.templateName || "").trim();
@@ -1116,7 +1171,8 @@ export const handler: Handler = async (event: any) => {
       // Fase 4 · F4.2a — enviar un LIST interactivo (menú tappable) por WhatsApp.
       if (body.action === "sendListInteractive") {
         const conv = await getConversation(legacyDynamo, conversationId);
-        if (!conv) return bad(404, "conversación no encontrada");
+        // SEC-C2: guard de IDOR cross-tenant.
+        if (!assertTenant(conv, tenantId)) return bad(404, "conversación no encontrada");
         if (conv.channel !== "whatsapp")
           return bad(400, "el list interactivo es solo para WhatsApp");
         const { token, waPhoneId } = await getTenantMeta(tenantId);

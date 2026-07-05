@@ -1,11 +1,13 @@
 import type { Handler } from "aws-lambda";
-import {
-  ConnectClient,
-  PutUserStatusCommand,
-} from "@aws-sdk/client-connect";
+import { ConnectClient, PutUserStatusCommand } from "@aws-sdk/client-connect";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "node:crypto";
 import { resolveConnect } from "../_shared/tenantConnect";
+import { getIdentity, type VoxIdentity } from "../_shared/cognitoAuth";
+
+// SEC-C6: forzar el estado de un agente SOLO para Supervisores/Admins. Function
+// URL auth=NONE → la identidad se valida acá con el JWT.
+const PRIVILEGED_GROUPS = ["Admins", "Supervisors"];
 
 const legacyConnect = new ConnectClient({ maxAttempts: 1 });
 // BYO Data Plane (#46): module-active para que el helper audit() vea la tabla
@@ -19,7 +21,7 @@ async function audit(
   actor: string,
   target: Record<string, string>,
   result: "success" | "error",
-  errorMsg?: string
+  errorMsg?: string,
 ): Promise<void> {
   try {
     await dynamo.send(
@@ -34,7 +36,7 @@ async function audit(
           result: { S: result },
           errorMsg: { S: errorMsg || "" },
         },
-      })
+      }),
     );
   } catch (err) {
     console.warn("audit write failed:", err);
@@ -43,8 +45,42 @@ async function audit(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  if (event?.requestContext?.http?.method === "OPTIONS") {
+    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: "" };
+  }
+
+  // AUTH (SEC-C6): identidad del JWT, nunca del body. 401 sin token; 403 sin rol.
+  let identity: VoxIdentity | null;
+  try {
+    identity = await getIdentity(event?.headers);
+  } catch {
+    return {
+      statusCode: 401,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "Token inválido" }),
+    };
+  }
+  if (!identity) {
+    return {
+      statusCode: 401,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "No autorizado" }),
+    };
+  }
+  if (!identity.groups.some((g) => PRIVILEGED_GROUPS.includes(g))) {
+    return {
+      statusCode: 403,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        error: "Solo supervisores o administradores pueden cambiar el estado de un agente",
+      }),
+    };
+  }
+
   const body = JSON.parse(event.body || "{}");
-  const { userId, agentStatusId, actor } = body;
+  const { userId, agentStatusId } = body;
+  // Actor del audit-trail = token verificado (el body es forjable).
+  const actor = identity.username || identity.sub;
 
   if (!userId || !agentStatusId) {
     return {
@@ -55,16 +91,20 @@ export const handler: Handler = async (event: any) => {
   }
 
   try {
-    const { client: connect, instanceId, dynamo: tenantDynamo } = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    const {
+      client: connect,
+      instanceId,
+      dynamo: tenantDynamo,
+    } = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
     dynamo = tenantDynamo || legacyDynamo;
     await connect.send(
       new PutUserStatusCommand({
         InstanceId: instanceId,
         UserId: userId,
         AgentStatusId: agentStatusId,
-      })
+      }),
     );
-    await audit(actor || "unknown", { userId, agentStatusId }, "success");
+    await audit(actor, { userId, agentStatusId }, "success");
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
@@ -72,12 +112,7 @@ export const handler: Handler = async (event: any) => {
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await audit(
-      actor || "unknown",
-      { userId, agentStatusId },
-      "error",
-      msg
-    );
+    await audit(actor, { userId, agentStatusId }, "error", msg);
     console.error("change-agent-status error", err);
     return {
       statusCode: 500,

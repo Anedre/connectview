@@ -1,13 +1,21 @@
 import { useCallback, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
-import { useAuth } from "@/hooks/useAuth";
+import { authedFetch } from "@/lib/authedFetch";
 
 // Connect + Streams support only these two programmatic monitor modes
 // (no whisper/coaching in the Streams API — that's native Agent Workspace).
 type MonitorMode = "SILENT_MONITOR" | "BARGE";
 
+// SEC-C6: estas acciones (escuchar/intervenir/colgar/transferir/atributos) son
+// privilegiadas. `authedFetch` adjunta el ID token de Cognito como
+// `Authorization: Bearer` → el backend verifica el JWT y el rol
+// (Supervisors/Admins) y DERIVA el actor del token. Antes íbamos con `fetch`
+// pelado (sin token) → el backend caía a cliente bloqueado (no-op); si alguien
+// "arreglaba" solo el token sin auth en el handler, quedaba EXPUESTO. Por eso el
+// fix cierra ambos lados a la vez. Ya NO mandamos `actor` desde el cliente: es
+// forjable y el backend lo ignora (lo saca del sub/username del token).
 async function postJson(url: string, body: unknown) {
-  const r = await fetch(url, {
+  const r = await authedFetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -25,16 +33,14 @@ async function postJson(url: string, body: unknown) {
 }
 
 export function useAdminActions() {
-  const { user } = useAuth();
   const [pending, setPending] = useState(false);
 
-  const actor = user?.username || "unknown";
   const endpoints = getApiEndpoints();
 
   const transferContact = useCallback(
     async (
       contactId: string,
-      target: { userId?: string; queueId?: string; contactFlowId?: string }
+      target: { userId?: string; queueId?: string; contactFlowId?: string },
     ) => {
       if (!endpoints?.adminTransferContact) throw new Error("No endpoint");
       setPending(true);
@@ -44,13 +50,12 @@ export function useAdminActions() {
           targetUserId: target.userId,
           targetQueueId: target.queueId,
           targetContactFlowId: target.contactFlowId,
-          actor,
         });
       } finally {
         setPending(false);
       }
     },
-    [actor, endpoints?.adminTransferContact]
+    [endpoints?.adminTransferContact],
   );
 
   const stopContact = useCallback(
@@ -60,13 +65,12 @@ export function useAdminActions() {
       try {
         return await postJson(endpoints.adminStopContact, {
           contactId,
-          actor,
         });
       } finally {
         setPending(false);
       }
     },
-    [actor, endpoints?.adminStopContact]
+    [endpoints?.adminStopContact],
   );
 
   const changeAgentStatus = useCallback(
@@ -77,21 +81,16 @@ export function useAdminActions() {
         return await postJson(endpoints.adminChangeAgentStatus, {
           userId,
           agentStatusId,
-          actor,
         });
       } finally {
         setPending(false);
       }
     },
-    [actor, endpoints?.adminChangeAgentStatus]
+    [endpoints?.adminChangeAgentStatus],
   );
 
   const monitorContact = useCallback(
-    async (
-      contactId: string,
-      supervisorUserId: string,
-      mode: MonitorMode = "SILENT_MONITOR"
-    ) => {
+    async (contactId: string, supervisorUserId: string, mode: MonitorMode = "SILENT_MONITOR") => {
       if (!endpoints?.adminMonitorContact) throw new Error("No endpoint");
       setPending(true);
       try {
@@ -99,21 +98,16 @@ export function useAdminActions() {
           contactId,
           supervisorUserId,
           mode,
-          actor,
         });
       } finally {
         setPending(false);
       }
     },
-    [actor, endpoints?.adminMonitorContact]
+    [endpoints?.adminMonitorContact],
   );
 
   const updateContactAttributes = useCallback(
-    async (
-      contactId: string,
-      attributes: Record<string, string>,
-      initialContactId?: string
-    ) => {
+    async (contactId: string, attributes: Record<string, string>, initialContactId?: string) => {
       if (!endpoints?.adminUpdateContactAttrs) throw new Error("No endpoint");
       setPending(true);
       try {
@@ -121,13 +115,12 @@ export function useAdminActions() {
           contactId,
           initialContactId,
           attributes,
-          actor,
         });
       } finally {
         setPending(false);
       }
     },
-    [actor, endpoints?.adminUpdateContactAttrs]
+    [endpoints?.adminUpdateContactAttrs],
   );
 
   return {

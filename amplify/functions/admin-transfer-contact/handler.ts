@@ -7,6 +7,11 @@ import {
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "node:crypto";
 import { resolveConnect } from "../_shared/tenantConnect";
+import { getIdentity, type VoxIdentity } from "../_shared/cognitoAuth";
+
+// SEC-C6: transferir un contacto en vivo SOLO para Supervisores/Admins. Function
+// URL auth=NONE → la identidad se valida acá con el JWT.
+const PRIVILEGED_GROUPS = ["Admins", "Supervisors"];
 
 const legacyConnect = new ConnectClient({ maxAttempts: 1 });
 // BYO Data Plane (#46): module-active; el helper audit lee este `dynamo`.
@@ -20,7 +25,7 @@ async function audit(
   actor: string,
   target: Record<string, string | number | undefined>,
   result: "success" | "error",
-  errorMsg?: string
+  errorMsg?: string,
 ): Promise<void> {
   try {
     await dynamo.send(
@@ -35,7 +40,7 @@ async function audit(
           result: { S: result },
           errorMsg: { S: errorMsg || "" },
         },
-      })
+      }),
     );
   } catch (err) {
     console.warn("audit write failed:", err);
@@ -44,14 +49,42 @@ async function audit(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  if (event?.requestContext?.http?.method === "OPTIONS") {
+    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: "" };
+  }
+
+  // AUTH (SEC-C6): identidad del JWT, nunca del body. 401 sin token; 403 sin rol.
+  let identity: VoxIdentity | null;
+  try {
+    identity = await getIdentity(event?.headers);
+  } catch {
+    return {
+      statusCode: 401,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "Token inválido" }),
+    };
+  }
+  if (!identity) {
+    return {
+      statusCode: 401,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "No autorizado" }),
+    };
+  }
+  if (!identity.groups.some((g) => PRIVILEGED_GROUPS.includes(g))) {
+    return {
+      statusCode: 403,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        error: "Solo supervisores o administradores pueden transferir contactos",
+      }),
+    };
+  }
+
   const body = JSON.parse(event.body || "{}");
-  const {
-    contactId,
-    targetUserId,
-    targetQueueId,
-    targetContactFlowId,
-    actor,
-  } = body;
+  const { contactId, targetUserId, targetQueueId, targetContactFlowId } = body;
+  // Actor del audit-trail = token verificado (el body es forjable).
+  const actor = identity.username || identity.sub;
 
   if (!contactId || (!targetUserId && !targetQueueId)) {
     return {
@@ -64,7 +97,11 @@ export const handler: Handler = async (event: any) => {
   }
 
   try {
-    const { client: connect, instanceId, dynamo: tenantDynamo } = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    const {
+      client: connect,
+      instanceId,
+      dynamo: tenantDynamo,
+    } = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
     dynamo = tenantDynamo || legacyDynamo;
     // TransferContact requires a ContactFlowId; if not supplied, use the default outbound flow
     // of the instance by describing the contact and reusing its current flow.
@@ -75,7 +112,7 @@ export const handler: Handler = async (event: any) => {
           new DescribeContactCommand({
             InstanceId: instanceId,
             ContactId: contactId,
-          })
+          }),
         );
         // InitialContactId flow id isn't exposed; fall back to instance env default
         flowId = desc.Contact?.Arn ? process.env.DEFAULT_TRANSFER_FLOW_ID : undefined;
@@ -91,8 +128,7 @@ export const handler: Handler = async (event: any) => {
         statusCode: 400,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          error:
-            "targetContactFlowId missing and no DEFAULT_TRANSFER_FLOW_ID env var set",
+          error: "targetContactFlowId missing and no DEFAULT_TRANSFER_FLOW_ID env var set",
         }),
       };
     }
@@ -105,14 +141,14 @@ export const handler: Handler = async (event: any) => {
         QueueId: targetQueueId,
         ContactFlowId: flowId,
         ClientToken: `transfer-${contactId}-${Date.now()}`,
-      })
+      }),
     );
 
     await audit(
       "transfer-contact",
-      actor || "unknown",
+      actor,
       { contactId, targetUserId, targetQueueId, flowId },
-      "success"
+      "success",
     );
 
     return {
@@ -128,10 +164,10 @@ export const handler: Handler = async (event: any) => {
     const msg = err instanceof Error ? err.message : String(err);
     await audit(
       "transfer-contact",
-      actor || "unknown",
+      actor,
       { contactId, targetUserId, targetQueueId },
       "error",
-      msg
+      msg,
     );
     console.error("transfer error", err);
     return {

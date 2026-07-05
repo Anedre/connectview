@@ -1,11 +1,15 @@
 import type { Handler } from "aws-lambda";
-import {
-  ConnectClient,
-  MonitorContactCommand,
-} from "@aws-sdk/client-connect";
+import { ConnectClient, MonitorContactCommand } from "@aws-sdk/client-connect";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "node:crypto";
 import { resolveConnect } from "../_shared/tenantConnect";
+import { getIdentity, type VoxIdentity } from "../_shared/cognitoAuth";
+
+// SEC-C6: acciones de supervisión (escuchar/intervenir llamadas en vivo) SOLO
+// para Supervisores/Admins. El Function URL es auth=NONE → la identidad se
+// valida ACÁ con el JWT. Sin estos grupos, un POST público podía espiar/barge
+// cualquier llamada. `monitor_agents` = mínimo Supervisors en la matriz RBAC.
+const PRIVILEGED_GROUPS = ["Admins", "Supervisors"];
 
 const legacyConnect = new ConnectClient({ maxAttempts: 1 });
 // BYO Data Plane (#46): module-active; el helper audit lee este `dynamo`.
@@ -26,7 +30,7 @@ async function audit(
   actor: string,
   target: Record<string, string>,
   result: "success" | "error",
-  errorMsg?: string
+  errorMsg?: string,
 ): Promise<void> {
   try {
     await dynamo.send(
@@ -41,7 +45,7 @@ async function audit(
           result: { S: result },
           errorMsg: { S: errorMsg || "" },
         },
-      })
+      }),
     );
   } catch (err) {
     console.warn("audit write failed:", err);
@@ -50,13 +54,46 @@ async function audit(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
+  if (event?.requestContext?.http?.method === "OPTIONS") {
+    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: "" };
+  }
+
+  // AUTH (SEC-C6): identidad del JWT, NUNCA del body. Sin token válido → 401;
+  // sin rol Supervisor/Admin → 403. Así el Function URL público deja de ser un
+  // canal abierto para escuchar/intervenir llamadas ajenas.
+  let identity: VoxIdentity | null;
+  try {
+    identity = await getIdentity(event?.headers);
+  } catch {
+    return {
+      statusCode: 401,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "Token inválido" }),
+    };
+  }
+  if (!identity) {
+    return {
+      statusCode: 401,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "No autorizado" }),
+    };
+  }
+  if (!identity.groups.some((g) => PRIVILEGED_GROUPS.includes(g))) {
+    return {
+      statusCode: 403,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        error: "Solo supervisores o administradores pueden monitorear contactos",
+      }),
+    };
+  }
+
   const body = JSON.parse(event.body || "{}");
   const {
     contactId,
     supervisorUserId,
     mode = "SILENT_MONITOR",
     allowBarge = true,
-    actor,
   } = body as {
     contactId: string;
     supervisorUserId: string;
@@ -65,8 +102,10 @@ export const handler: Handler = async (event: any) => {
      *  this session. Default true so the live Escuchar↔Intervenir toggle
      *  in the control bar works. Set false to lock a session to listen-only. */
     allowBarge?: boolean;
-    actor?: string;
   };
+  // El actor del audit-trail sale del token verificado (no del body, que es
+  // forjable). Antes `actor` venía del cliente → auditoría falsificable.
+  const actor = identity.username || identity.sub;
 
   if (!contactId || !supervisorUserId) {
     return {
@@ -82,12 +121,14 @@ export const handler: Handler = async (event: any) => {
   // supervisor can switch listen↔barge live via the Streams API without
   // re-invoking MonitorContact. The session STARTS in silent monitor
   // regardless; `mode` is recorded for the audit trail.
-  const capabilities: string[] = allowBarge
-    ? ["SILENT_MONITOR", "BARGE"]
-    : ["SILENT_MONITOR"];
+  const capabilities: string[] = allowBarge ? ["SILENT_MONITOR", "BARGE"] : ["SILENT_MONITOR"];
 
   try {
-    const { client: connect, instanceId, dynamo: tenantDynamo } = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
+    const {
+      client: connect,
+      instanceId,
+      dynamo: tenantDynamo,
+    } = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
     dynamo = tenantDynamo || legacyDynamo;
     const res = await connect.send(
       new MonitorContactCommand({
@@ -95,13 +136,9 @@ export const handler: Handler = async (event: any) => {
         ContactId: contactId,
         UserId: supervisorUserId,
         AllowedMonitorCapabilities: capabilities as never,
-      })
+      }),
     );
-    await audit(
-      actor || supervisorUserId,
-      { contactId, supervisorUserId, mode },
-      "success"
-    );
+    await audit(actor, { contactId, supervisorUserId, mode }, "success");
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
@@ -114,12 +151,7 @@ export const handler: Handler = async (event: any) => {
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await audit(
-      actor || supervisorUserId,
-      { contactId, supervisorUserId, mode },
-      "error",
-      msg
-    );
+    await audit(actor, { contactId, supervisorUserId, mode }, "error", msg);
     console.error("monitor-contact error", err);
     return {
       statusCode: 500,

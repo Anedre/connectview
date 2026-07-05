@@ -10,7 +10,7 @@ import {
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { isLegacyTenant } from "../_shared/cognitoAuth";
 import { getTenantConnect } from "../_shared/tenantConnect";
@@ -82,6 +82,16 @@ const bad = (c: number, e: string) => ({
   headers: HDRS,
   body: JSON.stringify({ error: e }),
 });
+
+/** Comparación constant-time de secretos (SEC-C4/M4): evita el timing leak de
+ *  `===` sobre strings sensibles. Chequea longitud antes de timingSafeEqual (que
+ *  lanza si difieren) y nunca tira. */
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
 
 // ───────────────────────── tipos ─────────────────────────
 type TriggerType =
@@ -1119,7 +1129,8 @@ export const handler: Handler = async (event: any) => {
     if (method !== "POST") return bad(405, "POST only");
     const hdrs = (event.headers || {}) as Record<string, string>;
     const secret = hdrs["x-vox-internal"] || hdrs["X-Vox-Internal"] || "";
-    if (!INTERNAL_SECRET || secret !== INTERNAL_SECRET) return bad(401, "No autorizado");
+    // SEC-C4/M4: comparación constant-time del secreto interno (antes `!==`).
+    if (!INTERNAL_SECRET || !safeEqual(secret, INTERNAL_SECRET)) return bad(401, "No autorizado");
     let body: { event?: AutomationEvent };
     try {
       body = JSON.parse(event.body || "{}");

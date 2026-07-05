@@ -399,7 +399,7 @@ async function sendEmail(
   const phone = String(lead.phone || "");
   if (phone) {
     try {
-      const v = await evaluateSend(dynamo, { phone, channel: "email" });
+      const v = await evaluateSend(dynamo, { phone, channel: "email", tenantId });
       if (!v.allowed) return `send:email:suppressed:${v.blockedBy}`;
     } catch {
       /* gate best-effort */
