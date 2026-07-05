@@ -17,6 +17,7 @@ function ThemeToggle() {
     <div className="theme-tog" role="group" aria-label="Tema">
       <button
         type="button"
+        className="fx-ico-spin"
         aria-pressed={resolvedTheme === "light"}
         onClick={() => setTheme("light")}
         title="Claro"
@@ -25,6 +26,7 @@ function ThemeToggle() {
       </button>
       <button
         type="button"
+        className="fx-ico-rock"
         aria-pressed={resolvedTheme === "dark"}
         onClick={() => setTheme("dark")}
         title="Oscuro"
@@ -209,7 +211,7 @@ export function AppTopBar() {
 
         <button
           type="button"
-          className="tb__ico"
+          className="tb__ico fx-ico-wiggle"
           title="Atajos de teclado"
           onClick={() => setHelpOpen(true)}
         >

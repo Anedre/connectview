@@ -5464,6 +5464,19 @@ textarea:focus {
   background: radial-gradient(circle, var(--auth-brand-c), transparent 65%);
   animation: vox-auth-float3 22s ease-in-out infinite;
 }
+/* Escena 3D opcional de Spline (SplineScene) — capa entre la aurora y el
+   contenido. El selector con > gana al `.vox-auth__hero > *` (z-index: 2). */
+.vox-auth__hero > .vox-auth__spline {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.vox-auth__spline canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
 @keyframes vox-auth-float1 {
   0%,
   100% {

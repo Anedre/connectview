@@ -5,7 +5,14 @@ import "@aws-amplify/ui-react/styles.css";
 import { fetchAuthSession, signInWithRedirect, signOut as amplifySignOut } from "aws-amplify/auth";
 import { I18n } from "aws-amplify/utils";
 import { getApiEndpoints } from "@/lib/api";
+import { SplineScene } from "@/components/fx";
 import outputs from "../../amplify_outputs.json";
+
+/* Escena 3D de Spline para el hero del login (opcional). Se activa poniendo
+ * la URL .splinecode (Export → Code → React en el editor de Spline) en
+ * VITE_SPLINE_LOGIN_SCENE; sin ella, queda la aurora de siempre. El runtime
+ * se carga lazy y solo en desktop (el hero se oculta en mobile). */
+const SPLINE_LOGIN_SCENE = (import.meta.env.VITE_SPLINE_LOGIN_SCENE as string | undefined) || "";
 
 /**
  * F4.3 — SSO federado. El bloque `auth.oauth` en amplify_outputs SOLO existe tras
@@ -252,11 +259,12 @@ function VoxAuthHeader() {
         <span className="a2" />
         <span className="a3" />
       </div>
+      <SplineScene scene={SPLINE_LOGIN_SCENE} className="vox-auth__spline" />
       <div aria-hidden className="vox-auth__grain" />
 
       {/* brand row */}
       <div className="vox-auth__brand">
-        <div className="vox-auth__brand-tile">
+        <div className="vox-auth__brand-tile fx-float">
           <img src="/brand/aria-mark-white.png" alt="" />
         </div>
         <div className="vox-auth__brand-lockup">
@@ -272,7 +280,8 @@ function VoxAuthHeader() {
           Plataforma de contact center
         </span>
         <h1 className="vox-auth__title">
-          El espacio de trabajo del <span className="vox-auth__title-grad">agente moderno</span>.
+          El espacio de trabajo del{" "}
+          <span className="vox-auth__title-grad fx-gradient-x">agente moderno</span>.
         </h1>
         <p className="vox-auth__sub">
           Llamadas, WhatsApp, leads y campañas — todo en una sola pantalla, potenciado por Amazon

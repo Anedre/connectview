@@ -1,7 +1,10 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
+import { animate } from "animejs";
 import { Bell, ChatsCircle, Stack } from "@phosphor-icons/react";
 import { useNotifications } from "@/hooks/useNotifications";
+import { AnimatedIcon } from "@/components/fx";
+import notificationAnim from "@/assets/anim-icons/notification.json";
 
 /** Tiempo relativo corto para los avisos. */
 function relTime(iso?: string): string {
@@ -38,6 +41,24 @@ export function NotificationsBell({
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<Set<string>>(new Set());
 
+  // Pop elástico del badge (anime.js) cuando ENTRA una notificación nueva.
+  const badgeRef = useRef<HTMLSpanElement>(null);
+  const prevCount = useRef(0);
+  useEffect(() => {
+    if (
+      unseenCount > prevCount.current &&
+      badgeRef.current &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      animate(badgeRef.current, {
+        keyframes: [{ scale: 1.45 }, { scale: 1 }],
+        duration: 480,
+        ease: "outElastic(1, .7)",
+      });
+    }
+    prevCount.current = unseenCount;
+  }, [unseenCount]);
+
   const toggle = () => {
     if (!open) {
       // Captura qué era nuevo (para el punto violeta) y limpia el badge.
@@ -65,7 +86,7 @@ export function NotificationsBell({
     <div style={{ position: "relative" }}>
       <button
         type="button"
-        className={buttonClassName}
+        className={`${buttonClassName} fx-ico-swing`}
         title="Notificaciones"
         aria-expanded={open}
         aria-label={unseenCount > 0 ? `Notificaciones (${unseenCount} sin ver)` : "Notificaciones"}
@@ -74,7 +95,9 @@ export function NotificationsBell({
       >
         <Bell size={iconSize} />
         {unseenCount > 0 && (
-          <span className="aria-notif-badge">{unseenCount > 9 ? "9+" : unseenCount}</span>
+          <span ref={badgeRef} className="aria-notif-badge fx-pop">
+            {unseenCount > 9 ? "9+" : unseenCount}
+          </span>
         )}
       </button>
 
@@ -85,7 +108,15 @@ export function NotificationsBell({
             <div className="tbx__menu-head">Notificaciones</div>
             {notifs.length === 0 ? (
               <div style={{ padding: "26px 20px", textAlign: "center" }}>
-                <Bell size={24} style={{ color: "var(--text-3)", opacity: 0.5 }} />
+                <AnimatedIcon
+                  data={notificationAnim}
+                  tint="#33BFC8"
+                  size={34}
+                  autoplay
+                  playOnHover={false}
+                  className="fx-float"
+                  label="Sin notificaciones"
+                />
                 <div
                   style={{
                     marginTop: 10,

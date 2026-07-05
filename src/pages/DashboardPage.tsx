@@ -9,6 +9,7 @@ import { CustomWidgets } from "@/components/dashboard/CustomWidgets";
 import { InsightsPanel } from "@/components/dashboard/InsightsPanel";
 import { Avatar, Card, CardBody, CardHead } from "@/components/vox/primitives";
 import { Btn, Stat, HeroBand, Num } from "@/components/aria";
+import { BlurText, SpotlightCard } from "@/components/fx";
 
 type Role = "Agents" | "Supervisors" | "Admins" | "";
 
@@ -79,7 +80,7 @@ function SupervisorDashSections({
   metrics: ReturnType<typeof useRealtimeMetrics>["metrics"];
 }) {
   const agentsNeedingAttention = (metrics?.agents ?? []).filter(
-    (a) => a.status === "AfterCallWork" || a.status === "MissedCallAgent"
+    (a) => a.status === "AfterCallWork" || a.status === "MissedCallAgent",
   );
 
   return (
@@ -119,7 +120,9 @@ function SupervisorDashSections({
               >
                 <Avatar name={a.username} />
                 <div className="grow">
-                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-1)" }}>{a.username}</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-1)" }}>
+                    {a.username}
+                  </div>
                   <div className="muted" style={{ fontSize: 11.5 }}>
                     {a.status === "AfterCallWork" ? "ACW · revisa wrap-up" : "Llamada perdida"}
                   </div>
@@ -145,10 +148,10 @@ export function DashboardPage() {
   const role: Role = isAtLeast("Admins")
     ? "Admins"
     : isAtLeast("Supervisors")
-    ? "Supervisors"
-    : isAtLeast("Agents")
-    ? "Agents"
-    : "";
+      ? "Supervisors"
+      : isAtLeast("Agents")
+        ? "Agents"
+        : "";
 
   // Vista de agente: su día (atendidos / AHT / sentiment) desde sus contactos
   // de HOY. Degradación elegante — sin permiso/sin match → 0 con nota honesta.
@@ -163,7 +166,9 @@ export function DashboardPage() {
   const agentDay = useMemo(() => {
     const uname = (user?.username || "").toLowerCase();
     const mine = agentContacts.filter((c) => (c.agentUsername || "").toLowerCase() === uname);
-    const durs = mine.map((c) => c.duration).filter((d): d is number => typeof d === "number" && d > 0);
+    const durs = mine
+      .map((c) => c.duration)
+      .filter((d): d is number => typeof d === "number" && d > 0);
     const aht = durs.length ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length) : 0;
     const pos = mine.filter((c) => c.sentiment === "POSITIVE").length;
     return {
@@ -178,8 +183,8 @@ export function DashboardPage() {
     role === "Admins"
       ? "Vista ejecutiva"
       : role === "Supervisors"
-      ? "Centro de operaciones"
-      : `Hola, ${firstName}`;
+        ? "Centro de operaciones"
+        : `Hola, ${firstName}`;
 
   const agentsOnline = metrics?.summary.totalAgentsOnline ?? 0;
   const queueCount = metrics?.queues.length ?? 0;
@@ -193,16 +198,11 @@ export function DashboardPage() {
           PageHeader/InsightsPanel-header por el lenguaje premium de ARIA sin
           perder el reporting real que vive debajo. */}
       <HeroBand
-        title={
-          role === "Agents" ? (
-            <>Hola, {firstName} 👋</>
-          ) : (
-            greeting
-          )
-        }
+        title={<BlurText text={role === "Agents" ? `Hola, ${firstName} 👋` : greeting} />}
         chip={
           <>
-            <span className="dot dot--live" /> Live · {lastRefresh.toLocaleTimeString("es-PE", {
+            <span className="dot dot--live" /> Live ·{" "}
+            {lastRefresh.toLocaleTimeString("es-PE", {
               hour: "numeric",
               minute: "2-digit",
             })}
@@ -232,14 +232,42 @@ export function DashboardPage() {
           className="grid"
           style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 20 }}
         >
-          <Stat icon="phone" color="var(--cyan)" label="Atendidos hoy" value={<Num value={agentDay.atendidos} />}
-            sub={agentLoading && agentContacts.length === 0 ? "cargando…" : "contactos de hoy"} />
-          <Stat icon="clock" color="var(--iris)" label="Mi AHT" value={agentDay.ahtSec > 0 ? fmtWait(agentDay.ahtSec) : "—"}
-            sub="promedio de manejo" />
-          <Stat icon="gauge" color="var(--green)" label="Sentiment +" value={<Num value={agentDay.sentimentPosPct} suffix="%" />}
-            sub="llamadas positivas" />
-          <Stat icon="headset" color="var(--coral)" label="En cola" value={<Num value={contactsInQueue} />}
-            sub={contactsInQueue > 0 ? "esperando" : "cola vacía"} />
+          <SpotlightCard color="color-mix(in srgb, var(--cyan) 13%, transparent)">
+            <Stat
+              icon="phone"
+              color="var(--cyan)"
+              label="Atendidos hoy"
+              value={<Num value={agentDay.atendidos} />}
+              sub={agentLoading && agentContacts.length === 0 ? "cargando…" : "contactos de hoy"}
+            />
+          </SpotlightCard>
+          <SpotlightCard color="color-mix(in srgb, var(--iris) 13%, transparent)">
+            <Stat
+              icon="clock"
+              color="var(--iris)"
+              label="Mi AHT"
+              value={agentDay.ahtSec > 0 ? fmtWait(agentDay.ahtSec) : "—"}
+              sub="promedio de manejo"
+            />
+          </SpotlightCard>
+          <SpotlightCard color="color-mix(in srgb, var(--green) 13%, transparent)">
+            <Stat
+              icon="gauge"
+              color="var(--green)"
+              label="Sentiment +"
+              value={<Num value={agentDay.sentimentPosPct} suffix="%" />}
+              sub="llamadas positivas"
+            />
+          </SpotlightCard>
+          <SpotlightCard color="color-mix(in srgb, var(--coral) 13%, transparent)">
+            <Stat
+              icon="headset"
+              color="var(--coral)"
+              label="En cola"
+              value={<Num value={contactsInQueue} />}
+              sub={contactsInQueue > 0 ? "esperando" : "cola vacía"}
+            />
+          </SpotlightCard>
         </div>
       )}
 
