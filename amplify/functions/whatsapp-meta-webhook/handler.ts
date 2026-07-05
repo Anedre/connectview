@@ -697,7 +697,12 @@ export const handler: Handler = async (event: any) => {
         : event.body
       : JSON.stringify(event.body || {});
   const sig = hdrs["x-hub-signature-256"] || hdrs["X-Hub-Signature-256"];
-  // TODO(deploy): cablear META_APP_SECRET en el env de este Lambda
+  // Firma con el App Secret del secret connectview/meta (el mismo que usan
+  // meta-oauth-start/callback). Build-ahead: hoy ese secret NO existe →
+  // loadMetaAppSecret devuelve "" y se hace fail-open (no rompe el webhook actual).
+  // Go-live Meta (pendiente/cliente): crear connectview/meta {appId,appSecret} +
+  // attachear la managed policy connectview-meta-secret-access al rol → la firma se
+  // activa sola. Ver design/auditoria-codigo-2026-07-04.md.
   const appSecret = await loadMetaAppSecret();
   if (!appSecret) {
     console.warn("meta signature: sin app secret, saltando validación");
