@@ -13,6 +13,7 @@ import {
   ListUsersCommand,
 } from "@aws-sdk/client-connect";
 import { getTenantConnect } from "../_shared/tenantConnect";
+import { maskPhone } from "../_shared/maskPhone";
 import { evaluateSend } from "../_shared/suppression";
 
 // BYO Data Plane (#46): DDB module-active igual que Connect. Se resetea por
@@ -600,7 +601,10 @@ async function voiceSuppressed(campaign: Campaign, contact: CampaignContact): Pr
       return true;
     }
   } catch (err) {
-    console.warn(`[dialer] voice suppression check failed (fail-open) for ${contact.phone}:`, err);
+    console.warn(
+      `[dialer] voice suppression check failed (fail-open) for ${maskPhone(contact.phone)}:`,
+      err,
+    );
   }
   return false;
 }
@@ -780,7 +784,7 @@ async function sendWhatsAppTemplate(
     };
     // Pilar 3: el gate de supresión cortó el envío (HTTP 200 + suppressed:true).
     if (body.suppressed) {
-      console.log(`WhatsApp suppressed for ${contact.phone}: ${body.blockedBy || "?"}`);
+      console.log(`WhatsApp suppressed for ${maskPhone(contact.phone)}: ${body.blockedBy || "?"}`);
       return { messageId: null, suppressed: true, reason: body.blockedBy };
     }
     if (!r.ok || !body.sent) {

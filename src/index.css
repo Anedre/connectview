@@ -4,10 +4,12 @@
    ============================================================ */
 
 @import "tailwindcss";
-/* ARIA type system: Manrope (UI) + JetBrains Mono, plus switchable alternates. */
+/* ARIA type system: Manrope (UI) + JetBrains Mono (mono) + Geist (fallback).
+   PERF-B: se quitaron ibm-plex-sans y hanken-grotesk — no los referencia ningún
+   `font-family` en el código (eran alternates que nunca se cablearon). Los tres
+   que quedan sí se usan; los @fontsource cargan por subset (unicode-range), así
+   que el navegador solo baja el woff2 latino para una app en español. */
 @import "@fontsource-variable/manrope";
-@import "@fontsource-variable/ibm-plex-sans";
-@import "@fontsource/hanken-grotesk";
 @import "@fontsource-variable/jetbrains-mono";
 @import "@fontsource-variable/geist";
 

@@ -8,6 +8,7 @@ import {
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { getTenantConnect } from "../_shared/tenantConnect";
+import { maskPhone } from "../_shared/maskPhone";
 import { sendWhatsApp } from "../_shared/whatsappSend";
 import {
   appendLeadHistory,
@@ -290,7 +291,7 @@ async function handleFlowReply(
       flow: { name: nfm.name },
     });
     console.log(
-      `flow reply: tenant=${t.tenantId} phone=${phone} flow=${nfm.name || "—"} lead=${result.leadId || "—"} fields=${Object.keys(attributes).length}`,
+      `flow reply: tenant=${t.tenantId} phone=${maskPhone(phone)} flow=${nfm.name || "—"} lead=${result.leadId || "—"} fields=${Object.keys(attributes).length}`,
     );
   } catch (e) {
     console.error("flow reply → CRM falló:", e);
@@ -354,7 +355,8 @@ async function handleInbound(
     try {
       setActiveTenant(t.tenantId);
       const r = await pushDoNotCallToSalesforce(phoneE164, isStop, { voxLeadId: leadId });
-      if (r.updated) console.log(`SF DoNotCall=${isStop} en Lead ${r.sfId} (${phoneE164})`);
+      if (r.updated)
+        console.log(`SF DoNotCall=${isStop} en Lead ${r.sfId} (${maskPhone(phoneE164)})`);
     } catch (e) {
       console.warn("SF DoNotCall push falló (best-effort):", e);
     }
@@ -384,7 +386,7 @@ async function handleInbound(
       }
     }
     console.log(
-      `opt-${isStop ? "out" : "in"}: tenant=${t.tenantId} phone=${phoneE164} lead=${leadId || "—"}`,
+      `opt-${isStop ? "out" : "in"}: tenant=${t.tenantId} phone=${maskPhone(phoneE164)} lead=${leadId || "—"}`,
     );
     return; // NO corremos el bot para un STOP/ALTA
   }
@@ -437,7 +439,7 @@ async function handleInbound(
     mirrored?.assignee === "agent" ||
     (mirrored?.assignee == null && !!mirrored?.assignedAgent && mirrored.assignedAgent !== "bot");
   if (takenByHuman) {
-    console.log(`WhatsApp ${from}: en manos de un humano → bot omitido`);
+    console.log(`WhatsApp ${maskPhone(from)}: en manos de un humano → bot omitido`);
     return;
   }
 
@@ -450,7 +452,7 @@ async function handleInbound(
   // (meta-messaging-webhook, mercadolibre-webhook), replicá esta misma guarda +
   // detección allí (wantsHuman + setAssignee) usando su propio convId/canal.
   if (!choice && wantsHuman(text)) {
-    console.log(`WhatsApp ${from}: pidió humano → escalando a agente`);
+    console.log(`WhatsApp ${maskPhone(from)}: pidió humano → escalando a agente`);
     try {
       await setAssignee(legacyDynamo, convChannelId, "agent");
       // "necesita atención": elevamos unread como hace un inbound (no lo pisamos a 0).
@@ -490,7 +492,7 @@ async function handleInbound(
     // para que aparezca en la cola del inbox y un humano la tome. (En el próximo
     // inbound la guarda global de arriba corta, así no la re-tocamos.)
     await setAssignee(legacyDynamo, convChannelId, "agent");
-    console.log(`WhatsApp ${from}: sin flujo linkeado → directo a agente`);
+    console.log(`WhatsApp ${maskPhone(from)}: sin flujo linkeado → directo a agente`);
     return;
   }
 
@@ -582,7 +584,7 @@ async function handleInbound(
   // mensajes del bot ya salieron arriba (incluido el aviso de derivación del flujo),
   // así que acá solo cambiamos de manos. En el próximo inbound la guarda global corta.
   if (d.handoff === true || d.handoff === "true") {
-    console.log(`WhatsApp ${from}: bot-runtime derivó (handoff) → assignee=agent`);
+    console.log(`WhatsApp ${maskPhone(from)}: bot-runtime derivó (handoff) → assignee=agent`);
     try {
       await setAssignee(legacyDynamo, convChannelId, "agent");
       const cur = await getConversation(legacyDynamo, convChannelId);
@@ -597,7 +599,7 @@ async function handleInbound(
     // último mensaje → CERRAMOS la conversación (reason "resolved"). El cierre
     // unificado suelta el dueño → el próximo inbound del cliente la reabre limpia
     // con el bot (no queda "cerrada para siempre" ni pegada a un agente).
-    console.log(`WhatsApp ${from}: bot-runtime terminó (done) → cierro la conversación`);
+    console.log(`WhatsApp ${maskPhone(from)}: bot-runtime terminó (done) → cierro la conversación`);
     try {
       await closeConversation(legacyDynamo, convChannelId, "resolved");
     } catch (e) {
@@ -658,7 +660,7 @@ async function handleStatus(
         source: "status_webhook",
         tenantId,
       });
-      console.log(`quarantine: ${phone} (${res.reason}) tenant=${tenantId || "—"}`);
+      console.log(`quarantine: ${maskPhone(phone)} (${res.reason}) tenant=${tenantId || "—"}`);
     } catch (e) {
       console.error("quarantine falló:", e);
     }

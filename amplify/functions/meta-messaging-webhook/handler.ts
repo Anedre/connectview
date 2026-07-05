@@ -10,6 +10,7 @@ import {
   type ConvChannel,
 } from "../_shared/conversations";
 import { normalizeMetaAccounts, findMetaAccount } from "../_shared/metaAccounts";
+import { maskPhone } from "../_shared/maskPhone";
 import { loadMetaAppSecret, verifyMetaSignature } from "../_shared/metaSignature";
 
 /**
@@ -230,7 +231,7 @@ export const handler: Handler = async (event: any) => {
           ts: v.created_time ? new Date(Number(v.created_time) * 1000).toISOString() : undefined,
         });
         console.log(
-          `comment inbound: ${platform} from=${fromId} comment=${commentId} tenant=${t.tenantId}`,
+          `comment inbound: ${platform} from=${maskPhone(fromId)} comment=${commentId} tenant=${t.tenantId}`,
         );
       }
 
@@ -274,7 +275,9 @@ export const handler: Handler = async (event: any) => {
           metaAccountId: metaId,
           ts: ev.timestamp ? new Date(Number(ev.timestamp)).toISOString() : undefined,
         });
-        console.log(`messaging inbound: ${channel} from=${senderId} tenant=${t.tenantId}`);
+        console.log(
+          `messaging inbound: ${channel} from=${maskPhone(senderId)} tenant=${t.tenantId}`,
+        );
       }
     }
   } catch (e) {

@@ -1,5 +1,31 @@
 import { useEffect, useState } from "react";
-import ReactECharts from "echarts-for-react";
+// PERF-A2 · echarts SELECTIVO: en vez de `echarts-for-react` (que arrastra TODO
+// echarts, ~330KB gz), importamos el core tree-shakeable y registramos SOLO lo
+// que la app usa realmente. El wrapper liviano vive en `echarts-for-react/lib/core`.
+import ReactEChartsCore from "echarts-for-react/lib/core";
+import * as echarts from "echarts/core";
+import {
+  BarChart,
+  LineChart,
+  PieChart,
+  GaugeChart,
+  ScatterChart,
+  PictorialBarChart,
+  RadarChart,
+  FunnelChart,
+} from "echarts/charts";
+import {
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  TitleComponent,
+  MarkPointComponent,
+  MarkLineComponent,
+  AxisPointerComponent,
+  DatasetComponent,
+  TransformComponent,
+} from "echarts/components";
+import { SVGRenderer } from "echarts/renderers";
 import type { EChartsOption } from "echarts";
 
 /**
@@ -15,7 +41,38 @@ import type { EChartsOption } from "echarts";
  * ECharts is Apache-2.0 (free for commercial use) and far more capable than
  * recharts for premium, interactive visuals (gradients, markPoint pins,
  * pictorialBar ribbons, native gauges, rich tooltips).
+ *
+ * NOTA (bundle): registramos aquí SOLO las series y componentes que se usan en
+ * toda la app (grep `type: "..."` + tooltip/legend/grid/markPoint/axisPointer).
+ * Si agregás un gráfico con una serie o componente nuevo (p.ej. heatmap,
+ * visualMap, dataZoom), IMPORTALO + agregalo al `echarts.use([...])` de abajo,
+ * o el gráfico se renderiza vacío sin lanzar error.
  */
+
+// Registro único de módulos de ECharts (idempotente).
+echarts.use([
+  // Series efectivamente usadas en la app.
+  BarChart,
+  LineChart,
+  PieChart,
+  GaugeChart,
+  ScatterChart,
+  PictorialBarChart,
+  RadarChart,
+  FunnelChart,
+  // Componentes de layout / interacción.
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  TitleComponent,
+  MarkPointComponent,
+  MarkLineComponent,
+  AxisPointerComponent,
+  DatasetComponent,
+  TransformComponent,
+  // Renderer (el wrapper pide siempre "svg").
+  SVGRenderer,
+]);
 
 export interface ChartTokens {
   text1: string;
@@ -88,7 +145,8 @@ interface EChartProps {
 
 export function EChart({ option, height = 300, className }: EChartProps) {
   return (
-    <ReactECharts
+    <ReactEChartsCore
+      echarts={echarts}
       option={option}
       style={{ height, width: "100%" }}
       opts={{ renderer: "svg" }}

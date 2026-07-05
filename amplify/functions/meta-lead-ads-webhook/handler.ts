@@ -5,6 +5,7 @@ import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { getTenantConnect } from "../_shared/tenantConnect";
+import { maskPhone } from "../_shared/maskPhone";
 import { propagateLead, setActiveDynamo, setActiveProfiles } from "../_shared/leadSync";
 import { setActiveTenant } from "../_shared/salesforceClient";
 import { fireAutomation } from "../_shared/automationHook";
@@ -197,7 +198,7 @@ async function handleLead(pageId: string, leadgenId: string, source: string): Pr
       });
     }
     console.log(
-      `leadgen: tenant=${tenantId} phone=${phone} source=${src} lead=${result.leadId || "—"} action=${result.voxAction}`,
+      `leadgen: tenant=${tenantId} phone=${maskPhone(phone)} source=${src} lead=${result.leadId || "—"} action=${result.voxAction}`,
     );
   } catch (e) {
     console.error("leadgen propagate falló:", e instanceof Error ? e.message : e);

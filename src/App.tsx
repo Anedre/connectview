@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,39 +17,104 @@ import { CopilotPanel } from "@/components/vox/CopilotPanel";
 import { TasksLauncher } from "@/components/vox/TasksLauncher";
 import { ActiveContactProvider } from "@/hooks/useActiveContact";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+// Páginas livianas / críticas para el primer render → import estático.
 import { DashboardPage } from "@/pages/DashboardPage";
-import { AgentDesktopPage } from "@/pages/AgentDesktopPage";
 import { MonitoringPage } from "@/pages/MonitoringPage";
-import { ReportsPage } from "@/pages/ReportsPage";
-import { RecordingsPage } from "@/pages/RecordingsPage";
-import { AdminPage } from "@/pages/AdminPage";
-import { CampaignsPage } from "@/pages/CampaignsPage";
-import { CampaignCreatePage } from "@/pages/CampaignCreatePage";
-import { CampaignDetailPage } from "@/pages/CampaignDetailPage";
-import { LeadsPage } from "@/pages/LeadsPage";
 import { InboxPage } from "@/pages/InboxPage";
 import { ProgramsHubPage } from "@/pages/ProgramsHubPage";
-import { AppointmentsPage } from "@/pages/AppointmentsPage";
-import { CoachDemoPage } from "@/pages/CoachDemoPage";
-import { WrapUpDemoPage } from "@/pages/WrapUpDemoPage";
-import { MonitorDemoPage } from "@/pages/MonitorDemoPage";
-import { FlowBuilderDemoPage } from "@/pages/FlowBuilderDemoPage";
-import { WizardDemoPage } from "@/pages/WizardDemoPage";
-import { GrabacionesDemoPage } from "@/pages/GrabacionesDemoPage";
-import { ConversationCanvasDemoPage } from "@/pages/ConversationCanvasDemoPage";
-import { AgenteDemoPage } from "@/pages/AgenteDemoPage";
-import { LeadsDemoPage } from "@/pages/LeadsDemoPage";
-import { BotsDemoPage } from "@/pages/BotsDemoPage";
-import { BotTemplateGallery } from "@/components/bots/BotTemplateGallery";
-import { RecordingsWorkspace } from "@/components/recordings/RecordingsWorkspace";
-import { RecordingsShowcasePage } from "@/components/recordings/RecordingsShowcase";
-import { FlowBuilderPage } from "@/pages/FlowBuilderPage";
-import { JourneysPage } from "@/pages/JourneysPage";
-import { AutomationsPage } from "@/pages/AutomationsPage";
-import { AgentePage } from "@/pages/AgentePage";
-import { InicioDemoPage } from "@/pages/InicioDemoPage";
+import { LeadsPage } from "@/pages/LeadsPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
-import { ChartsLabPage } from "@/pages/ChartsLabPage";
+
+// Páginas pesadas → code-splitting perezoso (echarts, react-flow, editores…).
+// Todas exportan NAMED exports, así que envolvemos con .then(m => ({ default })).
+const AgentDesktopPage = lazy(() =>
+  import("@/pages/AgentDesktopPage").then((m) => ({ default: m.AgentDesktopPage })),
+);
+const ReportsPage = lazy(() =>
+  import("@/pages/ReportsPage").then((m) => ({ default: m.ReportsPage })),
+);
+const RecordingsPage = lazy(() =>
+  import("@/pages/RecordingsPage").then((m) => ({ default: m.RecordingsPage })),
+);
+const AdminPage = lazy(() => import("@/pages/AdminPage").then((m) => ({ default: m.AdminPage })));
+const CampaignsPage = lazy(() =>
+  import("@/pages/CampaignsPage").then((m) => ({ default: m.CampaignsPage })),
+);
+const CampaignCreatePage = lazy(() =>
+  import("@/pages/CampaignCreatePage").then((m) => ({ default: m.CampaignCreatePage })),
+);
+const CampaignDetailPage = lazy(() =>
+  import("@/pages/CampaignDetailPage").then((m) => ({ default: m.CampaignDetailPage })),
+);
+const AppointmentsPage = lazy(() =>
+  import("@/pages/AppointmentsPage").then((m) => ({ default: m.AppointmentsPage })),
+);
+const FlowBuilderPage = lazy(() =>
+  import("@/pages/FlowBuilderPage").then((m) => ({ default: m.FlowBuilderPage })),
+);
+const JourneysPage = lazy(() =>
+  import("@/pages/JourneysPage").then((m) => ({ default: m.JourneysPage })),
+);
+const AutomationsPage = lazy(() =>
+  import("@/pages/AutomationsPage").then((m) => ({ default: m.AutomationsPage })),
+);
+const AgentePage = lazy(() =>
+  import("@/pages/AgentePage").then((m) => ({ default: m.AgentePage })),
+);
+const ChartsLabPage = lazy(() =>
+  import("@/pages/ChartsLabPage").then((m) => ({ default: m.ChartsLabPage })),
+);
+
+// Demos (solo se sirven en DEV o rutas puntuales) → siempre perezosas para que
+// nunca pesen en el bundle de producción.
+const CoachDemoPage = lazy(() =>
+  import("@/pages/CoachDemoPage").then((m) => ({ default: m.CoachDemoPage })),
+);
+const WrapUpDemoPage = lazy(() =>
+  import("@/pages/WrapUpDemoPage").then((m) => ({ default: m.WrapUpDemoPage })),
+);
+const MonitorDemoPage = lazy(() =>
+  import("@/pages/MonitorDemoPage").then((m) => ({ default: m.MonitorDemoPage })),
+);
+const FlowBuilderDemoPage = lazy(() =>
+  import("@/pages/FlowBuilderDemoPage").then((m) => ({ default: m.FlowBuilderDemoPage })),
+);
+const WizardDemoPage = lazy(() =>
+  import("@/pages/WizardDemoPage").then((m) => ({ default: m.WizardDemoPage })),
+);
+const GrabacionesDemoPage = lazy(() =>
+  import("@/pages/GrabacionesDemoPage").then((m) => ({ default: m.GrabacionesDemoPage })),
+);
+const ConversationCanvasDemoPage = lazy(() =>
+  import("@/pages/ConversationCanvasDemoPage").then((m) => ({
+    default: m.ConversationCanvasDemoPage,
+  })),
+);
+const AgenteDemoPage = lazy(() =>
+  import("@/pages/AgenteDemoPage").then((m) => ({ default: m.AgenteDemoPage })),
+);
+const LeadsDemoPage = lazy(() =>
+  import("@/pages/LeadsDemoPage").then((m) => ({ default: m.LeadsDemoPage })),
+);
+const BotsDemoPage = lazy(() =>
+  import("@/pages/BotsDemoPage").then((m) => ({ default: m.BotsDemoPage })),
+);
+const InicioDemoPage = lazy(() =>
+  import("@/pages/InicioDemoPage").then((m) => ({ default: m.InicioDemoPage })),
+);
+const BotTemplateGallery = lazy(() =>
+  import("@/components/bots/BotTemplateGallery").then((m) => ({ default: m.BotTemplateGallery })),
+);
+const RecordingsWorkspace = lazy(() =>
+  import("@/components/recordings/RecordingsWorkspace").then((m) => ({
+    default: m.RecordingsWorkspace,
+  })),
+);
+const RecordingsShowcasePage = lazy(() =>
+  import("@/components/recordings/RecordingsShowcase").then((m) => ({
+    default: m.RecordingsShowcasePage,
+  })),
+);
 
 function VoxLogo({ size = 32 }: { size?: number }) {
   return (
@@ -509,6 +574,40 @@ function ErrorScreen({ error }: { error: string }) {
   );
 }
 
+/**
+ * RouteFallback — fallback liviano para <Suspense> mientras se descarga el
+ * chunk de una ruta perezosa (PERF-A1). Un spinner minimalista centrado; sin
+ * framer-motion ni aurora para no bloquear el propio split (a diferencia del
+ * LoadingScreen de arranque). Hereda la fila de grid de `.app__main`.
+ */
+function RouteFallback() {
+  return (
+    <div
+      style={{
+        display: "grid",
+        placeItems: "center",
+        height: "100%",
+        width: "100%",
+        background: "var(--bg-0)",
+      }}
+    >
+      <motion.div
+        aria-label="Cargando…"
+        role="status"
+        animate={{ rotate: 360 }}
+        transition={{ duration: 0.7, repeat: Infinity, ease: "linear" }}
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: "50%",
+          border: "3px solid color-mix(in srgb, var(--accent-cyan) 22%, transparent)",
+          borderTopColor: "var(--accent-cyan)",
+        }}
+      />
+    </div>
+  );
+}
+
 function AnimatedRoutes() {
   const location = useLocation();
   const { showHelp, setShowHelp } = useKeyboardShortcuts();
@@ -531,30 +630,32 @@ function AnimatedRoutes() {
              the bottom buttons below the fold. */
           style={{ height: "100%" }}
         >
-          <Routes location={location}>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/agent" element={<AgentDesktopPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/recordings" element={<RecordingsPage />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="/leads" element={<LeadsPage />} />
-            <Route path="/inbox" element={<InboxPage />} />
-            <Route path="/programs" element={<ProgramsHubPage />} />
-            <Route path="/charts-lab" element={<ChartsLabPage />} />
-            <Route path="/appointments" element={<AppointmentsPage />} />
-            <Route path="/bot" element={<FlowBuilderPage />} />
-            <Route path="/journeys" element={<JourneysPage />} />
-            <Route path="/automations" element={<AutomationsPage />} />
-            <Route path="/agente" element={<AgentePage />} />
-            <Route path="/campaigns" element={<CampaignsPage />} />
-            <Route path="/campaigns/nueva" element={<CampaignCreatePage />} />
-            <Route path="/campaigns/:campaignId" element={<CampaignDetailPage />} />
-            <Route path="/queue" element={<MonitoringPage />} />
-            <Route path="/coach-demo" element={<CoachDemoPage />} />
-            <Route path="/wrapup-demo" element={<WrapUpDemoPage />} />
-            <Route path="/monitor-demo" element={<MonitorDemoPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes location={location}>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/agent" element={<AgentDesktopPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/recordings" element={<RecordingsPage />} />
+              <Route path="/admin" element={<AdminPage />} />
+              <Route path="/leads" element={<LeadsPage />} />
+              <Route path="/inbox" element={<InboxPage />} />
+              <Route path="/programs" element={<ProgramsHubPage />} />
+              <Route path="/charts-lab" element={<ChartsLabPage />} />
+              <Route path="/appointments" element={<AppointmentsPage />} />
+              <Route path="/bot" element={<FlowBuilderPage />} />
+              <Route path="/journeys" element={<JourneysPage />} />
+              <Route path="/automations" element={<AutomationsPage />} />
+              <Route path="/agente" element={<AgentePage />} />
+              <Route path="/campaigns" element={<CampaignsPage />} />
+              <Route path="/campaigns/nueva" element={<CampaignCreatePage />} />
+              <Route path="/campaigns/:campaignId" element={<CampaignDetailPage />} />
+              <Route path="/queue" element={<MonitoringPage />} />
+              <Route path="/coach-demo" element={<CoachDemoPage />} />
+              <Route path="/wrapup-demo" element={<WrapUpDemoPage />} />
+              <Route path="/monitor-demo" element={<MonitorDemoPage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </Suspense>
         </motion.div>
       </AnimatePresence>
     </>
@@ -644,7 +745,9 @@ export default function App() {
   if (typeof window !== "undefined" && window.location.pathname === "/bot-demo") {
     return (
       <ThemeProvider>
-        <FlowBuilderDemoPage />
+        <Suspense fallback={<RouteFallback />}>
+          <FlowBuilderDemoPage />
+        </Suspense>
       </ThemeProvider>
     );
   }
@@ -654,9 +757,11 @@ export default function App() {
   if (typeof window !== "undefined" && window.location.pathname === "/agente-demo") {
     return (
       <ThemeProvider>
-        <div style={{ height: "100vh", overflow: "auto", background: "var(--bg-0)" }}>
-          <AgentePage />
-        </div>
+        <Suspense fallback={<RouteFallback />}>
+          <div style={{ height: "100vh", overflow: "auto", background: "var(--bg-0)" }}>
+            <AgentePage />
+          </div>
+        </Suspense>
       </ThemeProvider>
     );
   }
@@ -666,7 +771,9 @@ export default function App() {
   if (typeof window !== "undefined" && window.location.pathname === "/inicio-demo") {
     return (
       <ThemeProvider>
-        <InicioDemoPage />
+        <Suspense fallback={<RouteFallback />}>
+          <InicioDemoPage />
+        </Suspense>
       </ThemeProvider>
     );
   }
@@ -680,7 +787,9 @@ export default function App() {
   ) {
     return (
       <ThemeProvider>
-        <WizardDemoPage />
+        <Suspense fallback={<RouteFallback />}>
+          <WizardDemoPage />
+        </Suspense>
       </ThemeProvider>
     );
   }
@@ -694,7 +803,9 @@ export default function App() {
   ) {
     return (
       <ThemeProvider>
-        <GrabacionesDemoPage />
+        <Suspense fallback={<RouteFallback />}>
+          <GrabacionesDemoPage />
+        </Suspense>
       </ThemeProvider>
     );
   }
@@ -707,7 +818,9 @@ export default function App() {
   ) {
     return (
       <ThemeProvider>
-        <ConversationCanvasDemoPage />
+        <Suspense fallback={<RouteFallback />}>
+          <ConversationCanvasDemoPage />
+        </Suspense>
       </ThemeProvider>
     );
   }
@@ -721,7 +834,9 @@ export default function App() {
   ) {
     return (
       <ThemeProvider>
-        <AgenteDemoPage />
+        <Suspense fallback={<RouteFallback />}>
+          <AgenteDemoPage />
+        </Suspense>
       </ThemeProvider>
     );
   }
@@ -734,7 +849,9 @@ export default function App() {
   ) {
     return (
       <ThemeProvider>
-        <LeadsDemoPage />
+        <Suspense fallback={<RouteFallback />}>
+          <LeadsDemoPage />
+        </Suspense>
       </ThemeProvider>
     );
   }
@@ -747,7 +864,9 @@ export default function App() {
   ) {
     return (
       <ThemeProvider>
-        <BotsDemoPage />
+        <Suspense fallback={<RouteFallback />}>
+          <BotsDemoPage />
+        </Suspense>
       </ThemeProvider>
     );
   }
@@ -760,12 +879,14 @@ export default function App() {
   ) {
     return (
       <ThemeProvider>
-        <div style={{ height: "100vh", background: "var(--bg-0)" }}>
-          <BotTemplateGallery
-            onPick={(b) => console.log("[plantillas-demo] pick", b.name)}
-            onBack={() => window.history.back()}
-          />
-        </div>
+        <Suspense fallback={<RouteFallback />}>
+          <div style={{ height: "100vh", background: "var(--bg-0)" }}>
+            <BotTemplateGallery
+              onPick={(b) => console.log("[plantillas-demo] pick", b.name)}
+              onBack={() => window.history.back()}
+            />
+          </div>
+        </Suspense>
       </ThemeProvider>
     );
   }
@@ -786,38 +907,40 @@ export default function App() {
     const demoName = sp.get("name") || "Juan Pérez";
     return (
       <ThemeProvider>
-        {real ? (
-          <div
-            style={{
-              height: "100vh",
-              padding: 16,
-              boxSizing: "border-box",
-              background: "var(--bg-0)",
-            }}
-          >
+        <Suspense fallback={<RouteFallback />}>
+          {real ? (
             <div
               style={{
-                height: "100%",
-                border: "1px solid var(--border-1)",
-                borderRadius: 10,
-                overflow: "hidden",
-                background: "var(--bg-1)",
+                height: "100vh",
+                padding: 16,
+                boxSizing: "border-box",
+                background: "var(--bg-0)",
               }}
             >
-              <RecordingsWorkspace
-                initialLead={{
-                  leadId: "demo",
-                  name: demoName,
-                  phone: demoPhone,
-                  company: "Cobranzas SAC",
-                  source: "phone",
+              <div
+                style={{
+                  height: "100%",
+                  border: "1px solid var(--border-1)",
+                  borderRadius: 10,
+                  overflow: "hidden",
+                  background: "var(--bg-1)",
                 }}
-              />
+              >
+                <RecordingsWorkspace
+                  initialLead={{
+                    leadId: "demo",
+                    name: demoName,
+                    phone: demoPhone,
+                    company: "Cobranzas SAC",
+                    source: "phone",
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        ) : (
-          <RecordingsShowcasePage />
-        )}
+          ) : (
+            <RecordingsShowcasePage />
+          )}
+        </Suspense>
       </ThemeProvider>
     );
   }

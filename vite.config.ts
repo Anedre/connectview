@@ -43,5 +43,38 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        // PERF-M3 · separa los vendors pesados en chunks propios para que:
+        //  - se cacheen aparte del código de app (cambian con menos frecuencia),
+        //  - no inflen el chunk inicial de entrada.
+        // Usamos la forma-función para poder agrupar TODO el árbol de AWS
+        // (aws-amplify arrastra @aws-sdk/* y @smithy/* transitivamente) en un
+        // solo chunk. react/react-dom/react-router van JUNTOS a propósito
+        // (comparten runtime; el router depende de react) para no romper el
+        // orden de inicialización entre chunks.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          // Normalizamos separadores de Windows para el match.
+          const p = id.replace(/\\/g, "/");
+          if (/node_modules\/(react|react-dom|scheduler|react-router|react-router-dom)\//.test(p)) {
+            return "vendor-react";
+          }
+          if (/node_modules\/(aws-amplify|@aws-amplify|@aws-sdk|@smithy|aws-crt)\//.test(p)) {
+            return "vendor-amplify";
+          }
+          if (/node_modules\/(echarts|echarts-for-react|zrender)\//.test(p)) {
+            return "vendor-echarts";
+          }
+          if (/node_modules\/@xyflow\//.test(p)) {
+            return "vendor-flow";
+          }
+          if (/node_modules\/(framer-motion|motion-dom|motion-utils)\//.test(p)) {
+            return "vendor-motion";
+          }
+          return undefined;
+        },
+      },
+    },
   },
 }));
