@@ -314,4 +314,19 @@ El header de `deploy-lambda.mjs:12` documenta `--all-changed` pero **no lo imple
 - **DEBT-A1 (`normalizePhone`)**: revertido — quitar el `+51` regresionaría a UDEP (peruano). Fix correcto = `defaultCountry` por-tenant (nuevo campo en la config del tenant) antes de onboardear un tenant no-Perú.
 - **SEC-A2/A4 activación**: cablear `VOX_INTERNAL_SECRET` en bot-runtime + que los webhooks (`whatsapp-meta-webhook:519`, `agent-channel-adapter:149`) manden el header; firmar el link en `_shared/emailTracking.ts buildTrackedHtml` + setear `EMAIL_TRACKING_SECRET`. (Va junto con la rotación del secreto — Ola 0.)
 
-### ⏳ Ola 3 (perf/limpieza): en curso.
+### ✅ Ola 3 — perf/limpieza (cerrada, desplegada, verificada)
+
+- **PERF-A1/A2/M3/M4/B**: bundle entry **1656→215 KB gz (−87%)**, CSS **752→398 KB (−47%)**; lazy routes, echarts selectivo, Sentry lazy, manualChunks, poda de 2 fuentes. Verificado en vivo (ruta lazy `/reports` carga bajo demanda, sin errores).
+- **DEBT-M1**: 26 archivos muertos borrados (`tsc` 0). `scoring.ts` NO era muerto (lo usa `leadSync`, infra Fase 2 — la auditoría lo marcó mal en 2 frentes).
+- **SEC-M1**: `maskPhone` en 14 logs de 4 handlers (redeployados).
+- **PERF-A3**: imágenes `public/brand` 26.6→0.88 MB (aligera el repo; los masters no se sirven al navegador).
+
+### Follow-ups abiertos (documentados, no aplicados)
+
+- **Perf**: `index.html` Geist Mono duplicado (Google Fonts + self-host); `@xyflow`/echarts aún eager por `DashboardPage` (ruta `/`).
+- **Correctitud**: `defaultCountry` por-tenant (para reactivar la unificación de `normalizePhone` sin `+51`); GSI de leads (BUG-A3); RMW→UpdateItem completo en `conversations.ts`.
+- **Seguridad — activación** (van con la rotación del secreto): cablear `VOX_INTERNAL_SECRET` (bot-runtime + webhooks), firmar el link de email + `EMAIL_TRACKING_SECRET`, crear `connectview/meta` + policy para la firma de webhooks.
+
+## Balance final
+
+**3 olas, 41 Lambdas redeployados (con solapes), 8 commits, bundle −87%.** Todo lo desplegable quedó desplegado + verificado en vivo (aislamiento del inbox, feed 38/16, rutas lazy). Lo NO hecho es **consciente**: acciones del usuario (rotar secreto), fixes invasivos (GSI, RMW completo, `defaultCountry`), y activaciones build-ahead (SEC-A2/A4/C5) que esperan cableado de secretos. Ningún CRÍTICO ni ALTO quedó sin abordar salvo por decisión explícita registrada arriba.
