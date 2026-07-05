@@ -196,7 +196,9 @@ async function sweepInactive(conversations: Conversation[], tenantId: string): P
       c.ownerAgentName = undefined;
       // … y persiste el cierre UNIFICADO (suelta el dueño → reabre limpio con bot).
       try {
-        await closeConversation(legacyDynamo, c.conversationId, "inactivity");
+        // BUG-A2: cierre condicional a que no se haya reactivado entre el scan y
+        // ahora (pasa el updatedAt visto → si un inbound la tocó, no la cierra).
+        await closeConversation(legacyDynamo, c.conversationId, "inactivity", c.updatedAt);
       } catch (e) {
         console.warn("sweepInactive: cierre no persistió", c.conversationId, (e as Error).message);
       }
@@ -592,7 +594,9 @@ async function reapInactiveConversations(): Promise<{ scanned: number; closed: n
         }
       }
       try {
-        await closeConversation(legacyDynamo, c.conversationId, "inactivity");
+        // BUG-A2: cierre condicional a que no se haya reactivado entre el scan y
+        // ahora (pasa el updatedAt visto → si un inbound la tocó, no la cierra).
+        await closeConversation(legacyDynamo, c.conversationId, "inactivity", c.updatedAt);
         closed++;
       } catch (e) {
         console.warn("reaper: cierre no persistió", c.conversationId, (e as Error).message);

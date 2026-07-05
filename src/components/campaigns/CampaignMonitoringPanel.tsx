@@ -1,5 +1,6 @@
 import { Circle, Phone } from "lucide-react";
 import type { CampaignAgentLive, CampaignQueueLive } from "@/hooks/useCampaignStats";
+import { initials } from "@/lib/initials";
 import * as Icon from "@/components/vox/primitives";
 
 /**
@@ -8,16 +9,6 @@ import * as Icon from "@/components/vox/primitives";
  * personas que se están llamando/atendiendo ahora. Se alimenta de byQueue /
  * byAgent de get-campaign-stats (poll cada 3s vía useCampaignStats).
  */
-function initials(name: string): string {
-  return (name || "?")
-    .trim()
-    .split(/\s+/)
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
-
 export function CampaignMonitoringPanel({
   byQueue,
   byAgent,
@@ -60,10 +51,26 @@ export function CampaignMonitoringPanel({
       {/* Por cola */}
       {queues.length > 0 && (
         <>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: "var(--text-3)",
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+              marginBottom: 8,
+            }}
+          >
             Por cola
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8, marginBottom: 18 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+              gap: 8,
+              marginBottom: 18,
+            }}
+          >
             {queues.map((q) => {
               const live = q.dialing + q.connected;
               return (
@@ -78,12 +85,23 @@ export function CampaignMonitoringPanel({
                 >
                   <div className="row" style={{ gap: 6, alignItems: "center" }}>
                     <Icon.Queue size={13} style={{ color: "var(--accent-cyan)" }} />
-                    <span style={{ fontWeight: 700, fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        fontSize: 13,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       {q.queueName || "—"}
                     </span>
                   </div>
                   <div className="row" style={{ gap: 10, marginTop: 6 }}>
-                    <span className="muted" style={{ fontSize: 11 }}>{q.agents} agentes</span>
+                    <span className="muted" style={{ fontSize: 11 }}>
+                      {q.agents} agentes
+                    </span>
                     <span
                       style={{
                         fontSize: 11,
@@ -104,7 +122,16 @@ export function CampaignMonitoringPanel({
       {/* Por agente */}
       {agents.length > 0 && (
         <>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: "var(--text-3)",
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+              marginBottom: 8,
+            }}
+          >
             Por agente
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -142,22 +169,53 @@ export function CampaignMonitoringPanel({
                     {initials(a.username)}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
                       {a.username}
                     </div>
-                    <div className="muted" style={{ fontSize: 10.5 }}>{a.queueName}</div>
+                    <div className="muted" style={{ fontSize: 10.5 }}>
+                      {a.queueName}
+                    </div>
                   </div>
                   <div style={{ flex: "0 0 auto", textAlign: "right" }}>
                     {onCall ? (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: "var(--accent-green)" }}>
-                        <Circle size={9} fill="currentColor" /> En llamada{liveName ? ` · ${liveName}` : ""}
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "var(--accent-green)",
+                        }}
+                      >
+                        <Circle size={9} fill="currentColor" /> En llamada
+                        {liveName ? ` · ${liveName}` : ""}
                       </span>
                     ) : dialing ? (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: "var(--accent-amber)" }}>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "var(--accent-amber)",
+                        }}
+                      >
                         <Phone size={12} /> Marcando{liveName ? ` · ${liveName}` : ""}
                       </span>
                     ) : (
-                      <span className="muted" style={{ fontSize: 12 }}>Libre</span>
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        Libre
+                      </span>
                     )}
                   </div>
                 </div>

@@ -2,7 +2,7 @@ import type { Handler } from "aws-lambda";
 import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { createHmac } from "node:crypto";
-import { resolveTenantId } from "../_shared/cognitoAuth";
+import { resolveTenantId, isLegacyTenant } from "../_shared/cognitoAuth";
 
 /**
  * get-analytics-feed — FEED DE DATOS para Power BI (y Excel/Looker/Tableau).
@@ -82,6 +82,13 @@ async function scanAll<T>(
   pick: (row: Record<string, unknown>) => T | null,
 ): Promise<T[]> {
   const out: T[] = [];
+  // SEC-A1 — aislamiento por tenant ENDURECIDO. Antes: `row.tenantId && row.tenantId
+  // !== tenantId` → como leads/hsm NO guardaban tenantId, el guard NUNCA filtraba y
+  // el feed exponía filas de todos los tenants. Ahora:
+  //   · Solicitante LEGACY (novasys/default): filas SIN tenantId (pooled) O con el
+  //     suyo — retrocompat con los datos históricos que aún no tienen el campo.
+  //   · Tenant REAL: match EXACTO (rechaza las filas sin tenantId; no son suyas).
+  const legacy = isLegacyTenant(tenantId);
   let ESK: Record<string, unknown> | undefined;
   let pages = 0;
   do {
@@ -90,8 +97,9 @@ async function scanAll<T>(
     );
     for (const it of r.Items || []) {
       const row = unmarshall(it) as Record<string, unknown>;
-      // Aislamiento por tenant: si la fila trae tenantId y no es el nuestro, fuera.
-      if (row.tenantId && row.tenantId !== tenantId) continue;
+      const rowTenant = row.tenantId;
+      const belongs = legacy ? !rowTenant || rowTenant === tenantId : rowTenant === tenantId;
+      if (!belongs) continue;
       const v = pick(row);
       if (v != null) out.push(v);
     }

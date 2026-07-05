@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { useCampaignAgents } from "@/hooks/useCampaignAgents";
 import { useLiveQueue } from "@/hooks/useLiveQueue";
 import { useFlowQueues } from "@/hooks/useFlowQueues";
+import { initials } from "@/lib/initials";
 import type { Campaign } from "@/hooks/useCampaigns";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
@@ -27,10 +28,7 @@ interface Props {
 }
 
 export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: Props) {
-  const { agents, loading, mutating, assign } = useCampaignAgents(
-    campaign.campaignId,
-    10000
-  );
+  const { agents, loading, mutating, assign } = useCampaignAgents(campaign.campaignId, 10000);
   const { data: liveQueue } = useLiveQueue(5000);
   const { confirm, confirmDialog } = useConfirm();
   // Discover which queues THIS campaign's flow actually routes to.
@@ -39,7 +37,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
   // returns just Pregrado. The picker uses this list so we don't offer
   // queues the campaign would never route to.
   const { data: flowQueues, loading: flowQueuesLoading } = useFlowQueues(
-    campaign.contactFlowId || null
+    campaign.contactFlowId || null,
   );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -47,37 +45,26 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
   /** Per-selected-agent queue choice. When the campaign's flow has
    *  multiple literal queues, the picker shows a Select next to each
    *  selected agent so the admin can pick which one. */
-  const [queueByUserId, setQueueByUserId] = useState<Record<string, string>>(
-    {}
-  );
+  const [queueByUserId, setQueueByUserId] = useState<Record<string, string>>({});
 
-  const campaignQueueId = (campaign as unknown as { campaignQueueId?: string })
-    .campaignQueueId;
+  const campaignQueueId = (campaign as unknown as { campaignQueueId?: string }).campaignQueueId;
 
   /** Queues the campaign's flow actually uses. Empty = fall back to
    *  campaign.campaignQueueId (legacy behaviour). */
-  const flowLiteralQueues = useMemo(
-    () => flowQueues?.literalQueues || [],
-    [flowQueues]
-  );
+  const flowLiteralQueues = useMemo(() => flowQueues?.literalQueues || [], [flowQueues]);
 
   /** When >1 queue, the picker MUST surface a selector (smart routing).
    *  When 1 queue, default to it silently. When 0, use campaign fallback. */
   const isMultiQueueCampaign = flowLiteralQueues.length > 1;
 
-  const assignedIds = useMemo(
-    () => new Set(agents.map((a) => a.userId)),
-    [agents]
-  );
+  const assignedIds = useMemo(() => new Set(agents.map((a) => a.userId)), [agents]);
 
   const availableUsers = useMemo(() => {
     const all = liveQueue?.agents || [];
     return all
       .filter((a) => !assignedIds.has(a.userId))
       .filter((a) =>
-        search.trim()
-          ? a.username.toLowerCase().includes(search.toLowerCase())
-          : true
+        search.trim() ? a.username.toLowerCase().includes(search.toLowerCase()) : true,
       )
       .sort((a, b) => a.username.localeCompare(b.username));
   }, [liveQueue?.agents, assignedIds, search]);
@@ -93,12 +80,8 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
     if (flowLiteralQueues.length === 0) return campaignQueueId || "";
     if (flowLiteralQueues.length === 1) return flowLiteralQueues[0].queueId;
     const agent = liveQueue?.agents.find((a) => a.userId === userId);
-    const agentQueueIds = new Set(
-      (agent?.queues || []).map((q) => q.id)
-    );
-    const intersect = flowLiteralQueues.find((q) =>
-      agentQueueIds.has(q.queueId)
-    );
+    const agentQueueIds = new Set((agent?.queues || []).map((q) => q.id));
+    const intersect = flowLiteralQueues.find((q) => agentQueueIds.has(q.queueId));
     if (intersect) return intersect.queueId;
     return flowQueues?.primaryQueue?.queueId || flowLiteralQueues[0].queueId;
   };
@@ -142,16 +125,16 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
     // explicit (multi-queue smart flow) or via fallback (campaignQueueId).
     const missing: string[] = [];
     for (const uid of selectedIds) {
-      const q = queueByUserId[uid] || (flowLiteralQueues.length === 1
-        ? flowLiteralQueues[0].queueId
-        : campaignQueueId);
+      const q =
+        queueByUserId[uid] ||
+        (flowLiteralQueues.length === 1 ? flowLiteralQueues[0].queueId : campaignQueueId);
       if (!q) missing.push(uid);
     }
     if (missing.length > 0) {
       toast.error(
         flowLiteralQueues.length > 1
           ? "Elige una cola para cada agente seleccionado."
-          : "La campaña no tiene cola asignada. Edita la campaña primero."
+          : "La campaña no tiene cola asignada. Edita la campaña primero.",
       );
       return;
     }
@@ -162,7 +145,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
       toast.success(
         `${res.added?.length || 0} agentes asignados${
           res.errors?.length ? ` · ${res.errors.length} errores` : ""
-        }`
+        }`,
       );
       if (res.errors?.length) {
         console.warn("assign errors:", res.errors);
@@ -176,7 +159,14 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
   };
 
   const handleRemove = async (userId: string, username: string) => {
-    if (!(await confirm({ title: `¿Desasignar ${username} de esta campaña?`, destructive: true, confirmLabel: "Desasignar" }))) return;
+    if (
+      !(await confirm({
+        title: `¿Desasignar ${username} de esta campaña?`,
+        destructive: true,
+        confirmLabel: "Desasignar",
+      }))
+    )
+      return;
     try {
       await assign([], [userId], {});
       toast.success(`${username} desasignado`);
@@ -189,10 +179,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
     <Card>
       <div className="card__head">
         <div className="card__title">
-          <Icon.Users
-            size={14}
-            style={{ marginRight: 6, verticalAlign: "middle" }}
-          />
+          <Icon.Users size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
           Agentes asignados
         </div>
         <span className="card__sub">{agents.length} asignados</span>
@@ -222,8 +209,8 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
           >
             <Icon.Flag size={12} />
             <span>
-              Esta campaña no tiene queue asignada. Edita la campaña para elegir
-              una queue antes de asignar agentes.
+              Esta campaña no tiene queue asignada. Edita la campaña para elegir una queue antes de
+              asignar agentes.
             </span>
           </div>
         )}
@@ -243,12 +230,10 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
           >
             <Icon.Sparkles size={12} style={{ marginTop: 1 }} />
             <span>
-              Esta campaña usa routing inteligente — su flow puede mandar los
-              leads a {flowLiteralQueues.length} colas distintas
+              Esta campaña usa routing inteligente — su flow puede mandar los leads a{" "}
+              {flowLiteralQueues.length} colas distintas
               {" ("}
-              {flowLiteralQueues
-                .map((q) => q.queueName.replace(/^UDEP-/i, ""))
-                .join(", ")}
+              {flowLiteralQueues.map((q) => q.queueName.replace(/^UDEP-/i, "")).join(", ")}
               {"). "}
               Al asignar agentes vas a elegir cuál cola atiende cada uno.
             </span>
@@ -284,16 +269,13 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
                     ? "agente atendió llamadas"
                     : "agentes atendieron llamadas"}
                 </strong>{" "}
-                vía el routing profile (sección "Agentes en esta campaña"
-                arriba). Si quieres priorizar agentes específicos haz click
-                en <strong>"Agregar agentes"</strong>.
+                vía el routing profile (sección "Agentes en esta campaña" arriba). Si quieres
+                priorizar agentes específicos haz click en <strong>"Agregar agentes"</strong>.
               </>
             ) : (
               <>
-                No hay agentes asignados aún. Click{" "}
-                <strong>"Agregar agentes"</strong> para empezar — el sistema
-                los configurará automáticamente para recibir llamadas de esta
-                campaña.
+                No hay agentes asignados aún. Click <strong>"Agregar agentes"</strong> para empezar
+                — el sistema los configurará automáticamente para recibir llamadas de esta campaña.
               </>
             )}
           </div>
@@ -317,18 +299,18 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
               const avatarBg = isAvailable
                 ? "var(--accent-green-soft)"
                 : isOnContact
-                ? "var(--accent-cyan-soft)"
-                : "var(--bg-3)";
+                  ? "var(--accent-cyan-soft)"
+                  : "var(--bg-3)";
               const avatarFg = isAvailable
                 ? "var(--accent-green)"
                 : isOnContact
-                ? "var(--accent-cyan)"
-                : "var(--text-3)";
+                  ? "var(--accent-cyan)"
+                  : "var(--text-3)";
               const statusDotColor = isAvailable
                 ? "var(--accent-green)"
                 : isOnContact
-                ? "var(--accent-cyan)"
-                : "var(--text-3)";
+                  ? "var(--accent-cyan)"
+                  : "var(--text-3)";
               return (
                 <div
                   key={a.userId}
@@ -358,7 +340,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
                       flexShrink: 0,
                     }}
                   >
-                    {a.username.slice(0, 2).toUpperCase()}
+                    {initials(a.username)}
                   </div>
                   <span
                     style={{
@@ -380,10 +362,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
                     }}
                     title={live?.statusName || "Offline"}
                   />
-                  <span
-                    className="muted mono"
-                    style={{ fontSize: 10, flexShrink: 0 }}
-                  >
+                  <span className="muted mono" style={{ fontSize: 10, flexShrink: 0 }}>
                     p{a.priority}
                   </span>
                   {/* Queue mini-tags — show which queues this agent can
@@ -395,9 +374,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
                     <span
                       className="row"
                       style={{ gap: 3, flexShrink: 0 }}
-                      title={`Queues: ${live.queues
-                        .map((q) => q.name)
-                        .join(", ")}`}
+                      title={`Queues: ${live.queues.map((q) => q.name).join(", ")}`}
                     >
                       {live.queues.slice(0, 4).map((q) => {
                         const label = q.name.replace(/^UDEP-/i, "");
@@ -419,10 +396,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
                         );
                       })}
                       {live.queues.length > 4 && (
-                        <span
-                          className="muted"
-                          style={{ fontSize: 9, marginLeft: 2 }}
-                        >
+                        <span className="muted" style={{ fontSize: 9, marginLeft: 2 }}>
                           +{live.queues.length - 4}
                         </span>
                       )}
@@ -455,12 +429,10 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
                       flexShrink: 0,
                     }}
                     onMouseEnter={(e) =>
-                      ((e.currentTarget as HTMLButtonElement).style.color =
-                        "var(--accent-red)")
+                      ((e.currentTarget as HTMLButtonElement).style.color = "var(--accent-red)")
                     }
                     onMouseLeave={(e) =>
-                      ((e.currentTarget as HTMLButtonElement).style.color =
-                        "var(--text-3)")
+                      ((e.currentTarget as HTMLButtonElement).style.color = "var(--text-3)")
                     }
                   >
                     <Icon.Close size={11} />
@@ -480,18 +452,16 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
             <DialogDescription>
               {isMultiQueueCampaign ? (
                 <>
-                  Esta campaña enruta por <strong>udep_nivel</strong> del lead.
-                  Para cada agente seleccionado, elige a qué cola va a atender
-                  (Pregrado, Posgrado, etc). Si su routing profile no incluye
-                  la cola, se le agrega automáticamente.
+                  Esta campaña enruta por <strong>udep_nivel</strong> del lead. Para cada agente
+                  seleccionado, elige a qué cola va a atender (Pregrado, Posgrado, etc). Si su
+                  routing profile no incluye la cola, se le agrega automáticamente.
                 </>
               ) : flowQueuesLoading ? (
                 "Detectando colas de la campaña…"
               ) : (
                 <>
-                  Los seleccionados recibirán llamadas de esta campaña. Si su
-                  routing profile no incluye la queue, se agregará
-                  automáticamente.
+                  Los seleccionados recibirán llamadas de esta campaña. Si su routing profile no
+                  incluye la queue, se agregará automáticamente.
                 </>
               )}
             </DialogDescription>
@@ -526,9 +496,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
             )}
             {availableUsers.map((u) => {
               const isSelected = selectedIds.has(u.userId);
-              const agentQueueIds = new Set(
-                (u.queues || []).map((q) => q.id)
-              );
+              const agentQueueIds = new Set((u.queues || []).map((q) => q.id));
               return (
                 <div
                   key={u.userId}
@@ -549,9 +517,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
                         <span className="chip" style={{ fontSize: 9.5 }}>
                           {u.statusName || "Offline"}
                         </span>
-                        {u.routingProfile && (
-                          <span className="truncate">{u.routingProfile}</span>
-                        )}
+                        {u.routingProfile && <span className="truncate">{u.routingProfile}</span>}
                         {/* Queue tags — same UX as the assigned list so the
                             manager can pick agents knowing what nivel they
                             will handle. */}
@@ -574,9 +540,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
                               </span>
                             ))}
                             {u.queues.length > 4 && (
-                              <span className="text-[9px] opacity-70">
-                                +{u.queues.length - 4}
-                              </span>
+                              <span className="text-[9px] opacity-70">+{u.queues.length - 4}</span>
                             )}
                           </span>
                         )}
@@ -622,10 +586,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
           </div>
 
           <DialogFooter>
-            <button
-              className="btn btn--ghost"
-              onClick={() => setPickerOpen(false)}
-            >
+            <button className="btn btn--ghost" onClick={() => setPickerOpen(false)}>
               Cancelar
             </button>
             <button

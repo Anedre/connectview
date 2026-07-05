@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import {
   useAllActiveContacts,
   useContactFocus,
@@ -98,12 +98,39 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
     typeof Notification !== "undefined" ? Notification.permission : "denied",
   );
 
-  // Track which contacts we've already announced (to avoid re-firing on
-  // every snapshot — state hops are noisy).
+  // Track which contacts we've YA anunciado. Antes la clave era
+  // `contactId:state` y el Set crecía sin tope + hacíamos un `.some()` O(n)
+  // por cada snapshot. Ahora trackeamos por `contactId` a secas (anunciamos
+  // UNA vez por contacto, en su primer sighting en ring) y limpiamos los
+  // contactos que ya no están vivos, así el Set no leakea.
   const announcedRef = useRef<Set<string>>(new Set());
   // Track which streams controllers we've already wired onMessage on
   // (so re-mounting AgentDesktopPage doesn't stack listeners).
   const wiredRef = useRef<Set<string>>(new Set());
+  // Ref del id enfocado — lo leen los listeners de mensajes (que capturan el
+  // closure al momento de cablear) para conocer SIEMPRE el valor más reciente.
+  // Declarado ACÁ, antes de los efectos que lo usan (antes vivía al final del
+  // hook y el efecto de mensajes lo referenciaba por TDZ/orden frágil).
+  const focusRef = useRef<string | null>(null);
+  // Ref con el último array de contactos. El efecto de suscripción NO depende
+  // de `contacts` (cambia ~cada 1s); lee la lista viva desde acá para resolver
+  // atributos/teléfono del contacto que está cableando, sin recablear todo.
+  const contactsRef = useRef(contacts);
+  contactsRef.current = contacts;
+
+  // Clave ESTABLE del CONJUNTO de contactos de chat (ids ordenados). El efecto
+  // de suscripción depende de esto en vez de `contacts`, así solo re-corre
+  // cuando entra/sale un chat — no en cada snapshot (~1s) con dings/badges
+  // duplicados. Los ya cableados se saltan por `wiredRef`.
+  const chatIdsKey = useMemo(
+    () =>
+      contacts
+        .filter((c) => (c.channel || "").toUpperCase() === "CHAT")
+        .map((c) => c.contactId)
+        .sort()
+        .join(","),
+    [contacts],
+  );
 
   const requestPermission = useCallback(async () => {
     if (typeof Notification === "undefined") return "denied" as const;
@@ -125,25 +152,15 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
 
   // ─── 1) Detect new incoming contacts ────────────────────────────
   useEffect(() => {
+    const liveIds = new Set(contacts.map((c) => c.contactId));
     for (const c of contacts) {
-      const key = `${c.contactId}:${c.state}`;
-      if (announcedRef.current.has(key)) continue;
-      // Only fire on the INITIAL ringing/incoming transition. We mark
-      // every state we've seen so we never re-announce.
-      announcedRef.current.add(key);
+      // Solo disparamos en la transición INICIAL a ringing/incoming, y UNA
+      // vez por contacto (clave = contactId, no contactId:state). Si el
+      // contacto ya fue anunciado, lo saltamos aunque el estado rebote
+      // (ringing → connecting → ringing en un instante).
       if (!isRingingState(c.state)) continue;
-
-      // Don't re-announce a contact we've already seen at all (e.g. the
-      // ring state flipped from ringing → connecting → ringing in a beat).
-      const wasAnnouncedAlready = Array.from(announcedRef.current).some(
-        (k) => k !== key && k.startsWith(`${c.contactId}:`),
-      );
-      // Note: the .add above adds the new key BEFORE we check, so we
-      // expect at minimum the just-added entry. The "already announced"
-      // guard checks if there's a DIFFERENT entry, meaning a prior state.
-      // For first sighting that other entry doesn't exist; for re-rings
-      // it does.
-      if (wasAnnouncedAlready) continue;
+      if (announcedRef.current.has(c.contactId)) continue;
+      announcedRef.current.add(c.contactId);
 
       playDing("incoming");
       ensurePermission().then((ok) => {
@@ -164,6 +181,11 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
         }
       });
     }
+    // Limpiá los contactos que ya no están vivos para que el Set no crezca
+    // sin tope a lo largo de una sesión larga (evita el leak de HOOK-M2).
+    for (const id of Array.from(announcedRef.current)) {
+      if (!liveIds.has(id)) announcedRef.current.delete(id);
+    }
   }, [contacts, ensurePermission]);
 
   // ─── 2) Subscribe to message events for ALL active chat contacts ──
@@ -175,85 +197,111 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const c = (window as unknown as { connect?: any }).connect;
     if (!c?.agent) return;
-    let agent: { getContacts?: () => unknown[] } | null = null;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      agent = new (c as any).Agent();
-    } catch {
-      return;
-    }
-    const wired = wiredRef.current;
-    const liveIds = new Set(contacts.map((x) => x.contactId));
 
-    // Wire any new chat contact we haven't wired yet
-    for (const contact of contacts) {
-      if (wired.has(contact.contactId)) continue;
-      if ((contact.channel || "").toUpperCase() !== "CHAT") continue;
-      const streamsContact = (agent?.getContacts?.() || []).find(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (x: any) => x.getContactId?.() === contact.contactId,
-      );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const chatSession = (streamsContact as any)?.getAgentConnection?.()?.getMediaController?.();
-      if (!chatSession) continue;
+    const wired = wiredRef.current;
+
+    // Cablea onMessage en cada controlador de chat AÚN NO cableado. Lee la
+    // lista VIVA desde contactsRef (no de la dep del efecto) y se salta los ya
+    // cableados por `wired`, así nunca duplica listeners aunque re-corra.
+    // Devuelve true si quedó algún chat sin cablear (controlador no listo).
+    const wirePending = (): boolean => {
+      let agent: { getContacts?: () => unknown[] } | null = null;
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        chatSession.onMessage?.((event: any) => {
-          const data = event?.data ?? event;
-          const role = data?.ParticipantRole || data?.participantRole;
-          const type = data?.Type || data?.type;
-          if (type !== "MESSAGE" && type !== "ATTACHMENT") return;
-          if (role !== "CUSTOMER") return;
-          // Bump unread iff the contact ISN'T currently focused.
-          // We read focusedContactId via the closure-captured ref so this
-          // listener stays correct as the focus changes.
-          // We don't reset to zero here — that happens in the focus effect.
-
-          const focus = (focusRef as React.MutableRefObject<string | null>).current;
-          if (focus === contact.contactId) return;
-          setUnreadCount((prev) => ({
-            ...prev,
-            [contact.contactId]: (prev[contact.contactId] || 0) + 1,
-          }));
-          playDing("message");
-          ensurePermission().then((ok) => {
-            if (!ok) return;
-            try {
-              const isWA = contact.attributes?.udep_source === "whatsapp";
-              const title = isWA ? "💚 WhatsApp · nuevo mensaje" : "💬 Chat · nuevo mensaje";
-              const body =
-                (typeof data.Content === "string" && data.Content) ||
-                contact.customerPhone ||
-                "Mensaje del cliente";
-              const notif = new Notification(title, {
-                body,
-                tag: `msg-${contact.contactId}`,
-                icon: "/icon-192.png",
-              });
-              notif.onclick = () => {
-                window.focus();
-                // Re-focus this contact via the focus hook. We can't call
-                // the hook here so we dispatch a synthetic event the
-                // ActiveContactsTabStrip listens for.
-                window.dispatchEvent(
-                  new CustomEvent("vox:focus-contact", {
-                    detail: { contactId: contact.contactId },
-                  }),
-                );
-                notif.close();
-              };
-            } catch {
-              /* ignore */
-            }
-          });
-        });
-        wired.add(contact.contactId);
+        agent = new (c as any).Agent();
       } catch {
-        /* controller maybe not ready yet — try again next snapshot */
+        return false;
       }
-    }
+      const live = contactsRef.current;
+      let pending = false;
+      for (const contact of live) {
+        if (wired.has(contact.contactId)) continue;
+        if ((contact.channel || "").toUpperCase() !== "CHAT") continue;
+        const streamsContact = (agent?.getContacts?.() || []).find(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (x: any) => x.getContactId?.() === contact.contactId,
+        );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const chatSession = (streamsContact as any)?.getAgentConnection?.()?.getMediaController?.();
+        if (!chatSession) {
+          // Controlador todavía no listo — reintentamos en breve.
+          pending = true;
+          continue;
+        }
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          chatSession.onMessage?.((event: any) => {
+            const data = event?.data ?? event;
+            const role = data?.ParticipantRole || data?.participantRole;
+            const type = data?.Type || data?.type;
+            if (type !== "MESSAGE" && type !== "ATTACHMENT") return;
+            if (role !== "CUSTOMER") return;
+            // Sumamos no-leído SOLO si el contacto NO está enfocado. Leemos el
+            // id enfocado vía focusRef (no del closure) para seguir correctos
+            // cuando cambia el foco. El reset a 0 pasa en el efecto de foco.
+            if (focusRef.current === contact.contactId) return;
+            setUnreadCount((prev) => ({
+              ...prev,
+              [contact.contactId]: (prev[contact.contactId] || 0) + 1,
+            }));
+            playDing("message");
+            ensurePermission().then((ok) => {
+              if (!ok) return;
+              try {
+                const isWA = contact.attributes?.udep_source === "whatsapp";
+                const title = isWA ? "💚 WhatsApp · nuevo mensaje" : "💬 Chat · nuevo mensaje";
+                const body =
+                  (typeof data.Content === "string" && data.Content) ||
+                  contact.customerPhone ||
+                  "Mensaje del cliente";
+                const notif = new Notification(title, {
+                  body,
+                  tag: `msg-${contact.contactId}`,
+                  icon: "/icon-192.png",
+                });
+                notif.onclick = () => {
+                  window.focus();
+                  // Re-enfoca este contacto vía el hook de foco. No podemos
+                  // llamar el hook acá, así que despachamos un evento sintético
+                  // que escucha ActiveContactsTabStrip.
+                  window.dispatchEvent(
+                    new CustomEvent("vox:focus-contact", {
+                      detail: { contactId: contact.contactId },
+                    }),
+                  );
+                  notif.close();
+                };
+              } catch {
+                /* ignore */
+              }
+            });
+          });
+          wired.add(contact.contactId);
+        } catch {
+          /* controlador quizá no listo — reintentar */
+          pending = true;
+        }
+      }
+      return pending;
+    };
+
+    // Primer intento inmediato + reintentos ACOTADOS mientras algún chat siga
+    // sin controlador listo. Como el efecto ya no depende de `contacts`, estos
+    // reintentos reemplazan al viejo "re-corre cada snapshot" para no perder el
+    // cableado de un chat cuyo media controller tarda en aparecer.
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let attempts = 0;
+    const attempt = () => {
+      const pending = wirePending();
+      if (pending && attempts < 8) {
+        attempts += 1;
+        timers.push(setTimeout(attempt, 1000));
+      }
+    };
+    attempt();
 
     // Garbage-collect wired entries for contacts that disappeared
+    const liveIds = new Set(contactsRef.current.map((x) => x.contactId));
     for (const wid of Array.from(wired)) {
       if (!liveIds.has(wid)) {
         wired.delete(wid);
@@ -265,12 +313,16 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
         });
       }
     }
-  }, [contacts, ensurePermission]);
+
+    return () => {
+      for (const t of timers) clearTimeout(t);
+    };
+  }, [chatIdsKey, ensurePermission]);
 
   // ─── 3) Reset unread when a contact becomes focused ──────────────
-  // Also keep a ref of the focused id so the message listeners (which
-  // capture the closure at wire time) can read the latest value.
-  const focusRef = useRef<string | null>(null);
+  // Mantiene focusRef (declarado arriba) con el id enfocado más reciente para
+  // que los listeners de mensajes —que capturan el closure al cablear— lean
+  // siempre el valor actual.
   useEffect(() => {
     focusRef.current = focusedContactId;
     if (!focusedContactId) return;

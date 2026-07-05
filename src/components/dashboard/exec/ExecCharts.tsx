@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { initials } from "@/lib/initials";
 import { useMounted } from "./execUtils";
 import type { ExecCampaign, ExecLiveQueue, ExecSlice } from "./execMock";
 
@@ -10,18 +11,23 @@ import type { ExecCampaign, ExecLiveQueue, ExecSlice } from "./execMock";
 
 /* Paleta muteada del handoff (= InsightsPanel.DATA_PALETTE): cian/verde/violeta/
    ámbar/rojo + sus variantes -2 para ciclar. Reemplaza la vívida v2. */
-const MUTED_DATA = ["#0E7C86","#1F8A5B","#5B57B8","#B07D2B","#C34A43","#0A626B","#177049","#4A46A0","#8F6420","#A63A34"];
+const MUTED_DATA = [
+  "#0E7C86",
+  "#1F8A5B",
+  "#5B57B8",
+  "#B07D2B",
+  "#C34A43",
+  "#0A626B",
+  "#177049",
+  "#4A46A0",
+  "#8F6420",
+  "#A63A34",
+];
 
 /* ---------- Ranking de agentes ---------- */
 const RANK_COLORS = MUTED_DATA;
-const initialsOf = (n: string) =>
-  n.split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
-export function ExecRank({
-  data,
-}: {
-  data: Array<{ name: string; value: number }>;
-}) {
+export function ExecRank({ data }: { data: Array<{ name: string; value: number }> }) {
   const max = Math.max(...data.map((d) => d.value), 1);
   return (
     <div className="exec-rank">
@@ -31,7 +37,7 @@ export function ExecRank({
           <div key={d.name} className="exec-rank__row">
             <span className="exec-rank__pos">{i + 1}</span>
             <span className="exec-rank__av" style={{ background: c }}>
-              {initialsOf(d.name)}
+              {initials(d.name)}
             </span>
             <div className="exec-rank__body">
               <div className="exec-rank__name">
@@ -73,9 +79,7 @@ export function ExecFunnel({
         const pct = Math.round((s.value / max) * 100);
         // % de conversión respecto de la etapa anterior del embudo.
         const conv =
-          i > 0 && data[i - 1].value > 0
-            ? Math.round((s.value / data[i - 1].value) * 100)
-            : null;
+          i > 0 && data[i - 1].value > 0 ? Math.round((s.value / data[i - 1].value) * 100) : null;
         return (
           <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span
@@ -127,7 +131,9 @@ export function ExecFunnel({
             >
               {s.value}
               {conv != null && (
-                <span style={{ color: "var(--e-t3)", fontWeight: 400, fontSize: 10, marginLeft: 4 }}>
+                <span
+                  style={{ color: "var(--e-t3)", fontWeight: 400, fontSize: 10, marginLeft: 4 }}
+                >
                   {conv}%
                 </span>
               )}
@@ -149,10 +155,7 @@ export function ExecPillBars({ data }: { data: ExecSlice[] }) {
         const pct = total ? Math.round((d.value / total) * 100) : 0;
         return (
           <div className="exec-pill-row" key={d.name}>
-            <span
-              className="exec-pill-badge"
-              style={{ "--pc": d.color } as React.CSSProperties}
-            >
+            <span className="exec-pill-badge" style={{ "--pc": d.color } as React.CSSProperties}>
               {d.value}
             </span>
             <div className="exec-pill-main">
@@ -198,13 +201,12 @@ export function ExecHeatmap({
         HEAT_HOURS.map((h) => {
           const dayFactor = di < 5 ? 1 : di === 5 ? 0.45 : 0.18;
           const peak =
-            Math.exp(-Math.pow(h - 11, 2) / 14) +
-            0.7 * Math.exp(-Math.pow(h - 17, 2) / 10);
+            Math.exp(-Math.pow(h - 11, 2) / 14) + 0.7 * Math.exp(-Math.pow(h - 17, 2) / 10);
           const v = peak * dayFactor;
-          return Math.max(0, Math.min(1, v + ((((di * 7 + h) % 5) - 2) * 0.03)));
-        })
+          return Math.max(0, Math.min(1, v + (((di * 7 + h) % 5) - 2) * 0.03));
+        }),
       ),
-    []
+    [],
   );
   // Normaliza: con data real, v = conteo/max; el title muestra el conteo real.
   const cellOf = (di: number, hi: number): { v: number; count: number | null } => {
@@ -288,9 +290,7 @@ export function ExecCampaigns({ data }: { data: ExecCampaign[] }) {
           <div key={c.name} className="exec-camp__row">
             <div className="exec-camp__top">
               <span className="exec-camp__name">{c.name}</span>
-              <span
-                className={`exec-camp__pill exec-camp__pill--${c.status.toLowerCase()}`}
-              >
+              <span className={`exec-camp__pill exec-camp__pill--${c.status.toLowerCase()}`}>
                 {running ? "En curso" : "Pausada"}
               </span>
             </div>

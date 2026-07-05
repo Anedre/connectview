@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Phone, Mail, MessageCircle, ListTodo } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
+import { initials } from "@/lib/initials";
 import * as Icon from "@/components/vox/primitives";
 
 type Channel = "voice" | "email" | "whatsapp" | "task";
@@ -230,7 +231,7 @@ export function ScheduleFollowupModal({
     const d = new Date(Date.now() + minutes * 60 * 1000);
     const pad = (n: number) => String(n).padStart(2, "0");
     setScheduledLocal(
-      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`,
     );
   };
 
@@ -238,11 +239,11 @@ export function ScheduleFollowupModal({
   // they chose the right template.
   const pickedTemplate = useMemo(
     () => waTemplates.find((t) => t.name === waTemplateName) || null,
-    [waTemplates, waTemplateName]
+    [waTemplates, waTemplateName],
   );
   const pickedFromAddress = useMemo(
     () => emailAddresses.find((e) => e.id === emailFromId)?.address || "",
-    [emailAddresses, emailFromId]
+    [emailAddresses, emailFromId],
   );
 
   const channelMeta = CHANNELS.find((c) => c.id === channel)!;
@@ -250,8 +251,7 @@ export function ScheduleFollowupModal({
   const submit = async () => {
     // Las tareas no necesitan contacto: si no hay teléfono, sintetizamos una
     // clave (igual que el quick-create de Citas). El resto de canales sí lo piden.
-    const effectivePhone =
-      phone || (channel === "task" ? `task:${Date.now()}` : "");
+    const effectivePhone = phone || (channel === "task" ? `task:${Date.now()}` : "");
     if (!effectivePhone) {
       toast.error("No hay teléfono para programar el follow-up");
       return;
@@ -319,10 +319,12 @@ export function ScheduleFollowupModal({
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
       toast.success(
-        `${channel === "task" ? "Tarea agendada" : "Follow-up agendado"} · ${new Date(ts).toLocaleString("es-PE", {
+        `${channel === "task" ? "Tarea agendada" : "Follow-up agendado"} · ${new Date(
+          ts,
+        ).toLocaleString("es-PE", {
           dateStyle: "short",
           timeStyle: "short",
-        })}`
+        })}`,
       );
       onScheduled?.();
       onClose();
@@ -444,16 +446,13 @@ export function ScheduleFollowupModal({
                   fontWeight: 700,
                 }}
               >
-                {(customerName || "C").slice(0, 2).toUpperCase()}
+                {initials(customerName || "C")}
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>
                   {customerName || "Cliente"}
                 </div>
-                <div
-                  className="mono"
-                  style={{ fontSize: 11.5, color: "var(--text-3)" }}
-                >
+                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>
                   {phone}
                 </div>
               </div>
@@ -513,169 +512,60 @@ export function ScheduleFollowupModal({
             })}
           </div>
 
-        {/* Cuándo */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
-          <span className="muted" style={{ fontSize: 10.5 }}>
-            Cuándo
-          </span>
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            {presetMinutes.map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setFromPreset(m)}
-                style={{
-                  fontSize: 11,
-                  padding: "4px 8px",
-                  borderRadius: 999,
-                  border: "1px solid var(--border-1)",
-                  background: "var(--bg-2)",
-                  color: "var(--text-1)",
-                  cursor: "pointer",
-                }}
-              >
-                +{presetLabel(m)}
-              </button>
-            ))}
+          {/* Cuándo */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+            <span className="muted" style={{ fontSize: 10.5 }}>
+              Cuándo
+            </span>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {presetMinutes.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setFromPreset(m)}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    border: "1px solid var(--border-1)",
+                    background: "var(--bg-2)",
+                    color: "var(--text-1)",
+                    cursor: "pointer",
+                  }}
+                >
+                  +{presetLabel(m)}
+                </button>
+              ))}
+            </div>
+            <input
+              type="datetime-local"
+              value={scheduledLocal}
+              onChange={(e) => setScheduledLocal(e.target.value)}
+              style={{
+                width: "100%",
+                background: "var(--bg-2)",
+                border: "1px solid var(--border-1)",
+                borderRadius: 6,
+                padding: "8px 10px",
+                color: "var(--text-1)",
+                outline: "none",
+                fontSize: 12.5,
+                fontFamily: "var(--font-ui)",
+                colorScheme: "dark",
+              }}
+            />
           </div>
-          <input
-            type="datetime-local"
-            value={scheduledLocal}
-            onChange={(e) => setScheduledLocal(e.target.value)}
-            style={{
-              width: "100%",
-              background: "var(--bg-2)",
-              border: "1px solid var(--border-1)",
-              borderRadius: 6,
-              padding: "8px 10px",
-              color: "var(--text-1)",
-              outline: "none",
-              fontSize: 12.5,
-              fontFamily: "var(--font-ui)",
-              colorScheme: "dark",
-            }}
-          />
-        </div>
 
-        {/* Channel-specific fields */}
-        {channel === "email" && (
-          <>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-              <span className="muted" style={{ fontSize: 10.5 }}>
-                De (From)
-              </span>
-              <select
-                value={emailFromId}
-                onChange={(e) => setEmailFromId(e.target.value)}
-                style={{
-                  width: "100%",
-                  background: "var(--bg-2)",
-                  border: "1px solid var(--border-1)",
-                  borderRadius: 6,
-                  padding: "8px 10px",
-                  color: "var(--text-1)",
-                  outline: "none",
-                  fontSize: 12.5,
-                  fontFamily: "var(--font-ui)",
-                }}
-              >
-                {emailAddresses.length === 0 ? (
-                  <option value="">Cargando…</option>
-                ) : (
-                  emailAddresses.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.displayName ? `${e.displayName} · ` : ""}
-                      {e.address}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-              <span className="muted" style={{ fontSize: 10.5 }}>
-                Para (To)
-              </span>
-              <input
-                type="email"
-                value={emailTo}
-                onChange={(e) => setEmailTo(e.target.value)}
-                placeholder="andre@example.com"
-                style={{
-                  width: "100%",
-                  background: "var(--bg-2)",
-                  border: "1px solid var(--border-1)",
-                  borderRadius: 6,
-                  padding: "8px 10px",
-                  color: "var(--text-1)",
-                  outline: "none",
-                  fontSize: 12.5,
-                  fontFamily: "var(--font-ui)",
-                }}
-              />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-              <span className="muted" style={{ fontSize: 10.5 }}>
-                Asunto
-              </span>
-              <input
-                type="text"
-                value={emailSubject}
-                onChange={(e) => setEmailSubject(e.target.value)}
-                placeholder="Ej. Información de admisión UDEP"
-                style={{
-                  width: "100%",
-                  background: "var(--bg-2)",
-                  border: "1px solid var(--border-1)",
-                  borderRadius: 6,
-                  padding: "8px 10px",
-                  color: "var(--text-1)",
-                  outline: "none",
-                  fontSize: 12.5,
-                  fontFamily: "var(--font-ui)",
-                }}
-              />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-              <span className="muted" style={{ fontSize: 10.5 }}>
-                Cuerpo
-              </span>
-              <textarea
-                value={emailBody}
-                onChange={(e) => setEmailBody(e.target.value)}
-                placeholder="Hola Andre, te comparto la información que pediste..."
-                rows={4}
-                style={{
-                  width: "100%",
-                  background: "var(--bg-2)",
-                  border: "1px solid var(--border-1)",
-                  borderRadius: 6,
-                  padding: "8px 10px",
-                  color: "var(--text-1)",
-                  outline: "none",
-                  fontSize: 12.5,
-                  resize: "vertical",
-                  minHeight: 80,
-                  fontFamily: "var(--font-ui)",
-                }}
-              />
-            </div>
-          </>
-        )}
-
-        {channel === "whatsapp" && (
-          <>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-              <span className="muted" style={{ fontSize: 10.5 }}>
-                Plantilla aprobada
-              </span>
-              {waTemplatesLoading ? (
-                <div className="muted" style={{ fontSize: 11.5 }}>
-                  Cargando templates…
-                </div>
-              ) : (
+          {/* Channel-specific fields */}
+          {channel === "email" && (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+                <span className="muted" style={{ fontSize: 10.5 }}>
+                  De (From)
+                </span>
                 <select
-                  value={waTemplateName}
-                  onChange={(e) => setWaTemplateName(e.target.value)}
+                  value={emailFromId}
+                  onChange={(e) => setEmailFromId(e.target.value)}
                   style={{
                     width: "100%",
                     background: "var(--bg-2)",
@@ -688,102 +578,211 @@ export function ScheduleFollowupModal({
                     fontFamily: "var(--font-ui)",
                   }}
                 >
-                  {waTemplates.length === 0 ? (
-                    <option value="">No hay templates aprobadas</option>
+                  {emailAddresses.length === 0 ? (
+                    <option value="">Cargando…</option>
                   ) : (
-                    waTemplates.map((t) => (
-                      <option key={`${t.name}|${t.language}`} value={t.name}>
-                        {t.name} · {t.language}
+                    emailAddresses.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.displayName ? `${e.displayName} · ` : ""}
+                        {e.address}
                       </option>
                     ))
                   )}
                 </select>
-              )}
-            </div>
-            {pickedTemplate?.body && (
-              <div
-                style={{
-                  padding: "8px 10px",
-                  background: "var(--accent-green-soft)",
-                  border: "1px solid var(--accent-green)",
-                  borderRadius: 6,
-                  fontSize: 11.5,
-                  lineHeight: 1.45,
-                  color: "var(--text-1)",
-                  marginBottom: 10,
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {pickedTemplate.body}
               </div>
-            )}
-            {waVars.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
                 <span className="muted" style={{ fontSize: 10.5 }}>
-                  Variables del template
+                  Para (To)
                 </span>
-                {waVars.map((v, i) => (
-                  <input
-                    key={i}
-                    type="text"
-                    value={v}
-                    onChange={(e) =>
-                      setWaVars((prev) => {
-                        const next = [...prev];
-                        next[i] = e.target.value;
-                        return next;
-                      })
-                    }
-                    placeholder={`{{${i + 1}}}`}
+                <input
+                  type="email"
+                  value={emailTo}
+                  onChange={(e) => setEmailTo(e.target.value)}
+                  placeholder="andre@example.com"
+                  style={{
+                    width: "100%",
+                    background: "var(--bg-2)",
+                    border: "1px solid var(--border-1)",
+                    borderRadius: 6,
+                    padding: "8px 10px",
+                    color: "var(--text-1)",
+                    outline: "none",
+                    fontSize: 12.5,
+                    fontFamily: "var(--font-ui)",
+                  }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+                <span className="muted" style={{ fontSize: 10.5 }}>
+                  Asunto
+                </span>
+                <input
+                  type="text"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  placeholder="Ej. Información de admisión UDEP"
+                  style={{
+                    width: "100%",
+                    background: "var(--bg-2)",
+                    border: "1px solid var(--border-1)",
+                    borderRadius: 6,
+                    padding: "8px 10px",
+                    color: "var(--text-1)",
+                    outline: "none",
+                    fontSize: 12.5,
+                    fontFamily: "var(--font-ui)",
+                  }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+                <span className="muted" style={{ fontSize: 10.5 }}>
+                  Cuerpo
+                </span>
+                <textarea
+                  value={emailBody}
+                  onChange={(e) => setEmailBody(e.target.value)}
+                  placeholder="Hola Andre, te comparto la información que pediste..."
+                  rows={4}
+                  style={{
+                    width: "100%",
+                    background: "var(--bg-2)",
+                    border: "1px solid var(--border-1)",
+                    borderRadius: 6,
+                    padding: "8px 10px",
+                    color: "var(--text-1)",
+                    outline: "none",
+                    fontSize: 12.5,
+                    resize: "vertical",
+                    minHeight: 80,
+                    fontFamily: "var(--font-ui)",
+                  }}
+                />
+              </div>
+            </>
+          )}
+
+          {channel === "whatsapp" && (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+                <span className="muted" style={{ fontSize: 10.5 }}>
+                  Plantilla aprobada
+                </span>
+                {waTemplatesLoading ? (
+                  <div className="muted" style={{ fontSize: 11.5 }}>
+                    Cargando templates…
+                  </div>
+                ) : (
+                  <select
+                    value={waTemplateName}
+                    onChange={(e) => setWaTemplateName(e.target.value)}
                     style={{
                       width: "100%",
                       background: "var(--bg-2)",
                       border: "1px solid var(--border-1)",
                       borderRadius: 6,
-                      padding: "6px 10px",
+                      padding: "8px 10px",
                       color: "var(--text-1)",
                       outline: "none",
                       fontSize: 12.5,
                       fontFamily: "var(--font-ui)",
                     }}
-                  />
-                ))}
+                  >
+                    {waTemplates.length === 0 ? (
+                      <option value="">No hay templates aprobadas</option>
+                    ) : (
+                      waTemplates.map((t) => (
+                        <option key={`${t.name}|${t.language}`} value={t.name}>
+                          {t.name} · {t.language}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                )}
               </div>
-            )}
-          </>
-        )}
+              {pickedTemplate?.body && (
+                <div
+                  style={{
+                    padding: "8px 10px",
+                    background: "var(--accent-green-soft)",
+                    border: "1px solid var(--accent-green)",
+                    borderRadius: 6,
+                    fontSize: 11.5,
+                    lineHeight: 1.45,
+                    color: "var(--text-1)",
+                    marginBottom: 10,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {pickedTemplate.body}
+                </div>
+              )}
+              {waVars.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+                  <span className="muted" style={{ fontSize: 10.5 }}>
+                    Variables del template
+                  </span>
+                  {waVars.map((v, i) => (
+                    <input
+                      key={i}
+                      type="text"
+                      value={v}
+                      onChange={(e) =>
+                        setWaVars((prev) => {
+                          const next = [...prev];
+                          next[i] = e.target.value;
+                          return next;
+                        })
+                      }
+                      placeholder={`{{${i + 1}}}`}
+                      style={{
+                        width: "100%",
+                        background: "var(--bg-2)",
+                        border: "1px solid var(--border-1)",
+                        borderRadius: 6,
+                        padding: "6px 10px",
+                        color: "var(--text-1)",
+                        outline: "none",
+                        fontSize: 12.5,
+                        fontFamily: "var(--font-ui)",
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
 
-        {/* Notas (siempre) */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-          <span className="muted" style={{ fontSize: 10.5 }}>
-            Notas (opcional)
-          </span>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder={
-              channel === "voice"
-                ? "Ej. Llamarlo después de su clase 📚"
-                : channel === "email"
-                ? "Recordatorio interno para vos"
-                : "Recordatorio interno para vos"
-            }
-            rows={2}
-            style={{
-              width: "100%",
-              background: "var(--bg-2)",
-              border: "1px solid var(--border-1)",
-              borderRadius: 6,
-              padding: "8px 10px",
-              color: "var(--text-1)",
-              outline: "none",
-              fontSize: 12.5,
-              resize: "vertical",
-              minHeight: 50,
-              fontFamily: "var(--font-ui)",
-            }}
-          />
-        </div>
+          {/* Notas (siempre) */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+            <span className="muted" style={{ fontSize: 10.5 }}>
+              Notas (opcional)
+            </span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={
+                channel === "voice"
+                  ? "Ej. Llamarlo después de su clase 📚"
+                  : channel === "email"
+                    ? "Recordatorio interno para vos"
+                    : "Recordatorio interno para vos"
+              }
+              rows={2}
+              style={{
+                width: "100%",
+                background: "var(--bg-2)",
+                border: "1px solid var(--border-1)",
+                borderRadius: 6,
+                padding: "8px 10px",
+                color: "var(--text-1)",
+                outline: "none",
+                fontSize: 12.5,
+                resize: "vertical",
+                minHeight: 50,
+                fontFamily: "var(--font-ui)",
+              }}
+            />
+          </div>
 
           <div
             style={{
@@ -799,10 +798,10 @@ export function ScheduleFollowupModal({
             {channel === "voice"
               ? "Te lo asignamos a ti automáticamente — el sistema te llamará al cliente y a ti a la hora pactada."
               : channel === "task"
-              ? "A la hora pactada aparecerá en tu lista de Tareas como pendiente para que la atiendas."
-              : "A la hora pactada aparecerá en tu lista de Tareas para que envíes el " +
-                (channel === "email" ? "correo" : "WhatsApp") +
-                " manualmente."}
+                ? "A la hora pactada aparecerá en tu lista de Tareas como pendiente para que la atiendas."
+                : "A la hora pactada aparecerá en tu lista de Tareas para que envíes el " +
+                  (channel === "email" ? "correo" : "WhatsApp") +
+                  " manualmente."}
           </div>
         </div>
 
@@ -817,12 +816,7 @@ export function ScheduleFollowupModal({
             flexShrink: 0,
           }}
         >
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={onClose}
-            disabled={submitting}
-          >
+          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={submitting}>
             Cancelar
           </button>
           <button
@@ -838,11 +832,7 @@ export function ScheduleFollowupModal({
             }}
           >
             <Icon.Calendar size={12} />
-            {submitting
-              ? "Agendando…"
-              : channel === "task"
-              ? "Crear tarea"
-              : "Agendar follow-up"}
+            {submitting ? "Agendando…" : channel === "task" ? "Crear tarea" : "Agendar follow-up"}
           </button>
         </div>
       </div>

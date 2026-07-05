@@ -2,11 +2,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { fetchContactHistory } from "@/hooks/useCallHistory";
-import {
-  AudioPlayer,
-  type AudioPlayerHandle,
-} from "@/components/recordings/AudioPlayer";
+import { AudioPlayer, type AudioPlayerHandle } from "@/components/recordings/AudioPlayer";
 import { TranscriptViewer } from "@/components/recordings/TranscriptViewer";
+import { initials } from "@/lib/initials";
 import {
   ChatTranscriptView,
   type ChatSegment,
@@ -52,12 +50,36 @@ interface ChannelMeta {
 function channelMeta(channel?: string): ChannelMeta {
   const c = (channel || "").toUpperCase();
   if (c === "VOICE" || c === "TELEPHONY")
-    return { key: "voice", label: "Llamada", color: "var(--accent-cyan)", soft: "var(--accent-cyan-soft)", icon: <Icon.Phone size={14} /> };
+    return {
+      key: "voice",
+      label: "Llamada",
+      color: "var(--accent-cyan)",
+      soft: "var(--accent-cyan-soft)",
+      icon: <Icon.Phone size={14} />,
+    };
   if (c === "CHAT")
-    return { key: "chat", label: "WhatsApp", color: "var(--accent-green)", soft: "var(--accent-green-soft)", icon: <Icon.WhatsApp size={14} /> };
+    return {
+      key: "chat",
+      label: "WhatsApp",
+      color: "var(--accent-green)",
+      soft: "var(--accent-green-soft)",
+      icon: <Icon.WhatsApp size={14} />,
+    };
   if (c === "EMAIL")
-    return { key: "email", label: "Email", color: "var(--accent-violet)", soft: "var(--accent-violet-soft)", icon: <Icon.Mail size={14} /> };
-  return { key: "other", label: channel || "Contacto", color: "var(--text-3)", soft: "var(--bg-2)", icon: <Icon.Note size={14} /> };
+    return {
+      key: "email",
+      label: "Email",
+      color: "var(--accent-violet)",
+      soft: "var(--accent-violet-soft)",
+      icon: <Icon.Mail size={14} />,
+    };
+  return {
+    key: "other",
+    label: channel || "Contacto",
+    color: "var(--text-3)",
+    soft: "var(--bg-2)",
+    icon: <Icon.Note size={14} />,
+  };
 }
 
 /** El agentUsername a veces llega como un GUID sin resolver (cola/IVR sin agente
@@ -109,19 +131,27 @@ export function ConversationCanvas({ phone, name, demo }: Props) {
     setLoading(true);
     // Fetch COMPARTIDO (dedup + caché): misma data que el heatmap y los conteos.
     fetchContactHistory(phone)
-      .then((rows) => { if (alive) setContacts(rows); })
-      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : "Error cargando el hilo"); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+      .then((rows) => {
+        if (alive) setContacts(rows);
+      })
+      .catch((e) => {
+        if (alive) setError(e instanceof Error ? e.message : "Error cargando el hilo");
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [phone, demo]);
 
   // Newest first.
   const ordered = useMemo(
     () =>
       [...contacts].sort((a, b) =>
-        (b.initiationTimestamp || "").localeCompare(a.initiationTimestamp || "")
+        (b.initiationTimestamp || "").localeCompare(a.initiationTimestamp || ""),
       ),
-    [contacts]
+    [contacts],
   );
 
   // Per-channel counts for the header summary.
@@ -138,16 +168,30 @@ export function ConversationCanvas({ phone, name, demo }: Props) {
 
   if (!phone && !demo) {
     return (
-      <div style={{ padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 12.5, lineHeight: 1.6 }}>
+      <div
+        style={{
+          padding: 40,
+          textAlign: "center",
+          color: "var(--text-3)",
+          fontSize: 12.5,
+          lineHeight: 1.6,
+        }}
+      >
         <Icon.Chat size={30} style={{ opacity: 0.4 }} />
         <div style={{ marginTop: 10 }}>Elegí un cliente para ver su conversación completa.</div>
-        <div style={{ marginTop: 4, fontSize: 11 }}>Llamadas, WhatsApp y emails — un solo hilo, en orden.</div>
+        <div style={{ marginTop: 4, fontSize: 11 }}>
+          Llamadas, WhatsApp y emails — un solo hilo, en orden.
+        </div>
       </div>
     );
   }
 
   const summaryChips: { n: number; label: string; meta: ChannelMeta }[] = [
-    { n: counts.voice, label: counts.voice === 1 ? "llamada" : "llamadas", meta: channelMeta("VOICE") },
+    {
+      n: counts.voice,
+      label: counts.voice === 1 ? "llamada" : "llamadas",
+      meta: channelMeta("VOICE"),
+    },
     { n: counts.chat, label: "WhatsApp", meta: channelMeta("CHAT") },
     { n: counts.email, label: counts.email === 1 ? "email" : "emails", meta: channelMeta("EMAIL") },
   ].filter((c) => c.n > 0);
@@ -155,17 +199,53 @@ export function ConversationCanvas({ phone, name, demo }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
       {/* Header — quién es + resumen por canal */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 2px 14px", flexWrap: "wrap" }}>
-        <span style={{ width: 40, height: 40, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 15, fontWeight: 700, background: "var(--accent-violet-soft)", color: "var(--accent-violet)", flex: "0 0 auto" }}>
-          {(name || phone || "?").slice(0, 2).toUpperCase()}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "4px 2px 14px",
+          flexWrap: "wrap",
+        }}
+      >
+        <span
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            display: "grid",
+            placeItems: "center",
+            fontSize: 15,
+            fontWeight: 700,
+            background: "var(--accent-violet-soft)",
+            color: "var(--accent-violet)",
+            flex: "0 0 auto",
+          }}
+        >
+          {initials(name || phone)}
         </span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-1)" }}>{name || phone}</div>
-          {name && <div className="mono muted" style={{ fontSize: 11 }}>{phone}</div>}
+          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-1)" }}>
+            {name || phone}
+          </div>
+          {name && (
+            <div className="mono muted" style={{ fontSize: 11 }}>
+              {phone}
+            </div>
+          )}
         </div>
         <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
           {summaryChips.map((c) => (
-            <span key={c.meta.label} className="chip" style={{ gap: 5, background: c.meta.soft, color: c.meta.color, borderColor: "transparent" }}>
+            <span
+              key={c.meta.label}
+              className="chip"
+              style={{
+                gap: 5,
+                background: c.meta.soft,
+                color: c.meta.color,
+                borderColor: "transparent",
+              }}
+            >
               {c.meta.icon} {c.n} {c.label}
             </span>
           ))}
@@ -173,11 +253,26 @@ export function ConversationCanvas({ phone, name, demo }: Props) {
       </div>
 
       {loading ? (
-        <div className="muted" style={{ padding: 24, textAlign: "center", fontSize: 12.5 }}>Cargando conversación…</div>
+        <div className="muted" style={{ padding: 24, textAlign: "center", fontSize: 12.5 }}>
+          Cargando conversación…
+        </div>
       ) : error ? (
-        <div style={{ margin: "8px 0", padding: 12, background: "var(--accent-red-soft)", color: "var(--accent-red)", borderRadius: 8, fontSize: 12.5 }}>{error}</div>
+        <div
+          style={{
+            margin: "8px 0",
+            padding: 12,
+            background: "var(--accent-red-soft)",
+            color: "var(--accent-red)",
+            borderRadius: 8,
+            fontSize: 12.5,
+          }}
+        >
+          {error}
+        </div>
       ) : ordered.length === 0 ? (
-        <div className="muted" style={{ padding: 24, textAlign: "center", fontSize: 12.5 }}>Sin interacciones registradas para este cliente.</div>
+        <div className="muted" style={{ padding: 24, textAlign: "center", fontSize: 12.5 }}>
+          Sin interacciones registradas para este cliente.
+        </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column" }}>
           {ordered.map((c, i) => (
@@ -211,19 +306,47 @@ function ConversationItem({
 }) {
   const meta = channelMeta(contact.channel);
   const ts = contact.initiationTimestamp;
-  const rel = ts
-    ? formatDistanceToNow(new Date(ts), { addSuffix: true, locale: es })
-    : "";
+  const rel = ts ? formatDistanceToNow(new Date(ts), { addSuffix: true, locale: es }) : "";
   const exact = ts ? format(new Date(ts), "d MMM yyyy · HH:mm", { locale: es }) : "";
 
   return (
     <div className="row" style={{ gap: 12, alignItems: "stretch" }}>
       {/* Rail */}
-      <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "center", width: 32 }}>
-        <span style={{ width: 30, height: 30, borderRadius: "50%", display: "grid", placeItems: "center", background: meta.soft, color: meta.color, border: `1px solid color-mix(in srgb, ${meta.color} 40%, transparent)`, flex: "0 0 auto" }}>
+      <div
+        style={{
+          flex: "0 0 auto",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          width: 32,
+        }}
+      >
+        <span
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: "50%",
+            display: "grid",
+            placeItems: "center",
+            background: meta.soft,
+            color: meta.color,
+            border: `1px solid color-mix(in srgb, ${meta.color} 40%, transparent)`,
+            flex: "0 0 auto",
+          }}
+        >
           {meta.icon}
         </span>
-        {!last && <span style={{ flex: 1, width: 2, background: "var(--border-1)", marginTop: 2, minHeight: 10 }} />}
+        {!last && (
+          <span
+            style={{
+              flex: 1,
+              width: 2,
+              background: "var(--border-1)",
+              marginTop: 2,
+              minHeight: 10,
+            }}
+          />
+        )}
       </div>
 
       {/* Card */}
@@ -257,7 +380,10 @@ function ConversationItem({
                 </span>
               )}
               {meta.key === "voice" && contact.hasRecording && (
-                <span className="chip" style={{ height: 17, fontSize: 10, background: meta.soft, color: meta.color }}>
+                <span
+                  className="chip"
+                  style={{ height: 17, fontSize: 10, background: meta.soft, color: meta.color }}
+                >
                   <Icon.Disc size={10} /> grabación
                 </span>
               )}
@@ -268,7 +394,15 @@ function ConversationItem({
               {rel ? ` · ${rel}` : ""}
             </div>
           </div>
-          <span style={{ fontSize: 15, color: "var(--text-3)", transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s", flex: "0 0 auto" }}>
+          <span
+            style={{
+              fontSize: 15,
+              color: "var(--text-3)",
+              transform: expanded ? "rotate(90deg)" : "none",
+              transition: "transform 0.15s",
+              flex: "0 0 auto",
+            }}
+          >
             ›
           </span>
         </button>
@@ -296,18 +430,35 @@ function ConversationItemBody({
   const meta = channelMeta(contact.channel);
 
   if (loading && !detail) {
-    return <div className="muted" style={{ fontSize: 11.5, padding: "8px 2px" }}>Cargando contenido…</div>;
+    return (
+      <div className="muted" style={{ fontSize: 11.5, padding: "8px 2px" }}>
+        Cargando contenido…
+      </div>
+    );
   }
   if (!detail) {
-    return <div className="muted" style={{ fontSize: 11.5, padding: "8px 2px" }}>Sin contenido disponible.</div>;
+    return (
+      <div className="muted" style={{ fontSize: 11.5, padding: "8px 2px" }}>
+        Sin contenido disponible.
+      </div>
+    );
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {detail.wrapUp?.summary && <SummaryStrip summary={detail.wrapUp.summary} valoracion={detail.wrapUp.valoracion} />}
+      {detail.wrapUp?.summary && (
+        <SummaryStrip summary={detail.wrapUp.summary} valoracion={detail.wrapUp.valoracion} />
+      )}
       {meta.key === "voice" && <VoiceBody detail={detail} />}
       {meta.key === "chat" && (
-        <div style={{ border: "1px solid var(--border-1)", borderRadius: 10, padding: 8, background: "var(--bg-2)" }}>
+        <div
+          style={{
+            border: "1px solid var(--border-1)",
+            borderRadius: 10,
+            padding: 8,
+            background: "var(--bg-2)",
+          }}
+        >
           <ChatTranscriptView
             segments={(detail.transcript?.segments || []) as unknown as ChatSegment[]}
             attachments={(detail.attachments || []) as unknown as ChatAttachment[]}
@@ -317,7 +468,9 @@ function ConversationItemBody({
       )}
       {meta.key === "email" && <EmailBody detail={detail} />}
       {meta.key === "other" && (
-        <div className="muted" style={{ fontSize: 11.5 }}>Canal “{contact.channel}” sin vista detallada.</div>
+        <div className="muted" style={{ fontSize: 11.5 }}>
+          Canal “{contact.channel}” sin vista detallada.
+        </div>
       )}
     </div>
   );
@@ -337,7 +490,14 @@ function VoiceBody({ detail }: { detail: ContactDetail }) {
         segments={segments}
         durationSecHint={detail.duration}
       />
-      <div style={{ border: "1px solid var(--border-1)", borderRadius: 10, padding: 8, background: "var(--bg-2)" }}>
+      <div
+        style={{
+          border: "1px solid var(--border-1)",
+          borderRadius: 10,
+          padding: 8,
+          background: "var(--bg-2)",
+        }}
+      >
         <TranscriptViewer
           segments={segments}
           currentTimeMs={currentMs}
@@ -350,19 +510,40 @@ function VoiceBody({ detail }: { detail: ContactDetail }) {
 
 function EmailBody({ detail }: { detail: ContactDetail }) {
   const attrs = detail.attributes || {};
-  const subject = sanitizeText(attrs.email_subject || attrs.subject || attrs.Subject || "") || "(sin asunto)";
+  const subject =
+    sanitizeText(attrs.email_subject || attrs.subject || attrs.Subject || "") || "(sin asunto)";
   const segments = detail.transcript?.segments || [];
   return (
-    <div style={{ border: "1px solid var(--border-1)", borderRadius: 10, padding: 12, background: "var(--bg-2)" }}>
+    <div
+      style={{
+        border: "1px solid var(--border-1)",
+        borderRadius: 10,
+        padding: 12,
+        background: "var(--bg-2)",
+      }}
+    >
       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{subject}</div>
       {segments.length > 0 ? (
-        <div style={{ fontSize: 12.5, lineHeight: 1.55, whiteSpace: "pre-wrap", color: "var(--text-1)", maxHeight: 360, overflowY: "auto" }}>
+        <div
+          style={{
+            fontSize: 12.5,
+            lineHeight: 1.55,
+            whiteSpace: "pre-wrap",
+            color: "var(--text-1)",
+            maxHeight: 360,
+            overflowY: "auto",
+          }}
+        >
           {segments.map((s, i) => (
-            <div key={i} style={{ marginBottom: 8 }}>{sanitizeText(s.content || "")}</div>
+            <div key={i} style={{ marginBottom: 8 }}>
+              {sanitizeText(s.content || "")}
+            </div>
           ))}
         </div>
       ) : (
-        <div className="muted" style={{ fontSize: 11.5 }}>El cuerpo del email no está en el transcript. Los adjuntos sí.</div>
+        <div className="muted" style={{ fontSize: 11.5 }}>
+          El cuerpo del email no está en el transcript. Los adjuntos sí.
+        </div>
       )}
       {(detail.attachments?.length || 0) > 0 && (
         <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -383,12 +564,31 @@ function SummaryStrip({ summary, valoracion }: { summary: string; valoracion?: s
       ? VALORACION_META[valoracion as keyof typeof VALORACION_META]
       : null;
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "9px 11px", borderRadius: 10, background: "var(--accent-violet-soft)", border: "1px solid color-mix(in srgb, var(--accent-violet) 25%, transparent)" }}>
-      <Icon.Sparkles size={13} style={{ color: "var(--accent-violet)", flex: "0 0 auto", marginTop: 2 }} />
+    <div
+      style={{
+        display: "flex",
+        gap: 8,
+        alignItems: "flex-start",
+        padding: "9px 11px",
+        borderRadius: 10,
+        background: "var(--accent-violet-soft)",
+        border: "1px solid color-mix(in srgb, var(--accent-violet) 25%, transparent)",
+      }}
+    >
+      <Icon.Sparkles
+        size={13}
+        style={{ color: "var(--accent-violet)", flex: "0 0 auto", marginTop: 2 }}
+      />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div className="row" style={{ gap: 6, marginBottom: 2 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-violet)" }}>Resumen IA</span>
-          {valMeta && <span className={`chip ${valMeta.chip}`} style={{ height: 16, fontSize: 9.5 }}><span className="dot" /> {valMeta.label}</span>}
+          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-violet)" }}>
+            Resumen IA
+          </span>
+          {valMeta && (
+            <span className={`chip ${valMeta.chip}`} style={{ height: 16, fontSize: 9.5 }}>
+              <span className="dot" /> {valMeta.label}
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 12, lineHeight: 1.5, color: "var(--text-1)" }}>{summary}</div>
       </div>

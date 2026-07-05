@@ -187,6 +187,13 @@ interface Lead {
   sfLeadId?: string;
   attributes?: Record<string, string>;
   history?: LeadHistoryEvent[];
+  /** SEC-A1 — tenant dueño de la fila. Sin esto, el filtro por tenant del feed
+   *  (get-analytics-feed) y de Consumo (get-cost-report) era un no-op (nunca
+   *  filtraba porque los leads no traían tenantId). Se estampa desde el tenant
+   *  ACTIVO (getActiveTenantId, seteado por setActiveTenant en cada caller) o el
+   *  `opts.tenantId` explícito. Ausente = fila legacy (pooled Novasys): el feed
+   *  la muestra SOLO al solicitante legacy. */
+  tenantId?: string;
   montoEstimado?: number;
   // Fase 2 — scoring (comportamiento) + grading (fit demográfico). Se recomputan
   // en cada golpe dentro de appendLeadHistory (recomputeLeadScore).
@@ -196,6 +203,19 @@ interface Lead {
   scoreComputedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/**
+ * SEC-A1 — tenant a estampar en el item de lead. Prioriza el `override` explícito
+ * (los callers que NO llaman setActiveTenant, p.ej. create-campaign/edit-campaign-
+ * contacts, pueden pasar su tenantId por opts) y cae al tenant ACTIVO del contexto
+ * (getActiveTenantId, seteado por setActiveTenant). Devuelve `undefined` para
+ * anónimo/legacy vacío ("") → la fila NO lleva tenantId (comportamiento legacy:
+ * pooled Novasys, visible solo al solicitante legacy en el feed/Consumo). "novasys"/
+ * "default" se estampan tal cual (inofensivo: el filtro legacy los acepta igual). */
+function stampTenant(override?: string): string | undefined {
+  const t = (override ?? getActiveTenantId() ?? "").trim();
+  return t || undefined;
 }
 
 function splitName(full?: string): { firstName?: string; lastName: string } {
@@ -782,6 +802,9 @@ export async function upsertVoxLead(
         ? { ...(existing?.attributes || {}), ...(lead.attributes || {}) }
         : undefined,
     history: existing?.history, // preservar el historial (no se pisa en el upsert)
+    // SEC-A1: tenant dueño de la fila (del contexto activo). Preserva el existente
+    // si ahora no hay tenant resuelto → un update legacy no borra un tenantId previo.
+    tenantId: stampTenant() ?? existing?.tenantId,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
@@ -933,7 +956,11 @@ export interface BulkLeadContact {
  */
 export async function bulkUpsertVoxLeads(
   contacts: BulkLeadContact[],
-  opts: { source?: string; deadlineMs?: number; programId?: string } = {},
+  // SEC-A1: `tenantId` opcional para estampar el dueño de cada fila. Obligatorio
+  // que lo pasen los callers de bulk (create-campaign / edit-campaign-contacts):
+  // ellos NO llaman setActiveTenant, así que acá NO se cae al tenant activo (sería
+  // "" o stale). Sin este override las filas quedan sin tenantId (legacy).
+  opts: { source?: string; deadlineMs?: number; programId?: string; tenantId?: string } = {},
 ): Promise<{
   attempted: number;
   created: number;
@@ -944,6 +971,14 @@ export async function bulkUpsertVoxLeads(
   const summary = { attempted: 0, created: 0, updated: 0, skipped: 0, dropped: 0 };
   const deadline = Date.now() + Math.max(1000, opts.deadlineMs ?? 20_000);
   const source = opts.source || "Vox Campaña";
+  // SEC-A1: tenant a estampar en cada fila. A DIFERENCIA de upsertVoxLead, acá
+  // usamos SOLO el override explícito (opts.tenantId), NO el activo: los únicos
+  // callers de bulk (create-campaign / edit-campaign-contacts) NO llaman
+  // setActiveTenant, así que getActiveTenantId() daría "" o —peor— un valor STALE
+  // de otra invocación en el mismo contenedor caliente (estampar cross-tenant).
+  // Sin override → filas sin tenantId (legacy, retrocompat). Ver reporte: esos dos
+  // callers deben empezar a pasar opts.tenantId para el aislamiento completo.
+  const tenantId = (opts.tenantId || "").trim() || undefined;
 
   const existing = await scanAll();
   // Map keyeado por teléfono NORMALIZADO → un contacto E.164 nuevo matchea una
@@ -979,6 +1014,8 @@ export async function bulkUpsertVoxLeads(
         c.attributes || prev?.attributes
           ? { ...(prev?.attributes || {}), ...(c.attributes || {}) }
           : undefined,
+      // SEC-A1: dueño de la fila; preserva el previo si ahora no hay tenant resuelto.
+      tenantId: tenantId ?? prev?.tenantId,
       createdAt: prev?.createdAt || now,
       updatedAt: now,
     };

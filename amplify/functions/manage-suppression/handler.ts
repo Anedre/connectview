@@ -1,7 +1,7 @@
 import type { Handler } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { resolveDynamo } from "../_shared/tenantConnect";
-import { resolveTenantId } from "../_shared/cognitoAuth";
+import { getIdentity, resolveTenantId } from "../_shared/cognitoAuth";
 import {
   evaluateBatch,
   getRules,
@@ -38,7 +38,11 @@ let dynamo: DynamoDBClient = legacyDynamo;
 const CORS = { "Content-Type": "application/json" };
 
 const ok = (b: unknown) => ({ statusCode: 200, headers: CORS, body: JSON.stringify(b) });
-const bad = (c: number, e: string) => ({ statusCode: c, headers: CORS, body: JSON.stringify({ error: e }) });
+const bad = (c: number, e: string) => ({
+  statusCode: c,
+  headers: CORS,
+  body: JSON.stringify({ error: e }),
+});
 
 const VALID_STATUS: SuppressionStatus[] = ["opted_out", "quarantined", "dnc"];
 const VALID_CHANNELS = ["whatsapp", "voice", "email", "all"];
@@ -49,6 +53,20 @@ export const handler: Handler = async (event: any) => {
   const method = event.requestContext?.http?.method || event.httpMethod || "GET";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
   const params = event.queryStringParameters || {};
+
+  // SEC-A5: gate de rol. La lista Do-Not-Contact es compliance (Meta) y su edición
+  // bloquea/desbloquea el contacto de un número → operación privilegiada. Antes sólo
+  // había aislamiento por-tenant: cualquier usuario autenticado del tenant podía ver
+  // y tocar la DNC. Ahora exigimos el grupo Cognito "Admins" (mismo patrón que
+  // list-users/manage-connections). El Function URL es auth=NONE → validamos acá.
+  let identity;
+  try {
+    identity = await getIdentity(event?.headers);
+  } catch {
+    return bad(401, "no autenticado");
+  }
+  if (!identity?.groups?.includes("Admins"))
+    return bad(403, "Solo un Admin puede gestionar la supresión.");
 
   // BYO Data Plane: tenant primero, fallback a Vox pooled.
   ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
@@ -88,7 +106,9 @@ export const handler: Handler = async (event: any) => {
         const p = (body.rules || {}) as Partial<SuppressionRules>;
         const clean: Partial<SuppressionRules> = {
           dedupWindowDays:
-            p.dedupWindowDays == null ? undefined : Math.max(0, Math.floor(Number(p.dedupWindowDays) || 0)),
+            p.dedupWindowDays == null
+              ? undefined
+              : Math.max(0, Math.floor(Number(p.dedupWindowDays) || 0)),
           freqCaps: Array.isArray(p.freqCaps)
             ? p.freqCaps
                 .filter((f) => f && f.channel)
@@ -139,16 +159,17 @@ export const handler: Handler = async (event: any) => {
       // ── Upsert manual (default: DNC en todos los canales) ────────────────
       const phone = String(body.phone || "").trim();
       if (!phone) return bad(400, "phone requerido");
-      const status: SuppressionStatus = VALID_STATUS.includes(body.status)
-        ? body.status
-        : "dnc";
+      const status: SuppressionStatus = VALID_STATUS.includes(body.status) ? body.status : "dnc";
       const channels: string[] = Array.isArray(body.channels)
         ? body.channels.map(String).filter((c: string) => VALID_CHANNELS.includes(c))
         : ["all"];
       const entry = await recordSuppression(dynamo, phone, {
         status,
         channels: channels.length ? channels : ["all"],
-        reason: typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : "Bloqueo manual",
+        reason:
+          typeof body.reason === "string" && body.reason.trim()
+            ? body.reason.trim()
+            : "Bloqueo manual",
         source: "manual",
         createdBy: actor,
       });

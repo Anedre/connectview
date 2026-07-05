@@ -27,6 +27,8 @@ async function recordHsmSend(s: {
   templateName: string;
   language: string;
   campaignId?: string;
+  /** SEC-A1 — tenant dueño de la fila (para el filtro real del feed/Consumo). */
+  tenantId?: string;
 }): Promise<void> {
   await dynamo.send(
     new PutItemCommand({
@@ -39,10 +41,14 @@ async function recordHsmSend(s: {
         templateName: { S: s.templateName },
         language: { S: s.language },
         campaignId: s.campaignId ? { S: s.campaignId } : { NULL: true },
+        // SEC-A1: dueño de la fila. Antes NO se guardaba → el filtro por tenant del
+        // feed (get-analytics-feed) y de Consumo (get-cost-report) era un no-op.
+        // Vacío/legacy → se omite (fila pooled Novasys, visible solo al legacy).
+        ...(s.tenantId ? { tenantId: { S: s.tenantId } } : {}),
         status: { S: "sent" },
         sentAt: { S: new Date().toISOString() },
       },
-    })
+    }),
   );
 }
 
@@ -106,9 +112,7 @@ export const handler: Handler = async (event: any) => {
 
   let body: SendBody;
   try {
-    body = typeof event.body === "string"
-      ? JSON.parse(event.body)
-      : (event.body as SendBody);
+    body = typeof event.body === "string" ? JSON.parse(event.body) : (event.body as SendBody);
   } catch {
     return {
       statusCode: 400,
@@ -133,8 +137,7 @@ export const handler: Handler = async (event: any) => {
   const identity = await getIdentity(event?.headers).catch(() => null);
   const hdrs = event?.headers || {};
   const internalOk =
-    !!INTERNAL_SECRET &&
-    (hdrs["x-vox-internal"] || hdrs["X-Vox-Internal"]) === INTERNAL_SECRET;
+    !!INTERNAL_SECRET && (hdrs["x-vox-internal"] || hdrs["X-Vox-Internal"]) === INTERNAL_SECRET;
   // Impersonación: si el body reclama un tenant REAL (no legacy) pero NO hay JWT
   // ni secreto interno → 401. Así un POST público con body.tenantId="otro-tenant"
   // ya NO envía WhatsApp desde el número de ese tenant. Los callers internos sin
@@ -152,11 +155,17 @@ export const handler: Handler = async (event: any) => {
   const effectiveTenantId = identity?.tenantId || (internalOk ? body.tenantId : undefined);
 
   // WhatsApp BYO: resolvemos el End User Messaging del TENANT (su número).
-  const { client: waClient, phoneNumberId, mode, metaPhoneNumberId, tenantId } = await resolveWhatsApp(
+  const {
+    client: waClient,
+    phoneNumberId,
+    mode,
+    metaPhoneNumberId,
+    tenantId,
+  } = await resolveWhatsApp(
     event?.headers,
     legacyClient,
     LEGACY_PHONE_NUMBER_ID,
-    effectiveTenantId
+    effectiveTenantId,
   );
   const hasNumber = mode === "meta" ? !!metaPhoneNumberId : !!phoneNumberId;
   if (!hasNumber) {
@@ -226,7 +235,7 @@ export const handler: Handler = async (event: any) => {
     // Router: modo AWS (End User Messaging) o Meta (Cloud API directa).
     const res = await sendWhatsApp(
       { mode, awsClient: waClient, awsPhoneNumberId: phoneNumberId, metaPhoneNumberId, tenantId },
-      whatsappPayload
+      whatsappPayload,
     );
     // Track the send for the HSM Outbound report (roadmap #6). Best-effort:
     // a tracking write must never fail the actual send. delivered/read/failed
@@ -237,6 +246,9 @@ export const handler: Handler = async (event: any) => {
       templateName: body.templateName,
       language,
       campaignId: (body as { campaignId?: string }).campaignId,
+      // SEC-A1: el tenant efectivo (JWT del front, o body.tenantId del dialer con
+      // secreto interno). El número desde el que se envía es el de este tenant.
+      tenantId: effectiveTenantId,
     }).catch((e) => console.warn("hsm-send tracking failed:", e));
     return {
       statusCode: 200,

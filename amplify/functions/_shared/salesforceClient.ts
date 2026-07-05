@@ -26,6 +26,31 @@ import { isLegacyTenant } from "./cognitoAuth";
 const secrets = new SecretsManagerClient({});
 const SECRET_NAME = process.env.SF_SECRET_NAME || "connectview/salesforce";
 const API_VERSION = process.env.SF_API_VERSION || "v60.0";
+// BUG-M2: timeout duro para TODO fetch a Salesforce (login + REST). Si SF cuelga,
+// abortamos a los 8s en vez de bloquear el Lambda hasta el timeout global (que
+// además podría reventar el 200-rápido que Meta exige a los webhooks). Mismo
+// patrón que automation-engine (AbortController + setTimeout + clearTimeout).
+const SF_FETCH_TIMEOUT_MS = 8000;
+
+/**
+ * fetch con timeout duro vía AbortController. Limpia el timer en `finally` para
+ * no dejar handles colgando en el contenedor caliente. Un abort se propaga como
+ * un rechazo del fetch (AbortError) → lo captura el caller como cualquier fallo
+ * de red (getToken / sfFetch ya envuelven en try/catch aguas arriba).
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = SF_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ac.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 interface SfCreds {
   consumerKey: string;
@@ -164,7 +189,7 @@ export async function getToken(force = false): Promise<TokenState> {
     grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
     assertion: buildAssertion(creds),
   });
-  const r = await fetch(`${creds.audience}/services/oauth2/token`, {
+  const r = await fetchWithTimeout(`${creds.audience}/services/oauth2/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -195,7 +220,7 @@ export async function sfFetch(method: string, path: string, body?: unknown): Pro
   let tok = await getToken();
   const url = `${tok.instanceUrl}/services/data/${API_VERSION}/${path.replace(/^\//, "")}`;
   const doCall = async (t: TokenState) =>
-    fetch(url.replace(tok.instanceUrl, t.instanceUrl), {
+    fetchWithTimeout(url.replace(tok.instanceUrl, t.instanceUrl), {
       method,
       headers: {
         Authorization: `Bearer ${t.accessToken}`,

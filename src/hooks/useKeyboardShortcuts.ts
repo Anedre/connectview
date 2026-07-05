@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/context/ThemeContext";
 import { toast } from "sonner";
@@ -14,34 +14,57 @@ export function useKeyboardShortcuts() {
   const navigate = useNavigate();
   const { toggleTheme } = useTheme();
   const [showHelp, setShowHelp] = useState(false);
-  const [gPending, setGPending] = useState(false);
+
+  // `gPending` (prefijo vim "g") vive en un REF, no en estado: así el efecto
+  // del keydown NO se re-suscribe con cada tecla "g" (antes estaba en deps y
+  // recableaba el listener global + su timer en cada pulsación).
+  const gPendingRef = useRef(false);
+  // Id del timeout del prefijo "g" — se guarda para poder limpiarlo en el
+  // cleanup (antes quedaba colgado y podía disparar tras el unmount).
+  const gTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // navigate/toggleTheme vía ref para registrar el keydown UNA sola vez (deps
+  // []) sin capturar valores viejos: el handler siempre llama al más reciente.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const toggleThemeRef = useRef(toggleTheme);
+  toggleThemeRef.current = toggleTheme;
 
   useEffect(() => {
+    const clearGTimer = () => {
+      if (gTimerRef.current) {
+        clearTimeout(gTimerRef.current);
+        gTimerRef.current = null;
+      }
+    };
+
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const isTyping =
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable;
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 
       // Allow these even when typing
       if ((e.key === "D" || e.key === "d") && e.shiftKey && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        toggleTheme();
+        toggleThemeRef.current();
         return;
       }
 
       if (isTyping) return;
 
       // Vim-style: g then letter
-      if (e.key === "g" && !gPending) {
-        setGPending(true);
-        setTimeout(() => setGPending(false), 800);
+      if (e.key === "g" && !gPendingRef.current) {
+        gPendingRef.current = true;
+        clearGTimer();
+        gTimerRef.current = setTimeout(() => {
+          gPendingRef.current = false;
+          gTimerRef.current = null;
+        }, 800);
         return;
       }
 
-      if (gPending) {
-        setGPending(false);
+      if (gPendingRef.current) {
+        gPendingRef.current = false;
+        clearGTimer();
         const routes: Record<string, string> = {
           d: "/",
           a: "/agent",
@@ -53,7 +76,7 @@ export function useKeyboardShortcuts() {
         const path = routes[e.key.toLowerCase()];
         if (path) {
           e.preventDefault();
-          navigate(path);
+          navigateRef.current(path);
           toast(`Navigated`, { description: path });
         }
         return;
@@ -66,8 +89,11 @@ export function useKeyboardShortcuts() {
     };
 
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [navigate, toggleTheme, gPending]);
+    return () => {
+      document.removeEventListener("keydown", handler);
+      clearGTimer();
+    };
+  }, []);
 
-  return { showHelp, setShowHelp, gPending };
+  return { showHelp, setShowHelp, gPending: gPendingRef.current };
 }

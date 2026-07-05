@@ -5,7 +5,7 @@ import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-sec
 import { ConnectClient, SearchContactsCommand } from "@aws-sdk/client-connect";
 import { CostExplorerClient, GetCostAndUsageCommand } from "@aws-sdk/client-cost-explorer";
 import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
-import { resolveTenantId } from "../_shared/cognitoAuth";
+import { resolveTenantId, isLegacyTenant } from "../_shared/cognitoAuth";
 import { resolveConnect } from "../_shared/tenantConnect";
 import { PRICES, ASSUME, usd, type CostLine } from "../_shared/pricing";
 
@@ -350,15 +350,24 @@ export const handler: Handler = async (event: any) => {
   const lines: CostLine[] = [];
 
   // ── Meta · WhatsApp HSM (plantillas) ──────────────────────────────────────
+  // SEC-A1 — aislamiento por tenant ENDURECIDO. Antes el conteo de HSM NO filtraba
+  // por tenant (a diferencia de conversations/ai-conv) → Consumo mezclaba los envíos
+  // de TODOS los tenants. Ahora, con hsm-sends ya guardando tenantId:
+  //   · Solicitante LEGACY (novasys/default): filas SIN tenantId (históricas) O la suya.
+  //   · Tenant REAL: match EXACTO (descarta las sin tenantId).
+  const legacy = isLegacyTenant(tenantId);
+  const hsmBelongs = (rowTenant?: string): boolean =>
+    legacy ? !rowTenant || rowTenant === tenantId : rowTenant === tenantId;
   let hsmCount = 0;
   try {
-    await scanWindow<{ status?: string }>(
+    await scanWindow<{ status?: string; tenantId?: string }>(
       legacyDynamo,
       HSM_SENDS_TABLE,
       "sentAt",
       fromIso,
       toIso,
       (it) => {
+        if (!hsmBelongs(it.tenantId)) return;
         if (!it.status || it.status !== "failed") hsmCount++;
       },
     );

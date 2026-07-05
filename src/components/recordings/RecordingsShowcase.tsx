@@ -43,6 +43,7 @@ import { WaveformTimeline } from "@/components/recordings/WaveformTimeline";
 import { Sparkline } from "@/components/recordings/Sparkline";
 import * as D from "@/components/recordings/demoData";
 import type { TranscriptSegment } from "@/types/recordings";
+import { initials } from "@/lib/initials";
 
 /**
  * RecordingsShowcase — vista de DEMOSTRACIÓN de Historial y Grabaciones, idéntica
@@ -53,7 +54,6 @@ import type { TranscriptSegment } from "@/types/recordings";
  */
 
 const cv = (v: string) => `var(${v})`;
-const initials = (s: string) => (s || "?").trim().slice(0, 2).toUpperCase();
 const fmtDur = (sec: number) =>
   `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 const fmtClock = (d: Date) =>

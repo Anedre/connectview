@@ -26,6 +26,7 @@ import {
   DynamoDBClient,
   GetItemCommand,
   PutItemCommand,
+  UpdateItemCommand,
   DeleteItemCommand,
   QueryCommand,
   ScanCommand,
@@ -221,8 +222,23 @@ function keyOf(phone: string): string | null {
   return normalizePhone(phone)?.digits || null;
 }
 
+/**
+ * BUG-M1 (compat lista↔set): `channels` se ESCRIBE ahora como String Set (SS)
+ * para poder mergear con `ADD channels :c` sin read-modify-write (dos writes
+ * concurrentes ya no se pisan). Pero al leer, `unmarshall` devuelve un SS como
+ * `Set<string>` de JS, mientras que los items VIEJOS (guardados por el Put anterior)
+ * vienen como `string[]` (List). Este helper normaliza AMBAS formas —y undefined— a
+ * un `string[]` estable, para que TODO consumidor downstream (channelBlocked, el
+ * merge de recordSuppression, y el `entry` que la API serializa a JSON hacia el
+ * frontend) siga viendo un array. Sin esto, un Set colapsaría a `{}` en JSON.stringify. */
+function toChannelArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map(String);
+  if (v instanceof Set) return Array.from(v, String);
+  return [];
+}
+
 function channelBlocked(entry: SuppressionEntry, channel: SuppressionChannel): boolean {
-  const ch = entry.channels || [];
+  const ch = toChannelArray(entry.channels);
   return ch.includes("all") || ch.includes(channel);
 }
 
@@ -239,6 +255,8 @@ export async function getSuppression(
     );
     if (!r.Item) return null;
     const e = unmarshall(r.Item) as SuppressionEntry;
+    // Normaliza `channels` (SS→array | List→array) para consumidores y JSON. Ver toChannelArray.
+    e.channels = toChannelArray(e.channels);
     // Cuarentena temporal vencida → ya no bloquea.
     if (e.expiresAt && e.expiresAt < new Date().toISOString()) return null;
     return e;
@@ -479,10 +497,28 @@ export async function evaluateBatch(
   return summary;
 }
 
+/** Precedencia de `status`: un opt-out (baja explícita del cliente) manda sobre
+ *  todo; converted por encima de dnc/quarantine; quarantine es la más débil. Se
+ *  usa para NO degradar el status en escrituras concurrentes (BUG-M1). */
+const STATUS_RANK: Record<SuppressionStatus, number> = {
+  opted_out: 3,
+  converted: 2,
+  dnc: 1,
+  quarantined: 0,
+};
+
 /**
  * Registra/actualiza una entrada de supresión. Idempotente: MERGEA los canales
  * con lo existente (un opt-out de voz + uno de WhatsApp → ambos canales), y
- * preserva createdAt. "all" absorbe a los demás canales.
+ * preserva createdAt/source. "all" es comodín (channelBlocked lo respeta como tal).
+ *
+ * BUG-M1 (opt-out sin pérdida): antes hacía get→merge→Put del item ENTERO, así que
+ * un opt-out y un status-webhook concurrentes se pisaban (perdiendo canales y/o
+ * degradando un opt-out a quarantine). Ahora usa UpdateItem: los canales se mergean
+ * con `ADD channels :c` (String Set, atómico → sin RMW), y el `status` solo AVANZA
+ * en precedencia (STATUS_RANK) vía ConditionExpression, con reintento que preserva el
+ * status existente si el nuevo es de menor rango. El resto de campos con if_not_exists
+ * donde deben fijarse una sola vez (createdAt/source/phone). Si el item no existe, ADD lo crea.
  */
 export async function recordSuppression(
   dynamo: DynamoDBClient,
@@ -500,30 +536,116 @@ export async function recordSuppression(
 ): Promise<SuppressionEntry | null> {
   const key = keyOf(phone);
   if (!key) return null;
-  const prev = await getSuppression(dynamo, phone);
-  const merged = Array.from(new Set([...(prev?.channels || []), ...(e.channels || ["whatsapp"])]));
-  const channels = merged.includes("all") ? ["all"] : merged;
-  const entry: SuppressionEntry = {
-    phone: key,
-    e164: normalizePhone(phone)?.e164 || prev?.e164,
-    status: e.status,
-    channels,
-    reason: e.reason ?? prev?.reason,
-    source: e.source || prev?.source || "manual",
-    tenantId: e.tenantId ?? prev?.tenantId,
-    leadId: e.leadId ?? prev?.leadId,
-    createdAt: prev?.createdAt || new Date().toISOString(),
-    createdBy: e.createdBy ?? prev?.createdBy,
-    expiresAt: e.expiresAt ?? prev?.expiresAt,
+  const now = new Date().toISOString();
+  const chan = e.channels?.length ? e.channels : ["whatsapp"];
+  const e164 = normalizePhone(phone)?.e164;
+  const rank = STATUS_RANK[e.status];
+
+  // Nombres/valores de la expresión. Se arman incrementalmente para NO enviar
+  // atributos undefined (que pisarían con vacío) ni valores sin usar.
+  const names: Record<string, string> = { "#ch": "channels" };
+  const values: Record<string, unknown> = {
+    ":now": now,
+    ":phone": key,
+    ":src": e.source || "manual",
   };
-  try {
-    await dynamo.send(
-      new PutItemCommand({
+  names["#src"] = "source";
+
+  // Campos sobrescribibles (SET directo) — solo si vienen (no pisar con undefined).
+  const overwritable: string[] = [];
+  const setField = (attr: string, nameKey: string, valKey: string, val: unknown) => {
+    if (val === undefined || val === null) return;
+    names[nameKey] = attr;
+    values[valKey] = val;
+    overwritable.push(`${nameKey} = ${valKey}`);
+  };
+  setField("e164", "#e164", ":e164", e164);
+  setField("reason", "#reason", ":reason", e.reason);
+  setField("tenantId", "#tenant", ":tenant", e.tenantId);
+  setField("leadId", "#lead", ":lead", e.leadId);
+  setField("createdBy", "#by", ":by", e.createdBy);
+  setField("expiresAt", "#exp", ":exp", e.expiresAt);
+
+  // Campos "una sola vez" (if_not_exists): phone/createdAt/source no se re-escriben.
+  const baseSets = [
+    "phone = if_not_exists(phone, :phone)",
+    "createdAt = if_not_exists(createdAt, :now)",
+    "#src = if_not_exists(#src, :src)",
+    ...overwritable,
+  ];
+
+  // Emite el UpdateItem. Dos ejes:
+  //  · `withStatus` true  → setea status + statusRank, condicionado a NO degradar
+  //    (attribute_not_exists(#rank) OR #rank <= :rank). false → reintento que preserva
+  //    el status existente (de mayor rango) pero igual mergea el canal.
+  //  · `chanMode` "add" → `ADD #ch :c` (String Set, atómico, sin RMW): camino normal.
+  //    "set" → `SET #ch = :cl` con la UNIÓN completa: SOLO para migrar items LEGACY
+  //    cuyo `channels` se guardó como List (el `ADD` de un set sobre una List lanza
+  //    ValidationException). Migra ese item a SS en su primera escritura.
+  const run = async (withStatus: boolean, chanMode: "add" | "set", unionChannels?: string[]) => {
+    const setParts = [...baseSets];
+    const exprNames = { ...names };
+    const exprValues: Record<string, unknown> = { ...values };
+    if (chanMode === "add") {
+      exprValues[":c"] = new Set(chan);
+    } else {
+      // Unión (previos ∪ nuevos); "all" es comodín pero se conserva junto al resto
+      // (channelBlocked ya lo trata como tal). Nunca vacío → set válido para SS.
+      const union = Array.from(new Set([...(unionChannels || []), ...chan]));
+      exprValues[":cl"] = new Set(union.length ? union : chan);
+      setParts.push("#ch = :cl");
+    }
+    let condition: string | undefined;
+    if (withStatus) {
+      exprNames["#s"] = "status";
+      exprNames["#rank"] = "statusRank";
+      exprValues[":status"] = e.status;
+      exprValues[":rank"] = rank;
+      setParts.push("#s = :status", "#rank = :rank");
+      condition = "attribute_not_exists(#rank) OR #rank <= :rank";
+    }
+    const r = await dynamo.send(
+      new UpdateItemCommand({
         TableName: SUPPRESSION_TABLE,
-        Item: marshall(entry, { removeUndefinedValues: true }),
+        Key: { phone: { S: key } },
+        UpdateExpression: `SET ${setParts.join(", ")}` + (chanMode === "add" ? " ADD #ch :c" : ""),
+        ...(condition ? { ConditionExpression: condition } : {}),
+        ExpressionAttributeNames: exprNames,
+        ExpressionAttributeValues: marshall(exprValues, { removeUndefinedValues: true }),
+        ReturnValues: "ALL_NEW",
       }),
     );
-    return entry;
+    const out = unmarshall(r.Attributes || {}) as SuppressionEntry;
+    out.channels = toChannelArray(out.channels);
+    return out;
+  };
+
+  // Ejecuta el intento respetando la precedencia de status; si el canal choca por
+  // ser LEGACY List, migra a SS con la unión (leyendo prev una sola vez).
+  const attempt = async (withStatus: boolean): Promise<SuppressionEntry> => {
+    try {
+      return await run(withStatus, "add");
+    } catch (err) {
+      const name = (err as { name?: string })?.name;
+      // `channels` existe como List (item viejo) → `ADD` de set no aplica: migramos.
+      if (name === "ValidationException") {
+        const prev = await getSuppression(dynamo, phone); // channels ya normalizado a array
+        return await run(withStatus, "set", prev?.channels);
+      }
+      throw err;
+    }
+  };
+
+  try {
+    try {
+      return await attempt(true);
+    } catch (err) {
+      // Condición de status falló → ya existe un status de MAYOR rango (p.ej.
+      // opted_out) y el nuevo es más débil (una cuarentena no debe pisar un opt-out):
+      // preservamos el status existente pero igual mergeamos el canal.
+      if ((err as { name?: string })?.name !== "ConditionalCheckFailedException") throw err;
+      return await attempt(false);
+    }
   } catch (err) {
     console.warn("recordSuppression failed:", err instanceof Error ? err.message : err);
     return null;
@@ -613,7 +735,12 @@ export async function listSuppression(
           ExclusiveStartKey: ExclusiveStartKey as any,
         }),
       );
-      for (const it of r.Items || []) out.push(unmarshall(it) as SuppressionEntry);
+      for (const it of r.Items || []) {
+        const e = unmarshall(it) as SuppressionEntry;
+        // Normaliza `channels` (SS→array | List→array) para el JSON hacia el frontend.
+        e.channels = toChannelArray(e.channels);
+        out.push(e);
+      }
       ExclusiveStartKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
     } while (ExclusiveStartKey && out.length < limit);
   } catch (err) {

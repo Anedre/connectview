@@ -216,6 +216,8 @@ interface Lead {
   /** Estimated deal value (pipeline $) — powers the exec KPI. Optional. */
   montoEstimado?: number;
   attributes?: Record<string, string>;
+  /** SEC-A1 — tenant dueño de la fila (para el filtro real del feed/Consumo). */
+  tenantId?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -1000,6 +1002,9 @@ export const handler: Handler = async (event: any) => {
         montoEstimado: typeof body.montoEstimado === "number" ? body.montoEstimado : undefined,
         attributes:
           body.attributes && typeof body.attributes === "object" ? body.attributes : undefined,
+        // SEC-A1: dueño de la fila (del JWT). Vacío = legacy/anónimo → sin campo
+        // (marshall lo omite por removeUndefinedValues), fila pooled Novasys.
+        tenantId: tenantId || undefined,
         updatedAt: now,
       };
       if (isNew) item.createdAt = now;
@@ -1016,6 +1021,13 @@ export const handler: Handler = async (event: any) => {
         const sets: string[] = ["updatedAt = :u"];
         const vals: Record<string, unknown> = { ":u": now };
         const names: Record<string, string> = {};
+        // SEC-A1: estampar el dueño en filas legacy sin tenantId (backfill), sin
+        // pisar uno ya presente (if_not_exists). Solo si hay tenant real (no vacío).
+        if (tenantId) {
+          sets.push("#tenantId = if_not_exists(#tenantId, :tenantId)");
+          names["#tenantId"] = "tenantId";
+          vals[":tenantId"] = tenantId;
+        }
         for (const k of [
           "name",
           "email",

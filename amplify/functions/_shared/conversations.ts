@@ -9,6 +9,7 @@ import {
   GetItemCommand,
   PutItemCommand,
   ScanCommand,
+  UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { randomUUID } from "node:crypto";
@@ -474,21 +475,64 @@ export async function patchConversation(
  * status="closed" + motivo/instante y SUELTA el dueño (ownerAgentId/Name +
  * assignedAgent) dejando assignee="bot" → así el próximo inbound del cliente la
  * reabre LIMPIA (el bot vuelve a atender, sin quedar pegada al agente anterior).
- * null si la conversación no existe. Idempotente (cerrar una cerrada no rompe). */
+ * null si la conversación no existe. Idempotente (cerrar una cerrada no rompe).
+ *
+ * BUG-A2 (cierre condicional): el reaper escanea las `open` y luego cierra; entre
+ * el scan y el cierre un inbound del cliente puede REABRIR/tocar la conversación.
+ * Para no cerrarla por error, el caller (reaper) pasa `expectedUpdatedAt` con el
+ * `updatedAt` QUE VIO en el scan: si al momento de escribir el `updatedAt` ya
+ * cambió (alguien la tocó), la condición falla y NO cerramos (devolvemos null,
+ * silencioso). Los cierres MANUALES / del bot NO pasan `expectedUpdatedAt` → se
+ * cierran incondicionalmente como siempre (retrocompatible). */
 export async function closeConversation(
   dynamo: DynamoDBClient,
   conversationId: string,
   reason: "manual" | "inactivity" | "resolved" = "manual",
+  expectedUpdatedAt?: string,
 ): Promise<Conversation | null> {
-  return patchConversation(dynamo, conversationId, {
-    status: "closed",
-    closedReason: reason,
-    closedAt: new Date().toISOString(),
-    assignee: "bot",
-    ownerAgentId: undefined,
-    ownerAgentName: undefined,
-    assignedAgent: undefined,
-  });
+  // Cierre incondicional (manual / bot): ruta original vía Put — sin condición.
+  if (!expectedUpdatedAt) {
+    return patchConversation(dynamo, conversationId, {
+      status: "closed",
+      closedReason: reason,
+      closedAt: new Date().toISOString(),
+      assignee: "bot",
+      ownerAgentId: undefined,
+      ownerAgentName: undefined,
+      assignedAgent: undefined,
+    });
+  }
+  // Cierre CONDICIONAL (reaper de inactividad): solo si nadie la tocó desde el
+  // scan (`updatedAt` intacto). UpdateItem quirúrgico (no reescribe el item
+  // entero) que setea el cierre y REMUEVE el dueño, con ConditionExpression.
+  const now = new Date().toISOString();
+  try {
+    const r = await dynamo.send(
+      new UpdateItemCommand({
+        TableName: CONV_TABLE,
+        Key: { conversationId: { S: conversationId } },
+        UpdateExpression:
+          "SET #s = :closed, closedReason = :reason, closedAt = :now, assignee = :bot, updatedAt = :now " +
+          "REMOVE ownerAgentId, ownerAgentName, assignedAgent",
+        ConditionExpression: "updatedAt = :expected",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: marshall({
+          ":closed": "closed",
+          ":reason": reason,
+          ":now": now,
+          ":bot": "bot",
+          ":expected": expectedUpdatedAt,
+        }),
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return r.Attributes ? (unmarshall(r.Attributes) as Conversation) : null;
+  } catch (err) {
+    // La condición falló → la conversación se reactivó entre el scan y el cierre
+    // (llegó un inbound): NO la cerramos. Salida silenciosa (esto es lo esperado).
+    if ((err as { name?: string })?.name === "ConditionalCheckFailedException") return null;
+    throw err;
+  }
 }
 
 /** Scan de TODAS las conversaciones `open` (todos los tenants, tabla pooled). Para

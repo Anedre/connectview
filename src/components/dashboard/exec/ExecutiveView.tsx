@@ -42,7 +42,7 @@ import {
 } from "./ExecCharts";
 import type { ExecData, ExecInsight, ExecPeriod, ExecSlice } from "./execMock";
 import { useTopBarActions } from "@/components/layout/TopBarSlot";
-import { initialsOf } from "@/components/vox/primitives";
+import { initials } from "@/lib/initials";
 import { Hint } from "@/components/ui/Hint";
 import "@/styles/exec.css";
 
@@ -397,7 +397,7 @@ export function ExecutiveView({
               <div className="exec-avatars">
                 {topAgents.map((name, i) => (
                   <Hint key={i} label={name}>
-                    <span className="exec-avatar">{initialsOf(name)}</span>
+                    <span className="exec-avatar">{initials(name)}</span>
                   </Hint>
                 ))}
               </div>

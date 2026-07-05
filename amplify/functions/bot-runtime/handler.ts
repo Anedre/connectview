@@ -7,8 +7,9 @@ import {
   ScanCommand,
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall, marshall } from "@aws-sdk/util-dynamodb";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { resolveDynamo, resolveBedrock } from "../_shared/tenantConnect";
+import { isLegacyTenant } from "../_shared/cognitoAuth";
 
 /**
  * bot-runtime — the engine that "runs" a visual chat-flow bot (roadmap #16).
@@ -43,6 +44,23 @@ const KB_TABLE = process.env.KB_TABLE || "connectview-knowledge-bases";
 // CONV_TABLE to a dedicated table to split them out — no code change needed.
 const CONV_TABLE = process.env.CONV_TABLE || BOTS_TABLE;
 const CORS = { "Content-Type": "application/json" };
+
+// SEC-A2: secreto interno para invocaciones server-to-server por Function URL
+// (mismo mecanismo que automation-engine). El Function URL es auth=NONE, así que
+// un `body.tenantId` sin JWT permitía correr los bots de OTRO tenant (p.ej.
+// "novasys" legacy) y quemar SU cuota de Bedrock. Los callers legítimos SIN JWT
+// (whatsapp-meta-webhook, meta-messaging-webhook, agent-channel-adapter) deben
+// mandar el header `x-vox-internal: <VOX_INTERNAL_SECRET>` — ver nota abajo.
+const INTERNAL_SECRET = process.env.VOX_INTERNAL_SECRET || "";
+
+/** Comparación constant-time de secretos (evita el timing leak de `===`). Chequea
+ *  longitud antes de timingSafeEqual (que lanza si difieren) y nunca tira. */
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
 
 // UI label → Bedrock model id. Unverified ids fall back to a known-available
 // Claude so the simulator always answers.
@@ -763,8 +781,44 @@ export const handler: Handler = async (event: any) => {
     // blockedDynamoClient → loadBot no encuentra el bot → 400 (el flujo por WhatsApp
     // no responde). OJO: hand-managed (deploy-lambda.mjs) — re-deployá tras tocar
     // tenantConnect/cognitoAuth.
-    ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo, body?.tenantId));
-    ({ client: bedrock } = await resolveBedrock(event?.headers, legacyBedrock, body?.tenantId));
+    //
+    // SEC-A2: el `body.tenantId` (tenant EXPLÍCITO, sin JWT) sólo se acepta si la
+    // request trae el secreto interno. Como el Function URL es auth=NONE, sin este
+    // gate cualquiera podía mandar {tenantId:"novasys", botId} y correr los bots
+    // legacy (RAG sobre knowledge/catálogos) quemando la cuota Bedrock de Novasys.
+    // El JWT (playground /agente, BotTester) NO usa body.tenantId → no se ve
+    // afectado: resolve* resuelve el tenant del token. Si el secreto NO está
+    // configurado todavía (VOX_INTERNAL_SECRET vacío), degradamos al comportamiento
+    // previo (se acepta el body.tenantId) con un warning, para no romper WhatsApp en
+    // caliente mientras se despliega el env + los webhooks empiezan a mandar el header.
+    const isHttp = !!event?.requestContext?.http;
+    let explicitTenant: string | undefined =
+      typeof body?.tenantId === "string" ? body.tenantId : undefined;
+    if (isHttp && explicitTenant) {
+      const hdrs = (event.headers || {}) as Record<string, string>;
+      const secret = hdrs["x-vox-internal"] || hdrs["X-Vox-Internal"] || "";
+      const authorized = !!INTERNAL_SECRET && safeEqual(secret, INTERNAL_SECRET);
+      if (!authorized) {
+        if (INTERNAL_SECRET) {
+          // Con secreto configurado: rechazamos el tenant explícito (fail-closed).
+          // Bloqueamos duro los tenants legacy (el vector de abuso de Bedrock);
+          // el resto cae a la resolución por JWT (anónimo → bot no encontrado → 400).
+          if (isLegacyTenant(explicitTenant))
+            return {
+              statusCode: 401,
+              headers: CORS,
+              body: JSON.stringify({ error: "No autorizado" }),
+            };
+          explicitTenant = undefined;
+        } else {
+          console.warn(
+            "bot-runtime: body.tenantId sin x-vox-internal y VOX_INTERNAL_SECRET no configurado — aceptado en modo degradado (SEC-A2)",
+          );
+        }
+      }
+    }
+    ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo, explicitTenant));
+    ({ client: bedrock } = await resolveBedrock(event?.headers, legacyBedrock, explicitTenant));
     let bot: Bot | null = body.bot && Array.isArray(body.bot.nodes) ? (body.bot as Bot) : null;
     if (!bot && body.botId) bot = await loadBot(String(body.botId));
     if (!bot)
