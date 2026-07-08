@@ -163,7 +163,14 @@ export const handler = async (event: FnEvent) => {
   //  2. El tenantId SALE SIEMPRE del JWT verificado, NUNCA de un query param.
   //     Antes había `?tenantId=` override → IDOR (cualquiera leía la config
   //     de otro tenant pasando su id). Eliminado.
-  //  3. Solo Admins de la org pueden tocar integraciones.
+  //  3. ESCRITURA (POST) = solo Admins configuran integraciones. LECTURA (GET) =
+  //     cualquier MIEMBRO autenticado del tenant. Antes el GET también exigía
+  //     Admin → un agente/supervisor invitado recibía 403 al leer la config,
+  //     el front no veía `connect.instanceUrl` y la app le mostraba el
+  //     onboarding "Falta conectar tu Amazon Connect" AUNQUE el admin ya lo
+  //     había configurado. A los no-admins se les devuelve una vista SANEADA
+  //     (sin roleArn/externalId/instanceArn) más abajo — lo operacional que el
+  //     runtime necesita (instanceUrl del softphone, branding, mensajería).
   let identity;
   try {
     identity = await getIdentity(event.headers);
@@ -173,7 +180,8 @@ export const handler = async (event: FnEvent) => {
   if (!identity || !identity.tenantId) {
     return resp(401, { error: "No autorizado" });
   }
-  if (!identity.groups.includes("Admins")) {
+  const isAdmin = identity.groups.includes("Admins");
+  if (method !== "GET" && !isAdmin) {
     return resp(403, { error: "Solo administradores pueden configurar integraciones" });
   }
   const tenantId = identity.tenantId;
@@ -227,6 +235,25 @@ export const handler = async (event: FnEvent) => {
         }
       }
       config.salesforce = { ...sfPrev, connected: sfConnected };
+
+      // No-admins (agentes/supervisores invitados): vista operacional SANEADA.
+      // Quitamos la config de INFRAESTRUCTURA sensible del rol cross-account
+      // (roleArn + externalId anti-confused-deputy + instanceArn), que solo el
+      // wizard del admin usa, y salteamos la detección de números vinculados
+      // (llamadas caras a Social Messaging para el formulario del admin).
+      // Devolvemos lo que el runtime SÍ necesita para no caer en el onboarding:
+      // instanceUrl del softphone, region, branding, mensajería, flows, ruteo,
+      // defaultQueue y los flags de estado (connected/tokenSet).
+      if (!isAdmin) {
+        const c = config.connect as Record<string, unknown> | undefined;
+        if (c) {
+          delete c.roleArn;
+          delete c.externalId;
+          delete c.instanceArn;
+        }
+        return resp(200, { config, tenantId, whatsappNumbers: [] });
+      }
+
       // Números de WhatsApp ya vinculados a tu Connect (AWS End User Messaging),
       // para ofrecerlos en el formulario sin que el cliente tipee el ID.
       // BYO: un tenant real usa SU cliente socialmessaging (assumed) → detecta
