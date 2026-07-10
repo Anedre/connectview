@@ -7,6 +7,7 @@ import { getApiEndpoints } from "@/lib/api";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/empty-state";
+import { Modal } from "@/components/ui/modal";
 import { Btn, Card, Pill, SegBar, Stat, Num, HeroBand, Icon } from "@/components/aria";
 import {
   PencilSimple,
@@ -15,7 +16,6 @@ import {
   Pause,
   CheckCircle,
   Archive,
-  X,
   type Icon as PhIcon,
 } from "@phosphor-icons/react";
 
@@ -535,156 +535,140 @@ export function ProgramsHubPage() {
       )}
 
       {/* Modal importar CSV (R3) */}
-      {importText !== null && (
-        <div onClick={() => setImportText(null)} style={overlay}>
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="card"
-            style={{ width: "min(560px, 100%)" }}
-          >
-            <div className="card__pad">
-              <div className="row between" style={{ marginBottom: 8 }}>
-                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 750 }}>Importar programas</h2>
-                <Btn variant="ghost" size="sm" onClick={() => setImportText(null)}>
-                  <X size={14} />
-                </Btn>
-              </div>
-              <p className="dim" style={{ margin: "0 0 10px", fontSize: 12 }}>
-                Una línea por programa: <code>código,nombre,facultad</code> (facultad opcional).
-                Exporta tu Excel a CSV y pega aquí.
-              </p>
-              <textarea
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-                rows={8}
-                placeholder={
-                  "ded261,Diplomado en Educación 2026-I,Humanidades\ntoefl264,TOEFL Preparación,Idiomas"
-                }
-                style={{ ...inp, resize: "vertical", fontFamily: "monospace", padding: "8px 10px" }}
-              />
-              <div className="row gap8" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-                <Btn variant="ghost" size="sm" onClick={() => setImportText(null)}>
-                  Cancelar
-                </Btn>
-                <Btn variant="primary" size="sm" icon="upload" onClick={doImport} disabled={busy}>
-                  {busy ? "Importando…" : "Importar"}
-                </Btn>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={importText !== null}
+        onOpenChange={(o) => {
+          if (!o) setImportText(null);
+        }}
+        title="Importar programas"
+        className="max-w-xl"
+        footer={
+          <>
+            <Btn variant="ghost" size="sm" onClick={() => setImportText(null)}>
+              Cancelar
+            </Btn>
+            <Btn variant="primary" size="sm" icon="upload" onClick={doImport} disabled={busy}>
+              {busy ? "Importando…" : "Importar"}
+            </Btn>
+          </>
+        }
+      >
+        <p className="dim" style={{ margin: "10px 0 10px", fontSize: 12 }}>
+          Una línea por programa: <code>código,nombre,facultad</code> (facultad opcional). Exporta
+          tu Excel a CSV y pega aquí.
+        </p>
+        <textarea
+          value={importText ?? ""}
+          onChange={(e) => setImportText(e.target.value)}
+          rows={8}
+          placeholder={
+            "ded261,Diplomado en Educación 2026-I,Humanidades\ntoefl264,TOEFL Preparación,Idiomas"
+          }
+          style={{ ...inp, resize: "vertical", fontFamily: "monospace", padding: "8px 10px" }}
+        />
+      </Modal>
 
       {/* Modal crear/editar */}
-      {editing && (
-        <div onClick={() => setEditing(null)} style={overlay}>
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="card"
-            style={{ width: "min(560px, 100%)", maxHeight: "90vh", overflow: "auto" }}
-          >
-            <div className="card__pad">
-              <div className="row between" style={{ marginBottom: 14 }}>
-                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 750 }}>
-                  {editing.programId ? "Editar programa" : "Nuevo programa"}
-                </h2>
-                <Btn variant="ghost" size="sm" onClick={() => setEditing(null)}>
-                  <X size={14} />
-                </Btn>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <Field label="Código *">
-                  <input
-                    value={editing.code}
-                    onChange={(e) => setEditing({ ...editing, code: e.target.value })}
-                    placeholder="ej. ded261"
-                    style={inp}
-                  />
-                </Field>
-                <Field label="Facultad">
-                  <input
-                    value={editing.faculty || ""}
-                    onChange={(e) => setEditing({ ...editing, faculty: e.target.value })}
-                    placeholder="ej. Posgrado"
-                    style={inp}
-                    list="faculties-dl"
-                  />
-                  <datalist id="faculties-dl">
-                    {faculties.map((f) => (
-                      <option key={f} value={f} />
-                    ))}
-                  </datalist>
-                </Field>
-                <Field label="Nombre *" full>
-                  <input
-                    value={editing.name}
-                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                    placeholder="ej. Diplomado en Educación 2026-I"
-                    style={inp}
-                  />
-                </Field>
-                <Field label="Descripción" full>
-                  <textarea
-                    value={editing.description || ""}
-                    onChange={(e) => setEditing({ ...editing, description: e.target.value })}
-                    rows={2}
-                    style={{ ...inp, resize: "vertical" }}
-                  />
-                </Field>
-                <Field label="Inicio">
-                  <input
-                    type="date"
-                    value={(editing.startDate || "").slice(0, 10)}
-                    onChange={(e) => setEditing({ ...editing, startDate: e.target.value })}
-                    style={inp}
-                  />
-                </Field>
-                <Field label="Fin (auto-archiva)">
-                  <input
-                    type="date"
-                    value={(editing.endDate || "").slice(0, 10)}
-                    onChange={(e) => setEditing({ ...editing, endDate: e.target.value })}
-                    style={inp}
-                  />
-                </Field>
-                <Field label="Estado">
-                  <select
-                    value={editing.status}
-                    onChange={(e) =>
-                      setEditing({ ...editing, status: e.target.value as ProgramStatus })
-                    }
-                    style={inp}
-                  >
-                    {(Object.keys(STATUS_META) as ProgramStatus[]).map((s) => (
-                      <option key={s} value={s}>
-                        {STATUS_META[s].label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Color">
-                  <input
-                    type="color"
-                    value={editing.color || "#22d3ee"}
-                    onChange={(e) => setEditing({ ...editing, color: e.target.value })}
-                    style={{ ...inp, height: 38, padding: 4 }}
-                  />
-                </Field>
-              </div>
-
-              <div className="row gap8" style={{ justifyContent: "flex-end", marginTop: 18 }}>
-                <Btn variant="ghost" size="sm" onClick={() => setEditing(null)}>
-                  Cancelar
-                </Btn>
-                <Btn variant="primary" size="sm" icon="check" onClick={doSave} disabled={busy}>
-                  {busy ? "Guardando…" : "Guardar"}
-                </Btn>
-              </div>
-            </div>
+      <Modal
+        open={!!editing}
+        onOpenChange={(o) => {
+          if (!o) setEditing(null);
+        }}
+        title={editing?.programId ? "Editar programa" : "Nuevo programa"}
+        className="max-w-xl"
+        footer={
+          <>
+            <Btn variant="ghost" size="sm" onClick={() => setEditing(null)}>
+              Cancelar
+            </Btn>
+            <Btn variant="primary" size="sm" icon="check" onClick={doSave} disabled={busy}>
+              {busy ? "Guardando…" : "Guardar"}
+            </Btn>
+          </>
+        }
+      >
+        {editing && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
+            <Field label="Código *">
+              <input
+                value={editing.code}
+                onChange={(e) => setEditing({ ...editing, code: e.target.value })}
+                placeholder="ej. ded261"
+                style={inp}
+              />
+            </Field>
+            <Field label="Facultad">
+              <input
+                value={editing.faculty || ""}
+                onChange={(e) => setEditing({ ...editing, faculty: e.target.value })}
+                placeholder="ej. Posgrado"
+                style={inp}
+                list="faculties-dl"
+              />
+              <datalist id="faculties-dl">
+                {faculties.map((f) => (
+                  <option key={f} value={f} />
+                ))}
+              </datalist>
+            </Field>
+            <Field label="Nombre *" full>
+              <input
+                value={editing.name}
+                onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                placeholder="ej. Diplomado en Educación 2026-I"
+                style={inp}
+              />
+            </Field>
+            <Field label="Descripción" full>
+              <textarea
+                value={editing.description || ""}
+                onChange={(e) => setEditing({ ...editing, description: e.target.value })}
+                rows={2}
+                style={{ ...inp, resize: "vertical" }}
+              />
+            </Field>
+            <Field label="Inicio">
+              <input
+                type="date"
+                value={(editing.startDate || "").slice(0, 10)}
+                onChange={(e) => setEditing({ ...editing, startDate: e.target.value })}
+                style={inp}
+              />
+            </Field>
+            <Field label="Fin (auto-archiva)">
+              <input
+                type="date"
+                value={(editing.endDate || "").slice(0, 10)}
+                onChange={(e) => setEditing({ ...editing, endDate: e.target.value })}
+                style={inp}
+              />
+            </Field>
+            <Field label="Estado">
+              <select
+                value={editing.status}
+                onChange={(e) =>
+                  setEditing({ ...editing, status: e.target.value as ProgramStatus })
+                }
+                style={inp}
+              >
+                {(Object.keys(STATUS_META) as ProgramStatus[]).map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_META[s].label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Color">
+              <input
+                type="color"
+                value={editing.color || "#22d3ee"}
+                onChange={(e) => setEditing({ ...editing, color: e.target.value })}
+                style={{ ...inp, height: 38, padding: 4 }}
+              />
+            </Field>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
       {confirmDialog}
     </div>
   );
@@ -698,17 +682,6 @@ const inp: React.CSSProperties = {
   padding: "8px 10px",
   color: "var(--text-1)",
   fontSize: 13,
-};
-
-const overlay: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "var(--scrim, rgba(0, 0, 0, 0.5))",
-  zIndex: 200,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 20,
 };
 
 function Field({
