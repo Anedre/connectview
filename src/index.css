@@ -349,6 +349,59 @@ textarea:focus {
   transform-origin: top;
   animation: aria-menu-in 0.14s ease-out;
 }
+
+/* Markdown de las respuestas del Copilot (negritas, listas, código, enlaces). */
+.aria-md > :first-child {
+  margin-top: 0;
+}
+.aria-md > :last-child {
+  margin-bottom: 0;
+}
+.aria-md p {
+  margin: 0 0 8px;
+}
+.aria-md ul,
+.aria-md ol {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+}
+.aria-md li {
+  margin: 2px 0;
+}
+.aria-md code {
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 0.92em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.aria-md pre {
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+.aria-md pre code {
+  border: 0;
+  padding: 0;
+  background: none;
+}
+.aria-md a {
+  color: var(--accent-violet);
+  text-decoration: underline;
+}
+.aria-md strong {
+  font-weight: 700;
+}
+.aria-md h1,
+.aria-md h2,
+.aria-md h3 {
+  font-size: 1em;
+  font-weight: 700;
+  margin: 8px 0 4px;
+}
 .tbx__menu-head {
   padding: 6px 10px;
   font-size: 10.5px;
