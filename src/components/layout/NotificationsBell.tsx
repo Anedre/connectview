@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { animate } from "animejs";
 import { Bell, ChatsCircle, Stack } from "@phosphor-icons/react";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useDropdown } from "@/hooks/useDropdown";
 import { AnimatedIcon } from "@/components/fx";
 import notificationAnim from "@/assets/anim-icons/notification.json";
 
@@ -38,7 +39,8 @@ export function NotificationsBell({
 }) {
   const navigate = useNavigate();
   const { notifs, unseenCount, markAllSeen, isUnseen } = useNotifications();
-  const [open, setOpen] = useState(false);
+  // Cierra al click afuera / Escape (sin backdrop que intercepte el click).
+  const dd = useDropdown<HTMLDivElement>();
   const [snapshot, setSnapshot] = useState<Set<string>>(new Set());
 
   // Pop elástico del badge (anime.js) cuando ENTRA una notificación nueva.
@@ -60,16 +62,16 @@ export function NotificationsBell({
   }, [unseenCount]);
 
   const toggle = () => {
-    if (!open) {
+    if (!dd.open) {
       // Captura qué era nuevo (para el punto violeta) y limpia el badge.
       setSnapshot(new Set(notifs.filter((n) => isUnseen(n.callbackId)).map((n) => n.callbackId)));
       markAllSeen();
-      setOpen(true);
+      dd.setOpen(true);
     } else {
-      setOpen(false);
+      dd.setOpen(false);
     }
   };
-  const close = () => setOpen(false);
+  const close = () => dd.setOpen(false);
 
   const up = placement === "up";
   const panelStyle: CSSProperties = {
@@ -83,12 +85,12 @@ export function NotificationsBell({
   };
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative" }} {...dd.wrapProps}>
       <button
         type="button"
         className={`${buttonClassName} fx-ico-swing`}
         title="Notificaciones"
-        aria-expanded={open}
+        aria-expanded={dd.open}
         aria-label={unseenCount > 0 ? `Notificaciones (${unseenCount} sin ver)` : "Notificaciones"}
         onClick={toggle}
         style={{ position: "relative" }}
@@ -101,9 +103,8 @@ export function NotificationsBell({
         )}
       </button>
 
-      {open && (
+      {dd.open && (
         <>
-          <div onClick={close} style={{ position: "fixed", inset: 0, zIndex: 199 }} />
           <div className="tbx__menu aria-notif-panel" style={panelStyle}>
             <div className="tbx__menu-head">Notificaciones</div>
             {notifs.length === 0 ? (
