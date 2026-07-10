@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+import { useDropdown } from "@/hooks/useDropdown";
 import { useCCP } from "@/hooks/useCCP";
 import * as Icon from "@/components/vox/primitives";
 
@@ -29,9 +30,17 @@ const STATE_STYLE: Record<string, StateStyle> = {
   CallingCustomer: { fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)", label: "Marcando" },
   Offline: { fg: "var(--text-3)", bg: "var(--bg-3)", label: "Offline" },
   Error: { fg: "var(--accent-red)", bg: "var(--accent-red-soft)", label: "Error" },
-  MissedCallAgent: { fg: "var(--accent-red)", bg: "var(--accent-red-soft)", label: "Contacto perdido" },
+  MissedCallAgent: {
+    fg: "var(--accent-red)",
+    bg: "var(--accent-red-soft)",
+    label: "Contacto perdido",
+  },
   MissedCall: { fg: "var(--accent-red)", bg: "var(--accent-red-soft)", label: "Contacto perdido" },
-  "Missed Call Agent": { fg: "var(--accent-red)", bg: "var(--accent-red-soft)", label: "Contacto perdido" },
+  "Missed Call Agent": {
+    fg: "var(--accent-red)",
+    bg: "var(--accent-red-soft)",
+    label: "Contacto perdido",
+  },
   Lunch: { fg: "var(--accent-violet)", bg: "var(--accent-violet-soft)", label: "Almuerzo" },
   Break: { fg: "var(--accent-amber)", bg: "var(--accent-amber-soft)", label: "Pausa" },
   Training: { fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)", label: "Capacitación" },
@@ -48,46 +57,36 @@ function styleFor(name: string, type?: string): StateStyle {
 
 export function AgentStatePill() {
   const { agentState, availableStates, changeAgentState } = useCCP();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Close on outside click.
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
+  // Abre al hover, cierra al click afuera / Escape (hook compartido).
+  const dd = useDropdown<HTMLDivElement>({ hover: true });
 
   const current = STATE_STYLE[agentState] ?? FALLBACK;
   const list = availableStates ?? [];
   const canChange = list.length > 0;
 
   return (
-    <div ref={ref} style={{ position: "relative" }}>
+    <div style={{ position: "relative" }} {...dd.wrapProps}>
       <button
         type="button"
         className="vox-sp__state"
-        onClick={() => canChange && setOpen((v) => !v)}
+        onClick={() => canChange && dd.toggle()}
         style={
           {
             "--st-fg": current.fg,
             "--st-bg": current.bg,
-          } as React.CSSProperties
+          } as CSSProperties
         }
         title={canChange ? "Cambiar estado" : "Estado actual"}
         aria-haspopup="listbox"
-        aria-expanded={open}
+        aria-expanded={dd.open}
         disabled={!canChange}
       >
         <span className="vox-sp__state-dot" />
         <span>{current.label}</span>
         {canChange && <Icon.ChevDown size={11} className="vox-sp__state-caret" />}
       </button>
-      {open && canChange && (
-        <div className="vox-sp__state-menu" role="listbox">
+      {dd.open && canChange && (
+        <div className="vox-sp__state-menu aria-menu-anim" role="listbox">
           {list.map((s) => {
             const st = styleFor(s.name, s.type);
             const isCurrent = s.name === agentState;
@@ -104,7 +103,7 @@ export function AgentStatePill() {
                   } catch {
                     /* CCPContext shows its own toast */
                   }
-                  setOpen(false);
+                  dd.close();
                 }}
               >
                 <span className="vox-sp__state-opt-dot" style={{ background: st.fg }} />

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, X, Send, RotateCcw, Search, LayoutGrid } from "lucide-react";
+import { useEscapeKey } from "@/hooks/useDropdown";
 import { getApiEndpoints } from "@/lib/api";
 import { useCatalogs } from "@/hooks/useCatalogs";
 import { useCan } from "@/hooks/usePermissions";
@@ -39,6 +40,8 @@ function CopilotPanelInner() {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const ep = getApiEndpoints();
+  // Escape cierra el panel (no se cierra al click afuera: perdería el chat).
+  useEscapeKey(() => setOpen(false), open);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -68,7 +71,7 @@ function CopilotPanelInner() {
       const d = await r.json();
       setMsgs((m) => [
         ...m,
-        { role: "bot", text: d.result || "No pude generar una respuesta. Intentá de nuevo." },
+        { role: "bot", text: d.result || "No pude generar una respuesta. Inténtalo de nuevo." },
       ]);
     } catch {
       setMsgs((m) => [...m, { role: "bot", text: "Error de conexión con Copilot." }]);
@@ -230,8 +233,8 @@ function CopilotPanelInner() {
             {msgs.length === 0 && (
               <div style={{ color: "var(--text-2)", fontSize: 12.5, lineHeight: 1.6 }}>
                 <p style={{ marginTop: 4 }}>
-                  Hola 👋 Soy <strong>ARIA Copilot</strong>. Preguntame cómo usar la plataforma o
-                  pedime que redacte un mensaje.
+                  Hola 👋 Soy <strong>ARIA Copilot</strong>. Pregúntame cómo usar la plataforma o
+                  pídeme que redacte un mensaje.
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
                   {SUGGESTIONS.map((s) => (
@@ -391,7 +394,7 @@ function CatalogLookup() {
           <div style={{ color: "var(--text-3)", fontSize: 12.5 }}>Cargando catálogos…</div>
         ) : catalogs.length === 0 ? (
           <div style={{ color: "var(--text-2)", fontSize: 12.5, lineHeight: 1.6 }}>
-            Todavía no hay catálogos. Creálos en <strong>Configuración → Catálogos</strong>{" "}
+            Todavía no hay catálogos. Créalos en <strong>Configuración → Catálogos</strong>{" "}
             (precios, programas, motivos…) y los buscas aquí durante la llamada.
           </div>
         ) : groups.length === 0 ? (

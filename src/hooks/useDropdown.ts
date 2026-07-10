@@ -31,6 +31,24 @@ export function useClickOutside<T extends HTMLElement>(
   }, [ref, enabled]);
 }
 
+/**
+ * useEscapeKey — cierra con la tecla Escape. Para paneles de trabajo (Copilot,
+ * Tareas) donde NO se quiere cerrar al click afuera (perdería el contexto), pero
+ * sí con Escape.
+ */
+export function useEscapeKey(onClose: () => void, enabled = true) {
+  const cb = useRef(onClose);
+  cb.current = onClose;
+  useEffect(() => {
+    if (!enabled) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cb.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [enabled]);
+}
+
 type UseDropdownOpts = {
   /** Abrir al pasar el mouse por encima (y cerrar al salir). Default: false. */
   hover?: boolean;

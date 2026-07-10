@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ListTodo, X, Plus } from "lucide-react";
+import { useEscapeKey } from "@/hooks/useDropdown";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useCallbacks } from "@/hooks/useCallbacks";
@@ -25,6 +26,8 @@ export function TasksLauncher() {
     status: "PENDING",
     pollIntervalSec: 60,
   });
+  // Escape cierra el panel (salvo que esté abierto el modal de crear tarea).
+  useEscapeKey(() => setOpen(false), open && !createOpen);
 
   const count = callbacks.length;
   const dueNow = callbacks.filter((c) => c.status === "DUE").length;
