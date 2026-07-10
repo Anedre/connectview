@@ -25,6 +25,8 @@ jobs:
         run: npm run typecheck
       - name: Lint (eslint · 0 errores; los warnings del React Compiler no fallan)
         run: npm run lint
+      - name: CSS clip-traps (overflow:hidden + transform condicional en :hover/estado)
+        run: npm run css:traps
       - name: Unit tests (vitest)
         run: npm run test:run
       - name: Build (vite)

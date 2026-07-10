@@ -16,6 +16,7 @@
     "knip": "knip",
     "analyze": "vite build --mode analyze",
     "css:dups": "node scripts/check-css-dups.mjs",
+    "css:traps": "node scripts/check-clip-traps.mjs",
     "brand:assets": "node scripts/gen-brand-assets.mjs",
     "preview": "vite preview",
     "prepare": "husky",
