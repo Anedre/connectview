@@ -19,11 +19,10 @@ export function MonitorDemoPage() {
     <div style={{ padding: 24 }}>
       <h1 style={{ marginTop: 0 }}>Monitor control bar · demo</h1>
       <p style={{ color: "var(--text-2)", fontSize: 14, lineHeight: 1.6, maxWidth: 620 }}>
-        La barra flotante de abajo es el control del supervisor durante un
-        monitoreo. En producción aparece sola cuando un contacto de monitoreo
-        llega al CCP (headless). Acá la manejo con estado local para que veas
-        el cambio <strong>Escuchar ↔ Intervenir</strong> (la barra se pone roja
-        al intervenir) y el botón Salir.
+        La barra flotante de abajo es el control del supervisor durante un monitoreo. En producción
+        aparece sola cuando un contacto de monitoreo llega al CCP (headless). Aquí la manejo con
+        estado local para que veas el cambio <strong>Escuchar ↔ Intervenir</strong> (la barra se
+        pone roja al intervenir) y el botón Salir.
       </p>
       {!session && (
         <button
@@ -41,9 +40,7 @@ export function MonitorDemoPage() {
       )}
       <MonitorControlBar
         sessionOverride={session}
-        onSetMode={(mode) =>
-          setSession((s) => (s ? { ...s, mode } : s))
-        }
+        onSetMode={(mode) => setSession((s) => (s ? { ...s, mode } : s))}
         onEnd={() => setSession(null)}
       />
     </div>

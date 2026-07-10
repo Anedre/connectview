@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { RealtimeMetrics } from "@/types/monitoring";
 import { getApiEndpoints } from "@/lib/api";
+import { useContactEvents } from "@/lib/contactEvents";
 
 const POLL_INTERVAL = 15000; // 15 seconds
 
@@ -28,9 +29,7 @@ export function useRealtimeMetrics() {
       setError(null);
     } catch (err) {
       // No mock fallback - show the real error so user knows
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch metrics"
-      );
+      setError(err instanceof Error ? err.message : "Failed to fetch metrics");
       // Set empty metrics structure so UI doesn't break
       if (!metrics) {
         setMetrics({
@@ -60,6 +59,9 @@ export function useRealtimeMetrics() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchMetrics]);
+
+  // Auto-refresh instantáneo al terminar un contacto (además del poll de 15s).
+  useContactEvents(fetchMetrics, ["contact:ended", "wrapup:saved"]);
 
   return {
     metrics,

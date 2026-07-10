@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Keyboard } from "lucide-react";
+import { FileText, Download, HelpCircle } from "lucide-react";
 
 interface ShortcutsDialogProps {
   open: boolean;
@@ -49,14 +49,35 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Keyboard className="h-4 w-4" />
-            Atajos de teclado
+            <HelpCircle className="h-4 w-4" />
+            Ayuda
           </DialogTitle>
           <DialogDescription>
-            Agilizá tu trabajo con estos atajos.
+            Descarga el manual o usa los atajos para ir más rápido.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
+          <div>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Documentación
+            </h4>
+            <a
+              href="/docs/ARIA-Manual-de-usuario.pdf"
+              download
+              target="_blank"
+              rel="noopener"
+              className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-colors hover:bg-muted/60"
+            >
+              <span className="flex items-center gap-2.5 text-sm font-medium">
+                <FileText className="h-4 w-4" style={{ color: "var(--teal, #158A8C)" }} />
+                Manual de usuario
+                <span className="text-xs font-normal text-muted-foreground">
+                  · PDF · 15 secciones
+                </span>
+              </span>
+              <Download className="h-4 w-4 text-muted-foreground" />
+            </a>
+          </div>
           {shortcuts.map((group) => (
             <div key={group.category}>
               <h4 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -74,9 +95,7 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
                         <span key={i} className="flex items-center gap-1">
                           <Kbd>{k}</Kbd>
                           {i < item.keys.length - 1 && group.category.includes("vim") && (
-                            <span className="text-xs text-muted-foreground">
-                              luego
-                            </span>
+                            <span className="text-xs text-muted-foreground">luego</span>
                           )}
                         </span>
                       ))}

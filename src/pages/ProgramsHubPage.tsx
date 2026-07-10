@@ -77,8 +77,15 @@ export function ProgramsHubPage() {
   const { setActiveProgram } = useProgram();
 
   const [showArchived, setShowArchived] = useState(false);
-  const { programs, loading, error, saveProgram, transitionProgram, removeProgram, importPrograms } =
-    usePrograms({ includeArchived: showArchived });
+  const {
+    programs,
+    loading,
+    error,
+    saveProgram,
+    transitionProgram,
+    removeProgram,
+    importPrograms,
+  } = usePrograms({ includeArchived: showArchived });
 
   const [q, setQ] = useState("");
   const [facultyFilter, setFacultyFilter] = useState("all");
@@ -91,7 +98,7 @@ export function ProgramsHubPage() {
 
   const faculties = useMemo(
     () => [...new Set(programs.map((p) => p.faculty).filter(Boolean) as string[])].sort(),
-    [programs]
+    [programs],
   );
 
   const filtered = useMemo(() => {
@@ -100,9 +107,7 @@ export function ProgramsHubPage() {
       .filter((p) => facultyFilter === "all" || p.faculty === facultyFilter)
       .filter(
         (p) =>
-          !needle ||
-          p.name.toLowerCase().includes(needle) ||
-          p.code.toLowerCase().includes(needle)
+          !needle || p.name.toLowerCase().includes(needle) || p.code.toLowerCase().includes(needle),
       )
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [programs, q, facultyFilter]);
@@ -144,7 +149,7 @@ export function ProgramsHubPage() {
       })
       .filter((r) => r.code);
     if (rows.length === 0) {
-      setMsg({ kind: "error", text: "Pegá al menos una fila: código,nombre,facultad" });
+      setMsg({ kind: "error", text: "Pega al menos una fila: código,nombre,facultad" });
       return;
     }
     setBusy(true);
@@ -152,7 +157,10 @@ export function ProgramsHubPage() {
     try {
       const res = await importPrograms(rows);
       setImportText(null);
-      setMsg({ kind: "ok", text: `Importados: ${res?.imported?.created ?? 0} nuevos, ${res?.imported?.updated ?? 0} actualizados.` });
+      setMsg({
+        kind: "ok",
+        text: `Importados: ${res?.imported?.created ?? 0} nuevos, ${res?.imported?.updated ?? 0} actualizados.`,
+      });
     } catch (e) {
       setMsg({ kind: "error", text: e instanceof Error ? e.message : "Error al importar" });
     } finally {
@@ -161,7 +169,11 @@ export function ProgramsHubPage() {
   }
 
   async function doTransition(p: Program, to: ProgramStatus) {
-    if (to === "cerrado" && !confirm(`¿Cerrar "${p.name}"? Se congelan sus métricas y se pausan sus campañas.`)) return;
+    if (
+      to === "cerrado" &&
+      !confirm(`¿Cerrar "${p.name}"? Se congelan sus métricas y se pausan sus campañas.`)
+    )
+      return;
     setBusy(true);
     setMsg(null);
     try {
@@ -233,21 +245,41 @@ export function ProgramsHubPage() {
 
       {/* Strip de salud agregada — datos reales sobre lo que se ve. */}
       <div className="grid" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 16 }}>
-        <Stat icon="cap" color="var(--accent)" label="Programas" value={<Num value={totals.count} />}
-          sub={showArchived ? "incluye archivados" : "en la vista actual"} />
-        <Stat icon="userplus" color="var(--cyan)" label="Leads totales" value={<Num value={totals.leads} />}
-          sub="sumados en la vista" />
-        <Stat icon="target" color="var(--green)" label="Activos" value={<Num value={totals.activos} />}
-          sub="en paralelo" />
+        <Stat
+          icon="cap"
+          color="var(--accent)"
+          label="Programas"
+          value={<Num value={totals.count} />}
+          sub={showArchived ? "incluye archivados" : "en la vista actual"}
+        />
+        <Stat
+          icon="userplus"
+          color="var(--cyan)"
+          label="Leads totales"
+          value={<Num value={totals.leads} />}
+          sub="sumados en la vista"
+        />
+        <Stat
+          icon="target"
+          color="var(--green)"
+          label="Activos"
+          value={<Num value={totals.activos} />}
+          sub="en paralelo"
+        />
       </div>
 
       {!endpointReady && (
         <Card style={{ marginBottom: 12 }}>
           <div className="row gap10" style={{ alignItems: "flex-start", fontSize: 13 }}>
-            <Icon name="zap" size={17} style={{ color: "var(--gold)", flex: "0 0 auto", marginTop: 1 }} />
+            <Icon
+              name="zap"
+              size={17}
+              style={{ color: "var(--gold)", flex: "0 0 auto", marginTop: 1 }}
+            />
             <div>
               El endpoint <code>managePrograms</code> aún no está configurado. Corré{" "}
-              <code>node scripts/create-programs.mjs</code> y pegá la URL en <code>amplify_outputs.json</code>.
+              <code>node scripts/create-programs.mjs</code> y pega la URL en{" "}
+              <code>amplify_outputs.json</code>.
             </div>
           </div>
         </Card>
@@ -255,7 +287,10 @@ export function ProgramsHubPage() {
 
       {msg && (
         <div style={{ marginBottom: 12 }}>
-          <Pill tone={msg.kind === "error" ? "red" : "green"} icon={msg.kind === "error" ? "x" : "check"}>
+          <Pill
+            tone={msg.kind === "error" ? "red" : "green"}
+            icon={msg.kind === "error" ? "x" : "check"}
+          >
             {msg.text}
           </Pill>
         </div>
@@ -280,7 +315,15 @@ export function ProgramsHubPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar por nombre o código…"
-            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "var(--text-1)", fontSize: 13, padding: "9px 0" }}
+            style={{
+              flex: 1,
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              color: "var(--text-1)",
+              fontSize: 13,
+              padding: "9px 0",
+            }}
           />
         </div>
         <select
@@ -290,35 +333,65 @@ export function ProgramsHubPage() {
         >
           <option value="all">Todas las facultades</option>
           {faculties.map((f) => (
-            <option key={f} value={f}>{f}</option>
+            <option key={f} value={f}>
+              {f}
+            </option>
           ))}
         </select>
-        <label className="row gap6" style={{ fontSize: 13, color: "var(--text-2)", cursor: "pointer" }}>
-          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+        <label
+          className="row gap6"
+          style={{ fontSize: 13, color: "var(--text-2)", cursor: "pointer" }}
+        >
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+          />
           Incluir archivados
         </label>
       </div>
 
       {/* Grid de tarjetas */}
       {loading ? (
-        <div className="dim" style={{ padding: 40, textAlign: "center" }}>Cargando programas…</div>
+        <div className="dim" style={{ padding: 40, textAlign: "center" }}>
+          Cargando programas…
+        </div>
       ) : error ? (
-        <Pill tone="red" icon="x">Error: {error}</Pill>
+        <Pill tone="red" icon="x">
+          Error: {error}
+        </Pill>
       ) : filtered.length === 0 ? (
         <div className="dim" style={{ padding: 40, textAlign: "center" }}>
-          {programs.length === 0 ? "No hay programas todavía." : "Ningún programa coincide con el filtro."}
+          {programs.length === 0
+            ? "No hay programas todavía."
+            : "Ningún programa coincide con el filtro."}
         </div>
       ) : (
-        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
+        <div
+          className="grid"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}
+        >
           {filtered.map((p) => {
             const meta = STATUS_META[p.status];
             const dl = daysLeft(p.endDate);
             const accent = p.color || "var(--accent)";
             return (
-              <Card key={p.programId} accent={accent} bodyStyle={{ display: "flex", flexDirection: "column", gap: 12, minHeight: 172 }}>
+              <Card
+                key={p.programId}
+                accent={accent}
+                bodyStyle={{ display: "flex", flexDirection: "column", gap: 12, minHeight: 172 }}
+              >
                 <div className="row between" style={{ alignItems: "flex-start", gap: 8 }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 750, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div
+                      style={{
+                        fontWeight: 750,
+                        fontSize: 15,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       {p.name}
                     </div>
                     <div className="row gap6 dim" style={{ fontSize: 12, marginTop: 3 }}>
@@ -340,14 +413,26 @@ export function ProgramsHubPage() {
                     <div className="tnum" style={{ fontSize: 22, fontWeight: 800, lineHeight: 1 }}>
                       <Num value={p.leadCount ?? 0} />
                     </div>
-                    <div className="dim" style={{ fontSize: 11, marginTop: 2 }}>leads</div>
+                    <div className="dim" style={{ fontSize: 11, marginTop: 2 }}>
+                      leads
+                    </div>
                   </div>
                   {dl !== null && (
                     <div>
-                      <div className="tnum" style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: dl < 0 ? "var(--red)" : dl <= 14 ? "var(--gold)" : "var(--text-1)" }}>
+                      <div
+                        className="tnum"
+                        style={{
+                          fontSize: 22,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          color: dl < 0 ? "var(--red)" : dl <= 14 ? "var(--gold)" : "var(--text-1)",
+                        }}
+                      >
                         {dl < 0 ? "Vencido" : dl}
                       </div>
-                      <div className="dim" style={{ fontSize: 11, marginTop: 2 }}>{dl < 0 ? "" : "días restantes"}</div>
+                      <div className="dim" style={{ fontSize: 11, marginTop: 2 }}>
+                        {dl < 0 ? "" : "días restantes"}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -423,7 +508,11 @@ export function ProgramsHubPage() {
       {/* Modal importar CSV (R3) */}
       {importText !== null && (
         <div onClick={() => setImportText(null)} style={overlay}>
-          <div onClick={(e) => e.stopPropagation()} className="card" style={{ width: "min(560px, 100%)" }}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="card"
+            style={{ width: "min(560px, 100%)" }}
+          >
             <div className="card__pad">
               <div className="row between" style={{ marginBottom: 8 }}>
                 <h2 style={{ margin: 0, fontSize: 17, fontWeight: 750 }}>Importar programas</h2>
@@ -432,17 +521,22 @@ export function ProgramsHubPage() {
                 </Btn>
               </div>
               <p className="dim" style={{ margin: "0 0 10px", fontSize: 12 }}>
-                Una línea por programa: <code>código,nombre,facultad</code> (facultad opcional). Exportá tu Excel a CSV y pegá acá.
+                Una línea por programa: <code>código,nombre,facultad</code> (facultad opcional).
+                Exporta tu Excel a CSV y pega aquí.
               </p>
               <textarea
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
                 rows={8}
-                placeholder={"ded261,Diplomado en Educación 2026-I,Humanidades\ntoefl264,TOEFL Preparación,Idiomas"}
+                placeholder={
+                  "ded261,Diplomado en Educación 2026-I,Humanidades\ntoefl264,TOEFL Preparación,Idiomas"
+                }
                 style={{ ...inp, resize: "vertical", fontFamily: "monospace", padding: "8px 10px" }}
               />
               <div className="row gap8" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-                <Btn variant="ghost" size="sm" onClick={() => setImportText(null)}>Cancelar</Btn>
+                <Btn variant="ghost" size="sm" onClick={() => setImportText(null)}>
+                  Cancelar
+                </Btn>
                 <Btn variant="primary" size="sm" icon="upload" onClick={doImport} disabled={busy}>
                   {busy ? "Importando…" : "Importar"}
                 </Btn>
@@ -455,10 +549,16 @@ export function ProgramsHubPage() {
       {/* Modal crear/editar */}
       {editing && (
         <div onClick={() => setEditing(null)} style={overlay}>
-          <div onClick={(e) => e.stopPropagation()} className="card" style={{ width: "min(560px, 100%)", maxHeight: "90vh", overflow: "auto" }}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="card"
+            style={{ width: "min(560px, 100%)", maxHeight: "90vh", overflow: "auto" }}
+          >
             <div className="card__pad">
               <div className="row between" style={{ marginBottom: 14 }}>
-                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 750 }}>{editing.programId ? "Editar programa" : "Nuevo programa"}</h2>
+                <h2 style={{ margin: 0, fontSize: 17, fontWeight: 750 }}>
+                  {editing.programId ? "Editar programa" : "Nuevo programa"}
+                </h2>
                 <Btn variant="ghost" size="sm" onClick={() => setEditing(null)}>
                   <X size={14} />
                 </Btn>
@@ -466,40 +566,88 @@ export function ProgramsHubPage() {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <Field label="Código *">
-                  <input value={editing.code} onChange={(e) => setEditing({ ...editing, code: e.target.value })} placeholder="ej. ded261" style={inp} />
+                  <input
+                    value={editing.code}
+                    onChange={(e) => setEditing({ ...editing, code: e.target.value })}
+                    placeholder="ej. ded261"
+                    style={inp}
+                  />
                 </Field>
                 <Field label="Facultad">
-                  <input value={editing.faculty || ""} onChange={(e) => setEditing({ ...editing, faculty: e.target.value })} placeholder="ej. Posgrado" style={inp} list="faculties-dl" />
+                  <input
+                    value={editing.faculty || ""}
+                    onChange={(e) => setEditing({ ...editing, faculty: e.target.value })}
+                    placeholder="ej. Posgrado"
+                    style={inp}
+                    list="faculties-dl"
+                  />
                   <datalist id="faculties-dl">
-                    {faculties.map((f) => <option key={f} value={f} />)}
+                    {faculties.map((f) => (
+                      <option key={f} value={f} />
+                    ))}
                   </datalist>
                 </Field>
                 <Field label="Nombre *" full>
-                  <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="ej. Diplomado en Educación 2026-I" style={inp} />
+                  <input
+                    value={editing.name}
+                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                    placeholder="ej. Diplomado en Educación 2026-I"
+                    style={inp}
+                  />
                 </Field>
                 <Field label="Descripción" full>
-                  <textarea value={editing.description || ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} rows={2} style={{ ...inp, resize: "vertical" }} />
+                  <textarea
+                    value={editing.description || ""}
+                    onChange={(e) => setEditing({ ...editing, description: e.target.value })}
+                    rows={2}
+                    style={{ ...inp, resize: "vertical" }}
+                  />
                 </Field>
                 <Field label="Inicio">
-                  <input type="date" value={(editing.startDate || "").slice(0, 10)} onChange={(e) => setEditing({ ...editing, startDate: e.target.value })} style={inp} />
+                  <input
+                    type="date"
+                    value={(editing.startDate || "").slice(0, 10)}
+                    onChange={(e) => setEditing({ ...editing, startDate: e.target.value })}
+                    style={inp}
+                  />
                 </Field>
                 <Field label="Fin (auto-archiva)">
-                  <input type="date" value={(editing.endDate || "").slice(0, 10)} onChange={(e) => setEditing({ ...editing, endDate: e.target.value })} style={inp} />
+                  <input
+                    type="date"
+                    value={(editing.endDate || "").slice(0, 10)}
+                    onChange={(e) => setEditing({ ...editing, endDate: e.target.value })}
+                    style={inp}
+                  />
                 </Field>
                 <Field label="Estado">
-                  <select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value as ProgramStatus })} style={inp}>
+                  <select
+                    value={editing.status}
+                    onChange={(e) =>
+                      setEditing({ ...editing, status: e.target.value as ProgramStatus })
+                    }
+                    style={inp}
+                  >
                     {(Object.keys(STATUS_META) as ProgramStatus[]).map((s) => (
-                      <option key={s} value={s}>{STATUS_META[s].label}</option>
+                      <option key={s} value={s}>
+                        {STATUS_META[s].label}
+                      </option>
                     ))}
                   </select>
                 </Field>
                 <Field label="Color">
-                  <input type="color" value={editing.color || "#22d3ee"} onChange={(e) => setEditing({ ...editing, color: e.target.value })} style={{ ...inp, height: 38, padding: 4 }} />
+                  <input
+                    type="color"
+                    value={editing.color || "#22d3ee"}
+                    onChange={(e) => setEditing({ ...editing, color: e.target.value })}
+                    style={{ ...inp, height: 38, padding: 4 }}
+                  />
                 </Field>
               </div>
 
               <div className="row gap8" style={{ justifyContent: "flex-end", marginTop: 18 }}>
-                <Btn variant="ghost" size="sm" onClick={() => setEditing(null)}>Cancelar</Btn>
+                <Btn variant="ghost" size="sm" onClick={() => setEditing(null)}>
+                  Cancelar
+                </Btn>
                 <Btn variant="primary" size="sm" icon="check" onClick={doSave} disabled={busy}>
                   {busy ? "Guardando…" : "Guardar"}
                 </Btn>
@@ -533,10 +681,27 @@ const overlay: React.CSSProperties = {
   padding: 20,
 };
 
-function Field({ label, full, children }: { label: string; full?: boolean; children: React.ReactNode }) {
+function Field({
+  label,
+  full,
+  children,
+}: {
+  label: string;
+  full?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: full ? "1 / -1" : undefined }}>
-      <span className="dim" style={{ fontSize: 12 }}>{label}</span>
+    <label
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        gridColumn: full ? "1 / -1" : undefined,
+      }}
+    >
+      <span className="dim" style={{ fontSize: 12 }}>
+        {label}
+      </span>
       {children}
     </label>
   );

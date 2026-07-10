@@ -40,13 +40,13 @@ const idp = new CognitoIdentityProviderClient({ region: REGION });
 
 const CORS: Record<string, string> = {
   // CORS lo provee la Function URL (config de AWS). NO setear Access-Control-*
-  // acá: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
+  // aquí: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
   // rechaza la respuesta con "Failed to fetch" (mismo quirk que web-form-capture).
   "Content-Type": "application/json",
 };
 
 // Roles válidos = los grupos del pool. NO aceptamos cualquier string del body:
-// AdminAddUserToGroup a un grupo inexistente tiraría, pero mejor validar acá.
+// AdminAddUserToGroup a un grupo inexistente tiraría, pero mejor validar aquí.
 const VALID_ROLES = new Set(["Agents", "Supervisors", "Admins"]);
 
 interface FnEvent {
@@ -95,7 +95,7 @@ export const handler = async (event: FnEvent) => {
   //     admin (anti cross-tenant). No se opera sobre la propia cuenta.
   if (action === "remove" || action === "disable" || action === "enable") {
     if (email === (id.email || "").trim().toLowerCase()) {
-      return resp(400, { error: "No podés modificar tu propia cuenta desde acá." });
+      return resp(400, { error: "No puedes modificar tu propia cuenta desde aquí." });
     }
     let target;
     try {

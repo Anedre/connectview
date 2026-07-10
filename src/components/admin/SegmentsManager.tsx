@@ -86,7 +86,7 @@ export function SegmentsManager() {
 
   const doSave = async () => {
     if (!name.trim()) {
-      toast.error("Ponele un nombre al segmento");
+      toast.error("Ponle un nombre al segmento");
       return;
     }
     setSaving(true);
@@ -141,8 +141,8 @@ export function SegmentsManager() {
           className="muted"
           style={{ fontSize: 12.5, marginTop: 3, maxWidth: 640, lineHeight: 1.5 }}
         >
-          Audiencias dinámicas reutilizables. Definilas una vez (por score, grado, origen, etapa…) y
-          usalas como audiencia de campaña, filtro de export y —pronto— entrada de un journey.
+          Audiencias dinámicas reutilizables. Defínelas una vez (por score, grado, origen, etapa…) y
+          úsalas como audiencia de campaña, filtro de export y —pronto— entrada de un journey.
         </div>
       </div>
 
@@ -253,7 +253,7 @@ export function SegmentsManager() {
         </div>
       ) : segments.length === 0 ? (
         <div className="muted" style={{ fontSize: 12.5, padding: 12 }}>
-          Aún no hay segmentos. Creá el primero arriba.
+          Aún no hay segmentos. Crea el primero arriba.
         </div>
       ) : (
         <div className="col" style={{ gap: 8 }}>

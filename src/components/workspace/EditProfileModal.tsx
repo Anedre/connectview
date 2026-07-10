@@ -263,7 +263,7 @@ export function EditProfileModal({
 
       // 2) Lead + Salesforce: si hay un lead con este teléfono, lo actualizamos vía
       //    manage-leads (nombre + etapa/monto/origen), que empuja a Salesforce y
-      //    refresca CP + conversaciones. update-if-exists: no crea leads acá.
+      //    refresca CP + conversaciones. update-if-exists: no crea leads aquí.
       let sfBlock: { leadId?: string; action?: string } | null = null;
       if (leadId && phone && endpoints.manageLeads) {
         try {
@@ -586,7 +586,7 @@ export function EditProfileModal({
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {attrs.length === 0 && (
                   <span style={{ fontSize: 11, color: "var(--text-3)" }}>
-                    Sin atributos. Agregá campos propios (ej. DNI, programa, código).
+                    Sin atributos. Agrega campos propios (ej. DNI, programa, código).
                   </span>
                 )}
                 {attrs.map((pair, i) => (

@@ -32,7 +32,7 @@ import outputs from "../../../amplify_outputs.json";
 /**
  * IntegrationsManager — Configuración → Integraciones. El cliente conecta SU
  * Amazon Connect (BYO, rol cross-account), SU Salesforce (OAuth) y WhatsApp.
- * Es la superficie del SaaS: "conectá tu cuenta y usá Vox".
+ * Es la superficie del SaaS: "conecta tu cuenta y usa Vox".
  *
  * Estado actual: la config NO sensible se guarda (local hoy, backend luego).
  * Los secretos (token WA, refresh token SF) y la verificación real viven en el
@@ -101,7 +101,7 @@ function newExternalId(): string {
   }
   throw new Error(
     "No hay generador criptográfico seguro disponible (¿contexto no-HTTPS?). " +
-      "Abrí la app sobre HTTPS para generar el ExternalId de forma segura.",
+      "Abre la app sobre HTTPS para generar el ExternalId de forma segura.",
   );
 }
 
@@ -283,7 +283,7 @@ function AmazonConnectCard({
       return;
     }
     if (!draft.roleArn?.trim()) {
-      toast.error("Pegá primero el ARN del rol");
+      toast.error("Pega primero el ARN del rol");
       return;
     }
     setVerifying(true);
@@ -320,7 +320,7 @@ function AmazonConnectCard({
       return;
     }
     if (!draft.roleArn?.trim()) {
-      toast.error("Pegá primero el ARN del rol (paso 3)");
+      toast.error("Pega primero el ARN del rol (paso 3)");
       return;
     }
     setVerifyingDp(true);
@@ -347,7 +347,7 @@ function AmazonConnectCard({
       const dataPlaneVerifiedAt = new Date().toISOString();
       update({ connect: { ...draft, dataPlaneVerifiedAt } });
       setDraft((d) => ({ ...d, dataPlaneVerifiedAt }));
-      toast.success(`Las 14 tablas existen en tu cuenta. ARIA ya escribe acá.`);
+      toast.success(`Las 14 tablas existen en tu cuenta. ARIA ya escribe aquí.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falló la verificación del data plane");
     } finally {
@@ -364,7 +364,7 @@ function AmazonConnectCard({
       return;
     }
     if (!c.verifiedAt) {
-      toast.error("Verificá la conexión a Connect primero (paso anterior).");
+      toast.error("Verifica la conexión a Connect primero (paso anterior).");
       return;
     }
     setProvisioning(true);
@@ -423,7 +423,7 @@ function AmazonConnectCard({
         >
           <div>
             <div style={{ fontWeight: 700, fontSize: 14 }}>
-              ¿Primera vez? Usá el asistente guiado
+              ¿Primera vez? Usa el asistente guiado
             </div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
               Te lleva paso a paso, con un clic para crear el rol en tu cuenta AWS. ~3 minutos.
@@ -447,7 +447,7 @@ function AmazonConnectCard({
             fontWeight: 600,
           }}
         >
-          O configurá manualmente
+          O configura manualmente
         </div>
 
         {/* Paso 1 */}
@@ -497,7 +497,7 @@ function AmazonConnectCard({
           <StepLabel n={2}>Permitir que ARIA embeba tu CCP</StepLabel>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
             En tu consola de Connect → <b>Configuración de la aplicación → Orígenes aprobados</b>,
-            agregá este dominio:
+            agrega este dominio:
           </div>
           <div className="row" style={{ gap: 8, marginTop: 6 }}>
             <code
@@ -524,8 +524,8 @@ function AmazonConnectCard({
         <div>
           <StepLabel n={3}>Dar acceso seguro (rol cross-account)</StepLabel>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-            Creá un rol IAM en TU cuenta AWS que ARIA pueda asumir (no creamos nada en tu cuenta,
-            solo lo asumimos). Desplegá esta plantilla CloudFormation y pegá el <b>RoleArn</b> de
+            Crea un rol IAM en TU cuenta AWS que ARIA pueda asumir (no creamos nada en tu cuenta,
+            solo lo asumimos). Despliega esta plantilla CloudFormation y pega el <b>RoleArn</b> de
             salida.
           </div>
           <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
@@ -597,7 +597,7 @@ function AmazonConnectCard({
           <StepLabel n={4}>Tus datos en tu cuenta (requerido)</StepLabel>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
             ARIA <b>no guarda datos de empresas en su cuenta</b>. Tus leads, campañas, contactos,
-            tipificaciones y audit viven en TU cuenta AWS. Desplegá esta plantilla: crea las 14
+            tipificaciones y audit viven en TU cuenta AWS. Despliega esta plantilla: crea las 14
             tablas DynamoDB en TU cuenta y extiende el rol existente con permisos de
             lectura/escritura sobre ellas.{" "}
             <b>Es un paso necesario: sin esto, ARIA no tiene dónde guardar tus datos.</b>
@@ -661,7 +661,7 @@ function AmazonConnectCard({
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 13 }}>Activar BYO Data Plane</div>
               <div className="muted" style={{ fontSize: 12, marginTop: 2, lineHeight: 1.5 }}>
-                Tildá esto SOLO después de haber aplicado el CFN del paso 4 en tu cuenta. A partir
+                Marca esto SOLO después de haber aplicado el CFN del paso 4 en tu cuenta. A partir
                 de ese momento ARIA lee/escribe en TU DynamoDB; si las tablas no existen las
                 llamadas van a fallar.
               </div>
@@ -845,8 +845,8 @@ function SfFieldMapper({
         </button>
       </div>
       <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, margin: "8px 0 12px" }}>
-        ARIA <b>no crea campos</b> en tu Salesforce: vos elegís a qué campo de tu Lead se escribe
-        cada dato. Descubrí tu esquema y mapeá. «No escribir» deja ese dato sin sincronizar.
+        ARIA <b>no crea campos</b> en tu Salesforce: tú eliges a qué campo de tu Lead se escribe
+        cada dato. Descubre tu esquema y mapea. «No escribir» deja ese dato sin sincronizar.
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -915,7 +915,7 @@ function SfFieldMapper({
         </button>
         {!discovered && (
           <span className="muted" style={{ fontSize: 11 }}>
-            Descubrí tu esquema primero para editar el mapeo.
+            Descubre tu esquema primero para editar el mapeo.
           </span>
         )}
       </div>
@@ -973,7 +973,7 @@ function SalesforceCard({
       if (!r.ok || !j.inboundToken) throw new Error(j.error || "No se pudo generar el token");
       setInboundToken(j.inboundToken);
       update({ salesforce: { ...sf, inboundTokenSet: true } });
-      toast.success("Token de entrada generado — copialo ahora (se muestra una sola vez)");
+      toast.success("Token de entrada generado — cópialo ahora (se muestra una sola vez)");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falló la generación del token");
     } finally {
@@ -1000,6 +1000,16 @@ function SalesforceCard({
     }
   };
   const onDisconnect = async () => {
+    if (
+      !(await confirm({
+        title: "¿Desconectar Salesforce?",
+        description:
+          "Se invalidará el token y ARIA dejará de sincronizar con tu org de Salesforce.",
+        destructive: true,
+        confirmLabel: "Desconectar",
+      }))
+    )
+      return;
     update({ salesforce: { connected: false } });
     // Invalidar el token en el backend (no solo el flag): el GET deriva el
     // estado del secret, así que sin esto la desconexión no se reflejaría.
@@ -1049,7 +1059,7 @@ function SalesforceCard({
         ) : (
           <>
             <div>
-              <StepLabel n={1}>Elegí el entorno</StepLabel>
+              <StepLabel n={1}>Elige el entorno</StepLabel>
               <div
                 className="row"
                 style={{
@@ -1078,9 +1088,9 @@ function SalesforceCard({
               </div>
             </div>
             <div>
-              <StepLabel n={2}>Autorizá a ARIA</StepLabel>
+              <StepLabel n={2}>Autoriza a ARIA</StepLabel>
               <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
-                Te lleva al login de Salesforce, das consentimiento y volvés. Guardamos el token de
+                Te lleva al login de Salesforce, das consentimiento y vuelves. Guardamos el token de
                 forma segura (Secrets Manager) — nunca en tu navegador.
               </div>
               <button className="btn btn--primary btn--sm" onClick={onConnect}>
@@ -1100,8 +1110,8 @@ function SalesforceCard({
             Webhook de entrada (SF → ARIA)
           </div>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
-            Para que tu Flow de Salesforce sincronice leads hacia ARIA, generá un token propio y
-            pegalo en el Custom Header <code style={{ fontSize: 11.5 }}>x-vox-token</code> de la
+            Para que tu Flow de Salesforce sincronice leads hacia ARIA, genera un token propio y
+            pégalo en el Custom Header <code style={{ fontSize: 11.5 }}>x-vox-token</code> de la
             Named Credential del Flow. Es exclusivo de tu organización: nadie más puede escribir en
             tus datos con él.
           </div>
@@ -1164,8 +1174,8 @@ function SalesforceCard({
                   gap: 5,
                 }}
               >
-                <AlertTriangle size={12} style={{ flexShrink: 0 }} /> Copialo ahora: por seguridad
-                no se vuelve a mostrar. Si lo perdés, rotá uno nuevo.
+                <AlertTriangle size={12} style={{ flexShrink: 0 }} /> Cópialo ahora: por seguridad
+                no se vuelve a mostrar. Si lo pierdes, rota uno nuevo.
               </div>
             </div>
           )}
@@ -1239,7 +1249,7 @@ function WhatsAppCard({
     if (mode === "aws") {
       const num = awsNumbers.find((n) => n.metaPhoneNumberId === selectedAws);
       if (!num) {
-        toast.error("Elegí un número de la lista");
+        toast.error("Elige un número de la lista");
         return;
       }
       // Modo AWS: SIN token — AWS End User Messaging maneja la auth de la WABA.
@@ -1316,7 +1326,7 @@ function WhatsAppCard({
     <ConnCard
       icon={<Icon.WhatsApp size={20} style={{ color: "#25D366" }} />}
       title="WhatsApp"
-      desc="Registrá uno o varios números (de Connect o de Meta). El ruteo de cada número a su flujo se decide en Bots → Ruteo."
+      desc="Registra uno o varios números (de Connect o de Meta). El ruteo de cada número a su flujo se decide en Bots → Ruteo."
       tone={tone}
       statusLabel={statusLabel}
       open={open}
@@ -1532,8 +1542,8 @@ function WhatsAppCard({
                   className="muted"
                   style={{ fontSize: 12.5, padding: "8px 0", lineHeight: 1.6 }}
                 >
-                  No detectamos números vinculados a tu Amazon Connect. Vinculá uno en{" "}
-                  <b>AWS End User Messaging → WhatsApp</b> (queda atado a tu instancia), o usá un
+                  No detectamos números vinculados a tu Amazon Connect. Vincula uno en{" "}
+                  <b>AWS End User Messaging → WhatsApp</b> (queda atado a tu instancia), o usa un
                   número de Meta aparte en la otra pestaña.
                 </div>
               )
@@ -1619,7 +1629,7 @@ function WhatsAppCard({
 
         {/* ── Formularios (WhatsApp Flows, #10) — común al tenant ──
             El Flow se diseña/publica en Meta Business Manager → WhatsApp
-            Manager → Flows; acá se registra su flow_id para enviarlo desde
+            Manager → Flows; aquí se registra su flow_id para enviarlo desde
             el chat. La respuesta vuelve sola al CRM (lead + automatizaciones). */}
         <WaFlowsEditor wa={wa} persist={persistFlows} />
       </div>
@@ -1648,7 +1658,7 @@ function WaFlowsEditor({
 
   const add = async () => {
     if (!nId.trim() || !nName.trim()) {
-      toast.error("Pegá el flow_id y un nombre");
+      toast.error("Pega el flow_id y un nombre");
       return;
     }
     await save([
@@ -1672,8 +1682,8 @@ function WaFlowsEditor({
         Formularios (WhatsApp Flows)
       </div>
       <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.5, marginBottom: 10 }}>
-        Formularios multi-pantalla DENTRO del chat. Diseñalos y publicalos en{" "}
-        <b>Meta Business Manager → WhatsApp Manager → Flows</b> y pegá acá su <b>flow_id</b>. El
+        Formularios multi-pantalla DENTRO del chat. Diséñalos y publícalos en{" "}
+        <b>Meta Business Manager → WhatsApp Manager → Flows</b> y pega aquí su <b>flow_id</b>. El
         agente los envía desde el chat; la respuesta crea/actualiza el lead y dispara
         Automatizaciones ("Formulario completado").
       </div>
@@ -1766,7 +1776,7 @@ function WaFlowsEditor({
 /* ── Mensajes (textos automáticos configurables por tenant) ──────────────
    De-Novasys-ificación (#2): la despedida de chat/WhatsApp ya no está
    hardcodeada con texto de UDEP en el código; vive en la config del tenant y
-   se edita acá. Vacío → el producto usa un default genérico sin marca. */
+   se edita aquí. Vacío → el producto usa un default genérico sin marca. */
 function MessagingCard({
   config,
   update,
@@ -1794,7 +1804,7 @@ function MessagingCard({
     <ConnCard
       icon={<Palette size={20} />}
       title="Marca y mensajes"
-      desc="Personalizá el nombre de producto que ven tus agentes (white-label) y los textos automáticos que reciben tus clientes. Vacío = valores por defecto de ARIA."
+      desc="Personaliza el nombre de producto que ven tus agentes (white-label) y los textos automáticos que reciben tus clientes. Vacío = valores por defecto de ARIA."
       tone={tone}
       statusLabel={
         brand.productName?.trim() || msg.chatFarewell?.trim() ? "Personalizado" : "Por defecto"
@@ -1925,11 +1935,11 @@ function SsoCard({
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
     if (isSaml && !draft.metadataUrl?.trim()) {
-      toast.error("Pegá la URL de metadata del IdP (SAML).");
+      toast.error("Pega la URL de metadata del IdP (SAML).");
       return;
     }
     if (!isSaml && !(draft.issuerUrl?.trim() && draft.clientId?.trim())) {
-      toast.error("Completá el Issuer URL y el Client ID (OIDC).");
+      toast.error("Completa el Issuer URL y el Client ID (OIDC).");
       return;
     }
     const next: SsoConn = {
@@ -1975,7 +1985,7 @@ function SsoCard({
 
         {/* Paso 1 — proveedor */}
         <div>
-          <StepLabel n={1}>Elegí el protocolo de tu IdP</StepLabel>
+          <StepLabel n={1}>Elige el protocolo de tu IdP</StepLabel>
           <div
             className="row"
             style={{
@@ -2055,8 +2065,8 @@ function SsoCard({
                 className="muted"
                 style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}
               >
-                <Lock size={11} style={{ flexShrink: 0 }} /> El <b>Client Secret</b> no se pega acá:
-                se carga como secreto en el deploy (Secrets Manager de Amplify), nunca en el
+                <Lock size={11} style={{ flexShrink: 0 }} /> El <b>Client Secret</b> no se pega
+                aquí: se carga como secreto en el deploy (Secrets Manager de Amplify), nunca en el
                 navegador ni en la base.
               </div>
             </div>
@@ -2067,7 +2077,7 @@ function SsoCard({
         <div>
           <StepLabel n={3}>Dominios de correo de tu organización</StepLabel>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
-            Los usuarios con estos dominios entran por tu IdP. Separalos por coma.
+            Los usuarios con estos dominios entran por tu IdP. Sepáralos por coma.
           </div>
           <input
             style={inputStyle}
@@ -2079,7 +2089,7 @@ function SsoCard({
 
         {/* Paso 4 — datos para cargar en el IdP del cliente (read-only) */}
         <div>
-          <StepLabel n={4}>Pegá estos datos en tu IdP</StepLabel>
+          <StepLabel n={4}>Pega estos datos en tu IdP</StepLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <SsoRoField label="Entity ID / Audience URI" value={entityId} />
             <SsoRoField
@@ -2119,6 +2129,441 @@ const ML_SITES: { v: string; l: string }[] = [
   { v: "MLU", l: "Uruguay" },
 ];
 
+/* ── Correo saliente (multi-proveedor) ─────────────────────────────────── */
+const EMAIL_PROVIDERS: { kind: string; label: string; oauth?: boolean }[] = [
+  { kind: "novasys", label: "SES de Novasys (compartido)" },
+  { kind: "ses", label: "Amazon SES (propio)" },
+  { kind: "smtp", label: "SMTP — Gmail, Outlook, Zoho, custom" },
+  { kind: "sendgrid", label: "SendGrid" },
+  { kind: "resend", label: "Resend" },
+  { kind: "mailgun", label: "Mailgun" },
+  { kind: "gmail", label: "Gmail API (OAuth)", oauth: true },
+  { kind: "microsoft", label: "Microsoft 365 (OAuth)", oauth: true },
+];
+
+function EmailCard({
+  config,
+  update,
+}: {
+  config: ConnectionsConfig;
+  update: (patch: Partial<ConnectionsConfig>) => void;
+}) {
+  const ep = getApiEndpoints();
+  const [open, setOpen] = useState(false);
+  const prov = config.email?.provider as Record<string, unknown> | undefined;
+  const [kind, setKind] = useState<string>((prov?.kind as string) || "novasys");
+  const [fromEmail, setFromEmail] = useState<string>((prov?.fromEmail as string) || "");
+  const [fromName, setFromName] = useState<string>((prov?.fromName as string) || "ARIA");
+  const [region, setRegion] = useState<string>((prov?.region as string) || "us-east-1");
+  const [useTenantRole, setUseTenantRole] = useState<boolean>(!!prov?.useTenantRole);
+  const [host, setHost] = useState<string>((prov?.host as string) || "");
+  const [port, setPort] = useState<string>(String((prov?.port as number) || 587));
+  const [user, setUser] = useState<string>((prov?.user as string) || "");
+  const [domain, setDomain] = useState<string>((prov?.domain as string) || "");
+  const [mgRegion, setMgRegion] = useState<string>((prov?.region as string) || "us");
+  const [msTenant, setMsTenant] = useState<string>("");
+  const [sender, setSender] = useState<string>((prov?.sender as string) || "");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [sgKey, setSgKey] = useState("");
+  const [resendKey, setResendKey] = useState("");
+  const [mgKey, setMgKey] = useState("");
+  const [gId, setGId] = useState("");
+  const [gSecret, setGSecret] = useState("");
+  const [gRefresh, setGRefresh] = useState("");
+  const [msId, setMsId] = useState("");
+  const [msSecret, setMsSecret] = useState("");
+  const [msRefresh, setMsRefresh] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [testTo, setTestTo] = useState("");
+  const [testing, setTesting] = useState(false);
+
+  const configured = !!config.email?.provider;
+  const secretSet = !!config.email?.secretSet;
+  const tone: Tone = configured ? "ok" : "idle";
+  const statusLabel = configured ? "Configurado" : "No configurado";
+
+  const buildProvider = (): Record<string, unknown> => {
+    switch (kind) {
+      case "ses":
+        return { kind, fromEmail, fromName, region, useTenantRole };
+      case "smtp":
+        return {
+          kind,
+          host,
+          port: Number(port),
+          secure: Number(port) === 465,
+          user,
+          fromEmail,
+          fromName,
+        };
+      case "gmail":
+      case "sendgrid":
+      case "resend":
+        return { kind, fromEmail, fromName };
+      case "microsoft":
+        return { kind, fromEmail, fromName, sender: sender || fromEmail };
+      case "mailgun":
+        return { kind, fromEmail, fromName, domain, region: mgRegion };
+      default:
+        return { kind: "novasys" };
+    }
+  };
+  const buildSecret = (): Record<string, unknown> => {
+    const s: Record<string, unknown> = {};
+    if (kind === "smtp" && smtpPass) s.smtpPass = smtpPass;
+    if (kind === "sendgrid" && sgKey) s.sendgridKey = sgKey;
+    if (kind === "resend" && resendKey) s.resendKey = resendKey;
+    if (kind === "mailgun" && mgKey) s.mailgunKey = mgKey;
+    if (kind === "gmail") {
+      if (gId) s.gmailClientId = gId;
+      if (gSecret) s.gmailClientSecret = gSecret;
+      if (gRefresh) s.gmailRefreshToken = gRefresh;
+    }
+    if (kind === "microsoft") {
+      if (msId) s.msClientId = msId;
+      if (msSecret) s.msClientSecret = msSecret;
+      if (msRefresh) s.msRefreshToken = msRefresh;
+      if (msTenant) s.msTenant = msTenant;
+    }
+    return s;
+  };
+
+  const onSave = async () => {
+    if (!ep?.manageConnections) return;
+    setSaving(true);
+    try {
+      const r = await authedFetch(ep.manageConnections, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "saveEmailConn",
+          provider: buildProvider(),
+          emailSecret: buildSecret(),
+        }),
+      });
+      if (!r.ok) throw new Error(String(r.status));
+      const j = await r.json();
+      update({ email: j.email });
+      setSmtpPass("");
+      setSgKey("");
+      setResendKey("");
+      setMgKey("");
+      setGId("");
+      setGSecret("");
+      setGRefresh("");
+      setMsId("");
+      setMsSecret("");
+      setMsRefresh("");
+      toast.success("Correo configurado");
+    } catch {
+      toast.error("No se pudo guardar la configuración de correo.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onTest = async () => {
+    const to = testTo.trim();
+    if (!to) {
+      toast.error("Escribe un destinatario para la prueba.");
+      return;
+    }
+    if (!ep?.sendEmail) {
+      toast.error("El envío aún no está desplegado (Lambda send-email).");
+      return;
+    }
+    setTesting(true);
+    try {
+      const r = await authedFetch(ep.sendEmail, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ test: true, to }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.ok) toast.success(`Prueba enviada a ${to}`);
+      else toast.error(j.error || "No se pudo enviar la prueba.");
+    } catch {
+      toast.error("No se pudo enviar la prueba.");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const oauthProvider = kind === "gmail" || kind === "microsoft";
+
+  return (
+    <ConnCard
+      icon={<Icon.Send size={20} style={{ color: "#2c5698" }} />}
+      title="Correo"
+      desc="Envía correos desde ARIA (automatizaciones, journeys, avisos) por el proveedor que elijas: SES, SMTP, Gmail, Microsoft 365, SendGrid, Resend o Mailgun."
+      tone={tone}
+      statusLabel={statusLabel}
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <label>
+          <span style={labelStyle}>Proveedor</span>
+          <select style={inputStyle} value={kind} onChange={(e) => setKind(e.target.value)}>
+            {EMAIL_PROVIDERS.map((p) => (
+              <option key={p.kind} value={p.kind}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {kind === "novasys" ? (
+          <div className="muted" style={{ fontSize: 12.5 }}>
+            Usa el dominio verificado de Novasys (novasys.com.pe). Ideal para pilotos, sin
+            configurar nada.
+          </div>
+        ) : (
+          <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+            <label style={{ flex: 1, minWidth: 180 }}>
+              <span style={labelStyle}>Remitente (From)</span>
+              <input
+                style={inputStyle}
+                value={fromEmail}
+                onChange={(e) => setFromEmail(e.target.value)}
+                placeholder="ventas@tudominio.com"
+              />
+            </label>
+            <label style={{ flex: 1, minWidth: 140 }}>
+              <span style={labelStyle}>Nombre visible</span>
+              <input
+                style={inputStyle}
+                value={fromName}
+                onChange={(e) => setFromName(e.target.value)}
+                placeholder="ARIA"
+              />
+            </label>
+          </div>
+        )}
+
+        {kind === "ses" && (
+          <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <label style={{ width: 160 }}>
+              <span style={labelStyle}>Región</span>
+              <input
+                style={inputStyle}
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
+              />
+            </label>
+            <label className="row" style={{ gap: 8, fontSize: 13, marginTop: 18 }}>
+              <input
+                type="checkbox"
+                checked={useTenantRole}
+                onChange={(e) => setUseTenantRole(e.target.checked)}
+              />{" "}
+              SES de mi cuenta (assume-role)
+            </label>
+          </div>
+        )}
+
+        {kind === "smtp" && (
+          <>
+            <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+              <label style={{ flex: 2, minWidth: 180 }}>
+                <span style={labelStyle}>Servidor SMTP</span>
+                <input
+                  style={inputStyle}
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  placeholder="smtp.gmail.com"
+                />
+              </label>
+              <label style={{ width: 90 }}>
+                <span style={labelStyle}>Puerto</span>
+                <input style={inputStyle} value={port} onChange={(e) => setPort(e.target.value)} />
+              </label>
+            </div>
+            <label>
+              <span style={labelStyle}>Usuario</span>
+              <input
+                style={inputStyle}
+                value={user}
+                onChange={(e) => setUser(e.target.value)}
+                placeholder="ventas@tudominio.com"
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>
+                Contraseña / app-password{secretSet ? " · ya guardada" : ""}
+              </span>
+              <input
+                style={inputStyle}
+                type="password"
+                value={smtpPass}
+                onChange={(e) => setSmtpPass(e.target.value)}
+                placeholder={secretSet ? "•••••• (vacío = no cambiar)" : ""}
+              />
+            </label>
+          </>
+        )}
+
+        {kind === "sendgrid" && (
+          <label>
+            <span style={labelStyle}>API key de SendGrid{secretSet ? " · ya guardada" : ""}</span>
+            <input
+              style={inputStyle}
+              type="password"
+              value={sgKey}
+              onChange={(e) => setSgKey(e.target.value)}
+              placeholder="SG.xxxx"
+            />
+          </label>
+        )}
+        {kind === "resend" && (
+          <label>
+            <span style={labelStyle}>API key de Resend{secretSet ? " · ya guardada" : ""}</span>
+            <input
+              style={inputStyle}
+              type="password"
+              value={resendKey}
+              onChange={(e) => setResendKey(e.target.value)}
+              placeholder="re_xxxx"
+            />
+          </label>
+        )}
+        {kind === "mailgun" && (
+          <>
+            <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+              <label style={{ flex: 1, minWidth: 160 }}>
+                <span style={labelStyle}>Dominio</span>
+                <input
+                  style={inputStyle}
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  placeholder="mg.tudominio.com"
+                />
+              </label>
+              <label style={{ width: 90 }}>
+                <span style={labelStyle}>Región</span>
+                <select
+                  style={inputStyle}
+                  value={mgRegion}
+                  onChange={(e) => setMgRegion(e.target.value)}
+                >
+                  <option value="us">US</option>
+                  <option value="eu">EU</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              <span style={labelStyle}>API key de Mailgun{secretSet ? " · ya guardada" : ""}</span>
+              <input
+                style={inputStyle}
+                type="password"
+                value={mgKey}
+                onChange={(e) => setMgKey(e.target.value)}
+                placeholder="key-xxxx"
+              />
+            </label>
+          </>
+        )}
+
+        {oauthProvider && (
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 8,
+              background: "var(--bg-2)",
+              border: "1px solid var(--border-1)",
+            }}
+          >
+            <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+              OAuth: pega las credenciales de tu app de{" "}
+              {kind === "gmail" ? "Google Cloud" : "Azure AD"}. El botón «Conectar con OAuth»
+              (redirección) llega en la siguiente fase.
+            </div>
+            {kind === "gmail" ? (
+              <div className="col" style={{ gap: 8 }}>
+                <input
+                  style={inputStyle}
+                  value={gId}
+                  onChange={(e) => setGId(e.target.value)}
+                  placeholder="Client ID"
+                />
+                <input
+                  style={inputStyle}
+                  type="password"
+                  value={gSecret}
+                  onChange={(e) => setGSecret(e.target.value)}
+                  placeholder="Client secret"
+                />
+                <input
+                  style={inputStyle}
+                  type="password"
+                  value={gRefresh}
+                  onChange={(e) => setGRefresh(e.target.value)}
+                  placeholder="Refresh token"
+                />
+              </div>
+            ) : (
+              <div className="col" style={{ gap: 8 }}>
+                <input
+                  style={inputStyle}
+                  value={msTenant}
+                  onChange={(e) => setMsTenant(e.target.value)}
+                  placeholder="Tenant ID (Directory)"
+                />
+                <input
+                  style={inputStyle}
+                  value={sender}
+                  onChange={(e) => setSender(e.target.value)}
+                  placeholder="Buzón remitente (user@dominio)"
+                />
+                <input
+                  style={inputStyle}
+                  value={msId}
+                  onChange={(e) => setMsId(e.target.value)}
+                  placeholder="Client ID"
+                />
+                <input
+                  style={inputStyle}
+                  type="password"
+                  value={msSecret}
+                  onChange={(e) => setMsSecret(e.target.value)}
+                  placeholder="Client secret"
+                />
+                <input
+                  style={inputStyle}
+                  type="password"
+                  value={msRefresh}
+                  onChange={(e) => setMsRefresh(e.target.value)}
+                  placeholder="Refresh token"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        <div
+          className="row"
+          style={{ gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 2 }}
+        >
+          <button className="btn btn--primary btn--sm" onClick={onSave} disabled={saving}>
+            {saving ? "Guardando…" : "Guardar"}
+          </button>
+          <div className="row" style={{ gap: 6, marginLeft: "auto" }}>
+            <input
+              style={{ ...inputStyle, width: 200 }}
+              value={testTo}
+              onChange={(e) => setTestTo(e.target.value)}
+              placeholder="correo@prueba.com"
+            />
+            <button className="btn btn--sm" onClick={onTest} disabled={testing}>
+              {testing ? "Enviando…" : "Enviar prueba"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </ConnCard>
+  );
+}
+
 function MercadoLibreCard({
   config,
   update,
@@ -2131,6 +2576,7 @@ function MercadoLibreCard({
   const [siteId, setSiteId] = useState(ml.siteId || "MPE");
   const ep = getApiEndpoints();
   const webhookUrl = ep?.mercadolibreWebhook || "";
+  const { confirm, confirmDialog } = useConfirm();
 
   const tone: Tone = ml.connected ? "ok" : "idle";
   const statusLabel = ml.connected ? "Conectado" : "No conectado";
@@ -2159,7 +2605,16 @@ function MercadoLibreCard({
     }
   };
 
-  const onDisconnect = () => {
+  const onDisconnect = async () => {
+    if (
+      !(await confirm({
+        title: "¿Desconectar Mercado Libre?",
+        description: "El canal dejará de recibir preguntas y mensajes en tu inbox.",
+        destructive: true,
+        confirmLabel: "Desconectar",
+      }))
+    )
+      return;
     update({ mercadolibre: { connected: false } });
     toast.success("Mercado Libre desconectado");
   };
@@ -2168,12 +2623,13 @@ function MercadoLibreCard({
     <ConnCard
       icon={<ShoppingBag size={20} style={{ color: "#2d3277" }} />}
       title="Mercado Libre"
-      desc="Opcional — si vendés en Mercado Libre, recibí las preguntas de tus publicaciones y los mensajes post-venta en el inbox omnicanal. El canal aparece en el inbox solo cuando lo conectás."
+      desc="Opcional — si vendes en Mercado Libre, recibe las preguntas de tus publicaciones y los mensajes post-venta en el inbox omnicanal. El canal aparece en el inbox solo cuando lo conectas."
       tone={tone}
       statusLabel={statusLabel}
       open={open}
       onToggle={() => setOpen((o) => !o)}
     >
+      {confirmDialog}
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {ml.connected ? (
           <>
@@ -2206,7 +2662,7 @@ function MercadoLibreCard({
               equipo la configura una vez; después, «Conectar» te lleva a autorizar tu cuenta.
             </div>
             <div>
-              <StepLabel n={1}>Elegí tu país de Mercado Libre</StepLabel>
+              <StepLabel n={1}>Elige tu país de Mercado Libre</StepLabel>
               <select
                 style={{ ...inputStyle, maxWidth: 220 }}
                 value={siteId}
@@ -2220,7 +2676,7 @@ function MercadoLibreCard({
               </select>
             </div>
             <div>
-              <StepLabel n={2}>Autorizá a ARIA</StepLabel>
+              <StepLabel n={2}>Autoriza a ARIA</StepLabel>
               <button className="btn btn--primary btn--sm" onClick={onConnect}>
                 <ShoppingBag size={13} /> Conectar con Mercado Libre
               </button>
@@ -2232,7 +2688,7 @@ function MercadoLibreCard({
         <div>
           <StepLabel n={ml.connected ? 1 : 3}>Webhook de notificaciones</StepLabel>
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
-            En tu App de Mercado Libre → <b>Notificaciones</b>, pegá esta URL y suscribite a los
+            En tu App de Mercado Libre → <b>Notificaciones</b>, pega esta URL y suscríbete a los
             topics <code style={{ fontSize: 11.5 }}>questions</code> y{" "}
             <code style={{ fontSize: 11.5 }}>messages</code>.
           </div>
@@ -2248,7 +2704,7 @@ function MercadoLibreCard({
 
 /* ── Instagram y Messenger (Meta multi-cuenta · "Conectar con Facebook") ──────
  * Auto-servicio estilo Chattigo/ManyChat: el tenant hace "Login con Facebook",
- * tilda cuáles páginas/cuentas traer, y las gestiona acá. Cada página trae
+ * tilda cuáles páginas/cuentas traer, y las gestiona aquí. Cada página trae
  * Messenger y, si tiene un Instagram Business Account conectado, también IG DM.
  * Build-ahead: el OAuth se activa con la App de Meta del cliente
  * (secret connectview/meta + scripts/create-meta-oauth.mjs). Los page tokens
@@ -2317,7 +2773,7 @@ function InstagramMessengerCard({
     : "No conectado";
 
   // Trae las páginas pendientes de elección (tras el "Login con Facebook"). El
-  // backend las tiene guardadas (con sus page tokens) en el secret del tenant; acá
+  // backend las tiene guardadas (con sus page tokens) en el secret del tenant; aquí
   // sólo llegan sin tokens para tildar cuáles traer.
   const loadPending = useCallback(async () => {
     if (!ep?.manageConnections) return;
@@ -2335,7 +2791,7 @@ function InstagramMessengerCard({
         setOpen(true);
         setModalOpen(true);
       } else {
-        toast.message("No hay cuentas nuevas para elegir. Volvé a “Conectar con Facebook”.");
+        toast.message("No hay cuentas nuevas para elegir. Vuelve a “Conectar con Facebook”.");
       }
     } catch {
       toast.error("No se pudieron cargar las cuentas pendientes.");
@@ -2382,7 +2838,7 @@ function InstagramMessengerCard({
       .filter(([, v]) => v)
       .map(([k]) => k);
     if (!pageIds.length) {
-      toast.error("Elegí al menos una cuenta.");
+      toast.error("Elige al menos una cuenta.");
       return;
     }
     if (!ep?.manageConnections) return;
@@ -2440,7 +2896,7 @@ function InstagramMessengerCard({
     <ConnCard
       icon={<IgIcon size={20} style={{ color: "#E4405F" }} />}
       title="Instagram y Messenger"
-      desc="Conectá tus cuentas de Instagram y Facebook (Messenger) y recibí los mensajes directos y comentarios en el inbox omnicanal. Podés conectar varias cuentas."
+      desc="Conecta tus cuentas de Instagram y Facebook (Messenger) y recibe los mensajes directos y comentarios en el inbox omnicanal. Puedes conectar varias cuentas."
       tone={tone}
       statusLabel={statusLabel}
       open={open}
@@ -2536,7 +2992,7 @@ function InstagramMessengerCard({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Elegí qué cuentas traer"
+            aria-label="Elige qué cuentas traer"
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "min(520px, 96vw)",
@@ -2549,9 +3005,9 @@ function InstagramMessengerCard({
               boxShadow: "0 20px 60px rgba(0,0,0,.35)",
             }}
           >
-            <div style={{ fontWeight: 800, fontSize: 16 }}>Elegí qué cuentas traer</div>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>Elige qué cuentas traer</div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 4, lineHeight: 1.5 }}>
-              Tildá las páginas de Facebook / Instagram que querés gestionar en ARIA. Podés
+              Marca las páginas de Facebook / Instagram que quieres gestionar en ARIA. Puedes
               cambiarlo después.
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: "14px 0" }}>
@@ -2664,6 +3120,7 @@ export function IntegrationsManager() {
       <InstagramMessengerCard config={config} update={update} />
       <MercadoLibreCard config={config} update={update} />
       <SsoCard config={config} update={update} />
+      <EmailCard config={config} update={update} />
       <MessagingCard config={config} update={update} />
     </div>
   );

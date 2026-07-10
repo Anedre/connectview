@@ -392,7 +392,7 @@ export async function uploadTemplateMediaMeta(
   const appId = process.env.META_APP_ID || (await appIdFromToken(token));
   if (!appId) {
     throw new Error(
-      "WhatsApp (Meta): no se pudo resolver el app_id para subir el encabezado. Configurá META_APP_ID.",
+      "WhatsApp (Meta): no se pudo resolver el app_id para subir el encabezado. Configura META_APP_ID.",
     );
   }
   // 1) Abrir la sesión de subida.

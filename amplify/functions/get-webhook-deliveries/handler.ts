@@ -6,7 +6,7 @@
  * POST { deliveryId } → "reintentar ahora": marca la fila como retrying con
  *        nextAttemptAt = now, para que el próximo tick del dispatcher la re-encole.
  *
- * Function URL pública (auth NONE a nivel infra); la identidad se valida acá con
+ * Function URL pública (auth NONE a nivel infra); la identidad se valida aquí con
  * el ID token de Cognito (mismo patrón que el resto de endpoints).
  */
 import {
@@ -36,11 +36,19 @@ export const handler = async (event: any) => {
     if (method === "POST") {
       const body = JSON.parse(event.body || "{}");
       const deliveryId = String(body.deliveryId || "");
-      if (!deliveryId) return { statusCode: 400, headers: HDRS, body: JSON.stringify({ error: "deliveryId requerido" }) };
+      if (!deliveryId)
+        return {
+          statusCode: 400,
+          headers: HDRS,
+          body: JSON.stringify({ error: "deliveryId requerido" }),
+        };
 
       // Verificar pertenencia (un tenant real solo reintenta lo suyo).
-      const cur = await dynamo.send(new GetItemCommand({ TableName: TABLE, Key: { deliveryId: { S: deliveryId } } }));
-      if (!cur.Item) return { statusCode: 404, headers: HDRS, body: JSON.stringify({ error: "no existe" }) };
+      const cur = await dynamo.send(
+        new GetItemCommand({ TableName: TABLE, Key: { deliveryId: { S: deliveryId } } }),
+      );
+      if (!cur.Item)
+        return { statusCode: 404, headers: HDRS, body: JSON.stringify({ error: "no existe" }) };
       const row = unmarshall(cur.Item);
       if (!legacy && row.tenantId !== tenantId) {
         return { statusCode: 403, headers: HDRS, body: JSON.stringify({ error: "ajeno" }) };
@@ -54,8 +62,11 @@ export const handler = async (event: any) => {
           Key: { deliveryId: { S: deliveryId } },
           UpdateExpression: "SET #s = :r, nextAttemptAt = :now, #u = :now REMOVE #ttl",
           ExpressionAttributeNames: { "#s": "status", "#u": "updatedAt", "#ttl": "ttl" },
-          ExpressionAttributeValues: marshall({ ":r": "retrying", ":now": new Date().toISOString() }),
-        })
+          ExpressionAttributeValues: marshall({
+            ":r": "retrying",
+            ":now": new Date().toISOString(),
+          }),
+        }),
       );
       return { statusCode: 200, headers: HDRS, body: JSON.stringify({ ok: true, deliveryId }) };
     }
@@ -81,16 +92,17 @@ export const handler = async (event: any) => {
       updatedAt: r.updatedAt,
       deliveredAt: r.deliveredAt,
     }));
-    const stats = deliveries.reduce(
-      (acc: Record<string, number>, d) => {
-        acc[d.status] = (acc[d.status] || 0) + 1;
-        return acc;
-      },
-      {}
-    );
+    const stats = deliveries.reduce((acc: Record<string, number>, d) => {
+      acc[d.status] = (acc[d.status] || 0) + 1;
+      return acc;
+    }, {});
     return { statusCode: 200, headers: HDRS, body: JSON.stringify({ deliveries, stats }) };
   } catch (err) {
     console.error("get-webhook-deliveries error:", err);
-    return { statusCode: 500, headers: HDRS, body: JSON.stringify({ error: err instanceof Error ? err.message : "error" }) };
+    return {
+      statusCode: 500,
+      headers: HDRS,
+      body: JSON.stringify({ error: err instanceof Error ? err.message : "error" }),
+    };
   }
 };

@@ -12,7 +12,7 @@ import { ROLE_LABEL, type UserRole } from "@/types/auth";
  * gente que se loguea a la web app. Distinto de los agentes de Amazon Connect
  * (telefonía), que se gestionan en la consola de Connect.
  *
- * El Admin invita acá: el backend (invite-user) crea el usuario en Cognito ya
+ * El Admin invita aquí: el backend (invite-user) crea el usuario en Cognito ya
  * atado a SU organización y le manda un email con contraseña temporal. Así el
  * invitado cae en la org del admin (no se le crea una nueva).
  */
@@ -153,7 +153,7 @@ function ConfirmDeleteModal({
             <p style={{ fontSize: 13, color: "var(--text-2)", marginTop: 6, lineHeight: 1.5 }}>
               Vas a eliminar a <b>{member.name || member.email}</b>
               {member.name ? ` (${member.email})` : ""}. Perderá el acceso a ARIA y esta acción{" "}
-              <b>no se puede deshacer</b>. Si solo querés cortarle el acceso de forma temporal, usá{" "}
+              <b>no se puede deshacer</b>. Si solo quieres cortarle el acceso de forma temporal, usa{" "}
               <b>Desactivar</b> en su lugar.
             </p>
           </div>
@@ -206,7 +206,7 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
   const submit = async () => {
     const e = email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
-      toast.error("Ingresá un email válido");
+      toast.error("Ingresa un email válido");
       return;
     }
     if (!ep?.inviteUser) {
@@ -531,7 +531,7 @@ export function TeamManager() {
       <Card>
         <CardHead
           title="Equipo de ARIA"
-          sub="Las personas que se loguean a la app. Invitá a tu equipo: les llega un email con su acceso."
+          sub="Las personas que se loguean a la app. Invita a tu equipo: les llega un email con su acceso."
           right={
             <button className="btn btn--primary btn--sm" onClick={() => setInviteOpen(true)}>
               <Icon.Plus size={12} /> Invitar usuario
@@ -543,7 +543,7 @@ export function TeamManager() {
             <div style={{ padding: 40, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>
               {error
                 ? "No fue posible cargar el equipo."
-                : "Todavía no invitaste a nadie. Tocá “Invitar usuario” para empezar."}
+                : "Todavía no invitaste a nadie. Toca “Invitar usuario” para empezar."}
             </div>
           ) : (
             <table className="t">

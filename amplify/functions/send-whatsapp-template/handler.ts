@@ -174,7 +174,7 @@ export const handler: Handler = async (event: any) => {
       headers: CORS,
       body: JSON.stringify({
         error:
-          "WhatsApp no está configurado para esta organización. Cargá tu número en Configuración → Integraciones.",
+          "WhatsApp no está configurado para esta organización. Carga tu número en Configuración → Integraciones.",
       }),
     };
   }

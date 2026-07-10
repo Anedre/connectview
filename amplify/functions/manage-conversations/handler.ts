@@ -557,13 +557,13 @@ async function sendCourtesyMessage(
 
 /**
  * Aviso de cortesía del auto-cierre por inactividad. Configurable por tenant vía
- * env `INACTIVITY_COURTESY_MSG` (poné "off" para desactivarlo). Se envía dentro
+ * env `INACTIVITY_COURTESY_MSG` (pon "off" para desactivarlo). Se envía dentro
  * de la ventana de 24h (a 30min de inactividad siempre lo está); si el canal lo
  * rechaza (p.ej. fuera de ventana) el caller lo ignora. Solo canales con envío.
  */
 const COURTESY_MSG =
   process.env.INACTIVITY_COURTESY_MSG ??
-  "Cerramos esta conversación por inactividad, pero seguimos acá para ayudarte 🙂. Escribinos cuando quieras y con gusto te atendemos.";
+  "Cerramos esta conversación por inactividad, pero seguimos aquí para ayudarte 🙂. Escribinos cuando quieras y con gusto te atendemos.";
 const COURTESY_ENABLED = !!COURTESY_MSG && COURTESY_MSG.trim().toLowerCase() !== "off";
 
 /**
@@ -910,8 +910,8 @@ export const handler: Handler = async (event: any) => {
         // SEC-C2: guard de IDOR cross-tenant (404, no confirma existencia). Va
         // ANTES del chequeo de ownership por agente (que es intra-tenant).
         if (!assertTenant(conv, tenantId)) return bad(404, "conversación no encontrada");
-        // Defensa de ownership: no podés responder el chat de OTRO agente. Si la
-        // conversación tiene dueño y no sos vos (ni sos admin/supervisor), 403.
+        // Defensa de ownership: no puedes responder el chat de OTRO agente. Si la
+        // conversación tiene dueño y no eres tú (ni eres admin/supervisor), 403.
         // (No aplica a assignTo/release/markRead — esos sí pueden reasignarla.)
         if (conv.ownerAgentId && conv.ownerAgentId !== me && !privileged)
           return bad(403, "owned_by_other");
@@ -1049,7 +1049,7 @@ export const handler: Handler = async (event: any) => {
         const conv = await getConversation(legacyDynamo, conversationId);
         // SEC-C2: guard de IDOR cross-tenant antes del ownership por agente.
         if (!assertTenant(conv, tenantId)) return bad(404, "conversación no encontrada");
-        // Defensa de ownership: no podés mandar adjuntos en el chat de OTRO agente.
+        // Defensa de ownership: no puedes mandar adjuntos en el chat de OTRO agente.
         if (conv.ownerAgentId && conv.ownerAgentId !== me && !privileged)
           return bad(403, "owned_by_other");
         // Defensa: no se envían adjuntos en una conversación cerrada (para reabrir

@@ -11,7 +11,7 @@ import { NotificationsBell } from "@/components/layout/NotificationsBell";
 /**
  * VoxSidebarFooter — el "dock" al pie del sidebar: identidad del usuario + tema,
  * notificaciones y cuenta. El estado del agente de Connect (Disponible…) vive
- * ahora en el `AppTopBar` (como en el mockup); acá solo queda un punto de
+ * ahora en el `AppTopBar` (como en el mockup); aquí solo queda un punto de
  * presencia sobre el avatar. El menú de cuenta abre hacia ARRIBA.
  */
 

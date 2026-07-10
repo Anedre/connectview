@@ -113,7 +113,7 @@ function buildMetaMessage(to: string, m: BotMsg): Record<string, unknown> {
       type: "interactive",
       interactive: {
         type: "list",
-        body: { text: (m.text || "Elegí una opción:").slice(0, 1024) },
+        body: { text: (m.text || "Elige una opción:").slice(0, 1024) },
         action: {
           button: "Ver opciones",
           sections: [
@@ -220,7 +220,7 @@ const cpFailClosed = new CustomerProfilesClient({ maxAttempts: 1 });
 
 /**
  * Respuesta de un WhatsApp Flow (formulario nativo, #10): el cliente completó
- * el form → Meta manda `interactive.nfm_reply` con `response_json`. Acá lo
+ * el form → Meta manda `interactive.nfm_reply` con `response_json`. Aquí lo
  * convertimos en CRM: upsert del lead (hub propagateLead → tabla + Customer
  * Profile + SF) con los campos del form como attributes `flow_*`, historial,
  * y el trigger de Automatizaciones `whatsapp_flow_completed` (#15).
@@ -361,7 +361,7 @@ async function handleInbound(
       console.warn("SF DoNotCall push falló (best-effort):", e);
     }
     const confirmText = isStop
-      ? "Listo ✅ No volverás a recibir mensajes de WhatsApp de nuestra parte. Si fue un error, respondé *ALTA* para reactivar."
+      ? "Listo ✅ No volverás a recibir mensajes de WhatsApp de nuestra parte. Si fue un error, responde *ALTA* para reactivar."
       : "Listo ✅ Reactivamos tus mensajes de WhatsApp. ¡Gracias por volver!";
     try {
       await sendWhatsApp(
@@ -410,7 +410,7 @@ async function handleInbound(
 
   // ── Automatizaciones (#15) · trigger message_inbound ──────────────────────
   // Un mensaje REAL del cliente (texto o tap de botón/lista) dispara la regla.
-  // Los STOP/ALTA ya retornaron arriba → acá nunca entra un opt-out. Es
+  // Los STOP/ALTA ya retornaron arriba → aquí nunca entra un opt-out. Es
   // fire-and-forget (AbortController ~1.5s + catch total en fireAutomation), así
   // que NO bloquea ni demora la respuesta del bot. El engine resuelve el lead por
   // teléfono en las acciones que lo necesiten.
@@ -582,7 +582,7 @@ async function handleInbound(
   // humano (nodo handoff, confianza baja o max turns → devuelve handoff:true), lo
   // reflejamos en el inbox pasando la conversación a assignee="agent" + unread. Los
   // mensajes del bot ya salieron arriba (incluido el aviso de derivación del flujo),
-  // así que acá solo cambiamos de manos. En el próximo inbound la guarda global corta.
+  // así que aquí solo cambiamos de manos. En el próximo inbound la guarda global corta.
   if (d.handoff === true || d.handoff === "true") {
     console.log(`WhatsApp ${maskPhone(from)}: bot-runtime derivó (handoff) → assignee=agent`);
     try {

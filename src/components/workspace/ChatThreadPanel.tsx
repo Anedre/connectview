@@ -59,7 +59,10 @@ function MessageBubble({ m }: { m: ChatMessage }) {
   // Burbujas al estilo demo: `.msg .msg--out` (agente) / `.msg--in` (cliente),
   // con la hora en `.msg__time`.
   return (
-    <div className={"msg msg--" + (isAgent ? "out" : "in")} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+    <div
+      className={"msg msg--" + (isAgent ? "out" : "in")}
+      style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
+    >
       {m.content}
       <div className="msg__time">{fmtTime(m.timestamp)}</div>
     </div>
@@ -75,14 +78,8 @@ export function ChatThreadPanel({
   agentName,
   queueName,
 }: ChatThreadPanelProps) {
-  const {
-    messages,
-    status,
-    customerTyping,
-    sendMessage,
-    sendTyping,
-    sendAttachment,
-  } = useChatSession(contactId, channel);
+  const { messages, status, customerTyping, sendMessage, sendTyping, sendAttachment } =
+    useChatSession(contactId, channel);
   const [draft, setDraft] = useState("");
   const [attachError, setAttachError] = useState<string | null>(null);
   const [attaching, setAttaching] = useState(false);
@@ -203,7 +200,8 @@ export function ChatThreadPanel({
           </div>
           <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
             {status === "connecting" && "Conectando al hilo…"}
-            {status === "connected" && `${messages.length} mensaje${messages.length === 1 ? "" : "s"}`}
+            {status === "connected" &&
+              `${messages.length} mensaje${messages.length === 1 ? "" : "s"}`}
             {status === "ended" && "Conversación finalizada"}
             {status === "idle" && "Sin conversación activa"}
           </div>
@@ -221,13 +219,17 @@ export function ChatThreadPanel({
             </button>
           )}
           <span
-            className={
-              "pill " + (status === "connected" ? "pill--green" : "pill--outline")
-            }
+            className={"pill " + (status === "connected" ? "pill--green" : "pill--outline")}
             style={{ height: 22, fontSize: 10.5 }}
           >
             <span className={"dot" + (status === "connected" ? " dot--live" : "")} />
-            {status === "connected" ? "En vivo" : status}
+            {status === "connected"
+              ? "En vivo"
+              : status === "connecting"
+                ? "Conectando"
+                : status === "ended"
+                  ? "Finalizada"
+                  : "Inactiva"}
           </span>
         </div>
       </div>
@@ -245,18 +247,12 @@ export function ChatThreadPanel({
         }}
       >
         {messages.length === 0 && status === "connecting" && (
-          <div
-            className="muted"
-            style={{ textAlign: "center", marginTop: 40, fontSize: 12 }}
-          >
+          <div className="muted" style={{ textAlign: "center", marginTop: 40, fontSize: 12 }}>
             Cargando historial de mensajes…
           </div>
         )}
         {messages.length === 0 && status === "connected" && (
-          <div
-            className="muted"
-            style={{ textAlign: "center", marginTop: 40, fontSize: 12 }}
-          >
+          <div className="muted" style={{ textAlign: "center", marginTop: 40, fontSize: 12 }}>
             Sin mensajes aún. Escribe el primer saludo.
           </div>
         )}
@@ -308,11 +304,7 @@ export function ChatThreadPanel({
       {/* Composer — envoltura al estilo demo (.composer). */}
       <div className="composer">
         {/* WhatsApp 24h window countdown — only renders for WA channels. */}
-        <WindowCountdown
-          messages={messages}
-          channel={channel}
-          channelLabel={channelLabel}
-        />
+        <WindowCountdown messages={messages} channel={channel} channelLabel={channelLabel} />
 
         {/* Proactive reply suggestions (when the customer just wrote and
             the agent hasn't started typing). */}
@@ -354,10 +346,7 @@ export function ChatThreadPanel({
             customerPhone={customerPhone}
             disabled={status !== "connected"}
           />
-          <EmojiPicker
-            onPick={insertAtCursor}
-            disabled={status !== "connected"}
-          />
+          <EmojiPicker onPick={insertAtCursor} disabled={status !== "connected"} />
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={status !== "connected" || attaching}
@@ -384,10 +373,7 @@ export function ChatThreadPanel({
             onRewritten={(text) => setDraft(text)}
           />
         </div>
-        <div
-          className="composer__box"
-          style={{ alignItems: "flex-end" }}
-        >
+        <div className="composer__box" style={{ alignItems: "flex-end" }}>
           <textarea
             ref={textareaRef}
             value={draft}

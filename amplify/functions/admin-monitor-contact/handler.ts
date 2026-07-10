@@ -7,7 +7,7 @@ import { getIdentity, type VoxIdentity } from "../_shared/cognitoAuth";
 
 // SEC-C6: acciones de supervisión (escuchar/intervenir llamadas en vivo) SOLO
 // para Supervisores/Admins. El Function URL es auth=NONE → la identidad se
-// valida ACÁ con el JWT. Sin estos grupos, un POST público podía espiar/barge
+// valida AQUÍ con el JWT. Sin estos grupos, un POST público podía espiar/barge
 // cualquier llamada. `monitor_agents` = mínimo Supervisors en la matriz RBAC.
 const PRIVILEGED_GROUPS = ["Admins", "Supervisors"];
 

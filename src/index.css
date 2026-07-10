@@ -1001,7 +1001,7 @@ textarea:focus {
 
 /* ════════════════════════════════════════════════════════════════════════
    Dashboard ejecutivo (.exec-*): FUENTE ÚNICA en src/styles/exec.css.
-   Acá NO debe haber reglas .exec-* — se removieron las viejas/duplicadas que
+   Aquí NO debe haber reglas .exec-* — se removieron las viejas/duplicadas que
    pisaban el handoff y causaban colisiones de cascada (insights, charts, hero).
    ════════════════════════════════════════════════════════════════════════ */
 
@@ -4408,7 +4408,7 @@ textarea:focus {
 
 /* Charts del dashboard ejecutivo (pill-bars · campañas · colas · heatmap):
    los estilos VIVOS viven en src/styles/exec.css (fuente única — los componentes
-   de ExecCharts.tsx usan esa estructura). El bloque viejo que estaba acá se
+   de ExecCharts.tsx usan esa estructura). El bloque viejo que estaba aquí se
    removió para deduplicar y que no compita en la cascada. */
 
 .card {
@@ -4609,7 +4609,7 @@ textarea:focus {
 
 /* ── Plantillas WhatsApp — pulido premium (campos + cards) ──────────────────
    Los campos del editor usan estilo inline (outline:none) → sin foco visible.
-   Acá les damos un aro de foco ámbar (box-shadow, que el inline no pisa) +
+   Aquí les damos un aro de foco ámbar (box-shadow, que el inline no pisa) +
    transiciones, y a las tarjetas de la biblioteca un lift al hover. */
 .wa-tmpl :is(input, select, textarea) {
   transition:

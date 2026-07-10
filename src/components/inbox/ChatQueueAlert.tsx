@@ -14,7 +14,9 @@ import { chipType, CH_LABEL } from "./channelMeta";
 /** Beep corto de alerta (Web Audio; best-effort, silencioso si el navegador lo bloquea). */
 function beep() {
   try {
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const ctx = new AC();
     const o = ctx.createOscillator();
     const g = ctx.createGain();
@@ -62,7 +64,7 @@ export function ChatQueueAlert() {
     const ids = new Set(relevant.map((c) => c.conversationId));
     if (seenRef.current === null) {
       // Primer poll tras montar: marcamos lo existente como visto (no alertamos
-      // el backlog; solo lo que llegue de acá en adelante).
+      // el backlog; solo lo que llegue de aquí en adelante).
       seenRef.current = ids;
       return;
     }
@@ -85,7 +87,7 @@ export function ChatQueueAlert() {
     dismiss(c.conversationId);
     try {
       await assign.mutateAsync({ conversationId: c.conversationId, assignee: "agent" });
-      toast.success("Chat recibido — ahora lo atendés vos");
+      toast.success("Chat recibido — ahora lo atiendes tú");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo recibir el chat");
     }
@@ -116,7 +118,13 @@ export function ChatQueueAlert() {
               <span className="ring-pulse" style={{ flex: "0 0 auto", position: "relative" }}>
                 <Av name={name} size={40} radius={12} />
                 <span
-                  style={{ position: "absolute", right: -3, bottom: -3, transform: "scale(0.72)", transformOrigin: "bottom right" }}
+                  style={{
+                    position: "absolute",
+                    right: -3,
+                    bottom: -3,
+                    transform: "scale(0.72)",
+                    transformOrigin: "bottom right",
+                  }}
                 >
                   <ChannelChip type={chipType(c.channel)} />
                 </span>
@@ -143,7 +151,13 @@ export function ChatQueueAlert() {
               </button>
             </div>
             <div className="row gap8" style={{ marginTop: 11 }}>
-              <Btn variant="primary" size="sm" icon="chat" onClick={() => receive(c)} style={{ flex: 1 }}>
+              <Btn
+                variant="primary"
+                size="sm"
+                icon="chat"
+                onClick={() => receive(c)}
+                style={{ flex: 1 }}
+              >
                 Recibir
               </Btn>
               <Btn variant="ghost" size="sm" onClick={() => dismiss(c.conversationId)}>

@@ -354,7 +354,7 @@ function relationSummary(ov: LeadOverview) {
         ? "Conversación reciente — sin acción pendiente."
         : daysSince <= 7
           ? `Última actividad hace ${daysSince} días — buen momento para un seguimiento.`
-          : `Sin contacto hace ${daysSince} días — considerá reactivar al cliente.`;
+          : `Sin contacto hace ${daysSince} días — considera reactivar al cliente.`;
   return { ch, total, last, primary, daysSince, nba };
 }
 
@@ -1069,7 +1069,7 @@ function AISlideOver({
                 </div>
               )}
               <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
-                Abrí una llamada en la pestaña <b>Llamadas</b> para ver su resumen IA y el
+                Abre una llamada en la pestaña <b>Llamadas</b> para ver su resumen IA y el
                 sentimiento de esa conversación.
               </div>
             </>
@@ -1102,10 +1102,10 @@ function EmptyState({ onOpen }: { onOpen: () => void }) {
         >
           <Icon name="search" size={26} />
         </div>
-        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Elegí un contacto</div>
+        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Elige un contacto</div>
         <div className="muted" style={{ fontSize: 13.5, lineHeight: 1.6, marginBottom: 18 }}>
-          Su historial, llamadas con audio y transcripción, WhatsApp, emails y archivos aparecen acá
-          — todo en una sola historia.
+          Su historial, llamadas con audio y transcripción, WhatsApp, emails y archivos aparecen
+          aquí — todo en una sola historia.
         </div>
         <Btn variant="primary" icon="search" onClick={onOpen} style={{ margin: "0 auto" }}>
           Buscar contacto

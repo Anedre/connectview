@@ -9,7 +9,7 @@ import type { ContactRecord } from "@/types/monitoring";
  * SentimentChart — barras apiladas por día × sentiment (Contact Lens), en
  * ECharts con la paleta semántica del dashboard (verde/azul/amarillo/rojo).
  * Reemplazó la versión recharts (era el ÚLTIMO uso de recharts del proyecto —
- * brief P6 cerrado). El Card lo pone la página; acá solo el chart.
+ * brief P6 cerrado). El Card lo pone la página; aquí solo el chart.
  */
 
 const SENTIMENT_META = [
@@ -31,8 +31,7 @@ export function SentimentChart({ contacts }: { contacts: ContactRecord[] }) {
     const byDay = new Map<string, Record<string, number>>();
     for (const c of contacts) {
       const day = c.initiationTimestamp.split("T")[0];
-      if (!byDay.has(day))
-        byDay.set(day, { POSITIVE: 0, NEUTRAL: 0, MIXED: 0, NEGATIVE: 0 });
+      if (!byDay.has(day)) byDay.set(day, { POSITIVE: 0, NEUTRAL: 0, MIXED: 0, NEGATIVE: 0 });
       const s = (c.sentiment || "").toUpperCase();
       const row = byDay.get(day)!;
       if (s in row) row[s] += 1;
@@ -55,7 +54,7 @@ export function SentimentChart({ contacts }: { contacts: ContactRecord[] }) {
       <EmptyState
         icon={<Activity />}
         title="Sin datos de sentiment en el rango"
-        description="Contact Lens analiza las conversaciones; ajustá el rango o esperá nuevos contactos."
+        description="Contact Lens analiza las conversaciones; ajusta el rango o espera nuevos contactos."
       />
     );
   }

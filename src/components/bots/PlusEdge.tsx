@@ -11,7 +11,7 @@ import { Plus } from "lucide-react";
 import { NODE_KINDS, type NodeKind } from "@/lib/botFlow";
 
 // Constantes/util de color co-ubicadas con el edge (comparten dominio con él).
-// El export no-componente es intencional acá — mismo patrón que nodeTypes en StepNode.
+// El export no-componente es intencional aquí — mismo patrón que nodeTypes en StepNode.
 /* eslint-disable react-refresh/only-export-components */
 /** Cyan por defecto (coincide con edgeDefaults en FlowBuilder). */
 export const EDGE_COLOR = "#22B8D9";
@@ -117,7 +117,9 @@ export function PlusEdge({
   // `rfEdges` (react-flow genera un <marker> por color). El `style.stroke` que
   // manda el padre (p. ej. seleccionado) tiene prioridad sobre el color de rama.
   const strokeColor =
-    style?.stroke && style.stroke !== EDGE_COLOR ? String(style.stroke) : branchColor(sourceHandleId);
+    style?.stroke && style.stroke !== EDGE_COLOR
+      ? String(style.stroke)
+      : branchColor(sourceHandleId);
 
   return (
     <>

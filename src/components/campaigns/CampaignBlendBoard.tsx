@@ -11,7 +11,7 @@ import { useCampaignMutations } from "@/hooks/useCampaignMutations";
  * Muestra TODAS las campañas de voz activas con su prioridad/peso (sliders en
  * vivo), su % del pool (la repartición 80/20), lo que está marcando, su meta y
  * el ETA de término. El control del pool global vive arriba. Reusa el reparto
- * por peso que hace el dialer, calculado acá del lado del cliente.
+ * por peso que hace el dialer, calculado aquí del lado del cliente.
  */
 function etaLabel(c: Campaign): string {
   const pending = Number(c.pendingCount) || 0;

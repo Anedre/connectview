@@ -219,7 +219,7 @@ export function InboxPage() {
             </div>
             {conversations.length === 0 && (
               <div style={{ fontSize: 11.5, marginTop: 6 }}>
-                Cuando alguien te escriba por Instagram o Messenger, aparecerá acá.
+                Cuando alguien te escriba por Instagram o Messenger, aparecerá aquí.
               </div>
             )}
           </div>

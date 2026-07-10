@@ -19,7 +19,7 @@ import { resolveWhatsApp } from "../_shared/tenantConnect";
  *   - Meta standalone    → deliverability completa
  *
  * Para meta-mode (número de Meta no anclado a AWS), el quality rating vive en
- * Meta y se trae en la Fase C (Graph API) — acá se devuelve UNKNOWN.
+ * Meta y se trae en la Fase C (Graph API) — aquí se devuelve UNKNOWN.
  */
 const legacyClient = new SocialMessagingClient({});
 const LEGACY_PHONE_NUMBER_ID =
@@ -50,12 +50,16 @@ const smClient = new SecretsManagerClient({});
 async function getTenantWaToken(tenantId?: string): Promise<string | null> {
   if (!tenantId) return null;
   try {
-    const r = await smClient.send(new GetSecretValueCommand({ SecretId: `connectview/tenant/${tenantId}/whatsapp` }));
+    const r = await smClient.send(
+      new GetSecretValueCommand({ SecretId: `connectview/tenant/${tenantId}/whatsapp` }),
+    );
     const raw = r.SecretString || "";
     try {
       const j = JSON.parse(raw);
       if (j && typeof j.token === "string") return j.token;
-    } catch { /* string plano */ }
+    } catch {
+      /* string plano */
+    }
     return raw.trim() || null;
   } catch {
     return null;
@@ -65,9 +69,17 @@ async function getTenantWaToken(tenantId?: string): Promise<string | null> {
 /** Alerta a partir del peor quality rating. */
 function alertFor(worst: string): { level: "warning" | "critical"; message: string } | undefined {
   if (worst === "RED")
-    return { level: "critical", message: "Un número está en calidad RED — riesgo de bloqueo. Revisá el contenido y la tasa de bloqueos." };
+    return {
+      level: "critical",
+      message:
+        "Un número está en calidad RED — riesgo de bloqueo. Revisa el contenido y la tasa de bloqueos.",
+    };
   if (worst === "YELLOW")
-    return { level: "warning", message: "Un número bajó a calidad YELLOW — cuidá la frecuencia y el contenido para no caer a RED." };
+    return {
+      level: "warning",
+      message:
+        "Un número bajó a calidad YELLOW — cuida la frecuencia y el contenido para no caer a RED.",
+    };
   return undefined;
 }
 
@@ -81,19 +93,24 @@ export const handler: Handler = async (event: any) => {
     const { client, mode, metaPhoneNumberId, tenantId } = await resolveWhatsApp(
       event?.headers,
       legacyClient,
-      LEGACY_PHONE_NUMBER_ID
+      LEGACY_PHONE_NUMBER_ID,
     );
     const sm = (client as SocialMessagingClient) || legacyClient;
 
     // Modo Meta standalone (Cloud API): pulleamos el quality rating del número
     // directo de Meta Graph con el token del tenant (no anclado a Connect).
     if (mode === "meta") {
-      let number: NumberHealth = { phoneNumber: "", displayName: "Número de Meta", qualityRating: "UNKNOWN", metaPhoneNumberId };
+      let number: NumberHealth = {
+        phoneNumber: "",
+        displayName: "Número de Meta",
+        qualityRating: "UNKNOWN",
+        metaPhoneNumberId,
+      };
       const token = await getTenantWaToken(tenantId);
       if (token && metaPhoneNumberId) {
         try {
           const r = await fetch(
-            `https://graph.facebook.com/v20.0/${metaPhoneNumberId}?fields=display_phone_number,verified_name,quality_rating,code_verification_status&access_token=${encodeURIComponent(token)}`
+            `https://graph.facebook.com/v20.0/${metaPhoneNumberId}?fields=display_phone_number,verified_name,quality_rating,code_verification_status&access_token=${encodeURIComponent(token)}`,
           );
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const j: any = await r.json();
@@ -114,7 +131,14 @@ export const handler: Handler = async (event: any) => {
         mode: "meta",
         configured: !!metaPhoneNumberId,
         wabas: metaPhoneNumberId
-          ? [{ wabaId: "", wabaName: "WhatsApp (Meta Cloud API)", anchoredToConnect: false, numbers: [number] }]
+          ? [
+              {
+                wabaId: "",
+                wabaName: "WhatsApp (Meta Cloud API)",
+                anchoredToConnect: false,
+                numbers: [number],
+              },
+            ]
           : [],
         alert: alertFor(number.qualityRating),
       });
@@ -134,7 +158,7 @@ export const handler: Handler = async (event: any) => {
         /* usamos lo que vino del list */
       }
       const anchoredToConnect = (detail.eventDestinations || []).some((ed) =>
-        String(ed.eventDestinationArn || "").includes(":connect:")
+        String(ed.eventDestinationArn || "").includes(":connect:"),
       );
       const numbers: NumberHealth[] = (detail.phoneNumbers || []).map((p) => ({
         phoneNumber: p.displayPhoneNumber || p.phoneNumber || "",
@@ -153,12 +177,18 @@ export const handler: Handler = async (event: any) => {
 
     // Alerta: el peor quality rating de todos los números.
     let worst = "GREEN";
-    for (const w of wabas) for (const n of w.numbers) {
-      if ((RANK[n.qualityRating] ?? 1) > (RANK[worst] ?? 0)) worst = n.qualityRating;
-    }
+    for (const w of wabas)
+      for (const n of w.numbers) {
+        if ((RANK[n.qualityRating] ?? 1) > (RANK[worst] ?? 0)) worst = n.qualityRating;
+      }
     return ok({ mode: "aws", configured: wabas.length > 0, wabas, alert: alertFor(worst) });
   } catch (err) {
     console.error("get-whatsapp-health error", err);
-    return ok({ mode: "unknown", configured: false, wabas: [], error: err instanceof Error ? err.message : "health failed" });
+    return ok({
+      mode: "unknown",
+      configured: false,
+      wabas: [],
+      error: err instanceof Error ? err.message : "health failed",
+    });
   }
 };

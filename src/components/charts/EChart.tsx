@@ -51,8 +51,8 @@ const ReactEChartsCore = ((ReactEChartsCoreImport as { default?: typeof ReactECh
  *
  * NOTA (bundle): registramos aquí SOLO las series y componentes que se usan en
  * toda la app (grep `type: "..."` + tooltip/legend/grid/markPoint/axisPointer).
- * Si agregás un gráfico con una serie o componente nuevo (p.ej. heatmap,
- * visualMap, dataZoom), IMPORTALO + agregalo al `echarts.use([...])` de abajo,
+ * Si agregas un gráfico con una serie o componente nuevo (p.ej. heatmap,
+ * visualMap, dataZoom), IMPORTALO + agrégalo al `echarts.use([...])` de abajo,
  * o el gráfico se renderiza vacío sin lanzar error.
  */
 

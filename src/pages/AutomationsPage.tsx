@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FeatureCompare, FeatureCompareButton } from "@/components/aria/FeatureCompare";
 import { Modal } from "@/components/ui/modal";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
@@ -33,7 +34,7 @@ import { Icon, Btn, Stat, Pill, HeroBand, Num } from "@/components/aria";
  * El editor es una RECETA VERTICAL (estilo HubSpot Workflows / Zapier /
  * ActiveCampaign): DISPARADOR → conector → CONDICIONES → conector → ACCIONES
  * apiladas y numeradas, de arriba abajo. Se distingue a propósito del canvas
- * HORIZONTAL con nodos arrastrables de los Bots: acá el flujo es lineal y
+ * HORIZONTAL con nodos arrastrables de los Bots: aquí el flujo es lineal y
  * editable, sin handles. El acento es GOLD (var(--gold)); cada acción se tiñe
  * por su tipo para dar variedad.
  *
@@ -91,7 +92,7 @@ function FieldInput({
   if (field.type === "template") {
     return (
       <select className="wf-input" value={String(v)} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— elegí una plantilla —</option>
+        <option value="">— elige una plantilla —</option>
         {ctx.templates.map((t) => (
           <option key={t.name} value={t.name}>
             {t.name}
@@ -128,7 +129,7 @@ function FieldInput({
   if (field.type === "journey") {
     return (
       <select className="wf-input" value={String(v)} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— elegí un journey —</option>
+        <option value="">— elige un journey —</option>
         {ctx.journeys.map((j) => (
           <option key={j.journeyId} value={j.journeyId}>
             {j.name || "(sin nombre)"}
@@ -347,11 +348,11 @@ export function AutomationsPage() {
   const save = async (rule: AutomationRule) => {
     if (!ep?.manageAutomations) return;
     if (!rule.name.trim()) {
-      toast.error("Poné un nombre");
+      toast.error("Pon un nombre");
       return;
     }
     if (rule.actions.length === 0) {
-      toast.error("Agregá al menos una acción");
+      toast.error("Agrega al menos una acción");
       return;
     }
     for (const a of rule.actions) {
@@ -613,7 +614,7 @@ export function AutomationsPage() {
                           setEditing({ ...editing, conditions });
                         }}
                       >
-                        <option value="">— elegí —</option>
+                        <option value="">— elige —</option>
                         {ctx.stages.map((s) => (
                           <option key={s.id} value={s.id}>
                             {s.label}
@@ -682,7 +683,7 @@ export function AutomationsPage() {
           >
             {editing.actions.length === 0 && (
               <div className="wf-empty-cond">
-                Todavía no hay acciones. Agregá al menos una para poder guardar.
+                Todavía no hay acciones. Agrega al menos una para poder guardar.
               </div>
             )}
             <div className="wf-actions">
@@ -844,7 +845,7 @@ export function AutomationsPage() {
             <Icon name="sparkle" size={13} weight="bold" />
             Punto de partida
           </div>
-          <h2 className="wf-tpl-title">Elegí una receta base</h2>
+          <h2 className="wf-tpl-title">Elige una receta base</h2>
           <p className="wf-lead" style={{ margin: 0 }}>
             Plantillas listas o desde cero — todo es editable después.
           </p>
@@ -896,6 +897,7 @@ export function AutomationsPage() {
       <HeroBand
         right={
           <div className="row gap10">
+            <FeatureCompareButton current="automations" />
             <Btn variant="ghost" size="sm" icon="refresh" onClick={load} disabled={loading}>
               Actualizar
             </Btn>
@@ -914,6 +916,14 @@ export function AutomationsPage() {
           </div>
         }
       />
+
+      <div
+        className="dim"
+        style={{ fontSize: 13, marginTop: -8, marginBottom: 18, maxWidth: 760, lineHeight: 1.55 }}
+      >
+        Reglas que reaccionan al instante: cuando pasa algo (un lead entra, alguien escribe), ARIA
+        ejecuta la acción — sin esperas ni conversación.
+      </div>
 
       {/* KPIs — familia ARIA (Stat + count-up). */}
       <div
@@ -1002,19 +1012,24 @@ export function AutomationsPage() {
           ))}
         </div>
       ) : kept.length === 0 ? (
-        <div className="card">
-          <EmptyState
-            icon={<Plus />}
-            title={
-              rules.length === 0 ? "Todavía no hay automatizaciones" : "Ninguna regla coincide"
-            }
-            description="Creá reglas tipo «lead nuevo del form web → plantilla de bienvenida por WhatsApp» y dejá que el embudo trabaje solo."
-            action={
-              <Btn variant="primary" icon="plus" onClick={() => setPicking(true)}>
-                Crear la primera
-              </Btn>
-            }
-          />
+        <div className="col" style={{ gap: 16 }}>
+          <div className="card">
+            <EmptyState
+              icon={<Plus />}
+              title={
+                rules.length === 0 ? "Todavía no hay automatizaciones" : "Ninguna regla coincide"
+              }
+              description="Reglas que reaccionan al instante: cuando pasa algo (un lead entra, alguien escribe), ARIA ejecuta la acción — sin esperas ni conversación. Ej.: «lead nuevo del form web → plantilla de bienvenida por WhatsApp»."
+              action={
+                <Btn variant="primary" icon="plus" onClick={() => setPicking(true)}>
+                  Crear la primera
+                </Btn>
+              }
+            />
+          </div>
+          <div className="card" style={{ padding: 18 }}>
+            <FeatureCompare current="automations" />
+          </div>
         </div>
       ) : (
         <div
@@ -1192,7 +1207,7 @@ export function AutomationsPage() {
           ) : runs.length === 0 ? (
             <EmptyState
               title="Sin ejecuciones todavía"
-              description="Cuando la regla dispare, vas a ver acá cada acción con su resultado."
+              description="Cuando la regla dispare, vas a ver aquí cada acción con su resultado."
             />
           ) : (
             runs.map((run) => {

@@ -109,11 +109,11 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
   const wiredRef = useRef<Set<string>>(new Set());
   // Ref del id enfocado — lo leen los listeners de mensajes (que capturan el
   // closure al momento de cablear) para conocer SIEMPRE el valor más reciente.
-  // Declarado ACÁ, antes de los efectos que lo usan (antes vivía al final del
+  // Declarado Aquí, antes de los efectos que lo usan (antes vivía al final del
   // hook y el efecto de mensajes lo referenciaba por TDZ/orden frágil).
   const focusRef = useRef<string | null>(null);
   // Ref con el último array de contactos. El efecto de suscripción NO depende
-  // de `contacts` (cambia ~cada 1s); lee la lista viva desde acá para resolver
+  // de `contacts` (cambia ~cada 1s); lee la lista viva desde aquí para resolver
   // atributos/teléfono del contacto que está cableando, sin recablear todo.
   const contactsRef = useRef(contacts);
   contactsRef.current = contacts;
@@ -262,7 +262,7 @@ export function useOmnichannelNotifier(): UseOmnichannelNotifierResult {
                 notif.onclick = () => {
                   window.focus();
                   // Re-enfoca este contacto vía el hook de foco. No podemos
-                  // llamar el hook acá, así que despachamos un evento sintético
+                  // llamar el hook aquí, así que despachamos un evento sintético
                   // que escucha ActiveContactsTabStrip.
                   window.dispatchEvent(
                     new CustomEvent("vox:focus-contact", {

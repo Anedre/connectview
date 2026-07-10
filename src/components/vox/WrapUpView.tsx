@@ -24,9 +24,7 @@ import { ScheduleFollowupModal } from "@/components/workspace/ScheduleCallbackMo
  *   volver_correo   → email
  *   volver_whatsapp → whatsapp
  */
-function followupChannelFor(
-  subStageId: string | null
-): "voice" | "email" | "whatsapp" | null {
+function followupChannelFor(subStageId: string | null): "voice" | "email" | "whatsapp" | null {
   if (!subStageId) return null;
   if (subStageId === "volver_llamar") return "voice";
   if (subStageId === "volver_correo") return "email";
@@ -44,7 +42,11 @@ function parseSuggestion(raw: unknown): {
   reason: string;
 } | null {
   if (typeof raw !== "string" || !raw.trim()) return null;
-  let text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  let text = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start !== -1 && end > start) text = text.slice(start, end + 1);
@@ -58,9 +60,7 @@ function parseSuggestion(raw: unknown): {
       subStageId: o.subStageId,
       valoracion: typeof o.valoracion === "string" ? o.valoracion : "",
       confidence:
-        typeof o.confidence === "number"
-          ? Math.max(0, Math.min(100, Math.round(o.confidence)))
-          : 0,
+        typeof o.confidence === "number" ? Math.max(0, Math.min(100, Math.round(o.confidence))) : 0,
       reason: typeof o.reason === "string" ? o.reason : "",
     };
   } catch {
@@ -80,15 +80,10 @@ function confidenceColor(c: number): string {
 // sin suscripción), no lo persistimos al salir del wrap-up.
 const SUMMARY_UNAVAILABLE =
   "El resumen automático no está disponible para este contacto. Puedes redactarlo manualmente.";
-const SUMMARY_NOT_READY =
-  "El resumen no está disponible aún. Intenta regenerar en unos segundos.";
+const SUMMARY_NOT_READY = "El resumen no está disponible aún. Intenta regenerar en unos segundos.";
 const SUMMARY_FAILED =
   "No se pudo generar el resumen automático. Puedes redactarlo manualmente o reintentar.";
-const SUMMARY_PLACEHOLDERS = [
-  SUMMARY_UNAVAILABLE,
-  SUMMARY_NOT_READY,
-  SUMMARY_FAILED,
-];
+const SUMMARY_PLACEHOLDERS = [SUMMARY_UNAVAILABLE, SUMMARY_NOT_READY, SUMMARY_FAILED];
 
 /** True si `s` es un resumen real (no vacío y no un texto de relleno). */
 function isRealSummary(s: string): boolean {
@@ -135,7 +130,7 @@ function fmtDuration(s: number) {
 type NextAction = { icon: string; label: string; color: string };
 function deriveNextActions(
   stage: DispositionStage | null,
-  subStageId: string | null
+  subStageId: string | null,
 ): NextAction[] {
   if (!stage) return [];
   const out: NextAction[] = [];
@@ -193,13 +188,7 @@ export function WrapUpView({
   const isChat = channelKey === "CHAT";
   const isEmail = channelKey === "EMAIL";
   const isTask = channelKey === "TASK";
-  const titleNoun = isChat
-    ? "chat"
-    : isEmail
-    ? "email"
-    : isTask
-    ? "tarea"
-    : "llamada";
+  const titleNoun = isChat ? "chat" : isEmail ? "email" : isTask ? "tarea" : "llamada";
   const { user } = useConnectAuth();
   const { profile } = useCustomerProfile(customerPhone);
   const { data: transcript } = useLiveTranscript(contactId);
@@ -278,11 +267,11 @@ export function WrapUpView({
 
   const selectedStage: DispositionStage | null = useMemo(
     () => tree.find((s) => s.id === stageId) ?? null,
-    [tree, stageId]
+    [tree, stageId],
   );
   const selectedSubStage = useMemo(
     () => selectedStage?.subStages.find((s) => s.id === subStageId) ?? null,
-    [selectedStage, subStageId]
+    [selectedStage, subStageId],
   );
 
   // Customer display
@@ -423,10 +412,7 @@ export function WrapUpView({
   // Detect whether the chosen sub-stage commits the agent to a
   // follow-up. If so, after Enviar we open the Schedule Follow-up
   // modal with the channel pre-decided.
-  const followupChannel = useMemo(
-    () => followupChannelFor(subStageId),
-    [subStageId]
-  );
+  const followupChannel = useMemo(() => followupChannelFor(subStageId), [subStageId]);
   const [followupOpen, setFollowupOpen] = useState(false);
 
   const canSend = !!stageId && !!subStageId;
@@ -468,9 +454,7 @@ export function WrapUpView({
         });
         const json = await r.json().catch(() => ({}));
         if (Array.isArray(json.followUpTaskIds) && json.followUpTaskIds.length > 0) {
-          toast.success(
-            `Tarea follow-up creada (${json.followUpTaskIds.length}) · llegará en 24h`
-          );
+          toast.success(`Tarea follow-up creada (${json.followUpTaskIds.length}) · llegará en 24h`);
         }
       }
       // Also push to Amazon Connect Contact Attributes so the CTR carries
@@ -538,7 +522,7 @@ export function WrapUpView({
   };
 
   // Nota: la interacción "sin tipificar" se registra AUTOMÁTICAMENTE al terminar
-  // el contacto (en el escritorio), así que acá solo cerramos — no re-registramos.
+  // el contacto (en el escritorio), así que aquí solo cerramos — no re-registramos.
 
   // Próximas acciones sugeridas — derivadas de la etapa/sub-stage elegidos
   // (determinista, NO IA). Cálculo directo (sin useMemo con for-return, que
@@ -548,15 +532,14 @@ export function WrapUpView({
   // Impacto en el lead: etapa ACTUAL (último stageLabel del historial; recent[0]
   // es el evento más nuevo) → etapa NUEVA (la tipificación elegida). Se recalcula
   // en vivo al cambiar la selección para que el agente VEA cómo queda el lead.
-  const currentStageLabel =
-    leadOv.history?.recent.find((e) => e.stageLabel)?.stageLabel ?? null;
+  const currentStageLabel = leadOv.history?.recent.find((e) => e.stageLabel)?.stageLabel ?? null;
   const leadTouches = leadOv.history?.count ?? 0;
   const valTone: "green" | "gold" | "red" | "outline" = selectedStage
     ? selectedStage.valoracion === "negativa"
       ? "red"
       : selectedStage.valoracion === "cierre" || selectedStage.valoracion === "positiva"
-      ? "green"
-      : "outline"
+        ? "green"
+        : "outline"
     : "outline";
 
   return (
@@ -564,23 +547,24 @@ export function WrapUpView({
       <div className="view__head">
         <div>
           <div className="view__crumb">
-            <span>Wrap-up</span> ·{" "}
-            <span className="mono">{contactId.slice(0, 8)}…</span>
+            <span>Wrap-up</span> · <span className="mono">{contactId.slice(0, 8)}…</span>
           </div>
           <h1 className="view__title">Cierre de {titleNoun}</h1>
           <div className="view__sub">
             {fmtDuration(durationSeconds)} con <strong>{customerName}</strong>
             {queueName ? <> · {queueName}</> : null}
             {" · "}
-            {summaryLoading
-              ? "Generando resumen…"
-              : "Resumen IA listo (editable)"}
+            {summaryLoading ? "Generando resumen…" : "Resumen IA listo (editable)"}
           </div>
         </div>
         <div className="view__actions" style={{ alignItems: "center", gap: 10 }}>
-          <span className="muted" style={{ fontSize: 11.5, flex: 1, textAlign: "left", minWidth: 0 }}>
-            Tipificá para registrar la gestión. Si cerrás sin tipificar, la llamada queda como{" "}
-            <strong style={{ color: "var(--accent-amber)" }}>sin tipificar</strong> (pendiente de seguimiento).
+          <span
+            className="muted"
+            style={{ fontSize: 11.5, flex: 1, textAlign: "left", minWidth: 0 }}
+          >
+            Tipifica para registrar la gestión. Si cierras sin tipificar, la llamada queda como{" "}
+            <strong style={{ color: "var(--accent-amber)" }}>sin tipificar</strong> (pendiente de
+            seguimiento).
           </span>
           <button
             className="btn"
@@ -594,25 +578,26 @@ export function WrapUpView({
             className="btn btn--primary"
             onClick={handleSend}
             disabled={saving || !canSend}
-            title={
-              canSend
-                ? "Enviar resumen"
-                : "Selecciona Stage y Sub Stage para habilitar"
-            }
+            title={canSend ? "Enviar resumen" : "Selecciona Stage y Sub Stage para habilitar"}
           >
             <Icon.Check size={14} /> {saving ? "Enviando…" : "Guardar y cerrar"}
           </button>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16, alignItems: "start" }}>
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16, alignItems: "start" }}
+      >
         <div className="col" style={{ gap: 16 }}>
           {/* Resumen de la llamada — duración real + sentiment (Contact Lens)
               + resumen IA real (Bedrock). Reusa el mismo estado/fetch. */}
           <Card title="Resumen de la llamada" icon="sparkle" accent="var(--iris)">
             <div className="row gap16" style={{ marginBottom: 12, flexWrap: "wrap" }}>
               <div>
-                <div className="dim" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>
+                <div
+                  className="dim"
+                  style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}
+                >
                   Duración
                 </div>
                 <div className="mono" style={{ fontSize: 18, fontWeight: 700 }}>
@@ -620,7 +605,10 @@ export function WrapUpView({
                 </div>
               </div>
               <div>
-                <div className="dim" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>
+                <div
+                  className="dim"
+                  style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}
+                >
                   Sentiment
                 </div>
                 {sentimentLabel ? (
@@ -629,8 +617,8 @@ export function WrapUpView({
                       sentimentLabel.label === "positivo"
                         ? "green"
                         : sentimentLabel.label === "negativo"
-                        ? "red"
-                        : "outline"
+                          ? "red"
+                          : "outline"
                     }
                   >
                     {sentimentLabel.label}
@@ -671,13 +659,17 @@ export function WrapUpView({
                 className="tl__note"
                 style={{ margin: 0, minHeight: 72, lineHeight: 1.6, fontSize: 13 }}
               >
-                {summaryLoading
-                  ? "Generando resumen…"
-                  : summary || "Sin resumen disponible."}
+                {summaryLoading ? "Generando resumen…" : summary || "Sin resumen disponible."}
               </div>
             )}
             <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              <Btn variant="soft" size="sm" icon="refresh" onClick={fetchSummary} disabled={summaryLoading}>
+              <Btn
+                variant="soft"
+                size="sm"
+                icon="refresh"
+                onClick={fetchSummary}
+                disabled={summaryLoading}
+              >
                 Regenerar
               </Btn>
               <Btn variant="ghost" size="sm" onClick={() => setSummaryEditable((v) => !v)}>
@@ -740,7 +732,10 @@ export function WrapUpView({
                 {tags.length > 0 && (
                   <div className="row between" style={{ alignItems: "flex-start" }}>
                     <span className="dim">Tags</span>
-                    <span className="row gap4 wrap" style={{ justifyContent: "flex-end", maxWidth: "68%" }}>
+                    <span
+                      className="row gap4 wrap"
+                      style={{ justifyContent: "flex-end", maxWidth: "68%" }}
+                    >
                       {tags.map((t) => (
                         <Pill key={t} tone="cyan">
                           {t}
@@ -751,20 +746,29 @@ export function WrapUpView({
                 )}
                 <div
                   className="tl__note"
-                  style={{ margin: 0, fontSize: 11.5, display: "flex", gap: 8, alignItems: "flex-start" }}
+                  style={{
+                    margin: 0,
+                    fontSize: 11.5,
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "flex-start",
+                  }}
                 >
-                  <AIcon name="check" size={13} style={{ color: "var(--green)", flex: "0 0 auto", marginTop: 1 }} />
+                  <AIcon
+                    name="check"
+                    size={13}
+                    style={{ color: "var(--green)", flex: "0 0 auto", marginTop: 1 }}
+                  />
                   <span>
-                    Al <b>guardar</b>, la gestión se registra en el lead (etapa,
-                    resultado, toque) y se sincroniza con Salesforce.
+                    Al <b>guardar</b>, la gestión se registra en el lead (etapa, resultado, toque) y
+                    se sincroniza con Salesforce.
                   </span>
                 </div>
               </div>
             ) : (
               <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
-                Elegí una tipificación (Stage → Sub Stage) a la derecha y verás aquí
-                cómo queda el lead: nueva etapa, resultado y qué se sincroniza con
-                Salesforce.
+                Elige una tipificación (Stage → Sub Stage) a la derecha y verás aquí cómo queda el
+                lead: nueva etapa, resultado y qué se sincroniza con Salesforce.
               </div>
             )}
           </Card>
@@ -799,9 +803,8 @@ export function WrapUpView({
                 ))}
               </div>
               <div className="dim" style={{ fontSize: 11, marginTop: 10, lineHeight: 1.45 }}>
-                Sugerencias derivadas de la tipificación elegida. Se ejecutan al
-                guardar (la etapa se refleja en Salesforce; los seguimientos
-                abren el modal de agenda).
+                Sugerencias derivadas de la tipificación elegida. Se ejecutan al guardar (la etapa
+                se refleja en Salesforce; los seguimientos abren el modal de agenda).
               </div>
             </Card>
           )}
@@ -850,7 +853,7 @@ export function WrapUpView({
             <div className="grow">
               <b style={{ fontSize: 13.5 }}>Tipificar y cerrar</b>
               <div className="dim" style={{ fontSize: 11.5, marginTop: 1 }}>
-                Elegí Stage y Sub Stage para registrar la gestión.
+                Elige Stage y Sub Stage para registrar la gestión.
               </div>
             </div>
           </div>
@@ -875,76 +878,78 @@ export function WrapUpView({
                   Auto-applied on arrival; banner lets the agent re-apply or
                   dismiss. Stays visible (even after manual override) so the
                   agent can always fall back to the AI pick. */}
-              {suggestion && !suggestionDismissed && (() => {
-                const sgStage = tree.find((s) => s.id === suggestion.stageId);
-                const sgSub = sgStage?.subStages.find(
-                  (ss) => ss.id === suggestion.subStageId
-                );
-                const matches =
-                  stageId === suggestion.stageId &&
-                  subStageId === suggestion.subStageId;
-                return (
-                  <div
-                    style={{
-                      border: "1px solid var(--accent-violet)",
-                      background: "var(--accent-violet-soft)",
-                      borderRadius: 8,
-                      padding: "9px 10px",
-                      marginBottom: 4,
-                    }}
-                  >
-                    <div className="row" style={{ gap: 6, alignItems: "center" }}>
-                      <Icon.Sparkles size={13} style={{ color: "var(--accent-violet)" }} />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)" }}>
-                        IA sugiere
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 10.5,
-                          fontWeight: 700,
-                          color: confidenceColor(suggestion.confidence),
-                          border: `1px solid ${confidenceColor(suggestion.confidence)}`,
-                          borderRadius: 999,
-                          padding: "1px 7px",
-                        }}
-                      >
-                        {suggestion.confidence}%
-                      </span>
-                      <Icon.Close
-                        size={13}
-                        style={{ marginLeft: "auto", opacity: 0.5, cursor: "pointer" }}
-                        onClick={() => setSuggestionDismissed(true)}
-                      />
-                    </div>
-                    <div style={{ fontSize: 12.5, marginTop: 5, color: "var(--text-1)" }}>
-                      <strong>{sgStage?.label}</strong>
-                      {sgSub ? <> › {sgSub.label}</> : null}
-                      {matches && (
-                        <span
-                          className="chip chip--green"
-                          style={{ height: 16, fontSize: 9.5, marginLeft: 6 }}
-                        >
-                          aplicado
+              {suggestion &&
+                !suggestionDismissed &&
+                (() => {
+                  const sgStage = tree.find((s) => s.id === suggestion.stageId);
+                  const sgSub = sgStage?.subStages.find((ss) => ss.id === suggestion.subStageId);
+                  const matches =
+                    stageId === suggestion.stageId && subStageId === suggestion.subStageId;
+                  return (
+                    <div
+                      style={{
+                        border: "1px solid var(--accent-violet)",
+                        background: "var(--accent-violet-soft)",
+                        borderRadius: 8,
+                        padding: "9px 10px",
+                        marginBottom: 4,
+                      }}
+                    >
+                      <div className="row" style={{ gap: 6, alignItems: "center" }}>
+                        <Icon.Sparkles size={13} style={{ color: "var(--accent-violet)" }} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-1)" }}>
+                          IA sugiere
                         </span>
+                        <span
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            color: confidenceColor(suggestion.confidence),
+                            border: `1px solid ${confidenceColor(suggestion.confidence)}`,
+                            borderRadius: 999,
+                            padding: "1px 7px",
+                          }}
+                        >
+                          {suggestion.confidence}%
+                        </span>
+                        <Icon.Close
+                          size={13}
+                          style={{ marginLeft: "auto", opacity: 0.5, cursor: "pointer" }}
+                          onClick={() => setSuggestionDismissed(true)}
+                        />
+                      </div>
+                      <div style={{ fontSize: 12.5, marginTop: 5, color: "var(--text-1)" }}>
+                        <strong>{sgStage?.label}</strong>
+                        {sgSub ? <> › {sgSub.label}</> : null}
+                        {matches && (
+                          <span
+                            className="chip chip--green"
+                            style={{ height: 16, fontSize: 9.5, marginLeft: 6 }}
+                          >
+                            aplicado
+                          </span>
+                        )}
+                      </div>
+                      {suggestion.reason && (
+                        <div
+                          className="muted"
+                          style={{ fontSize: 11, marginTop: 4, lineHeight: 1.45 }}
+                        >
+                          “{suggestion.reason}”
+                        </div>
+                      )}
+                      {!matches && (
+                        <button
+                          className="btn btn--sm btn--primary"
+                          style={{ marginTop: 8 }}
+                          onClick={applySuggestion}
+                        >
+                          <Icon.Check size={11} /> Aplicar sugerencia
+                        </button>
                       )}
                     </div>
-                    {suggestion.reason && (
-                      <div className="muted" style={{ fontSize: 11, marginTop: 4, lineHeight: 1.45 }}>
-                        “{suggestion.reason}”
-                      </div>
-                    )}
-                    {!matches && (
-                      <button
-                        className="btn btn--sm btn--primary"
-                        style={{ marginTop: 8 }}
-                        onClick={applySuggestion}
-                      >
-                        <Icon.Check size={11} /> Aplicar sugerencia
-                      </button>
-                    )}
-                  </div>
-                );
-              })()}
+                  );
+                })()}
               {tree.map((stage) => {
                 const isSelected = stage.id === stageId;
                 const valChip = VALORACION_META[stage.valoracion].chip;
@@ -972,14 +977,9 @@ export function WrapUpView({
                       style={{ accentColor: "var(--accent-amber)" }}
                     />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>
-                        {stage.label}
-                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{stage.label}</div>
                       {stage.description && (
-                        <div
-                          className="muted truncate"
-                          style={{ fontSize: 11, marginTop: 2 }}
-                        >
+                        <div className="muted truncate" style={{ fontSize: 11, marginTop: 2 }}>
                           {stage.description}
                         </div>
                       )}
@@ -993,10 +993,7 @@ export function WrapUpView({
                         <Icon.Sparkles size={9} /> IA
                       </span>
                     )}
-                    <span
-                      className={`chip ${valChip}`}
-                      style={{ height: 18, fontSize: 10 }}
-                    >
+                    <span className={`chip ${valChip}`} style={{ height: 18, fontSize: 10 }}>
                       {stage.valoracion}
                     </span>
                   </label>
@@ -1009,9 +1006,7 @@ export function WrapUpView({
           {selectedStage && (
             <div className="card">
               <div className="card__head">
-                <div className="card__title">
-                  Sub Stage · {selectedStage.label}
-                </div>
+                <div className="card__title">Sub Stage · {selectedStage.label}</div>
                 <span className="muted mono" style={{ fontSize: 11 }}>
                   {selectedStage.subStages.length} opciones
                 </span>
@@ -1024,10 +1019,10 @@ export function WrapUpView({
                     followCh === "voice"
                       ? Phone
                       : followCh === "email"
-                      ? Mail
-                      : followCh === "whatsapp"
-                      ? MessageCircle
-                      : null;
+                        ? Mail
+                        : followCh === "whatsapp"
+                          ? MessageCircle
+                          : null;
                   return (
                     <label
                       key={sub.id}
@@ -1049,16 +1044,15 @@ export function WrapUpView({
                         style={{ accentColor: "var(--accent-amber)" }}
                       />
                       <span style={{ flex: 1, fontSize: 13 }}>{sub.label}</span>
-                      {suggestion?.subStageId === sub.id &&
-                        suggestion?.stageId === stageId && (
-                          <span
-                            className="chip chip--violet"
-                            style={{ height: 18, fontSize: 9.5 }}
-                            title="Sugerido por IA"
-                          >
-                            <Icon.Sparkles size={9} /> IA
-                          </span>
-                        )}
+                      {suggestion?.subStageId === sub.id && suggestion?.stageId === stageId && (
+                        <span
+                          className="chip chip--violet"
+                          style={{ height: 18, fontSize: 9.5 }}
+                          title="Sugerido por IA"
+                        >
+                          <Icon.Sparkles size={9} /> IA
+                        </span>
+                      )}
                       {ChipIcon && (
                         <span
                           className="chip chip--cyan"
@@ -1085,9 +1079,8 @@ export function WrapUpView({
                   }}
                 >
                   <Lightbulb size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />
-                  Al hacer{" "}
-                  <strong>Enviar resumen</strong> te abriremos el modal de
-                  Agendar follow-up para que pongas la fecha/hora.
+                  Al hacer <strong>Enviar resumen</strong> te abriremos el modal de Agendar
+                  follow-up para que pongas la fecha/hora.
                 </div>
               )}
             </div>
@@ -1125,11 +1118,7 @@ export function WrapUpView({
               </div>
               <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
                 {SUGGESTED_TAGS.filter((t) => !tags.includes(t)).map((t) => (
-                  <button
-                    key={t}
-                    className="chip"
-                    onClick={() => addTag(t)}
-                  >
+                  <button key={t} className="chip" onClick={() => addTag(t)}>
                     <Icon.Plus size={10} /> {t}
                   </button>
                 ))}
@@ -1147,9 +1136,7 @@ export function WrapUpView({
                 <input
                   type="checkbox"
                   checked={followUps.task24h}
-                  onChange={(e) =>
-                    setFollowUps((f) => ({ ...f, task24h: e.target.checked }))
-                  }
+                  onChange={(e) => setFollowUps((f) => ({ ...f, task24h: e.target.checked }))}
                   style={{ accentColor: "var(--accent-amber)" }}
                 />
                 <span style={{ fontSize: 13 }}>Crear tarea de follow-up en 24h</span>
@@ -1158,9 +1145,7 @@ export function WrapUpView({
                 <input
                   type="checkbox"
                   checked={followUps.emailConfirm}
-                  onChange={(e) =>
-                    setFollowUps((f) => ({ ...f, emailConfirm: e.target.checked }))
-                  }
+                  onChange={(e) => setFollowUps((f) => ({ ...f, emailConfirm: e.target.checked }))}
                   style={{ accentColor: "var(--accent-amber)" }}
                 />
                 <span style={{ fontSize: 13 }}>Enviar email con confirmación</span>
@@ -1169,9 +1154,7 @@ export function WrapUpView({
                 <input
                   type="checkbox"
                   checked={followUps.nps}
-                  onChange={(e) =>
-                    setFollowUps((f) => ({ ...f, nps: e.target.checked }))
-                  }
+                  onChange={(e) => setFollowUps((f) => ({ ...f, nps: e.target.checked }))}
                   style={{ accentColor: "var(--accent-amber)" }}
                 />
                 <span style={{ fontSize: 13 }}>Programar encuesta NPS</span>

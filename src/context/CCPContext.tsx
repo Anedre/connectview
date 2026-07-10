@@ -13,24 +13,21 @@ import type { AgentState } from "@/types/connect";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
+import { emitContactEvent } from "@/lib/contactEvents";
+import type { ConnectAgentState, MonitorSession, QuickConnectEntry } from "./ccp/types";
+export type { ConnectAgentState, MonitorSession, QuickConnectEntry };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** Despedida genérica (sin marca) que el agente envía al cerrar un chat/WhatsApp
  *  cuando el tenant no configuró la suya (config.messaging.chatFarewell). Antes
- *  acá vivía un texto hardcodeado de la Universidad de Piura — movido a config
+ *  aquí vivía un texto hardcodeado de la Universidad de Piura — movido a config
  *  por tenant para des-acoplar el producto del primer cliente. */
 const DEFAULT_CHAT_FAREWELL =
   "👋 ¡Gracias por escribirnos!\n\n" +
-  "Esperamos haber resuelto tu consulta. Si necesitás algo más, " +
-  "escribí *hola* para empezar de nuevo. 🙌\n\n" +
+  "Esperamos haber resuelto tu consulta. Si necesitas algo más, " +
+  "escribe *hola* para empezar de nuevo. 🙌\n\n" +
   "¡Que tengas un excelente día! ✨";
-
-export interface ConnectAgentState {
-  name: string;
-  type: string;
-  agentStateARN?: string;
-}
 
 interface CCPContextValue {
   agentState: AgentState;
@@ -70,24 +67,15 @@ interface CCPContextValue {
    *  Streams' `contact.addConnection` with a queue endpoint and then
    *  drops the agent leg so the contact ends up routed to the queue
    *  via the configured outbound flow. */
-  transferToQueue: (
-    queueArn: string,
-    contactId?: string
-  ) => Promise<void>;
+  transferToQueue: (queueArn: string, contactId?: string) => Promise<void>;
   /** Add a 3rd party leg to the contact by phone number. The agent
    *  stays connected to both customer + 3rd party (3-way conference).
    *  Use `dropAgentLeg` afterwards to finalize a warm transfer once
    *  the agent finishes briefing the 3rd party. */
-  addParticipantByPhone: (
-    phoneNumber: string,
-    contactId?: string
-  ) => Promise<void>;
+  addParticipantByPhone: (phoneNumber: string, contactId?: string) => Promise<void>;
   /** Add a queue (or 3rd-party queue) leg without dropping the agent —
    *  the warm-transfer half-step. Pair with `dropAgentLeg` to complete. */
-  addParticipantByQueue: (
-    queueArn: string,
-    contactId?: string
-  ) => Promise<void>;
+  addParticipantByQueue: (queueArn: string, contactId?: string) => Promise<void>;
   /** Drop the agent's own connection on the contact without killing
    *  the other legs. Completes a warm transfer; also exits an active
    *  conference, leaving the 3rd party + customer connected. */
@@ -120,28 +108,6 @@ interface CCPContextValue {
   endMonitor: () => void;
 }
 
-/** What the supervisor is currently monitoring. `mode` reflects the live
- *  Streams monitor status (SILENT_MONITOR while listening, BARGE while
- *  intervening). */
-export interface MonitorSession {
-  contactId: string;
-  mode: "SILENT_MONITOR" | "BARGE";
-  /** Capabilities granted to this session (what it can switch to). */
-  capabilities: string[];
-}
-
-/** Minimal projection of a Streams endpoint used by the Quick Connects
- *  UI. We keep the raw streams object on `_raw` so the connect call
- *  doesn't have to reconstruct it. */
-export interface QuickConnectEntry {
-  name: string;
-  type: string;
-  endpointARN?: string;
-  phoneNumber?: string;
-  queue?: string;
-  _raw: unknown;
-}
-
 const CCPContext = createContext<CCPContextValue | null>(null);
 
 /**
@@ -162,9 +128,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
   const [muted, setMuted] = useState(false);
   const [onHold, setOnHold] = useState(false);
   const [recording, setRecording] = useState(true);
-  const [monitorSession, setMonitorSession] = useState<MonitorSession | null>(
-    null
-  );
+  const [monitorSession, setMonitorSession] = useState<MonitorSession | null>(null);
   const agentRef = useRef<any>(null);
   const contactRef = useRef<any>(null);
   // Guard: auto-confirmamos el vínculo Vox↔Connect (capa 2) una sola vez por
@@ -181,9 +145,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
    *  supervisor, undefined for a normal agent contact. */
   const refreshMonitor = useCallback((contact: any) => {
     try {
-      const conn =
-        contact.getAgentConnection?.() ||
-        contact.getActiveInitialConnection?.();
+      const conn = contact.getAgentConnection?.() || contact.getActiveInitialConnection?.();
       const status: string | undefined = conn?.getMonitorStatus?.();
       if (status === "SILENT_MONITOR" || status === "BARGE") {
         monitorContactRef.current = contact;
@@ -210,9 +172,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       // agent's own contact slot.
       const isMonitor = (() => {
         try {
-          const conn =
-            contact.getAgentConnection?.() ||
-            contact.getActiveInitialConnection?.();
+          const conn = contact.getAgentConnection?.() || contact.getActiveInitialConnection?.();
           const st = conn?.getMonitorStatus?.();
           return st === "SILENT_MONITOR" || st === "BARGE";
         } catch {
@@ -234,11 +194,31 @@ export function CCPProvider({ children }: { children: ReactNode }) {
         refreshMonitor(contact);
       };
       refreshHold();
-      try { contact.onConnecting?.(refreshHold); } catch { /* noop */ }
-      try { contact.onAccepted?.(refreshHold); } catch { /* noop */ }
-      try { contact.onConnected?.(refreshHold); } catch { /* noop */ }
-      try { contact.onRefresh?.(refreshHold); } catch { /* noop */ }
-      try { contact.onACW?.(refreshHold); } catch { /* noop */ }
+      try {
+        contact.onConnecting?.(refreshHold);
+      } catch {
+        /* noop */
+      }
+      try {
+        contact.onAccepted?.(refreshHold);
+      } catch {
+        /* noop */
+      }
+      try {
+        contact.onConnected?.(refreshHold);
+      } catch {
+        /* noop */
+      }
+      try {
+        contact.onRefresh?.(refreshHold);
+      } catch {
+        /* noop */
+      }
+      try {
+        contact.onACW?.(refreshHold);
+      } catch {
+        /* noop */
+      }
       try {
         contact.onEnded?.(() => {
           if (contactRef.current === contact) {
@@ -249,6 +229,16 @@ export function CCPProvider({ children }: { children: ReactNode }) {
           if (monitorContactRef.current === contact) {
             monitorContactRef.current = null;
             setMonitorSession(null);
+          }
+          // Des-siloíza el tiempo real: avisa a la capa de datos (leads / reportes
+          // / historial / dashboard) para que se auto-refresquen sin «Actualizar».
+          try {
+            emitContactEvent({
+              type: "contact:ended",
+              contactId: (contact as { getContactId?: () => string })?.getContactId?.(),
+            });
+          } catch {
+            /* noop */
           }
         });
       } catch {
@@ -268,11 +258,11 @@ export function CCPProvider({ children }: { children: ReactNode }) {
         /* noop */
       }
     },
-    [refreshMonitor]
+    [refreshMonitor],
   );
 
   // Onboarding (#46/47): si el tenant todavía no conectó su Connect,
-  // ConnectAuthContext salta el initCCP iframe. Acá hacemos lo mismo →
+  // ConnectAuthContext salta el initCCP iframe. Aquí hacemos lo mismo →
   // no nos suscribimos a connect.agent / connect.contact (esos throws son
   // los que aparecen como "Cannot read properties of undefined" en el chip).
   const { isOnboarding, chatFarewell } = useConnectAuth();
@@ -367,23 +357,30 @@ export function CCPProvider({ children }: { children: ReactNode }) {
                     body: JSON.stringify({ connectUser: connectUsername }),
                   })
                     .then((r) => r.json().catch(() => ({})))
-                    .then((j: { ok?: boolean; code?: string; confirmed?: string; error?: string }) => {
-                      // Si el agente con el que entró NO es el que su admin le
-                      // asignó, se lo avisamos (el backend rechaza la confirmación).
-                      if (j?.code === "mismatch") {
-                        toast.error(j.error || "El agente de Connect con el que entraste no coincide con el que te asignaron.");
-                      } else if (j?.ok && j?.confirmed) {
-                        // Solo la 1ra vez (por navegador): el vínculo es permanente,
-                        // avisarlo en cada login es ruido que tapa los botones del top bar.
-                        const seenKey = `aria.connectConfirmed.${j.confirmed}`;
-                        if (!localStorage.getItem(seenKey)) {
-                          localStorage.setItem(seenKey, "1");
-                          toast.success(`Tu agente de Connect quedó confirmado: ${j.confirmed}`);
+                    .then(
+                      (j: { ok?: boolean; code?: string; confirmed?: string; error?: string }) => {
+                        // Si el agente con el que entró NO es el que su admin le
+                        // asignó, se lo avisamos (el backend rechaza la confirmación).
+                        if (j?.code === "mismatch") {
+                          toast.error(
+                            j.error ||
+                              "El agente de Connect con el que entraste no coincide con el que te asignaron.",
+                          );
+                        } else if (j?.ok && j?.confirmed) {
+                          // Solo la 1ra vez (por navegador): el vínculo es permanente,
+                          // avisarlo en cada login es ruido que tapa los botones del top bar.
+                          const seenKey = `aria.connectConfirmed.${j.confirmed}`;
+                          if (!localStorage.getItem(seenKey)) {
+                            localStorage.setItem(seenKey, "1");
+                            toast.success(`Tu agente de Connect quedó confirmado: ${j.confirmed}`);
+                          }
                         }
-                      }
-                      // code === "no_assignment" → silencio (el admin todavía no asignó).
-                    })
-                    .catch(() => { /* no fatal: el admin igual puede asignar a mano */ });
+                        // code === "no_assignment" → silencio (el admin todavía no asignó).
+                      },
+                    )
+                    .catch(() => {
+                      /* no fatal: el admin igual puede asignar a mano */
+                    });
                 }
               }
             } catch {
@@ -394,7 +391,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
           // Snapshot helper: lee estado actual + lista de estados disponibles.
           // Streams a veces entrega el agente ANTES de que el routing profile
           // esté hidratado → getAgentStates() viene vacío. Si solo leyéramos una
-          // vez acá, el pill de disponibilidad quedaría disabled para siempre
+          // vez aquí, el pill de disponibilidad quedaría disabled para siempre
           // (canChange = availableStates.length > 0). Por eso re-sincronizamos en
           // cada onRefresh y en cada cambio de estado: el pill se auto-recupera.
           const syncAgentSnapshot = () => {
@@ -414,7 +411,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
                     name: s.name,
                     type: s.type,
                     agentStateARN: s.agentStateARN,
-                  }))
+                  })),
                 );
               }
             } catch {
@@ -495,10 +492,8 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       if (targetId && a) {
         try {
           const list = a.getContacts?.() ?? [];
-           
-          const target = list.find(
-            (c: any) => c.getContactId?.() === targetId
-          );
+
+          const target = list.find((c: any) => c.getContactId?.() === targetId);
           if (target) {
             attachToContact(target);
             return target;
@@ -511,7 +506,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       if (!a) return null;
       try {
         const list = a.getContacts?.() ?? [];
-         
+
         const live = list.find((c: any) => {
           const st = c.getState?.()?.type;
           return st && st !== "ended" && st !== "destroyed";
@@ -525,7 +520,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       }
       return null;
     },
-    [attachToContact]
+    [attachToContact],
   );
 
   const mute = useCallback(
@@ -541,7 +536,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
         /* noop */
       }
     },
-    [muted]
+    [muted],
   );
 
   const toggleHold = useCallback(
@@ -559,7 +554,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
         /* noop */
       }
     },
-    [onHold, currentContact]
+    [onHold, currentContact],
   );
 
   /**
@@ -580,29 +575,24 @@ export function CCPProvider({ children }: { children: ReactNode }) {
   // given contact. Returns a promise that resolves whether the send
   // worked or not — we don't want to block disconnect on a flaky
   // chat send.
-  const sendChatMessage = useCallback(
-    async (contact: any, message: string): Promise<void> => {
-      try {
-        const agentConn =
-          contact.getAgentConnection?.() ||
-          contact.getInitialConnection?.();
-        if (!agentConn) return;
-        // Streams exposes the media controller asynchronously on the
-        // agent connection. For a CHAT contact this resolves to a
-        // ChatController with `.sendMessage({ contentType, message })`.
-        const ctlr = await agentConn.getMediaController?.();
-        if (ctlr?.sendMessage) {
-          await ctlr.sendMessage({
-            contentType: "text/plain",
-            message,
-          });
-        }
-      } catch (err) {
-        console.warn("farewell sendMessage failed:", err);
+  const sendChatMessage = useCallback(async (contact: any, message: string): Promise<void> => {
+    try {
+      const agentConn = contact.getAgentConnection?.() || contact.getInitialConnection?.();
+      if (!agentConn) return;
+      // Streams exposes the media controller asynchronously on the
+      // agent connection. For a CHAT contact this resolves to a
+      // ChatController with `.sendMessage({ contentType, message })`.
+      const ctlr = await agentConn.getMediaController?.();
+      if (ctlr?.sendMessage) {
+        await ctlr.sendMessage({
+          contentType: "text/plain",
+          message,
+        });
       }
-    },
-    []
-  );
+    } catch (err) {
+      console.warn("farewell sendMessage failed:", err);
+    }
+  }, []);
 
   const hangup = useCallback(
     async (contactId?: string) => {
@@ -647,7 +637,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
         /* noop */
       }
     },
-    [currentContact, sendChatMessage]
+    [currentContact, sendChatMessage],
   );
 
   // Streams plays the ringtone via a separate audio element managed by the
@@ -657,12 +647,12 @@ export function CCPProvider({ children }: { children: ReactNode }) {
   // We hard-mute every <audio>/<video> element on the page after the
   // action, then unmute non-ringtone elements so the actual softphone /
   // chat audio still works.
-   
+
   const stopRingtone = useCallback(() => {
     try {
       // 1) Try the streams API path first — agent.mute() on the ringtone
       //    sub-system. The exact symbol differs across versions of streams.
-       
+
       const conn = (globalThis as any).connect;
       const core = conn?.core;
       // Stop currently-playing ringtone media if streams exposes it.
@@ -692,9 +682,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
         }
       }
       // 3) Same for any audio elements inside the CCP iframe.
-      const iframe = document.querySelector(
-        "#ccp-container iframe"
-      ) as HTMLIFrameElement | null;
+      const iframe = document.querySelector("#ccp-container iframe") as HTMLIFrameElement | null;
       try {
         const idoc = iframe?.contentDocument;
         if (idoc) {
@@ -740,7 +728,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       // accept, not 1-2s later after the iframe acknowledges.
       stopRingtone();
     },
-    [currentContact, stopRingtone]
+    [currentContact, stopRingtone],
   );
 
   const reject = useCallback(
@@ -759,7 +747,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       }
       stopRingtone();
     },
-    [currentContact, stopRingtone]
+    [currentContact, stopRingtone],
   );
 
   const toggleRecording = useCallback(() => {
@@ -807,8 +795,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       const c = currentContact();
       if (!c) return;
       try {
-        const conn =
-          c.getActiveInitialConnection?.() || c.getInitialConnection?.();
+        const conn = c.getActiveInitialConnection?.() || c.getInitialConnection?.();
         if (!conn) return;
         // Streams accepts the whole string at once — it handles the
         // per-digit pacing internally.
@@ -822,7 +809,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
         console.warn("sendDigits threw:", err);
       }
     },
-    [currentContact]
+    [currentContact],
   );
 
   /**
@@ -835,7 +822,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
     async (queueArn: string, contactId?: string) => {
       return new Promise<void>((resolve, reject) => {
         const c = currentContact(contactId);
-         
+
         const conn = (globalThis as any).connect;
         if (!c || !conn?.Endpoint) {
           reject(new Error("Streams no listo"));
@@ -846,8 +833,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
           c.addConnection?.(endpoint, {
             success: () => {
               // Drop the agent leg so the customer is fully transferred.
-              const agentConn =
-                c.getAgentConnection?.() || c.getActiveInitialConnection?.();
+              const agentConn = c.getAgentConnection?.() || c.getActiveInitialConnection?.();
               try {
                 agentConn?.destroy?.();
               } catch {
@@ -860,19 +846,17 @@ export function CCPProvider({ children }: { children: ReactNode }) {
                 err instanceof Error
                   ? err.message
                   : typeof err === "string"
-                  ? err
-                  : "Transfer falló";
+                    ? err
+                    : "Transfer falló";
               reject(new Error(msg));
             },
           });
         } catch (err) {
-          reject(
-            err instanceof Error ? err : new Error("Transfer falló")
-          );
+          reject(err instanceof Error ? err : new Error("Transfer falló"));
         }
       });
     },
-    [currentContact]
+    [currentContact],
   );
 
   /**
@@ -904,21 +888,17 @@ export function CCPProvider({ children }: { children: ReactNode }) {
                 err instanceof Error
                   ? err.message
                   : typeof err === "string"
-                  ? err
-                  : "No se pudo añadir el participante";
+                    ? err
+                    : "No se pudo añadir el participante";
               reject(new Error(msg));
             },
           });
         } catch (err) {
-          reject(
-            err instanceof Error
-              ? err
-              : new Error("No se pudo añadir el participante")
-          );
+          reject(err instanceof Error ? err : new Error("No se pudo añadir el participante"));
         }
       });
     },
-    [currentContact]
+    [currentContact],
   );
 
   /**
@@ -945,21 +925,17 @@ export function CCPProvider({ children }: { children: ReactNode }) {
                 err instanceof Error
                   ? err.message
                   : typeof err === "string"
-                  ? err
-                  : "No se pudo añadir el participante";
+                    ? err
+                    : "No se pudo añadir el participante";
               reject(new Error(msg));
             },
           });
         } catch (err) {
-          reject(
-            err instanceof Error
-              ? err
-              : new Error("No se pudo añadir el participante")
-          );
+          reject(err instanceof Error ? err : new Error("No se pudo añadir el participante"));
         }
       });
     },
-    [currentContact]
+    [currentContact],
   );
 
   /**
@@ -974,14 +950,13 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       const c = currentContact(contactId);
       if (!c) return;
       try {
-        const agentConn =
-          c.getAgentConnection?.() || c.getActiveInitialConnection?.();
+        const agentConn = c.getAgentConnection?.() || c.getActiveInitialConnection?.();
         agentConn?.destroy?.();
       } catch {
         /* swallow — best-effort */
       }
     },
-    [currentContact]
+    [currentContact],
   );
 
   /**
@@ -1048,8 +1023,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
           },
         });
       } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "No se pudo iniciar la llamada";
+        const msg = err instanceof Error ? err.message : "No se pudo iniciar la llamada";
         setError(msg);
         reject(new Error(msg));
       }
@@ -1066,9 +1040,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
    * ready yet or has no quick connects configured — the caller renders
    * a clean empty state instead of an error banner.
    */
-  const getQuickConnects = useCallback(async (): Promise<
-    QuickConnectEntry[]
-  > => {
+  const getQuickConnects = useCallback(async (): Promise<QuickConnectEntry[]> => {
     const a = agentRef.current;
     if (!a) return [];
     let queueArns: string[] = [];
@@ -1109,8 +1081,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
               });
             }
             // Sort: agents first, then queues, then phone numbers.
-            const rank = (t: string) =>
-              t === "agent" ? 0 : t === "queue" ? 1 : 2;
+            const rank = (t: string) => (t === "agent" ? 0 : t === "queue" ? 1 : 2);
             out.sort((x, y) => {
               const r = rank(x.type) - rank(y.type);
               if (r !== 0) return r;
@@ -1132,37 +1103,31 @@ export function CCPProvider({ children }: { children: ReactNode }) {
    * the `_raw` field on each entry holds the original streams endpoint
    * object that `agent.connect` expects.
    */
-  const connectToEndpoint = useCallback(
-    async (endpoint: unknown) => {
-      const a = agentRef.current;
-      if (!a) throw new Error("Amazon Connect aún no está listo");
-      return new Promise<void>((resolve, reject) => {
-        try {
-          a.connect(endpoint, {
-            success: () => resolve(),
-            failure: (err: unknown) => {
-              const msg =
-                err instanceof Error
-                  ? err.message
-                  : typeof err === "string"
+  const connectToEndpoint = useCallback(async (endpoint: unknown) => {
+    const a = agentRef.current;
+    if (!a) throw new Error("Amazon Connect aún no está listo");
+    return new Promise<void>((resolve, reject) => {
+      try {
+        a.connect(endpoint, {
+          success: () => resolve(),
+          failure: (err: unknown) => {
+            const msg =
+              err instanceof Error
+                ? err.message
+                : typeof err === "string"
                   ? err
                   : "No se pudo iniciar el contacto";
-              setError(msg);
-              reject(new Error(msg));
-            },
-          });
-        } catch (err) {
-          const msg =
-            err instanceof Error
-              ? err.message
-              : "No se pudo iniciar el contacto";
-          setError(msg);
-          reject(new Error(msg));
-        }
-      });
-    },
-    []
-  );
+            setError(msg);
+            reject(new Error(msg));
+          },
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "No se pudo iniciar el contacto";
+        setError(msg);
+        reject(new Error(msg));
+      }
+    });
+  }, []);
 
   /**
    * Set contact attributes on the currently-attached contact. Used by the
@@ -1183,12 +1148,10 @@ export function CCPProvider({ children }: { children: ReactNode }) {
           },
         });
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "No se pudieron guardar los atributos"
-        );
+        setError(err instanceof Error ? err.message : "No se pudieron guardar los atributos");
       }
     },
-    [currentContact]
+    [currentContact],
   );
 
   const changeAgentState = useCallback((state: ConnectAgentState) => {
@@ -1238,7 +1201,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
         /* noop */
       }
     },
-    [refreshMonitor]
+    [refreshMonitor],
   );
 
   // Leave the monitor session — destroy the supervisor's leg on the
@@ -1321,7 +1284,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
       monitorSession,
       setMonitorState,
       endMonitor,
-    ]
+    ],
   );
 
   return <CCPContext.Provider value={value}>{children}</CCPContext.Provider>;

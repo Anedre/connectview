@@ -9,6 +9,7 @@ import { type Bot } from "@/lib/botFlow";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Icon, Btn, Stat, Pill, HeroBand, Num } from "@/components/aria";
+import { FeatureCompare, FeatureCompareButton } from "@/components/aria/FeatureCompare";
 
 /**
  * FlowBuilderPage — the real /bot page (roadmap #16). Lists saved bots from
@@ -230,6 +231,7 @@ export function FlowBuilderPage() {
         chipTone="var(--accent)"
         right={
           <div className="row gap10">
+            <FeatureCompareButton current="bots" />
             <Btn variant="ghost" size="sm" icon="flow" onClick={() => setRouting(true)}>
               Ruteo WhatsApp
             </Btn>
@@ -243,6 +245,14 @@ export function FlowBuilderPage() {
         }
       />
 
+      <div
+        className="dim"
+        style={{ fontSize: 13, marginTop: -8, marginBottom: 18, maxWidth: 760, lineHeight: 1.55 }}
+      >
+        Conversación con un guion: un árbol de botones y respuestas fijas que lleva al cliente por
+        un menú, paso a paso — predecible y sin sorpresas.
+      </div>
+
       {loading ? (
         <div
           className="grid"
@@ -253,23 +263,32 @@ export function FlowBuilderPage() {
           ))}
         </div>
       ) : list.length === 0 ? (
-        <div className="card" style={{ padding: 56, textAlign: "center", color: "var(--text-3)" }}>
-          <Icon name="flow" size={34} style={{ opacity: 0.4 }} />
-          <div style={{ marginTop: 12, fontSize: 14.5, fontWeight: 600, color: "var(--text-2)" }}>
-            Todavía no hay bots
-          </div>
-          <div style={{ marginTop: 4, fontSize: 12.5 }}>
-            Construí flujos sin código para automatizar chats, calificar leads y derivar a un
-            agente.
-          </div>
-          <Btn
-            variant="primary"
-            icon="plus"
-            style={{ marginTop: 16 }}
-            onClick={() => setPicking(true)}
+        <div className="col" style={{ gap: 16 }}>
+          <div
+            className="card"
+            style={{ padding: 56, textAlign: "center", color: "var(--text-3)" }}
           >
-            Crear el primero
-          </Btn>
+            <Icon name="bot" size={34} style={{ opacity: 0.4 }} />
+            <div style={{ marginTop: 12, fontSize: 14.5, fontWeight: 600, color: "var(--text-2)" }}>
+              Todavía no hay bots
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12.5, maxWidth: 460, marginInline: "auto" }}>
+              Conversa con un guion: un árbol de botones y respuestas fijas que lleva al cliente por
+              un menú, paso a paso. Ideal para menús predecibles. (¿Quieres que una IA entienda
+              lenguaje libre? Usa Agente IA.)
+            </div>
+            <Btn
+              variant="primary"
+              icon="plus"
+              style={{ marginTop: 16 }}
+              onClick={() => setPicking(true)}
+            >
+              Crear el primero
+            </Btn>
+          </div>
+          <div className="card" style={{ padding: 18 }}>
+            <FeatureCompare current="bots" />
+          </div>
         </div>
       ) : (
         <>

@@ -245,7 +245,7 @@ export function QueuesPanel() {
             className="muted"
             style={{ fontSize: 12.5, marginTop: 3, maxWidth: 600, lineHeight: 1.5 }}
           >
-            Las colas de tu contact center: habilitalas, configurá horario y máximo, y asigná los
+            Las colas de tu contact center: habilítalas, configura horario y máximo, y asigna los
             agentes que las atienden. Una campaña puede rutear a varias para distribuir el trabajo.
           </div>
         </div>
@@ -342,7 +342,7 @@ export function QueuesPanel() {
               </div>
               <div style={{ fontWeight: 700, fontSize: 15 }}>No encontramos colas</div>
               <div className="muted" style={{ fontSize: 12.5, marginTop: 4, marginBottom: 16 }}>
-                Conectá Amazon Connect en Integraciones, o creá tu primera cola.
+                Conecta Amazon Connect en Integraciones, o crea tu primera cola.
               </div>
               <button
                 className="btn btn--primary"

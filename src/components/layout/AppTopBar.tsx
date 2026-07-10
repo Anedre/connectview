@@ -149,9 +149,9 @@ export function AppTopBar() {
               to="/admin"
               className="tbx__status"
               style={{ background: "var(--accent-amber-soft)", color: "var(--accent-amber)" }}
-              title="Configurá tu Amazon Connect para activar el contact center"
+              title="Configura tu Amazon Connect para activar el contact center"
             >
-              <span className="dot" /> Configurá Connect
+              <span className="dot" /> Configura Connect
             </Link>
           ) : (
             <button
@@ -212,7 +212,7 @@ export function AppTopBar() {
         <button
           type="button"
           className="tb__ico fx-ico-wiggle"
-          title="Atajos de teclado"
+          title="Ayuda y atajos"
           onClick={() => setHelpOpen(true)}
         >
           <Question size={18} />

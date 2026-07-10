@@ -78,7 +78,7 @@ function buildMetaMessage(to: string, m: BotMsg): Record<string, unknown> {
       type: "interactive",
       interactive: {
         type: "list",
-        body: { text: (m.text || "Elegí una opción:").slice(0, 1024) },
+        body: { text: (m.text || "Elige una opción:").slice(0, 1024) },
         action: {
           button: "Ver opciones",
           sections: [

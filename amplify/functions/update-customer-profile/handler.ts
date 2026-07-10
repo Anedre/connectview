@@ -186,7 +186,7 @@ export const handler: Handler = async (event: any) => {
   }
   if (body.attributes && typeof body.attributes === "object") {
     // UpdateProfile REEMPLAZA el mapa completo de `Attributes`. El frontend manda
-    // el set deseado ya mergeado (los quitados no vienen); acá filtramos vacíos.
+    // el set deseado ya mergeado (los quitados no vienen); aquí filtramos vacíos.
     const attrs: Record<string, string> = {};
     for (const [k, v] of Object.entries(body.attributes)) {
       if (v != null && String(v).trim() !== "") attrs[k.trim()] = String(v);
@@ -209,7 +209,7 @@ export const handler: Handler = async (event: any) => {
     await audit(body.actor || "unknown", body.profileId, updates, "success");
     // Uniformización del nombre: propagar a connectview-leads (update-if-exists por
     // teléfono) + a las conversaciones del inbox, para que Leads / Grabaciones /
-    // Conversaciones muestren el mismo nombre que se editó acá. Best-effort: un
+    // Conversaciones muestren el mismo nombre que se editó aquí. Best-effort: un
     // fallo de propagación NO invalida el guardado del Customer Profile.
     let propagatedLeadId: string | null = null;
     if (body.phone && body.name) {

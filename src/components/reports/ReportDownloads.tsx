@@ -8,8 +8,8 @@ import type { ContactRecord } from "@/types/monitoring";
 import type { DateRange } from "./DateRangePicker";
 
 /**
- * ReportDownloads — catálogo de descargas de reportes (estilo Chattigo): elegís
- * un reporte y lo bajás como CSV o Excel al toque. Reusa lo que ARIA ya tiene:
+ * ReportDownloads — catálogo de descargas de reportes (estilo Chattigo): eliges
+ * un reporte y lo descargas como CSV o Excel al toque. Reusa lo que ARIA ya tiene:
  * los contactos ya cargados (Chat detail / agentes / llamadas / canal — respetan
  * el período), el feed de datos (HSM / leads / conversaciones) y get-cost-report.
  */

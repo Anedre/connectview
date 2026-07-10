@@ -375,7 +375,7 @@ export function HsmOutboundReport() {
             <div className="muted" style={{ fontSize: 11, marginTop: 8, lineHeight: 1.5 }}>
               La <b>tasa de respuesta</b> y el <b>tiempo de 1ª respuesta</b> se miden con el inbound
               de WhatsApp del inbox (Pilar 6). Para números <b>anclados a Connect</b> el inbound
-              vive en Connect, así que la respuesta no se mide acá.
+              vive en Connect, así que la respuesta no se mide aquí.
             </div>
           )}
         </div>
@@ -492,7 +492,7 @@ export function HsmOutboundReport() {
         >
           Meta WhatsApp Manager → Analytics
         </a>
-        . Configurá el modo de cada número en Configuración → Canales.
+        . Configura el modo de cada número en Configuración → Canales.
       </div>
     </div>
   );

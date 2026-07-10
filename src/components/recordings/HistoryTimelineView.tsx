@@ -214,7 +214,7 @@ export function HistoryTimelineView({ phone, name }: { phone: string | null; nam
           textAlign: "center",
         }}
       >
-        Elegí un lead para ver su historial completo.
+        Elige un lead para ver su historial completo.
       </div>
     );
   }

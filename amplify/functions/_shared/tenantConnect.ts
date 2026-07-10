@@ -303,7 +303,7 @@ const blockedBedrockClient = new Proxy({} as BedrockRuntimeClient, {
       return async () => {
         throw new Error(
           "BEDROCK_NOT_CONFIGURED: la organización no configuró Bedrock (BYO) — " +
-            "conectá Amazon Connect para habilitar bots/resúmenes con tu propia cuenta.",
+            "conecta Amazon Connect para habilitar bots/resúmenes con tu propia cuenta.",
         );
       };
     }

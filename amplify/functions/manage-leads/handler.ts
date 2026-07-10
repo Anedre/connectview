@@ -34,7 +34,7 @@ import { entryNodeId, type JourneyDef } from "../_shared/journeys";
 
 // Fase 2 · F2.3 — segmentos dinámicos (predicado reutilizable por tenant).
 const SEGMENTS_TABLE = process.env.SEGMENTS_TABLE || "connectview-segments";
-// Fase 3 — journeys (CRUD + enrol manual folded acá; el motor es journey-runner).
+// Fase 3 — journeys (CRUD + enrol manual folded aquí; el motor es journey-runner).
 const JOURNEYS_TABLE = process.env.JOURNEYS_TABLE || "connectview-journeys";
 const ENROLLMENTS_TABLE =
   process.env.JOURNEY_ENROLLMENTS_TABLE || "connectview-journey-enrollments";

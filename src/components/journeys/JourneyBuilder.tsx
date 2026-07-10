@@ -81,7 +81,7 @@ type NodeParams = Record<string, unknown>;
 function summaryOf(kind: JourneyNodeKind, p: NodeParams): string {
   switch (kind) {
     case "entry":
-      return "Los leads entran acá";
+      return "Los leads entran aquí";
     case "send": {
       const ch = p.channel === "email" ? "Email" : "WhatsApp";
       const t = String(p.templateName || p.subject || "");
@@ -209,12 +209,12 @@ function validateJourney(nodes: JourneyNode[], edges: JourneyEdge[]) {
   const out: Array<{ message: string; nodeId?: string }> = [];
   const entries = nodes.filter((n) => n.kind === "entry");
   if (entries.length === 0) out.push({ message: "Falta el nodo de Entrada." });
-  if (entries.length > 1) out.push({ message: "Hay más de una Entrada — dejá solo una." });
+  if (entries.length > 1) out.push({ message: "Hay más de una Entrada — deja solo una." });
   const entry = entries[0];
   if (entry && !edges.some((e) => e.from === entry.id))
     out.push({ message: "La Entrada no lleva a ningún paso.", nodeId: entry.id });
   if (!nodes.some((n) => n.kind === "exit"))
-    out.push({ message: "Agregá un Fin para cerrar el recorrido." });
+    out.push({ message: "Agrega un Fin para cerrar el recorrido." });
   for (const n of nodes) {
     const p = (n.params as NodeParams) || {};
     if (n.kind === "branch") {
@@ -634,7 +634,7 @@ function StationCard({
         <span className="jb-station__sum">{summaryOf(node.kind, p)}</span>
       </span>
       {count > 0 && (
-        <span className="jb-station__count" title={`${count} lead${count === 1 ? "" : "s"} acá`}>
+        <span className="jb-station__count" title={`${count} lead${count === 1 ? "" : "s"} aquí`}>
           <Users size={11} /> {count}
         </span>
       )}
@@ -694,7 +694,7 @@ function Inserter({
   return (
     <div className="jb-ins">
       {!open ? (
-        <button className="jb-ins__btn" onClick={() => setOpen(true)} title="Insertar paso acá">
+        <button className="jb-ins__btn" onClick={() => setOpen(true)} title="Insertar paso aquí">
           <Plus size={13} />
         </button>
       ) : (
@@ -874,7 +874,7 @@ function JourneyInspector({
     return (
       <div className="jb-inspect">
         <div className="jb-inspect__hint">
-          Tocá una estación del riel para editarla. Empezá por la <strong>Entrada</strong> — definí
+          Toca una estación del riel para editarla. Empieza por la <strong>Entrada</strong> — define
           cómo entran los leads al recorrido.
         </div>
         {stats && stats.total > 0 && (
@@ -948,7 +948,7 @@ function JourneyInspector({
                 }}
                 style={jbInput()}
               >
-                <option value="manual">Manual (los inscribís vos)</option>
+                <option value="manual">Manual (los inscribes tú)</option>
                 <option value="new_lead">Al crearse un lead nuevo</option>
                 <option value="form_submit">Al enviar un formulario</option>
                 <option value="stage_change">Al cambiar de etapa</option>
@@ -1170,7 +1170,7 @@ function JourneyInspector({
 
         {node.kind === "exit" && (
           <div className="jb-note" style={{ fontSize: 12.5 }}>
-            Fin del recorrido. Al llegar acá, el lead sale del journey (enrollment «done»).
+            Fin del recorrido. Al llegar aquí, el lead sale del journey (enrollment «done»).
           </div>
         )}
       </div>

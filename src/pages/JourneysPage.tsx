@@ -5,6 +5,7 @@ import { JourneyBuilder } from "@/components/journeys/JourneyBuilder";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Icon, Btn, Card, Stat, Pill, HeroBand, Num } from "@/components/aria";
 import type { IconName } from "@/components/aria";
+import { FeatureCompare, FeatureCompareButton } from "@/components/aria/FeatureCompare";
 
 /**
  * JourneysPage — el /journeys (Fase 3 · 3B), re-skinneado al sistema ARIA:
@@ -292,8 +293,8 @@ export function JourneysPage() {
     return (
       <div className="page">
         <HeroBand
-          title="Elegí una plantilla"
-          chip="Arrancá de un patrón probado o desde cero — después editás todo en el riel"
+          title="Elige una plantilla"
+          chip="Arranca de un patrón probado o desde cero — después editas todo en el riel"
           chipIcon="flow"
           chipTone="var(--green)"
           right={
@@ -366,6 +367,7 @@ export function JourneysPage() {
         chipTone="var(--green)"
         right={
           <div className="row gap10">
+            <FeatureCompareButton current="journeys" />
             <Btn variant="ghost" size="sm" icon="refresh" onClick={reload} disabled={loading}>
               Actualizar
             </Btn>
@@ -380,8 +382,9 @@ export function JourneysPage() {
         className="dim"
         style={{ fontSize: 13, marginTop: -8, marginBottom: 18, maxWidth: 720, lineHeight: 1.55 }}
       >
-        Recorridos automáticos multi-paso: entrar → enviar → esperar → ramificar → salir. El motor
-        de engagement que reemplaza a Pardot.
+        Secuencias que acompañan en el tiempo: llevan a cada lead por pasos, esperas y ramas (entrar
+        → enviar → esperar → ramificar → salir) durante días o semanas. El motor de engagement que
+        reemplaza a Pardot.
       </div>
 
       {loading ? (
@@ -394,45 +397,50 @@ export function JourneysPage() {
           ))}
         </div>
       ) : journeys.length === 0 ? (
-        <Card>
-          <div style={{ padding: 40, textAlign: "center" }}>
-            <div
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 16,
-                margin: "0 auto",
-                display: "grid",
-                placeItems: "center",
-                background: "color-mix(in srgb, var(--green) 14%, var(--bg-1))",
-                color: "var(--green)",
-              }}
-            >
-              <Icon name="flow" size={26} />
+        <div className="col" style={{ gap: 16 }}>
+          <Card>
+            <div style={{ padding: 40, textAlign: "center" }}>
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 16,
+                  margin: "0 auto",
+                  display: "grid",
+                  placeItems: "center",
+                  background: "color-mix(in srgb, var(--green) 14%, var(--bg-1))",
+                  color: "var(--green)",
+                }}
+              >
+                <Icon name="flow" size={26} />
+              </div>
+              <div style={{ marginTop: 14, fontSize: 15, fontWeight: 700 }}>
+                Todavía no hay journeys
+              </div>
+              <div
+                className="dim"
+                style={{
+                  marginTop: 6,
+                  fontSize: 12.5,
+                  maxWidth: 420,
+                  marginInline: "auto",
+                  lineHeight: 1.5,
+                }}
+              >
+                Armá recorridos automáticos que nutren a cada lead con el mensaje correcto en el
+                momento correcto — sin escribir código.
+              </div>
+              <div className="row" style={{ justifyContent: "center", marginTop: 18 }}>
+                <Btn variant="primary" size="sm" icon="plus" onClick={() => setPicking(true)}>
+                  Crear el primero
+                </Btn>
+              </div>
             </div>
-            <div style={{ marginTop: 14, fontSize: 15, fontWeight: 700 }}>
-              Todavía no hay journeys
-            </div>
-            <div
-              className="dim"
-              style={{
-                marginTop: 6,
-                fontSize: 12.5,
-                maxWidth: 420,
-                marginInline: "auto",
-                lineHeight: 1.5,
-              }}
-            >
-              Armá recorridos automáticos que nutren a cada lead con el mensaje correcto en el
-              momento correcto — sin escribir código.
-            </div>
-            <div className="row" style={{ justifyContent: "center", marginTop: 18 }}>
-              <Btn variant="primary" size="sm" icon="plus" onClick={() => setPicking(true)}>
-                Crear el primero
-              </Btn>
-            </div>
+          </Card>
+          <div className="card" style={{ padding: 18 }}>
+            <FeatureCompare current="journeys" />
           </div>
-        </Card>
+        </div>
       ) : (
         <>
           {/* KPIs — familia ARIA (Stat + count-up). */}

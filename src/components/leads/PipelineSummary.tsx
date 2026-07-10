@@ -5,8 +5,8 @@
  *
  * Muestra un mini-embudo segmentado (un tramo por etapa, ancho ∝ leads, color
  * de la etapa) con chips de etapa (N · %) debajo. Los KPIs numéricos (total /
- * valor / ponderado) NO viven acá — ya están en el strip de Stat cards del
- * header, así que acá solo mostramos lo que ese strip no muestra: la forma del
+ * valor / ponderado) NO viven aquí — ya están en el strip de Stat cards del
+ * header, así que aquí solo mostramos lo que ese strip no muestra: la forma del
  * embudo (dónde se acumulan los leads).
  */
 
@@ -21,7 +21,7 @@ export interface PipelineStageStat {
 interface Props {
   stages: PipelineStageStat[];
   totalLeads: number;
-  /** Retro-compat con call sites; ya no se renderizan acá (viven en el strip). */
+  /** Retro-compat con call sites; ya no se renderizan aquí (viven en el strip). */
   totalValue?: number;
   weightedValue?: number;
 }
@@ -109,11 +109,21 @@ export function PipelineSummary({ stages, totalLeads }: Props) {
             }}
           >
             <span
-              style={{ width: 7, height: 7, borderRadius: "50%", background: s.color, flex: "0 0 auto" }}
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: s.color,
+                flex: "0 0 auto",
+              }}
             />
             {s.label}
             <span
-              style={{ fontWeight: 800, color: "var(--text-1)", fontVariantNumeric: "tabular-nums" }}
+              style={{
+                fontWeight: 800,
+                color: "var(--text-1)",
+                fontVariantNumeric: "tabular-nums",
+              }}
             >
               {s.count}
             </span>

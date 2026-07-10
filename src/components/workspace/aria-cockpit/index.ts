@@ -14,7 +14,4 @@ export type { CallBarProps } from "./CallBar";
 export { Transcript } from "./Transcript";
 export { Wave, Senti, Net } from "./primitives";
 export type { DemoTx } from "./mockData";
-// Variantes REALES (datos de Amazon Connect) del entrante y saliente —
-// reutilizan el markup del handoff pero se alimentan por props reales.
-export { RingReal } from "./RingReal";
-export { ConnectingReal } from "./ConnectingReal";
+// RingReal / ConnectingReal eliminados — código muerto (auditoría 2026-07-09).

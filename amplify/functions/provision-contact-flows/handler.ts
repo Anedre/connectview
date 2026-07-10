@@ -28,11 +28,7 @@ import {
   CreateContactFlowCommand,
   UpdateContactFlowContentCommand,
 } from "@aws-sdk/client-connect";
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  PutItemCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, GetItemCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { getIdentity } from "../_shared/cognitoAuth";
 import { getTenantConnect } from "../_shared/tenantConnect";
 
@@ -90,17 +86,26 @@ function buildDisconnectFlow(farewell: string): object {
         end: { position: { x: 380, y: 60 } },
       },
       name: "ARIA-Disconnect",
-      description: "ARIA · cierre de contacto con mensaje de despedida (genérico, editable por tenant).",
+      description:
+        "ARIA · cierre de contacto con mensaje de despedida (genérico, editable por tenant).",
       type: "contactFlow",
       status: "PUBLISHED",
     },
     Actions: [
-      { Identifier: "log", Type: "UpdateFlowLoggingBehavior", Parameters: { FlowLoggingBehavior: "Enabled" }, Transitions: { NextAction: "msg" } },
+      {
+        Identifier: "log",
+        Type: "UpdateFlowLoggingBehavior",
+        Parameters: { FlowLoggingBehavior: "Enabled" },
+        Transitions: { NextAction: "msg" },
+      },
       {
         Identifier: "msg",
         Type: "MessageParticipant",
         Parameters: { Text: farewell },
-        Transitions: { NextAction: "end", Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }] },
+        Transitions: {
+          NextAction: "end",
+          Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }],
+        },
       },
       { Identifier: "end", Type: "DisconnectParticipant", Parameters: {}, Transitions: {} },
     ],
@@ -125,23 +130,75 @@ function buildInboundFlow(queueId: string, greeting: string, busy: string): obje
         end: { position: { x: 1040, y: 60 } },
       },
       name: "ARIA-Inbound",
-      description: "ARIA · entrante genérico: saluda y transfiere a la cola principal. Editable por tenant.",
+      description:
+        "ARIA · entrante genérico: saluda y transfiere a la cola principal. Editable por tenant.",
       type: "contactFlow",
       status: "PUBLISHED",
     },
     Actions: [
-      { Identifier: "log", Type: "UpdateFlowLoggingBehavior", Parameters: { FlowLoggingBehavior: "Enabled" }, Transitions: { NextAction: "voice" } },
-      { Identifier: "voice", Type: "UpdateContactTextToSpeechVoice", Parameters: { TextToSpeechVoice: VOICE }, Transitions: { NextAction: "lang", Errors: [{ NextAction: "lang", ErrorType: "NoMatchingError" }] } },
-      { Identifier: "lang", Type: "UpdateContactData", Parameters: { LanguageCode: LANG }, Transitions: { NextAction: "greet", Errors: [{ NextAction: "greet", ErrorType: "NoMatchingError" }] } },
-      { Identifier: "greet", Type: "MessageParticipant", Parameters: { Text: greeting }, Transitions: { NextAction: "setq", Errors: [{ NextAction: "setq", ErrorType: "NoMatchingError" }] } },
-      { Identifier: "setq", Type: "UpdateContactTargetQueue", Parameters: { QueueId: queueId }, Transitions: { NextAction: "xfer", Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }] } },
+      {
+        Identifier: "log",
+        Type: "UpdateFlowLoggingBehavior",
+        Parameters: { FlowLoggingBehavior: "Enabled" },
+        Transitions: { NextAction: "voice" },
+      },
+      {
+        Identifier: "voice",
+        Type: "UpdateContactTextToSpeechVoice",
+        Parameters: { TextToSpeechVoice: VOICE },
+        Transitions: {
+          NextAction: "lang",
+          Errors: [{ NextAction: "lang", ErrorType: "NoMatchingError" }],
+        },
+      },
+      {
+        Identifier: "lang",
+        Type: "UpdateContactData",
+        Parameters: { LanguageCode: LANG },
+        Transitions: {
+          NextAction: "greet",
+          Errors: [{ NextAction: "greet", ErrorType: "NoMatchingError" }],
+        },
+      },
+      {
+        Identifier: "greet",
+        Type: "MessageParticipant",
+        Parameters: { Text: greeting },
+        Transitions: {
+          NextAction: "setq",
+          Errors: [{ NextAction: "setq", ErrorType: "NoMatchingError" }],
+        },
+      },
+      {
+        Identifier: "setq",
+        Type: "UpdateContactTargetQueue",
+        Parameters: { QueueId: queueId },
+        Transitions: {
+          NextAction: "xfer",
+          Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }],
+        },
+      },
       {
         Identifier: "xfer",
         Type: "TransferContactToQueue",
         Parameters: {},
-        Transitions: { NextAction: "end", Errors: [{ NextAction: "busy", ErrorType: "QueueAtCapacity" }, { NextAction: "busy", ErrorType: "NoMatchingError" }] },
+        Transitions: {
+          NextAction: "end",
+          Errors: [
+            { NextAction: "busy", ErrorType: "QueueAtCapacity" },
+            { NextAction: "busy", ErrorType: "NoMatchingError" },
+          ],
+        },
       },
-      { Identifier: "busy", Type: "MessageParticipant", Parameters: { Text: busy }, Transitions: { NextAction: "end", Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }] } },
+      {
+        Identifier: "busy",
+        Type: "MessageParticipant",
+        Parameters: { Text: busy },
+        Transitions: {
+          NextAction: "end",
+          Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }],
+        },
+      },
       { Identifier: "end", Type: "DisconnectParticipant", Parameters: {}, Transitions: {} },
     ],
   };
@@ -164,22 +221,63 @@ function buildOutboundFlow(queueId: string): object {
         end: { position: { x: 900, y: 60 } },
       },
       name: "ARIA-Outbound",
-      description: "ARIA · saliente de campañas: graba y transfiere a la cola principal. Editable por tenant.",
+      description:
+        "ARIA · saliente de campañas: graba y transfiere a la cola principal. Editable por tenant.",
       type: "contactFlow",
       status: "PUBLISHED",
     },
     Actions: [
-      { Identifier: "log", Type: "UpdateFlowLoggingBehavior", Parameters: { FlowLoggingBehavior: "Enabled" }, Transitions: { NextAction: "voice" } },
-      { Identifier: "voice", Type: "UpdateContactTextToSpeechVoice", Parameters: { TextToSpeechVoice: VOICE }, Transitions: { NextAction: "lang", Errors: [{ NextAction: "lang", ErrorType: "NoMatchingError" }] } },
-      { Identifier: "lang", Type: "UpdateContactData", Parameters: { LanguageCode: LANG }, Transitions: { NextAction: "record", Errors: [{ NextAction: "record", ErrorType: "NoMatchingError" }] } },
+      {
+        Identifier: "log",
+        Type: "UpdateFlowLoggingBehavior",
+        Parameters: { FlowLoggingBehavior: "Enabled" },
+        Transitions: { NextAction: "voice" },
+      },
+      {
+        Identifier: "voice",
+        Type: "UpdateContactTextToSpeechVoice",
+        Parameters: { TextToSpeechVoice: VOICE },
+        Transitions: {
+          NextAction: "lang",
+          Errors: [{ NextAction: "lang", ErrorType: "NoMatchingError" }],
+        },
+      },
+      {
+        Identifier: "lang",
+        Type: "UpdateContactData",
+        Parameters: { LanguageCode: LANG },
+        Transitions: {
+          NextAction: "record",
+          Errors: [{ NextAction: "record", ErrorType: "NoMatchingError" }],
+        },
+      },
       {
         Identifier: "record",
         Type: "UpdateContactRecordingBehavior",
         Parameters: RECORDING_PARAMS,
         Transitions: { NextAction: "setq" },
       },
-      { Identifier: "setq", Type: "UpdateContactTargetQueue", Parameters: { QueueId: queueId }, Transitions: { NextAction: "xfer", Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }] } },
-      { Identifier: "xfer", Type: "TransferContactToQueue", Parameters: {}, Transitions: { NextAction: "end", Errors: [{ NextAction: "end", ErrorType: "QueueAtCapacity" }, { NextAction: "end", ErrorType: "NoMatchingError" }] } },
+      {
+        Identifier: "setq",
+        Type: "UpdateContactTargetQueue",
+        Parameters: { QueueId: queueId },
+        Transitions: {
+          NextAction: "xfer",
+          Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }],
+        },
+      },
+      {
+        Identifier: "xfer",
+        Type: "TransferContactToQueue",
+        Parameters: {},
+        Transitions: {
+          NextAction: "end",
+          Errors: [
+            { NextAction: "end", ErrorType: "QueueAtCapacity" },
+            { NextAction: "end", ErrorType: "NoMatchingError" },
+          ],
+        },
+      },
       { Identifier: "end", Type: "DisconnectParticipant", Parameters: {}, Transitions: {} },
     ],
   };
@@ -197,24 +295,55 @@ function buildSmartOutboundFlow(
   rules: { value: string; queueId: string }[],
   defaultQueueId: string,
   flowName: string,
-  baseFlowId?: string
+  baseFlowId?: string,
 ): object {
   const qActionId = (qid: string) => "q_" + qid.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
-  const uniqueQueueIds = [...new Set([...rules.map((r) => r.queueId), defaultQueueId].filter(Boolean))];
+  const uniqueQueueIds = [
+    ...new Set([...rules.map((r) => r.queueId), defaultQueueId].filter(Boolean)),
+  ];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const actions: any[] = [
-    { Identifier: "log", Type: "UpdateFlowLoggingBehavior", Parameters: { FlowLoggingBehavior: "Enabled" }, Transitions: { NextAction: "voice" } },
-    { Identifier: "voice", Type: "UpdateContactTextToSpeechVoice", Parameters: { TextToSpeechVoice: VOICE }, Transitions: { NextAction: "lang", Errors: [{ NextAction: "lang", ErrorType: "NoMatchingError" }] } },
-    { Identifier: "lang", Type: "UpdateContactData", Parameters: { LanguageCode: LANG }, Transitions: { NextAction: "record", Errors: [{ NextAction: "record", ErrorType: "NoMatchingError" }] } },
-    { Identifier: "record", Type: "UpdateContactRecordingBehavior", Parameters: RECORDING_PARAMS, Transitions: { NextAction: "check" } },
+    {
+      Identifier: "log",
+      Type: "UpdateFlowLoggingBehavior",
+      Parameters: { FlowLoggingBehavior: "Enabled" },
+      Transitions: { NextAction: "voice" },
+    },
+    {
+      Identifier: "voice",
+      Type: "UpdateContactTextToSpeechVoice",
+      Parameters: { TextToSpeechVoice: VOICE },
+      Transitions: {
+        NextAction: "lang",
+        Errors: [{ NextAction: "lang", ErrorType: "NoMatchingError" }],
+      },
+    },
+    {
+      Identifier: "lang",
+      Type: "UpdateContactData",
+      Parameters: { LanguageCode: LANG },
+      Transitions: {
+        NextAction: "record",
+        Errors: [{ NextAction: "record", ErrorType: "NoMatchingError" }],
+      },
+    },
+    {
+      Identifier: "record",
+      Type: "UpdateContactRecordingBehavior",
+      Parameters: RECORDING_PARAMS,
+      Transitions: { NextAction: "check" },
+    },
     {
       Identifier: "check",
       Type: "Compare",
       Parameters: { ComparisonValue: `$.Attributes.${attribute}` },
       Transitions: {
         NextAction: qActionId(defaultQueueId),
-        Conditions: rules.map((r) => ({ Condition: { Operator: "Equals", Operands: [String(r.value)] }, NextAction: qActionId(r.queueId) })),
+        Conditions: rules.map((r) => ({
+          Condition: { Operator: "Equals", Operands: [String(r.value)] },
+          NextAction: qActionId(r.queueId),
+        })),
         Errors: [{ NextAction: qActionId(defaultQueueId), ErrorType: "NoMatchingCondition" }],
       },
     },
@@ -222,20 +351,44 @@ function buildSmartOutboundFlow(
       Identifier: qActionId(qid),
       Type: "UpdateContactTargetQueue",
       Parameters: { QueueId: qid },
-      Transitions: { NextAction: "xfer", Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }] },
+      Transitions: {
+        NextAction: "xfer",
+        Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }],
+      },
     })),
     // Con flow base: fijamos la cola por atributo y TRANSFERIMOS al flow elegido
     // (saludo/grabación/IVR del usuario), que usa la cola ya seteada. Sin base:
     // transferimos directo a la cola.
     baseFlowId
-      ? { Identifier: "xfer", Type: "TransferToFlow", Parameters: { ContactFlowId: baseFlowId }, Transitions: { NextAction: "end", Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }] } }
-      : { Identifier: "xfer", Type: "TransferContactToQueue", Parameters: {}, Transitions: { NextAction: "end", Errors: [{ NextAction: "end", ErrorType: "QueueAtCapacity" }, { NextAction: "end", ErrorType: "NoMatchingError" }] } },
+      ? {
+          Identifier: "xfer",
+          Type: "TransferToFlow",
+          Parameters: { ContactFlowId: baseFlowId },
+          Transitions: {
+            NextAction: "end",
+            Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }],
+          },
+        }
+      : {
+          Identifier: "xfer",
+          Type: "TransferContactToQueue",
+          Parameters: {},
+          Transitions: {
+            NextAction: "end",
+            Errors: [
+              { NextAction: "end", ErrorType: "QueueAtCapacity" },
+              { NextAction: "end", ErrorType: "NoMatchingError" },
+            ],
+          },
+        },
     { Identifier: "end", Type: "DisconnectParticipant", Parameters: {}, Transitions: {} },
   ];
 
   const ActionMetadata: Record<string, unknown> = {};
   actions.forEach((a, i) => {
-    ActionMetadata[a.Identifier] = { position: { x: 60 + (i % 5) * 220, y: 60 + Math.floor(i / 5) * 150 } };
+    ActionMetadata[a.Identifier] = {
+      position: { x: 60 + (i % 5) * 220, y: 60 + Math.floor(i / 5) * 150 },
+    };
   });
 
   return {
@@ -254,16 +407,30 @@ function buildSmartOutboundFlow(
 }
 
 const DEFAULT_GREETING = "¡Hola! Gracias por comunicarte. En un momento te atiende un asesor. 🙌";
-const DEFAULT_BUSY = "En este momento todos nuestros asesores están ocupados. Por favor intentá más tarde. Gracias.";
-const DEFAULT_FAREWELL = "👋 ¡Gracias por escribirnos! Esperamos haberte ayudado. ¡Que tengas un excelente día! ✨";
+const DEFAULT_BUSY =
+  "En este momento todos nuestros asesores están ocupados. Por favor intentá más tarde. Gracias.";
+const DEFAULT_FAREWELL =
+  "👋 ¡Gracias por escribirnos! Esperamos haberte ayudado. ¡Que tengas un excelente día! ✨";
 
 /** Cola "principal" del tenant: la default (BasicQueue) o la primera STANDARD. */
-async function resolveDefaultQueue(client: ConnectClient, instanceId: string, preferredId?: string): Promise<{ id: string; name: string } | null> {
+async function resolveDefaultQueue(
+  client: ConnectClient,
+  instanceId: string,
+  preferredId?: string,
+): Promise<{ id: string; name: string } | null> {
   let token: string | undefined;
   const all: { id: string; name: string }[] = [];
   do {
-    const r = await client.send(new ListQueuesCommand({ InstanceId: instanceId, QueueTypes: ["STANDARD"], NextToken: token, MaxResults: 100 }));
-    for (const q of r.QueueSummaryList || []) if (q.Id && q.Name) all.push({ id: q.Id, name: q.Name });
+    const r = await client.send(
+      new ListQueuesCommand({
+        InstanceId: instanceId,
+        QueueTypes: ["STANDARD"],
+        NextToken: token,
+        MaxResults: 100,
+      }),
+    );
+    for (const q of r.QueueSummaryList || [])
+      if (q.Id && q.Name) all.push({ id: q.Id, name: q.Name });
     token = r.NextToken;
   } while (token);
   if (all.length === 0) return null;
@@ -272,15 +439,24 @@ async function resolveDefaultQueue(client: ConnectClient, instanceId: string, pr
     const m = all.find((q) => q.id === preferredId);
     if (m) return m;
   }
-  return all.find((q) => q.name === "BasicQueue") || all.find((q) => /basic|principal|general|ventas|main/i.test(q.name)) || all[0];
+  return (
+    all.find((q) => q.name === "BasicQueue") ||
+    all.find((q) => /basic|principal|general|ventas|main/i.test(q.name)) ||
+    all[0]
+  );
 }
 
 /** name → contactFlowId de los flows existentes (para decidir create vs update). */
-async function existingFlows(client: ConnectClient, instanceId: string): Promise<Map<string, string>> {
+async function existingFlows(
+  client: ConnectClient,
+  instanceId: string,
+): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   let token: string | undefined;
   do {
-    const r = await client.send(new ListContactFlowsCommand({ InstanceId: instanceId, NextToken: token, MaxResults: 100 }));
+    const r = await client.send(
+      new ListContactFlowsCommand({ InstanceId: instanceId, NextToken: token, MaxResults: 100 }),
+    );
     for (const f of r.ContactFlowSummaryList || []) if (f.Name && f.Id) map.set(f.Name, f.Id);
     token = r.NextToken;
   } while (token);
@@ -299,7 +475,8 @@ export const handler = async (event: FnEvent) => {
     return resp(401, { error: "Token inválido" });
   }
   if (!identity || !identity.tenantId) return resp(401, { error: "No autorizado" });
-  if (!identity.groups.includes("Admins")) return resp(403, { error: "Solo administradores pueden provisionar flows" });
+  if (!identity.groups.includes("Admins"))
+    return resp(403, { error: "Solo administradores pueden provisionar flows" });
   const tenantId = identity.tenantId;
 
   let body: {
@@ -321,7 +498,10 @@ export const handler = async (event: FnEvent) => {
   // Connect del tenant (cross-account). null = no configuró Connect todavía.
   const tc = await getTenantConnect(tenantId);
   if (!tc) {
-    return resp(409, { error: "El tenant no tiene Amazon Connect configurado. Conectá tu instancia primero (Integraciones → Connect)." });
+    return resp(409, {
+      error:
+        "El tenant no tiene Amazon Connect configurado. Conecta tu instancia primero (Integraciones → Connect).",
+    });
   }
   const client = tc.client;
   const instanceId = tc.instanceId;
@@ -338,26 +518,62 @@ export const handler = async (event: FnEvent) => {
     const flowName = String(body.flowName || "ARIA-Outbound-Smart").trim() || "ARIA-Outbound-Smart";
     const baseFlowId = String(body.baseFlowId || "").trim() || undefined;
     if (!attribute || rules.length === 0 || !defaultQueueId) {
-      return resp(400, { error: "Se requieren el atributo, al menos una regla (valor → cola) y la cola por defecto." });
+      return resp(400, {
+        error: "Se requieren el atributo, al menos una regla (valor → cola) y la cola por defecto.",
+      });
     }
     try {
-      const content = JSON.stringify(buildSmartOutboundFlow(attribute, rules, defaultQueueId, flowName, baseFlowId));
+      const content = JSON.stringify(
+        buildSmartOutboundFlow(attribute, rules, defaultQueueId, flowName, baseFlowId),
+      );
       const existing = await existingFlows(client, instanceId);
       let flowId = existing.get(flowName);
       let act: "created" | "updated";
       if (flowId) {
-        await client.send(new UpdateContactFlowContentCommand({ InstanceId: instanceId, ContactFlowId: flowId, Content: content }));
+        await client.send(
+          new UpdateContactFlowContentCommand({
+            InstanceId: instanceId,
+            ContactFlowId: flowId,
+            Content: content,
+          }),
+        );
         act = "updated";
       } else {
-        const c = await client.send(new CreateContactFlowCommand({ InstanceId: instanceId, Name: flowName, Type: "CONTACT_FLOW", Content: content, Description: "ARIA · ruteo por atributo (generado)" }));
+        const c = await client.send(
+          new CreateContactFlowCommand({
+            InstanceId: instanceId,
+            Name: flowName,
+            Type: "CONTACT_FLOW",
+            Content: content,
+            Description: "ARIA · ruteo por atributo (generado)",
+          }),
+        );
         flowId = c.ContactFlowId || "";
         act = "created";
       }
       try {
-        const rr = await ddb.send(new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } }));
+        const rr = await ddb.send(
+          new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } }),
+        );
         const cfg = rr.Item?.configJson?.S ? JSON.parse(rr.Item.configJson.S) : {};
-        cfg.routingRules = { attribute, rules, defaultQueueId, flowId, flowName, updatedAt: new Date().toISOString() };
-        await ddb.send(new PutItemCommand({ TableName: TABLE, Item: { tenantId: { S: tenantId }, configJson: { S: JSON.stringify(cfg) }, updatedAt: { S: new Date().toISOString() } } }));
+        cfg.routingRules = {
+          attribute,
+          rules,
+          defaultQueueId,
+          flowId,
+          flowName,
+          updatedAt: new Date().toISOString(),
+        };
+        await ddb.send(
+          new PutItemCommand({
+            TableName: TABLE,
+            Item: {
+              tenantId: { S: tenantId },
+              configJson: { S: JSON.stringify(cfg) },
+              updatedAt: { S: new Date().toISOString() },
+            },
+          }),
+        );
       } catch (e) {
         console.error("guardar routingRules falló:", e);
       }
@@ -373,7 +589,9 @@ export const handler = async (event: FnEvent) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let storedCfg: any = {};
     try {
-      const r = await ddb.send(new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } }));
+      const r = await ddb.send(
+        new GetItemCommand({ TableName: TABLE, Key: { tenantId: { S: tenantId } } }),
+      );
       storedCfg = r.Item?.configJson?.S ? JSON.parse(r.Item.configJson.S) : {};
       const f = (storedCfg?.messaging?.chatFarewell || "").trim();
       if (f) farewell = f;
@@ -387,7 +605,10 @@ export const handler = async (event: FnEvent) => {
     const preferredQueueId = body.defaultQueueId || storedCfg?.connect?.defaultQueueId;
     const queue = await resolveDefaultQueue(client, instanceId, preferredQueueId);
     if (!queue) {
-      return resp(409, { error: "No se encontró ninguna cola (STANDARD) en tu instancia de Connect. Creá al menos una cola antes de provisionar los flows." });
+      return resp(409, {
+        error:
+          "No se encontró ninguna cola (STANDARD) en tu instancia de Connect. Crea al menos una cola antes de provisionar los flows.",
+      });
     }
 
     const templates = [
@@ -402,7 +623,11 @@ export const handler = async (event: FnEvent) => {
         tenantId,
         instanceId,
         resolvedQueue: queue,
-        flows: templates.map((t) => ({ name: t.name, actions: (t.content as { Actions?: unknown[] }).Actions?.length || 0, contentPreview: JSON.stringify(t.content).slice(0, 240) })),
+        flows: templates.map((t) => ({
+          name: t.name,
+          actions: (t.content as { Actions?: unknown[] }).Actions?.length || 0,
+          contentPreview: JSON.stringify(t.content).slice(0, 240),
+        })),
         note: "dryRun: nada creado. Reenviá con { dryRun:false } para crear/actualizar.",
       });
     }
@@ -414,10 +639,24 @@ export const handler = async (event: FnEvent) => {
       const content = JSON.stringify(t.content);
       const existingId = existing.get(t.name);
       if (existingId) {
-        await client.send(new UpdateContactFlowContentCommand({ InstanceId: instanceId, ContactFlowId: existingId, Content: content }));
+        await client.send(
+          new UpdateContactFlowContentCommand({
+            InstanceId: instanceId,
+            ContactFlowId: existingId,
+            Content: content,
+          }),
+        );
         result[t.name] = { id: existingId, action: "updated" };
       } else {
-        const c = await client.send(new CreateContactFlowCommand({ InstanceId: instanceId, Name: t.name, Type: "CONTACT_FLOW", Content: content, Description: "Provisionado por ARIA" }));
+        const c = await client.send(
+          new CreateContactFlowCommand({
+            InstanceId: instanceId,
+            Name: t.name,
+            Type: "CONTACT_FLOW",
+            Content: content,
+            Description: "Provisionado por ARIA",
+          }),
+        );
         result[t.name] = { id: c.ContactFlowId || "", action: "created" };
       }
     }
@@ -436,7 +675,16 @@ export const handler = async (event: FnEvent) => {
         defaultQueueId: queue.id,
         defaultQueueName: queue.name,
       };
-      await ddb.send(new PutItemCommand({ TableName: TABLE, Item: { tenantId: { S: tenantId }, configJson: { S: JSON.stringify(storedCfg) }, updatedAt: { S: new Date().toISOString() } } }));
+      await ddb.send(
+        new PutItemCommand({
+          TableName: TABLE,
+          Item: {
+            tenantId: { S: tenantId },
+            configJson: { S: JSON.stringify(storedCfg) },
+            updatedAt: { S: new Date().toISOString() },
+          },
+        }),
+      );
     } catch (e) {
       console.error("guardar contactFlows/cola en config falló:", e);
     }

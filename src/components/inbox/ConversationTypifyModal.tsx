@@ -64,7 +64,7 @@ export function ConversationTypifyModal({
 
   const save = async () => {
     if (!selectedStage) {
-      toast.error("Elegí una etapa para tipificar");
+      toast.error("Elige una etapa para tipificar");
       return;
     }
     try {
@@ -102,7 +102,13 @@ export function ConversationTypifyModal({
       <div
         className="card card--pop"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 500, maxWidth: "94vw", maxHeight: "88vh", display: "flex", flexDirection: "column" }}
+        style={{
+          width: 500,
+          maxWidth: "94vw",
+          maxHeight: "88vh",
+          display: "flex",
+          flexDirection: "column",
+        }}
       >
         <div className="card__head">
           <div className="card__title">
@@ -116,7 +122,10 @@ export function ConversationTypifyModal({
           </button>
         </div>
 
-        <div className="card__pad" style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div
+          className="card__pad"
+          style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}
+        >
           {/* Cómo queda el lead — se actualiza en vivo al elegir la etapa. */}
           {selectedStage && (
             <div
@@ -202,7 +211,10 @@ export function ConversationTypifyModal({
                         </div>
                       )}
                     </div>
-                    <span className={`chip ${VALORACION_META[stage.valoracion].chip}`} style={{ height: 18, fontSize: 10 }}>
+                    <span
+                      className={`chip ${VALORACION_META[stage.valoracion].chip}`}
+                      style={{ height: 18, fontSize: 10 }}
+                    >
                       {stage.valoracion}
                     </span>
                   </label>
@@ -298,9 +310,17 @@ export function ConversationTypifyModal({
         {/* Footer */}
         <div
           className="row between"
-          style={{ alignItems: "center", gap: 10, padding: "12px 16px", borderTop: "1px solid var(--border-1)" }}
+          style={{
+            alignItems: "center",
+            gap: 10,
+            padding: "12px 16px",
+            borderTop: "1px solid var(--border-1)",
+          }}
         >
-          <label className="row gap8" style={{ alignItems: "center", cursor: "pointer", fontSize: 12.5 }}>
+          <label
+            className="row gap8"
+            style={{ alignItems: "center", cursor: "pointer", fontSize: 12.5 }}
+          >
             <input
               type="checkbox"
               checked={closeAfter}
@@ -319,7 +339,11 @@ export function ConversationTypifyModal({
               onClick={save}
               disabled={!selectedStage || typify.isPending}
             >
-              {typify.isPending ? "Guardando…" : closeAfter ? "Tipificar y cerrar" : "Guardar tipificación"}
+              {typify.isPending
+                ? "Guardando…"
+                : closeAfter
+                  ? "Tipificar y cerrar"
+                  : "Guardar tipificación"}
             </button>
           </div>
         </div>

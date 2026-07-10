@@ -1,6 +1,6 @@
 /* Este archivo mezcla a propósito componentes + helpers (colorFromName,
    initialsOf, ChannelType) y todo el set de íconos. El fast-refresh de Vite
-   funciona igual en la práctica; desactivamos la regla acá para no partir un
+   funciona igual en la práctica; desactivamos la regla aquí para no partir un
    módulo histórico del que dependen cientos de imports. */
 /* eslint-disable react-refresh/only-export-components */
 import { useMemo, type CSSProperties, type ReactNode, type SVGProps } from "react";
@@ -27,7 +27,7 @@ export function colorFromName(name: string): string {
   return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
 }
 
-/** @deprecated usá `initials` de `@/lib/initials`. Se mantiene como alias para
+/** @deprecated usa `initials` de `@/lib/initials`. Se mantiene como alias para
  *  no romper los cientos de imports existentes; delega en la función canónica. */
 export function initialsOf(name: string | null | undefined): string {
   return initials(name);

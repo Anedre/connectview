@@ -10,7 +10,7 @@ import { resolveConnect } from "../_shared/tenantConnect";
 import { getIdentity, type VoxIdentity } from "../_shared/cognitoAuth";
 
 // SEC-C6: transferir un contacto en vivo SOLO para Supervisores/Admins. Function
-// URL auth=NONE → la identidad se valida acá con el JWT.
+// URL auth=NONE → la identidad se valida aquí con el JWT.
 const PRIVILEGED_GROUPS = ["Admins", "Supervisors"];
 
 const legacyConnect = new ConnectClient({ maxAttempts: 1 });

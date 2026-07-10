@@ -39,6 +39,7 @@ export function AIAssistPanel({ latestCustomerUtterance }: AIAssistPanelProps) {
   const [suggestions, setSuggestions] = useState<QSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<CopTab>("conocimiento");
+  const [error, setError] = useState<string | null>(null);
 
   const search = async (q: string) => {
     if (!q) return;
@@ -46,12 +47,17 @@ export function AIAssistPanel({ latestCustomerUtterance }: AIAssistPanelProps) {
     if (!endpoints?.getQSuggestions) return;
 
     setLoading(true);
+    setError(null);
     try {
-      const r = await fetch(
-        `${endpoints.getQSuggestions}?query=${encodeURIComponent(q)}`
-      );
+      const r = await fetch(`${endpoints.getQSuggestions}?query=${encodeURIComponent(q)}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       setSuggestions(data.results || []);
+    } catch {
+      // Antes se tragaba el error (try/finally sin catch) → un fallo se veía
+      // igual que «sin resultados». Ahora lo distingue con un aviso.
+      setError("No se pudo buscar. Revisa la conexión y reintenta.");
+      setSuggestions([]);
     } finally {
       setLoading(false);
     }
@@ -90,12 +96,7 @@ export function AIAssistPanel({ latestCustomerUtterance }: AIAssistPanelProps) {
             ["objeciones", "Objeciones"],
           ] as [CopTab, string][]
         ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={tab === id}
-            onClick={() => setTab(id)}
-          >
+          <button key={id} type="button" aria-pressed={tab === id} onClick={() => setTab(id)}>
             {label}
           </button>
         ))}
@@ -120,8 +121,8 @@ export function AIAssistPanel({ latestCustomerUtterance }: AIAssistPanelProps) {
             tab === "objeciones"
               ? "Busca cómo responder una objeción…"
               : tab === "guiones"
-              ? "Busca un guion o argumento…"
-              : "Pregúntale a Q o busca en la base de conocimiento…"
+                ? "Busca un guion o argumento…"
+                : "Pregúntale a Q o busca en la base de conocimiento…"
           }
           style={{
             flex: 1,
@@ -158,35 +159,46 @@ export function AIAssistPanel({ latestCustomerUtterance }: AIAssistPanelProps) {
         >
           {tab === "guiones" ? (
             <>
-              Los guiones sugeridos en vivo los genera el{" "}
-              <b>Coach</b> (pestaña Coach a la derecha) según la conversación.
-              Aquí puedes buscar argumentos o aperturas en la base de
+              Los guiones sugeridos en vivo los genera el <b>Coach</b> (pestaña Coach a la derecha)
+              según la conversación. Aquí puedes buscar argumentos o aperturas en la base de
               conocimiento.
             </>
           ) : (
             <>
-              Cuando el cliente plantee una objeción, el <b>Coach</b> la marca y
-              sugiere cómo responder. Aquí puedes buscar respuestas guardadas en
-              la base de conocimiento.
+              Cuando el cliente plantee una objeción, el <b>Coach</b> la marca y sugiere cómo
+              responder. Aquí puedes buscar respuestas guardadas en la base de conocimiento.
             </>
           )}
         </div>
       )}
 
-      {tab === "conocimiento" &&
-        suggestions.length === 0 &&
-        !loading && (
-          <div
-            style={{
-              padding: 32,
-              textAlign: "center",
-              color: "var(--text-3)",
-              fontSize: 12.5,
-            }}
-          >
-            Busca información o deja que Q sugiera durante la llamada.
-          </div>
-        )}
+      {error && (
+        <div
+          style={{
+            padding: "10px 12px",
+            margin: "0 0 8px",
+            background: "color-mix(in srgb, var(--coral) 10%, transparent)",
+            border: "1px solid var(--coral)",
+            borderRadius: 8,
+            color: "var(--coral)",
+            fontSize: 12,
+          }}
+        >
+          {error}
+        </div>
+      )}
+      {tab === "conocimiento" && suggestions.length === 0 && !loading && !error && (
+        <div
+          style={{
+            padding: 32,
+            textAlign: "center",
+            color: "var(--text-3)",
+            fontSize: 12.5,
+          }}
+        >
+          Busca información o deja que Q sugiera durante la llamada.
+        </div>
+      )}
 
       {/* Resultados reales del buscador — idénticos en las 3 pestañas porque
           es el mismo endpoint de base de conocimiento. */}

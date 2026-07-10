@@ -250,7 +250,7 @@ export function BotAnalyticsReport() {
         </div>
       ) : !data || data.total === 0 ? (
         <div style={{ color: "var(--text-3)", padding: 24, textAlign: "center" }}>
-          Todavía no hay conversaciones del agente IA. Probá el bot en /bot → «Probar bot» y volvé.
+          Todavía no hay conversaciones del agente IA. Pruébalo en /agente → «Probar» y vuelve.
         </div>
       ) : (
         <>

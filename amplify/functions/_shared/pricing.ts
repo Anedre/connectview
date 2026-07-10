@@ -80,7 +80,7 @@ export const ASSUME = {
   ddbWriteFrac: 0.3, // proporción de operaciones DynamoDB que son escrituras
   secretsTenant: 3, // secretos por tenant (WhatsApp, Salesforce, OAuth…)
   // ── Derivación por-tenant desde la actividad (SOLO el estimador vivo: el script
-  //    usa volúmenes manuales; acá los inferimos del uso real del período). Un
+  //    usa volúmenes manuales; aquí los inferimos del uso real del período). Un
   //    "evento" = mensaje/llamada/turno de bot que dispara la cadena de la plataforma.
   lambdaInvPerEvent: 6, // invocaciones Lambda por evento (webhook→propagate→bot→reply→…)
   lambdaBaselineMonthly: 15000, // invocaciones fijas/mes (crons: journeys 5min, reaper, warmers)

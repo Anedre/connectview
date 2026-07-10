@@ -742,7 +742,12 @@ function AppContent() {
 export default function App() {
   // Standalone, auth-free design preview of the flow builder (#16). Bypasses
   // ConnectAuthProvider entirely so /bot-demo renders without a CCP session.
-  if (typeof window !== "undefined" && window.location.pathname === "/bot-demo") {
+  // DEV only → nunca se sirve en producción (evita exponer el builder sin auth).
+  if (
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    window.location.pathname === "/bot-demo"
+  ) {
     return (
       <ThemeProvider>
         <Suspense fallback={<RouteFallback />}>
@@ -754,7 +759,12 @@ export default function App() {
 
   // Auth-free preview of the Agentes IA hub (CRUD via manage-bot + live
   // playground via bot-runtime, both public Function URLs → works gate-free).
-  if (typeof window !== "undefined" && window.location.pathname === "/agente-demo") {
+  // DEV only → en producción NO exponemos el hub real de Agentes IA sin login.
+  if (
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    window.location.pathname === "/agente-demo"
+  ) {
     return (
       <ThemeProvider>
         <Suspense fallback={<RouteFallback />}>
@@ -768,7 +778,12 @@ export default function App() {
 
   // Auth-free preview del dashboard ejecutivo (Inicio) con datos mock — para
   // verificar el diseño sin login (el shell real está tras Cognito+Connect).
-  if (typeof window !== "undefined" && window.location.pathname === "/inicio-demo") {
+  // DEV only → en producción no se sirve (era la única de estas tres sin gate).
+  if (
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    window.location.pathname === "/inicio-demo"
+  ) {
     return (
       <ThemeProvider>
         <Suspense fallback={<RouteFallback />}>

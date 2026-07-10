@@ -13,20 +13,14 @@
  * externalId, instanceArn, region) para hacer la verificación.
  */
 import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
-import {
-  ConnectClient,
-  DescribeInstanceCommand,
-} from "@aws-sdk/client-connect";
-import {
-  DynamoDBClient,
-  DescribeTableCommand,
-} from "@aws-sdk/client-dynamodb";
+import { ConnectClient, DescribeInstanceCommand } from "@aws-sdk/client-connect";
+import { DynamoDBClient, DescribeTableCommand } from "@aws-sdk/client-dynamodb";
 
 const sts = new STSClient({});
 
 const CORS: Record<string, string> = {
   // CORS lo provee la Function URL (config de AWS). NO setear Access-Control-*
-  // acá: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
+  // aquí: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
   // rechaza la respuesta con "Failed to fetch" (mismo quirk que web-form-capture).
   "Content-Type": "application/json",
 };
@@ -100,7 +94,7 @@ export const handler = async (event: FnEvent) => {
         RoleSessionName: "vox-verify",
         ExternalId: body.externalId,
         DurationSeconds: 900,
-      })
+      }),
     );
     creds = a.Credentials;
     if (!creds?.AccessKeyId || !creds.SecretAccessKey || !creds.SessionToken) {
@@ -111,7 +105,7 @@ export const handler = async (event: FnEvent) => {
     // STS devuelve "not authorized" tanto cuando el rol no existe como cuando
     // el ExternalId no coincide. Damos un hint legible al cliente.
     const hint = /not authorized|access denied/i.test(raw)
-      ? " Verificá que (a) el ARN del rol esté bien copiado, (b) el ExternalId del wizard coincida con el del CFN, y (c) ya aplicaste el template del paso 3."
+      ? " Verifica que (a) el ARN del rol esté bien copiado, (b) el ExternalId del wizard coincida con el del CFN, y (c) ya aplicaste el template del paso 3."
       : "";
     return resp(502, {
       ok: false,
@@ -127,7 +121,10 @@ export const handler = async (event: FnEvent) => {
   // 2) DescribeInstance.
   const instanceId = instanceIdFromArn(body.instanceArn);
   if (!instanceId) {
-    return resp(400, { ok: false, error: "instanceArn malformado (no se pudo derivar instanceId)" });
+    return resp(400, {
+      ok: false,
+      error: "instanceArn malformado (no se pudo derivar instanceId)",
+    });
   }
   try {
     const connect = new ConnectClient({ region, credentials: assumedCreds });
@@ -135,7 +132,11 @@ export const handler = async (event: FnEvent) => {
   } catch (e) {
     return resp(502, {
       ok: false,
-      error: `DescribeInstance falló (¿la instancia existe?): ${e instanceof Error ? e.message : String(e)}`.slice(0, 300),
+      error:
+        `DescribeInstance falló (¿la instancia existe?): ${e instanceof Error ? e.message : String(e)}`.slice(
+          0,
+          300,
+        ),
     });
   }
 
@@ -150,12 +151,12 @@ export const handler = async (event: FnEvent) => {
         } catch {
           missing.push(t);
         }
-      })
+      }),
     );
     if (missing.length > 0) {
       return resp(424, {
         ok: false,
-        error: `Faltan ${missing.length} de 14 tablas. Aplicá el CFN del paso 4.`,
+        error: `Faltan ${missing.length} de 14 tablas. Aplica el CFN del paso 4.`,
         missingTables: missing,
       });
     }

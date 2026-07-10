@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { emitContactEvent } from "@/lib/contactEvents";
 
 /**
  * Helpers de Salesforce para el frontend. Centraliza el "toast de lead guardado
@@ -43,5 +44,12 @@ export function leadSavedToast(opts: LeadSavedOpts): void {
     });
   } else {
     toast.success(msg);
+  }
+  // Propaga a las vistas suscritas (Leads / Reportes / Dashboard) para que
+  // reflejen el lead recién guardado sin «Actualizar» — auto-update por el bus.
+  try {
+    emitContactEvent({ type: "lead:updated", leadId: opts.salesforce?.leadId ?? undefined });
+  } catch {
+    /* noop */
   }
 }

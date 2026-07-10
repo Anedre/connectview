@@ -236,7 +236,7 @@ export function ProgramReport() {
             fontSize: 13,
           }}
         >
-          Elegí un programa en el selector de arriba para ver su embudo, conversión y golpes.
+          Elige un programa en el selector de arriba para ver su embudo, conversión y golpes.
           Mostrando el consolidado de todos los programas.
         </div>
       ) : null}

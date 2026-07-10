@@ -30,38 +30,33 @@ import {
   ListIntegrationAssociationsCommand,
 } from "@aws-sdk/client-connect";
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
-import {
-  CustomerProfilesClient,
-  GetDomainCommand,
-} from "@aws-sdk/client-customer-profiles";
-import {
-  DynamoDBClient,
-  DescribeTableCommand,
-  GetItemCommand,
-} from "@aws-sdk/client-dynamodb";
-import {
-  CloudFormationClient,
-  DescribeStackEventsCommand,
-} from "@aws-sdk/client-cloudformation";
-import {
-  BedrockRuntimeClient,
-  InvokeModelCommand,
-} from "@aws-sdk/client-bedrock-runtime";
+import { CustomerProfilesClient, GetDomainCommand } from "@aws-sdk/client-customer-profiles";
+import { DynamoDBClient, DescribeTableCommand, GetItemCommand } from "@aws-sdk/client-dynamodb";
+import { CloudFormationClient, DescribeStackEventsCommand } from "@aws-sdk/client-cloudformation";
+import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { IAMClient, SimulatePrincipalPolicyCommand } from "@aws-sdk/client-iam";
 import { getIdentity } from "../_shared/cognitoAuth";
 
-const CONNECTIONS_TABLE =
-  process.env.CONNECTIONS_TABLE || "connectview-connections";
+const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
 const voxDdb = new DynamoDBClient({});
 const sts = new STSClient({});
 
 // Las 14 tablas del Data Plane (mantener en sync con cfnTemplates.ts).
 const DATA_PLANE_TABLES = [
-  "connectview-admin-audit", "connectview-ai-conversations", "connectview-appointments",
-  "connectview-bots", "connectview-callbacks", "connectview-campaign-agents",
-  "connectview-campaign-contacts", "connectview-campaigns", "connectview-catalogs",
-  "connectview-contacts", "connectview-hsm-sends", "connectview-leads",
-  "connectview-taxonomies", "connectview-wrapup-history",
+  "connectview-admin-audit",
+  "connectview-ai-conversations",
+  "connectview-appointments",
+  "connectview-bots",
+  "connectview-callbacks",
+  "connectview-campaign-agents",
+  "connectview-campaign-contacts",
+  "connectview-campaigns",
+  "connectview-catalogs",
+  "connectview-contacts",
+  "connectview-hsm-sends",
+  "connectview-leads",
+  "connectview-taxonomies",
+  "connectview-wrapup-history",
 ];
 
 // Acciones que el rol DEBE tener con Resource:"*" — justo donde históricamente
@@ -78,56 +73,77 @@ const EXPECTED_STAR_PERMISSIONS: {
     group: "directory",
     label: "Usuarios y perfiles de seguridad",
     actions: [
-      "connect:ListUsers", "connect:DescribeUser", "connect:ListQueues", "connect:DescribeQueue",
-      "connect:DescribeSecurityProfile", "connect:ListSecurityProfiles", "connect:UpdateUserSecurityProfiles",
+      "connect:ListUsers",
+      "connect:DescribeUser",
+      "connect:ListQueues",
+      "connect:DescribeQueue",
+      "connect:DescribeSecurityProfile",
+      "connect:ListSecurityProfiles",
+      "connect:UpdateUserSecurityProfiles",
     ],
   },
   {
     group: "routing",
     label: "Enrutamiento y números de teléfono",
     actions: [
-      "connect:ListRoutingProfiles", "connect:ListRoutingProfileQueues",
-      "connect:AssociateRoutingProfileQueues", "connect:DisassociateRoutingProfileQueues",
-      "connect:ListPhoneNumbers", "connect:ListPhoneNumbersV2",
+      "connect:ListRoutingProfiles",
+      "connect:ListRoutingProfileQueues",
+      "connect:AssociateRoutingProfileQueues",
+      "connect:DisassociateRoutingProfileQueues",
+      "connect:ListPhoneNumbers",
+      "connect:ListPhoneNumbersV2",
     ],
   },
   {
     group: "metrics",
     label: "Métricas e historial de contactos",
     actions: [
-      "connect:GetMetricDataV2", "connect:GetCurrentMetricData", "connect:GetCurrentUserData",
-      "connect:SearchContacts", "connect:DescribeContact", "connect:ListContactReferences",
+      "connect:GetMetricDataV2",
+      "connect:GetCurrentMetricData",
+      "connect:GetCurrentUserData",
+      "connect:SearchContacts",
+      "connect:DescribeContact",
+      "connect:ListContactReferences",
     ],
   },
   {
     group: "flows",
     label: "Flujos de contacto (bots)",
     actions: [
-      "connect:ListContactFlows", "connect:DescribeContactFlow",
-      "connect:CreateContactFlow", "connect:UpdateContactFlowContent",
+      "connect:ListContactFlows",
+      "connect:DescribeContactFlow",
+      "connect:CreateContactFlow",
+      "connect:UpdateContactFlowContent",
     ],
   },
   {
     group: "profiles",
     label: "Cliente 360° (Customer Profiles)",
     actions: [
-      "profile:SearchProfiles", "profile:GetDomain", "profile:ListDomains",
-      "profile:CreateProfile", "profile:UpdateProfile", "profile:PutProfileObject", "profile:AddProfileKey",
+      "profile:SearchProfiles",
+      "profile:GetDomain",
+      "profile:ListDomains",
+      "profile:CreateProfile",
+      "profile:UpdateProfile",
+      "profile:PutProfileObject",
+      "profile:AddProfileKey",
     ],
   },
   {
     group: "whatsapp",
     label: "WhatsApp (plantillas y envío)",
     actions: [
-      "social-messaging:SendWhatsAppMessage", "social-messaging:ListLinkedWhatsAppBusinessAccounts",
-      "social-messaging:ListWhatsAppMessageTemplates", "social-messaging:GetWhatsAppMessageTemplate",
+      "social-messaging:SendWhatsAppMessage",
+      "social-messaging:ListLinkedWhatsAppBusinessAccounts",
+      "social-messaging:ListWhatsAppMessageTemplates",
+      "social-messaging:GetWhatsAppMessageTemplate",
     ],
   },
 ];
 
 const CORS: Record<string, string> = {
   // CORS lo provee la Function URL (config de AWS). NO setear Access-Control-*
-  // acá: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
+  // aquí: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
   // rechaza la respuesta con "Failed to fetch" (mismo quirk que web-form-capture).
   "Content-Type": "application/json",
 };
@@ -192,7 +208,7 @@ async function readTenantConfig(tenantId: string): Promise<DiagnoseConfig | null
       new GetItemCommand({
         TableName: CONNECTIONS_TABLE,
         Key: { tenantId: { S: tenantId } },
-      })
+      }),
     );
     const json = r.Item?.configJson?.S;
     if (!json) return null;
@@ -250,7 +266,7 @@ export const handler = async (event: FnEvent) => {
       status: "error",
       detail: "Falta la URL/ARN de la instancia o el ARN del rol.",
       remediation:
-        "Completá los pasos 1 a 3 del asistente: pegá la URL de tu instancia, su ARN, y el RoleArn del rol que crea la plantilla CloudFormation.",
+        "Completa los pasos 1 a 3 del asistente: pega la URL de tu instancia, su ARN, y el RoleArn del rol que crea la plantilla CloudFormation.",
     });
     return resp(200, { checks, generatedAt: new Date().toISOString() });
   }
@@ -264,7 +280,7 @@ export const handler = async (event: FnEvent) => {
         RoleSessionName: "vox-diagnose",
         ExternalId: cfg.externalId,
         DurationSeconds: 900,
-      })
+      }),
     );
     creds = a.Credentials;
     if (!creds?.AccessKeyId) throw new Error("STS sin credenciales");
@@ -282,7 +298,7 @@ export const handler = async (event: FnEvent) => {
       status: "error",
       detail: "No pudimos asumir el rol.",
       remediation:
-        "Las 3 causas más comunes: (1) el stack de CloudFormation todavía se está creando — esperá 1-2 min y reintentá; (2) el ExternalId del asistente no coincide con el del rol — reaplicá la plantilla; (3) tu cuenta bloquea roles con confianza externa (SCP) — pedile a tu equipo de seguridad una excepción para la cuenta de Vox. Detalle técnico: " +
+        "Las 3 causas más comunes: (1) el stack de CloudFormation todavía se está creando — espera 1-2 min y reintentá; (2) el ExternalId del asistente no coincide con el del rol — reaplicá la plantilla; (3) tu cuenta bloquea roles con confianza externa (SCP) — pídele a tu equipo de seguridad una excepción para la cuenta de Vox. Detalle técnico: " +
         msg.slice(0, 160),
     });
     // Sin rol no podemos seguir con los chequeos de Connect.
@@ -300,9 +316,7 @@ export const handler = async (event: FnEvent) => {
 
   // ── Check 3: instancia accesible ───────────────────────────────────────
   try {
-    const di = await connect.send(
-      new DescribeInstanceCommand({ InstanceId: instanceId })
-    );
+    const di = await connect.send(new DescribeInstanceCommand({ InstanceId: instanceId }));
     checks.push({
       id: "instance",
       label: "Instancia de Connect",
@@ -316,7 +330,7 @@ export const handler = async (event: FnEvent) => {
       status: "error",
       detail: "El rol funciona, pero no encontramos la instancia.",
       remediation:
-        "Verificá que el ARN de la instancia y la región sean correctos. El ARN tiene la forma arn:aws:connect:REGION:CUENTA:instance/ID. Detalle: " +
+        "Verifica que el ARN de la instancia y la región sean correctos. El ARN tiene la forma arn:aws:connect:REGION:CUENTA:instance/ID. Detalle: " +
         (e instanceof Error ? e.message.slice(0, 140) : ""),
     });
   }
@@ -330,7 +344,7 @@ export const handler = async (event: FnEvent) => {
       new DescribeInstanceAttributeCommand({
         InstanceId: instanceId,
         AttributeType: "CONTACT_LENS",
-      })
+      }),
     );
     const on = cl.Attribute?.Value === "true";
     checks.push({
@@ -340,7 +354,7 @@ export const handler = async (event: FnEvent) => {
       detail: on ? "Activado." : "Apagado.",
       remediation: on
         ? null
-        : "Sin Contact Lens no vas a ver transcripciones ni análisis de sentimiento de las llamadas. Activalo en tu consola de Connect → Análisis y optimización → Contact Lens. Aplica a las llamadas nuevas.",
+        : "Sin Contact Lens no vas a ver transcripciones ni análisis de sentimiento de las llamadas. Actívalo en tu consola de Connect → Análisis y optimización → Contact Lens. Aplica a las llamadas nuevas.",
       link: on ? null : cBase ? `${cBase}/connect/contact-lens` : null,
     });
   } catch {
@@ -350,7 +364,7 @@ export const handler = async (event: FnEvent) => {
       status: "warn",
       detail: "No pudimos verificar el estado.",
       remediation:
-        "Verificá en tu consola de Connect → Análisis y optimización si Contact Lens está activado.",
+        "Verifica en tu consola de Connect → Análisis y optimización si Contact Lens está activado.",
     });
   }
 
@@ -361,7 +375,7 @@ export const handler = async (event: FnEvent) => {
       new ListInstanceStorageConfigsCommand({
         InstanceId: instanceId,
         ResourceType: "CALL_RECORDINGS",
-      })
+      }),
     );
     const s3cfg = sc.StorageConfigs?.[0]?.S3Config;
     if (s3cfg?.BucketName) {
@@ -379,7 +393,7 @@ export const handler = async (event: FnEvent) => {
         status: "warn",
         detail: "No hay almacenamiento de grabaciones configurado.",
         remediation:
-          "Las llamadas no se están grabando. Activá la grabación en tu consola de Connect → Almacenamiento de datos → Grabación de llamadas.",
+          "Las llamadas no se están grabando. Activa la grabación en tu consola de Connect → Almacenamiento de datos → Grabación de llamadas.",
         link: cBase ? `${cBase}/connect/data-storage` : null,
       });
     }
@@ -396,9 +410,7 @@ export const handler = async (event: FnEvent) => {
   if (recordingBucket && !recordingBucket.includes("*")) {
     try {
       const s3 = new S3Client({ region, credentials: assumedCreds });
-      await s3.send(
-        new ListObjectsV2Command({ Bucket: recordingBucket, MaxKeys: 1 })
-      );
+      await s3.send(new ListObjectsV2Command({ Bucket: recordingBucket, MaxKeys: 1 }));
       checks.push({
         id: "s3Recordings",
         label: "Acceso al bucket de grabaciones",
@@ -417,7 +429,7 @@ export const handler = async (event: FnEvent) => {
           : `No pudimos acceder a "${recordingBucket}".`,
         remediation: denied
           ? `El parámetro RecordingBucket de tu plantilla CloudFormation no coincide con el bucket real ("${recordingBucket}"). Reaplicá la plantilla del rol poniendo ese nombre exacto en el parámetro RecordingBucket.`
-          : `Verificá que el bucket "${recordingBucket}" exista en tu cuenta y región (${region}).`,
+          : `Verifica que el bucket "${recordingBucket}" exista en tu cuenta y región (${region}).`,
       });
     }
   } else {
@@ -427,7 +439,7 @@ export const handler = async (event: FnEvent) => {
       status: "warn",
       detail: "El nombre del bucket está como patrón, no exacto.",
       remediation:
-        "Para que Vox pueda leer las grabaciones, poné el nombre EXACTO del bucket en el parámetro RecordingBucket de la plantilla (en vez de amazon-connect-*).",
+        "Para que Vox pueda leer las grabaciones, pon el nombre EXACTO del bucket en el parámetro RecordingBucket de la plantilla (en vez de amazon-connect-*).",
     });
   }
 
@@ -443,7 +455,7 @@ export const handler = async (event: FnEvent) => {
         status: "warn",
         detail: "No pudimos derivar el nombre del dominio.",
         remediation:
-          "Indicá el dominio de Customer Profiles en Opciones avanzadas (suele ser amazon-connect-<alias>).",
+          "Indica el dominio de Customer Profiles en Opciones avanzadas (suele ser amazon-connect-<alias>).",
         link: cBase ? `${cBase}/connect/customerprofiles` : null,
       });
     } else {
@@ -465,7 +477,7 @@ export const handler = async (event: FnEvent) => {
             status: "warn",
             detail: `No existe el dominio "${cpDomain}".`,
             remediation:
-              "Sin Customer Profiles, el Cliente 360° va a estar vacío. Activá Customer Profiles en tu consola de Connect (crea el dominio amazon-connect-<alias>). Si ya lo tenés con otro nombre, ponelo en Opciones avanzadas.",
+              "Sin Customer Profiles, el Cliente 360° va a estar vacío. Activa Customer Profiles en tu consola de Connect (crea el dominio amazon-connect-<alias>). Si ya lo tienes con otro nombre, ponelo en Opciones avanzadas.",
             link: cBase ? `${cBase}/connect/customerprofiles` : null,
           });
         } else if (/AccessDenied|not authorized/i.test(name)) {
@@ -495,7 +507,7 @@ export const handler = async (event: FnEvent) => {
       new ListIntegrationAssociationsCommand({
         InstanceId: instanceId,
         IntegrationType: "WISDOM_ASSISTANT",
-      })
+      }),
     );
     const on = (wa.IntegrationAssociationSummaryList?.length || 0) > 0;
     checks.push({
@@ -505,7 +517,7 @@ export const handler = async (event: FnEvent) => {
       detail: on ? "Activado." : "No detectamos un asistente de Amazon Q.",
       remediation: on
         ? null
-        : "Sin Amazon Q in Connect, el copiloto del agente no va a sugerir respuestas ni artículos de la base de conocimiento. Activalo en tu consola de Connect → Amazon Q.",
+        : "Sin Amazon Q in Connect, el copiloto del agente no va a sugerir respuestas ni artículos de la base de conocimiento. Actívalo en tu consola de Connect → Amazon Q.",
       link: on ? null : cBase ? `${cBase}/connect/amazon-q` : null,
     });
   } catch {
@@ -535,7 +547,7 @@ export const handler = async (event: FnEvent) => {
           max_tokens: 1,
           messages: [{ role: "user", content: "ping" }],
         }),
-      })
+      }),
     );
     checks.push({
       id: "bedrock",
@@ -546,13 +558,15 @@ export const handler = async (event: FnEvent) => {
   } catch (e) {
     const info = `${e instanceof Error ? e.name : ""} ${e instanceof Error ? e.message : ""}`;
     const accessIssue =
-      /AccessDenied|access to the model|not authorized|ValidationException|ResourceNotFound|could not be found/i.test(info);
+      /AccessDenied|access to the model|not authorized|ValidationException|ResourceNotFound|could not be found/i.test(
+        info,
+      );
     checks.push({
       id: "bedrock",
       label: "Amazon Bedrock (IA: bots y resúmenes)",
       status: "warn",
       detail: accessIssue
-        ? "No pudimos invocar el modelo Claude — probablemente no tenés habilitado el acceso a los modelos en tu cuenta de Bedrock."
+        ? "No pudimos invocar el modelo Claude — probablemente no tienes habilitado el acceso a los modelos en tu cuenta de Bedrock."
         : "No pudimos verificar Bedrock.",
       remediation:
         "Sin acceso a Bedrock, los bots y los resúmenes con IA no funcionan. Habilitá el acceso a los modelos de Anthropic (Claude) en tu consola de Amazon Bedrock → Model access, en la región de tu instancia.",
@@ -574,7 +588,7 @@ export const handler = async (event: FnEvent) => {
           if (/AccessDenied|not authorized/i.test(name)) permDenied = true;
           else missing.push(t); // ResourceNotFound → la tabla no existe
         }
-      })
+      }),
     );
     if (permDenied && missing.length === 0) {
       // Las tablas existen pero el rol no tiene permiso DynamoDB sobre ellas.
@@ -584,7 +598,7 @@ export const handler = async (event: FnEvent) => {
         status: "error",
         detail: "Las tablas existen, pero el rol no tiene permiso para usarlas.",
         remediation:
-          "Tus tablas ya están creadas, pero al rol le falta el permiso DynamoDB. Aplicá la plantilla de SOLO PERMISOS del Data Plane (extiende el rol sin tocar las tablas). Es segura de re-aplicar.",
+          "Tus tablas ya están creadas, pero al rol le falta el permiso DynamoDB. Aplica la plantilla de SOLO PERMISOS del Data Plane (extiende el rol sin tocar las tablas). Es segura de re-aplicar.",
       });
     } else if (missing.length === DATA_PLANE_TABLES.length) {
       checks.push({
@@ -604,7 +618,7 @@ export const handler = async (event: FnEvent) => {
         detail: `Faltan ${missing.length} de 14 tablas (creación incompleta).`,
         remediation:
           `Tu stack del Data Plane quedó incompleto. Faltan: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? "…" : ""}. ` +
-          "Re-aplicá la plantilla del Data Plane: como las tablas existentes tienen 'Retain', no se pierde nada y se crean las que faltan.",
+          "Re-aplica la plantilla del Data Plane: como las tablas existentes tienen 'Retain', no se pierde nada y se crean las que faltan.",
       });
     } else {
       checks.push({
@@ -629,14 +643,14 @@ export const handler = async (event: FnEvent) => {
  * ejecutarla (cero efectos secundarios, cubre lecturas Y escrituras). Si el rol
  * no tiene ni ese permiso (rol viejo), lo reporta como "reaplicá la plantilla"
  * en vez de fallar. Esto convierte cada AccessDenied silencioso futuro en un
- * aviso accionable acá.
+ * aviso accionable aquí.
  */
 async function diagnosePermissionDrift(
   checks: Check[],
   region: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   assumedCreds: any,
-  roleArn: string
+  roleArn: string,
 ): Promise<void> {
   const allActions = EXPECTED_STAR_PERMISSIONS.flatMap((g) => g.actions);
   let results;
@@ -646,7 +660,7 @@ async function diagnosePermissionDrift(
       new SimulatePrincipalPolicyCommand({
         PolicySourceArn: roleArn,
         ActionNames: allActions,
-      })
+      }),
     );
     results = out.EvaluationResults || [];
   } catch (e) {
@@ -660,7 +674,7 @@ async function diagnosePermissionDrift(
         ? "El rol todavía no puede auto-verificar sus permisos."
         : "No pudimos verificar los permisos del rol.",
       remediation: denied
-        ? "Reaplicá la plantilla del rol (paso 3): la versión nueva agrega iam:SimulatePrincipalPolicy SOLO sobre el propio rol, para que Vox detecte por vos cualquier permiso faltante (en vez de fallar en silencio)."
+        ? "Reaplicá la plantilla del rol (paso 3): la versión nueva agrega iam:SimulatePrincipalPolicy SOLO sobre el propio rol, para que Vox detecte por ti cualquier permiso faltante (en vez de fallar en silencio)."
         : null,
     });
     return;
@@ -681,14 +695,12 @@ async function diagnosePermissionDrift(
   const deniedByGroup: Record<string, string[]> = {};
   for (const r of results) {
     if (r.EvalDecision !== "allowed" && r.EvalActionName) {
-      const grp = EXPECTED_STAR_PERMISSIONS.find((g) =>
-        g.actions.includes(r.EvalActionName!)
-      );
+      const grp = EXPECTED_STAR_PERMISSIONS.find((g) => g.actions.includes(r.EvalActionName!));
       if (grp) (deniedByGroup[grp.group] ||= []).push(r.EvalActionName);
     }
   }
   const missingGroups = EXPECTED_STAR_PERMISSIONS.filter(
-    (g) => (deniedByGroup[g.group]?.length || 0) > 0
+    (g) => (deniedByGroup[g.group]?.length || 0) > 0,
   );
 
   if (missingGroups.length === 0) {
@@ -701,10 +713,7 @@ async function diagnosePermissionDrift(
     return;
   }
 
-  const totalMissing = Object.values(deniedByGroup).reduce(
-    (n, a) => n + a.length,
-    0
-  );
+  const totalMissing = Object.values(deniedByGroup).reduce((n, a) => n + a.length, 0);
   checks.push({
     id: "permissions",
     label: "Permisos del rol",
@@ -714,9 +723,7 @@ async function diagnosePermissionDrift(
       .join(", ")}.`,
     remediation:
       "Tu rol se creó con una versión anterior de la plantilla. Reaplicá la plantilla del rol (paso 3) — es segura de re-aplicar (solo agrega lo que falta, no toca nada más). Detalle: " +
-      missingGroups
-        .map((g) => `${g.label} → ${deniedByGroup[g.group].join(", ")}`)
-        .join(" · "),
+      missingGroups.map((g) => `${g.label} → ${deniedByGroup[g.group].join(", ")}`).join(" · "),
   });
 }
 
@@ -730,17 +737,13 @@ async function maybeDiagnoseCloudFormation(
   cfg: DiagnoseConfig,
   region: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  assumedCreds?: any
+  assumedCreds?: any,
 ): Promise<void> {
   if (!assumedCreds) return; // sin rol asumido no podemos leer CF
   try {
     const cf = new CloudFormationClient({ region, credentials: assumedCreds });
-    const ev = await cf.send(
-      new DescribeStackEventsCommand({ StackName: "VoxCrmConnectAccess" })
-    );
-    const failed = (ev.StackEvents || []).find((e) =>
-      /FAILED/.test(e.ResourceStatus || "")
-    );
+    const ev = await cf.send(new DescribeStackEventsCommand({ StackName: "VoxCrmConnectAccess" }));
+    const failed = (ev.StackEvents || []).find((e) => /FAILED/.test(e.ResourceStatus || ""));
     if (failed) {
       checks.push({
         id: "cloudformation",
@@ -748,7 +751,7 @@ async function maybeDiagnoseCloudFormation(
         status: "error",
         detail: `${failed.LogicalResourceId}: ${failed.ResourceStatusReason || failed.ResourceStatus}`,
         remediation:
-          "Ese es el recurso exacto que falló en tu stack. Corregilo en CloudFormation y actualizá el stack.",
+          "Ese es el recurso exacto que falló en tu stack. Corregilo en CloudFormation y actualiza el stack.",
       });
     }
   } catch {

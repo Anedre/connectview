@@ -289,7 +289,7 @@ function CopilotPanelInner() {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && ask(text)}
-              placeholder="Preguntá algo…"
+              placeholder="Pregunta algo…"
               disabled={loading}
               style={{
                 flex: 1,
@@ -392,7 +392,7 @@ function CatalogLookup() {
         ) : catalogs.length === 0 ? (
           <div style={{ color: "var(--text-2)", fontSize: 12.5, lineHeight: 1.6 }}>
             Todavía no hay catálogos. Creálos en <strong>Configuración → Catálogos</strong>{" "}
-            (precios, programas, motivos…) y los buscás acá durante la llamada.
+            (precios, programas, motivos…) y los buscas aquí durante la llamada.
           </div>
         ) : groups.length === 0 ? (
           <div style={{ color: "var(--text-3)", fontSize: 12.5 }}>

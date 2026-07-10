@@ -87,7 +87,7 @@ interface Campaign {
   // ── Pilar 7 · orquestación ────────────────────────────────────────────
   /** 1–10 (default 5). Mayor = se sirve primero cuando el pool no alcanza. */
   priority?: number;
-  /** Peso relativo para el % del pool global (default 1). El 80/20 sale de acá. */
+  /** Peso relativo para el % del pool global (default 1). El 80/20 sale de aquí. */
   weight?: number;
   /** Meta de la campaña: "contacts" (contactados) | "conversions" | "none". */
   goalType?: string;
@@ -514,7 +514,7 @@ async function markAsFailed(c: CampaignContact, reason: string): Promise<void> {
 }
 
 /** Marca un contacto de WhatsApp como ENVIADO (terminal). No hay eventos de
- *  Connect para WhatsApp, así que cerramos el contacto acá mismo. */
+ *  Connect para WhatsApp, así que cerramos el contacto aquí mismo. */
 async function markWhatsAppSent(c: CampaignContact, messageId: string): Promise<void> {
   const now = new Date().toISOString();
   await dynamo.send(
@@ -1336,7 +1336,7 @@ async function dialCycle(): Promise<{
     // Resolver el Connect del tenant dueño de esta campaña. Si no hay tenantId
     // (campañas legacy pre-#43) o no tiene Connect configurado, caemos al
     // Connect de Vox (transición). Las campañas se procesan SERIALMENTE, así
-    // que mutar las vars module-active acá es seguro.
+    // que mutar las vars module-active aquí es seguro.
     {
       const tc = campaign.tenantId ? await getTenantConnect(campaign.tenantId) : null;
       if (tc) {

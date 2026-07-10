@@ -294,7 +294,9 @@ Object.entries(byLayer)
 // Aplica los tags.
 let tagged = 0;
 for (const { name, cls } of known) {
-  const tags = `aria:layer=${cls.layer},aria:domain=${cls.domain},aria:product=ARIA`;
+  // aria:tier=platform → las Lambdas viven en la cuenta de Novasys (infra compartida
+  // que NOSOTROS pagamos). Los recursos BYO en la cuenta del cliente = aria:tier=tenant.
+  const tags = `aria:layer=${cls.layer},aria:domain=${cls.domain},aria:product=ARIA,aria:tier=platform`;
   if (DRY) {
     console.log(`[dry] ${name} → ${tags}`);
   } else {

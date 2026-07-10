@@ -8,7 +8,7 @@ import { buildTemplateComponents } from "../../amplify/functions/_shared/waTempl
 function carousel() {
   return buildTemplateComponents({
     category: "MARKETING",
-    bodyText: "Conocé nuestros programas 👇",
+    bodyText: "Conoce nuestros programas 👇",
     // un carousel NO debe llevar header raíz aunque se lo pasen:
     headerText: "IGNORAME",
     cards: [

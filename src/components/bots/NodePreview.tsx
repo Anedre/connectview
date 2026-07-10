@@ -22,7 +22,7 @@ import { authedFetch } from "@/lib/authedFetch";
 /**
  * NodePreview — una vista previa estilo WhatsApp de lo que verá el cliente,
  * mostrada arriba del inspector para los pasos de mensaje (#16). Hace que armar
- * el flujo sea "lo que ves es lo que mandás": el usuario no tiene que imaginar
+ * el flujo sea "lo que ves es lo que mandas": el usuario no tiene que imaginar
  * cómo queda una lista o los botones. Se actualiza en vivo al editar.
  */
 function vars(text: string): React.ReactNode {
@@ -94,7 +94,7 @@ export function NodePreview({ kind, data }: { kind: NodeKind; data: Record<strin
           )
         ) : (
           <div className="fb-prev__bubble">
-            <span className="fb-prev__ph">Pegá la URL del archivo…</span>
+            <span className="fb-prev__ph">Pega la URL del archivo…</span>
           </div>
         )}
         {caption && <div className="fb-prev__bubble">{vars(caption)}</div>}
@@ -124,7 +124,7 @@ export function NodePreview({ kind, data }: { kind: NodeKind; data: Record<strin
             ))
           ) : (
             <div className="fb-prev__row">
-              <span className="fb-prev__ph">Agregá opciones abajo…</span>
+              <span className="fb-prev__ph">Agrega opciones abajo…</span>
             </div>
           )}
         </div>
@@ -151,7 +151,7 @@ export function NodePreview({ kind, data }: { kind: NodeKind; data: Record<strin
         {name ? (
           <code className="fb-prev__code">{name}</code>
         ) : (
-          <span className="fb-prev__ph">Elegí una plantilla…</span>
+          <span className="fb-prev__ph">Elige una plantilla…</span>
         )}
         {count > 0 && (
           <div className="fb-prev__hintline" style={{ marginTop: 4 }}>
@@ -183,7 +183,7 @@ export function NodePreview({ kind, data }: { kind: NodeKind; data: Record<strin
           </div>
         ) : (
           <div style={{ marginTop: 5 }}>
-            <span className="fb-prev__ph">Pegá el link de pago…</span>
+            <span className="fb-prev__ph">Pega el link de pago…</span>
           </div>
         )}
       </div>
@@ -219,7 +219,7 @@ export function ConditionPreview({ data }: { data: Record<string, unknown> }) {
           {variable ? (
             <span className="fb-var">{variable}</span>
           ) : (
-            <span className="fb-prev__ph">(elegí una variable)</span>
+            <span className="fb-prev__ph">(elige una variable)</span>
           )}{" "}
           <b>{OP_LABEL[op] || op}</b>
           {needsValue && (
@@ -338,7 +338,7 @@ export function WebhookTester({ data }: { data: Record<string, unknown> }) {
   const run = async () => {
     const url = String(data.url || "");
     if (!url) {
-      setSt({ loading: false, out: "Pegá una URL primero.", ok: false });
+      setSt({ loading: false, out: "Pega una URL primero.", ok: false });
       return;
     }
     setSt({ loading: true });
@@ -393,7 +393,7 @@ const TRIGGER_EXPLAIN: Record<string, string> = {
   "Mensaje entrante (WhatsApp)": "Arranca cuando un cliente te escribe por WhatsApp.",
   "Nuevo lead": "Arranca solo cuando entra un lead nuevo a tu sistema.",
   "Palabra clave": "Arranca cuando el cliente escribe una palabra clave (p. ej. «PROMO»).",
-  "Manual / prueba": "Lo disparás vos a mano — útil para probar el flujo.",
+  "Manual / prueba": "Lo disparas tú a mano — útil para probar el flujo.",
   "Lead sin actividad": "Arranca cuando un lead lleva un tiempo sin responder.",
 };
 
@@ -419,22 +419,22 @@ const PERSONAS: { label: string; instructions: string }[] = [
   {
     label: "Asesor cordial",
     instructions:
-      "Sos un asesor cordial y conciso. Respondé en español, claro y al grano. Tuteá al cliente.",
+      "Eres un asesor cordial y conciso. Responde en español, claro y al grano. Tutea al cliente.",
   },
   {
     label: "Soporte técnico",
     instructions:
-      "Sos soporte técnico paciente. Pedí los datos concretos que necesitás y guiá paso a paso, sin tecnicismos innecesarios.",
+      "Eres soporte técnico paciente. Pide los datos concretos que necesitas y guía paso a paso, sin tecnicismos innecesarios.",
   },
   {
     label: "Ventas consultivas",
     instructions:
-      "Sos un vendedor consultivo. Primero entendé la necesidad del cliente con preguntas; recién después recomendá. No presiones.",
+      "Eres un vendedor consultivo. Primero entiende la necesidad del cliente con preguntas; recién después recomienda. No presiones.",
   },
   {
     label: "Recepción formal",
     instructions:
-      "Sos la recepción de la empresa, con tono formal y amable. Tratá de «usted». Derivá a un humano si la consulta excede lo básico.",
+      "Eres la recepción de la empresa, con tono formal y amable. Trata de «usted». Deriva a un humano si la consulta excede lo básico.",
   },
 ];
 
@@ -451,7 +451,7 @@ export function AiPersonaPresets({
       </div>
       <div className="fb-persona">
         <div className="fb-persona__hint">
-          Elegí una base para las instrucciones (después la editás):
+          Elige una base para las instrucciones (después la editas):
         </div>
         <div className="fb-persona__chips">
           {PERSONAS.map((p) => (
@@ -673,7 +673,7 @@ export function AiAgentTools({
           ) : catalogs.isLoading ? (
             <div style={emptyHint}>Cargando catálogos…</div>
           ) : (catalogs.data?.length ?? 0) === 0 ? (
-            <div style={emptyHint}>Sin catálogos. Creá uno en Configuración → Catálogos.</div>
+            <div style={emptyHint}>Sin catálogos. Crea uno en Configuración → Catálogos.</div>
           ) : (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {catalogs.data!.map((c) => {

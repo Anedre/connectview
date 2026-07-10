@@ -29,6 +29,10 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: VoxCrmConnectAccess
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: integration }
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:

@@ -14,6 +14,10 @@ Resources:
     Properties:
       TableName: connectview-admin-audit
       BillingMode: PAY_PER_REQUEST
+      Tags: &ariaTenantTags
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: auditId, AttributeType: S }
         - { AttributeName: action, AttributeType: S }
@@ -40,6 +44,7 @@ Resources:
     Properties:
       TableName: connectview-ai-conversations
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: botId, AttributeType: S }
       KeySchema:
@@ -54,6 +59,7 @@ Resources:
     Properties:
       TableName: connectview-appointments
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: apptId, AttributeType: S }
       KeySchema:
@@ -68,6 +74,7 @@ Resources:
     Properties:
       TableName: connectview-bots
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: botId, AttributeType: S }
       KeySchema:
@@ -82,6 +89,7 @@ Resources:
     Properties:
       TableName: connectview-callbacks
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: callbackId, AttributeType: S }
         - { AttributeName: status, AttributeType: S }
@@ -110,6 +118,7 @@ Resources:
     Properties:
       TableName: connectview-campaign-agents
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: campaignId, AttributeType: S }
         - { AttributeName: userId, AttributeType: S }
@@ -131,6 +140,7 @@ Resources:
     Properties:
       TableName: connectview-campaign-contacts
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: campaignId, AttributeType: S }
         - { AttributeName: rowId, AttributeType: S }
@@ -165,6 +175,7 @@ Resources:
     Properties:
       TableName: connectview-campaigns
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: campaignId, AttributeType: S }
         - { AttributeName: status, AttributeType: S }
@@ -187,6 +198,7 @@ Resources:
     Properties:
       TableName: connectview-catalogs
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: catalogId, AttributeType: S }
       KeySchema:
@@ -201,6 +213,7 @@ Resources:
     Properties:
       TableName: connectview-contacts
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: contactId, AttributeType: S }
         - { AttributeName: agentUsername, AttributeType: S }
@@ -223,6 +236,7 @@ Resources:
     Properties:
       TableName: connectview-hsm-sends
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: sendId, AttributeType: S }
       KeySchema:
@@ -237,6 +251,7 @@ Resources:
     Properties:
       TableName: connectview-leads
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: leadId, AttributeType: S }
       KeySchema:
@@ -251,6 +266,7 @@ Resources:
     Properties:
       TableName: connectview-taxonomies
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: taxonomyId, AttributeType: S }
       KeySchema:
@@ -265,6 +281,7 @@ Resources:
     Properties:
       TableName: connectview-wrapup-history
       BillingMode: PAY_PER_REQUEST
+      Tags: *ariaTenantTags
       AttributeDefinitions:
         - { AttributeName: contactId, AttributeType: S }
         - { AttributeName: savedAt, AttributeType: S }

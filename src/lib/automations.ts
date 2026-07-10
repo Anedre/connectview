@@ -22,7 +22,7 @@ import {
  * automations — catálogo del motor de reglas (#15, "Digital Pipeline" de ARIA).
  * Fuente ÚNICA que alimenta el builder (patrón NODE_KINDS de botFlow.ts):
  * los TRIGGER_DEFS/ACTION_DEFS definen label/icono/campos de cada tipo, y la
- * UI se genera desde acá. El backend valida contra los mismos type strings
+ * UI se genera desde aquí. El backend valida contra los mismos type strings
  * (amplify/functions/manage-automations + automation-engine).
  */
 
@@ -159,7 +159,12 @@ export const TRIGGER_DEFS: Record<
         defaultValue: 7,
         hint: "Se dispara una vez por episodio de inactividad (se re-arma con actividad nueva).",
       },
-      { key: "stageId", label: "Solo en la etapa", type: "stage", hint: "Vacío = cualquier etapa." },
+      {
+        key: "stageId",
+        label: "Solo en la etapa",
+        type: "stage",
+        hint: "Vacío = cualquier etapa.",
+      },
     ],
   },
   wrapup_saved: {
@@ -318,7 +323,13 @@ export const ACTION_DEFS: Record<
     icon: Mail,
     accent: "var(--accent-violet)",
     fields: [
-      { key: "subject", label: "Asunto", type: "text", required: true, placeholder: "Asunto del correo" },
+      {
+        key: "subject",
+        label: "Asunto",
+        type: "text",
+        required: true,
+        placeholder: "Asunto del correo",
+      },
       {
         key: "body",
         label: "Mensaje",
@@ -330,11 +341,18 @@ export const ACTION_DEFS: Record<
   },
   apply_tag: {
     label: "Aplicar etiqueta",
-    description: "Agrega una etiqueta al lead (queda en sus atributos y puede disparar otras reglas).",
+    description:
+      "Agrega una etiqueta al lead (queda en sus atributos y puede disparar otras reglas).",
     icon: Tag,
     accent: "var(--accent-amber)",
     fields: [
-      { key: "tag", label: "Etiqueta", type: "text", required: true, placeholder: "vip, no-contactar…" },
+      {
+        key: "tag",
+        label: "Etiqueta",
+        type: "text",
+        required: true,
+        placeholder: "vip, no-contactar…",
+      },
     ],
   },
   apply_attribute: {
@@ -343,7 +361,13 @@ export const ACTION_DEFS: Record<
     icon: SlidersHorizontal,
     accent: "var(--accent-cyan)",
     fields: [
-      { key: "field", label: "Campo", type: "text", required: true, placeholder: "prioridad, origen…" },
+      {
+        key: "field",
+        label: "Campo",
+        type: "text",
+        required: true,
+        placeholder: "prioridad, origen…",
+      },
       {
         key: "value",
         label: "Valor",
@@ -403,7 +427,7 @@ export const RULE_TEMPLATES: Array<{
   {
     id: "blank",
     name: "En blanco",
-    description: "Armala desde cero: elegí trigger, condiciones y acciones.",
+    description: "Armala desde cero: elige trigger, condiciones y acciones.",
     build: () => ({
       name: "Nueva automatización",
       enabled: false,
@@ -429,7 +453,8 @@ export const RULE_TEMPLATES: Array<{
   {
     id: "speed-to-lead-meta",
     name: "Speed-to-lead · Meta (FB/IG)",
-    description: "Lead de un formulario de Facebook/Instagram → WhatsApp de bienvenida sub-minuto (mata Zapier).",
+    description:
+      "Lead de un formulario de Facebook/Instagram → WhatsApp de bienvenida sub-minuto (mata Zapier).",
     build: () => ({
       name: "Speed-to-lead Meta",
       enabled: false,

@@ -764,8 +764,8 @@ export function ScheduleFollowupModal({
                 channel === "voice"
                   ? "Ej. Llamarlo después de su clase 📚"
                   : channel === "email"
-                    ? "Recordatorio interno para vos"
-                    : "Recordatorio interno para vos"
+                    ? "Recordatorio interno para ti"
+                    : "Recordatorio interno para ti"
               }
               rows={2}
               style={{

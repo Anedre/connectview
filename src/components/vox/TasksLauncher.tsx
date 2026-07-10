@@ -13,7 +13,7 @@ import { ScheduleCallbackModal } from "@/components/workspace/ScheduleCallbackMo
  *
  * Una "tarea" es un row de `connectview-callbacks`: puede ser una tarea simple
  * (channel=task, sin auto-dispatch) o agendar una llamada/email/WhatsApp — todo
- * vive acá. Reemplaza al bubble flotante `CallbackHistoryDrawer` y absorbe el
+ * vive aquí. Reemplaza al bubble flotante `CallbackHistoryDrawer` y absorbe el
  * follow-up dentro de "Tasks". Reusa `FollowupRow` (lista) y
  * `ScheduleCallbackModal` (crear, ahora con canal "Tarea").
  */
@@ -21,8 +21,10 @@ export function TasksLauncher() {
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const { user } = useAuth();
-  const { callbacks, loading, error, refetch, cancel, complete, available } =
-    useCallbacks({ status: "PENDING", pollIntervalSec: 60 });
+  const { callbacks, loading, error, refetch, cancel, complete, available } = useCallbacks({
+    status: "PENDING",
+    pollIntervalSec: 60,
+  });
 
   const count = callbacks.length;
   const dueNow = callbacks.filter((c) => c.status === "DUE").length;
@@ -120,8 +122,7 @@ export function TasksLauncher() {
             alignItems: "center",
             gap: 9,
             padding: "12px 14px",
-            background:
-              "linear-gradient(135deg, rgba(224,168,46,0.16), transparent)",
+            background: "linear-gradient(135deg, rgba(224,168,46,0.16), transparent)",
             borderBottom: "1px solid var(--border-1)",
           }}
         >
@@ -179,10 +180,7 @@ export function TasksLauncher() {
           }}
         >
           {loading && count === 0 && (
-            <div
-              className="muted"
-              style={{ fontSize: 12, textAlign: "center", padding: 16 }}
-            >
+            <div className="muted" style={{ fontSize: 12, textAlign: "center", padding: 16 }}>
               Cargando…
             </div>
           )}
@@ -236,9 +234,7 @@ export function TasksLauncher() {
                   toast.success("Tarea cancelada");
                   refetch();
                 } catch (e) {
-                  toast.error(
-                    e instanceof Error ? e.message : "No se pudo cancelar"
-                  );
+                  toast.error(e instanceof Error ? e.message : "No se pudo cancelar");
                 }
               }}
               onComplete={async () => {
@@ -247,9 +243,7 @@ export function TasksLauncher() {
                   toast.success("Tarea completada");
                   refetch();
                 } catch (e) {
-                  toast.error(
-                    e instanceof Error ? e.message : "No se pudo completar"
-                  );
+                  toast.error(e instanceof Error ? e.message : "No se pudo completar");
                 }
               }}
             />

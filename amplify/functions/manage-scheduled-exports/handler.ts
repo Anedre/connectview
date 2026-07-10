@@ -67,7 +67,7 @@ export const handler = async (event: any) => {
   // (PII) por email → operación privilegiada. Antes cualquier usuario autenticado del
   // tenant podía crear un job (o `runNow`) hacia un correo externo arbitrario
   // (exfiltración). Exigimos el grupo Cognito "Admins" (patrón list-users). El
-  // Function URL es auth=NONE → identidad validada acá.
+  // Function URL es auth=NONE → identidad validada aquí.
   let identity;
   try {
     identity = await getIdentity(event?.headers);

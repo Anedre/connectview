@@ -89,7 +89,7 @@ interface SyncBody {
  * `describeSObject` (de _shared) solo devuelve campos ESCRIBIBLES (createable ||
  * updateable) — sirve para el mapeo, no para leer el Lead completo. Para paridad
  * necesitamos TODOS los campos consultables (incluidos read-only: CreatedDate,
- * IsConverted, formulas…). Por eso acá hacemos un describe "crudo" propio, con
+ * IsConverted, formulas…). Por eso aquí hacemos un describe "crudo" propio, con
  * cache de módulo (TTL 5 min como la taxonomía), sin tocar _shared → no hay que
  * re-desplegar los 9 Lambdas que bundlean salesforceClient.ts.
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -196,7 +196,10 @@ function formatFieldValue(type: string, value: unknown): string {
     const d = new Date(value);
     return Number.isNaN(d.getTime()) ? value : d.toISOString().replace("T", " ").slice(0, 16);
   }
-  if ((type === "double" || type === "currency" || type === "percent") && typeof value === "number") {
+  if (
+    (type === "double" || type === "currency" || type === "percent") &&
+    typeof value === "number"
+  ) {
     // Miles con separador, sin forzar decimales artificiales.
     return value.toLocaleString("es-PE");
   }
@@ -258,9 +261,7 @@ function buildSelectFields(fields: LeadFieldMeta[]): string[] {
   // Demasiados: core + custom + relleno de estándar hasta el tope.
   const core = queryable.filter((f) => CORE_RANK.has(f.name)).map((f) => f.name);
   const custom = queryable.filter((f) => f.custom).map((f) => f.name);
-  const rest = queryable
-    .filter((f) => !CORE_RANK.has(f.name) && !f.custom)
-    .map((f) => f.name);
+  const rest = queryable.filter((f) => !CORE_RANK.has(f.name) && !f.custom).map((f) => f.name);
   const picked = new Set<string>(["Id", ...core, ...custom]);
   for (const n of rest) {
     if (picked.size >= MAX_FIELDS) break;
@@ -294,7 +295,7 @@ interface SfLeadRow {
 
 /** Best-effort E.164 — COPIA EXACTA de la normalización del inbound-webhook
  *  (SF guarda teléfonos en cualquier forma; un 9 dígitos pelado se asume PE +51).
- *  Distinta de `normalizePhone` de _shared/phone (que devuelve un objeto): acá
+ *  Distinta de `normalizePhone` de _shared/phone (que devuelve un objeto): aquí
  *  queremos el mismo string E.164-o-null que produce el webhook, para paridad. */
 function normalizeSfPhone(raw?: string): string | null {
   if (!raw) return null;
@@ -379,7 +380,7 @@ export const handler: Handler = async (event: any) => {
   setActiveTenant(tenantId);
   // Pilar 10 — el mapeo de campos ARIA→SF se auto-carga dentro de leadSync
   // (pushLeadToSalesforce) desde connectview-connections, así que NO hay que
-  // cablearlo acá: aplica a este path y a todos los callers de propagateLead.
+  // cablearlo aquí: aplica a este path y a todos los callers de propagateLead.
   // BYO Data Plane (#46): DynamoDB del tenant para leadSync (propagateLead,
   // appendLeadHistory, …). Fallback a Vox pooled si no aplicó el template.
   {
@@ -501,9 +502,7 @@ export const handler: Handler = async (event: any) => {
           }
         }
       }
-      await Promise.all(
-        Array.from({ length: Math.min(CONCURRENCY, rows.length) }, () => worker()),
-      );
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, () => worker()));
 
       return {
         statusCode: 200,
@@ -607,10 +606,7 @@ export const handler: Handler = async (event: any) => {
       let lead: Record<string, unknown> | undefined;
       let activities: Record<string, unknown>[] = [];
       if (sfId) {
-        const [leads, acts] = await Promise.all([
-          soql(leadSoql),
-          soql(activitiesSoql(sfId)),
-        ]);
+        const [leads, acts] = await Promise.all([soql(leadSoql), soql(activitiesSoql(sfId))]);
         lead = leads[0];
         activities = acts;
       } else {
@@ -676,7 +672,12 @@ export const handler: Handler = async (event: any) => {
         body: JSON.stringify({ error: "need sfLeadId" }),
       };
     }
-    if (!fields || typeof fields !== "object" || Array.isArray(fields) || !Object.keys(fields).length) {
+    if (
+      !fields ||
+      typeof fields !== "object" ||
+      Array.isArray(fields) ||
+      !Object.keys(fields).length
+    ) {
       return {
         statusCode: 400,
         headers: CORS,

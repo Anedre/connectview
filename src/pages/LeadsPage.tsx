@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useContactEvents } from "@/lib/contactEvents";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
@@ -12,7 +13,7 @@ import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useCan } from "@/hooks/usePermissions";
 import { useCCP } from "@/hooks/useCCP";
 import { useConnections } from "@/hooks/useConnections";
-import { leadSavedToast } from "@/lib/salesforce";
+import { leadSavedToast, salesforceLeadUrl } from "@/lib/salesforce";
 import { NotIntegrated } from "@/components/vox/NotIntegrated";
 import { type Valoracion } from "@/lib/dispositions";
 import { initials } from "@/lib/initials";
@@ -964,6 +965,13 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
     }
   };
 
+  // Deep-link al Lead en Salesforce: robusto — aparece siempre que haya un id de
+  // SF (el del fetch en vivo o el `sfLeadId` ya guardado del lead), aunque el
+  // preview esté cargando o el fetch no traiga `found`.
+  const sfUrl = salesforceLeadUrl(
+    data?.lightningUrl,
+    data?.lead?.Id ? String(data.lead.Id) : lead.sfLeadId,
+  );
   const card: React.CSSProperties = {
     marginTop: 16,
     border: "1px solid var(--border-1)",
@@ -990,20 +998,23 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
           </span>
         ) : null}
       </span>
-      {state === "ok" && data?.found && data?.lightningUrl && data?.lead?.Id ? (
+      {sfUrl ? (
         <a
-          href={`${data.lightningUrl}/lightning/r/Lead/${String(data.lead.Id)}/view`}
+          href={sfUrl}
           target="_blank"
           rel="noreferrer"
           style={{
             color: "#fff",
             fontSize: 11,
-            fontWeight: 600,
-            textDecoration: "underline",
-            opacity: 0.95,
+            fontWeight: 700,
+            textDecoration: "none",
+            background: "rgba(255,255,255,0.2)",
+            padding: "3px 9px",
+            borderRadius: 6,
+            whiteSpace: "nowrap",
           }}
         >
-          Abrir en Salesforce ↗
+          Ver en Salesforce ↗
         </a>
       ) : null}
     </div>
@@ -1770,6 +1781,9 @@ export function LeadsPage() {
     }
   };
 
+  // Auto-refresh: al terminar un contacto o actualizarse un lead, recarga la lista.
+  useContactEvents(load, ["contact:ended", "wrapup:saved", "lead:updated"]);
+
   // Sincronización inversa on-demand: trae de Salesforce los leads modificados
   // (últimos 30 días) y los refleja en ARIA (pull; el push por webhook es aparte).
   const pullFromSf = async () => {
@@ -2408,7 +2422,7 @@ export function LeadsPage() {
       {!loading && leads.length === 0 && !hasLeadSource ? (
         <NotIntegrated
           title="Todavía no integraste tu base de datos de leads"
-          message="Tus leads viven en TU cuenta: se importan de Salesforce y/o se guardan en tu base de datos (BYO Data Plane). Conectá la fuente en Integraciones para traerlos y sincronizarlos."
+          message="Tus leads viven en TU cuenta: se importan de Salesforce y/o se guardan en tu base de datos (BYO Data Plane). Conecta la fuente en Integraciones para traerlos y sincronizarlos."
           ctaLabel="Conectar leads"
           secondary={
             canManage ? (

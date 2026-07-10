@@ -368,7 +368,7 @@ export function ExecutiveView({
   return (
     <div className="exec">
       {/* Barra de período + tira "en vivo" (guía: mockup de Claude Design). El
-          estado del agente / Actualizar viven en el top bar; acá el período a la
+          estado del agente / Actualizar viven en el top bar; aquí el período a la
           izquierda y el pulso operativo a la derecha. */}
       <div className="exec-bar">
         <div className="tseg" role="tablist" aria-label="Período">

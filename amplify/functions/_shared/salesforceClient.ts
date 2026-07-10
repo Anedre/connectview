@@ -167,7 +167,7 @@ export async function getToken(force = false): Promise<TokenState> {
         accessToken: tt.accessToken,
         instanceUrl: tt.instanceUrl,
         // Tenant tokens ya están cacheados ~25min en tenantSalesforce — no
-        // duplicamos cache acá; sólo devolvemos el snapshot fresh.
+        // duplicamos cache aquí; sólo devolvemos el snapshot fresh.
         fetchedAt: Date.now(),
       };
     }

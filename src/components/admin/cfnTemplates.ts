@@ -27,8 +27,7 @@ const VOX_AWS_ACCOUNT_PLACEHOLDER = "${VOX_AWS_ACCOUNT}";
 
 /** Bucket público de Vox que sirve los templates parametrizados para el
  *  quick-create de CloudFormation. */
-const CFN_TEMPLATES_BASE =
-  "https://vox-cfn-templates-731736972577.s3.us-east-1.amazonaws.com";
+const CFN_TEMPLATES_BASE = "https://vox-cfn-templates-731736972577.s3.us-east-1.amazonaws.com";
 
 /**
  * Genera el URL "Launch Stack" de CloudFormation (quick-create) con los
@@ -76,10 +75,7 @@ export function dataPlanePermissionsLaunchUrl(region = "us-east-1"): string {
 
 /* ───────────────── Template 1: rol cross-account (obligatorio) ──────────── */
 
-export function connectAccessCfnTemplate(
-  externalId: string,
-  instanceArn = ""
-): string {
+export function connectAccessCfnTemplate(externalId: string, instanceArn = ""): string {
   // Si el wizard ya capturó el instanceArn, lo pre-cargamos como Default del
   // parámetro para que el cliente no tenga que tipearlo. Si está vacío, el
   // default "*" deja las acciones abiertas (compat) — pero el wizard siempre
@@ -102,13 +98,17 @@ Parameters:
     Default: ${instanceArn.trim() ? "REEMPLAZAR-con-el-nombre-exacto-de-tu-bucket" : "amazon-connect-*"}
     Description: >-
       Nombre EXACTO del bucket S3 de grabaciones (sin "s3://"). Recomendado:
-      poné el nombre exacto en vez del patrón, así Vox solo puede leer ESE
+      pon el nombre exacto en vez del patrón, así Vox solo puede leer ESE
       bucket y no cualquier otro que empiece con "amazon-connect-".
 Resources:
   VoxCrmConnectRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: VoxCrmConnectAccess
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: integration }
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -322,7 +322,7 @@ Resources:
                 Resource: "*"
 Outputs:
   RoleArn:
-    Description: Pegá este ARN en Vox
+    Description: Pega este ARN en Vox
     Value: !GetAtt VoxCrmConnectRole.Arn`;
 }
 
@@ -351,13 +351,17 @@ Resources:
   # ── 14 tablas pagas por request (sin capacidad provisionada) ──────────────
   ConnectviewAdminAudit:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-admin-audit
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: auditId, AttributeType: S }
         - { AttributeName: action, AttributeType: S }
@@ -377,13 +381,17 @@ Resources:
 
   ConnectviewAiConversations:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-ai-conversations
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: botId, AttributeType: S }
       KeySchema:
@@ -391,13 +399,17 @@ Resources:
 
   ConnectviewAppointments:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-appointments
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: apptId, AttributeType: S }
       KeySchema:
@@ -405,13 +417,17 @@ Resources:
 
   ConnectviewBots:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-bots
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: botId, AttributeType: S }
       KeySchema:
@@ -419,13 +435,17 @@ Resources:
 
   ConnectviewCallbacks:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-callbacks
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: callbackId, AttributeType: S }
         - { AttributeName: status, AttributeType: S }
@@ -447,13 +467,17 @@ Resources:
 
   ConnectviewCampaignAgents:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-campaign-agents
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: campaignId, AttributeType: S }
         - { AttributeName: userId, AttributeType: S }
@@ -468,13 +492,17 @@ Resources:
 
   ConnectviewCampaignContacts:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-campaign-contacts
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: campaignId, AttributeType: S }
         - { AttributeName: rowId, AttributeType: S }
@@ -502,13 +530,17 @@ Resources:
 
   ConnectviewCampaigns:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-campaigns
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: campaignId, AttributeType: S }
         - { AttributeName: status, AttributeType: S }
@@ -524,13 +556,17 @@ Resources:
 
   ConnectviewCatalogs:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-catalogs
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: catalogId, AttributeType: S }
       KeySchema:
@@ -538,13 +574,17 @@ Resources:
 
   ConnectviewContacts:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-contacts
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: contactId, AttributeType: S }
         - { AttributeName: agentUsername, AttributeType: S }
@@ -560,13 +600,17 @@ Resources:
 
   ConnectviewHsmSends:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-hsm-sends
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: sendId, AttributeType: S }
       KeySchema:
@@ -574,13 +618,17 @@ Resources:
 
   ConnectviewLeads:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-leads
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: leadId, AttributeType: S }
       KeySchema:
@@ -588,13 +636,17 @@ Resources:
 
   ConnectviewTaxonomies:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-taxonomies
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: taxonomyId, AttributeType: S }
       KeySchema:
@@ -602,13 +654,17 @@ Resources:
 
   ConnectviewWrapupHistory:
     Type: AWS::DynamoDB::Table
-    # PROTECCIÓN DE DATOS: si borrás o re-aplicás el stack, la tabla y sus
+    # PROTECCIÓN DE DATOS: si borras o re-aplicas el stack, la tabla y sus
     # datos NO se borran. Evita perder leads/campañas por un error de stack.
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       TableName: connectview-wrapup-history
       BillingMode: PAY_PER_REQUEST
+      Tags:
+        - { Key: aria:product, Value: ARIA }
+        - { Key: aria:tier, Value: tenant }
+        - { Key: aria:layer, Value: core }
       AttributeDefinitions:
         - { AttributeName: contactId, AttributeType: S }
         - { AttributeName: savedAt, AttributeType: S }
@@ -642,17 +698,26 @@ Resources:
             # ese prefijo. Scope exacto = mínimo privilegio.
             Resource:
 ${[
-  "ConnectviewAdminAudit", "ConnectviewAiConversations", "ConnectviewAppointments",
-  "ConnectviewBots", "ConnectviewCallbacks", "ConnectviewCampaignAgents",
-  "ConnectviewCampaignContacts", "ConnectviewCampaigns", "ConnectviewCatalogs",
-  "ConnectviewContacts", "ConnectviewHsmSends", "ConnectviewLeads",
-  "ConnectviewTaxonomies", "ConnectviewWrapupHistory",
+  "ConnectviewAdminAudit",
+  "ConnectviewAiConversations",
+  "ConnectviewAppointments",
+  "ConnectviewBots",
+  "ConnectviewCallbacks",
+  "ConnectviewCampaignAgents",
+  "ConnectviewCampaignContacts",
+  "ConnectviewCampaigns",
+  "ConnectviewCatalogs",
+  "ConnectviewContacts",
+  "ConnectviewHsmSends",
+  "ConnectviewLeads",
+  "ConnectviewTaxonomies",
+  "ConnectviewWrapupHistory",
 ]
   .map((t) => `              - !GetAtt ${t}.Arn\n              - !Sub "\${${t}.Arn}/index/*"`)
   .join("\n")}
 Outputs:
   DataPlaneEnabled:
-    Description: BYO Data Plane habilitado. Volvé a Vox y refrescá Integraciones.
+    Description: BYO Data Plane habilitado. Vuelve a Vox y refrescá Integraciones.
     Value: "ok"`;
 }
 
@@ -660,11 +725,20 @@ Outputs:
 
 /** Lista canónica de las 14 tablas del producto. Fuente de verdad única. */
 export const DATA_PLANE_TABLE_NAMES = [
-  "connectview-admin-audit", "connectview-ai-conversations", "connectview-appointments",
-  "connectview-bots", "connectview-callbacks", "connectview-campaign-agents",
-  "connectview-campaign-contacts", "connectview-campaigns", "connectview-catalogs",
-  "connectview-contacts", "connectview-hsm-sends", "connectview-leads",
-  "connectview-taxonomies", "connectview-wrapup-history",
+  "connectview-admin-audit",
+  "connectview-ai-conversations",
+  "connectview-appointments",
+  "connectview-bots",
+  "connectview-callbacks",
+  "connectview-campaign-agents",
+  "connectview-campaign-contacts",
+  "connectview-campaigns",
+  "connectview-catalogs",
+  "connectview-contacts",
+  "connectview-hsm-sends",
+  "connectview-leads",
+  "connectview-taxonomies",
+  "connectview-wrapup-history",
 ];
 
 /**
@@ -675,7 +749,7 @@ export const DATA_PLANE_TABLE_NAMES = [
  *
  * Robustez: este template es 100% idempotente y seguro de re-aplicar — no toca
  * datos, solo permisos. Es la salida al problema "si el data-plane se aplica
- * mal o las tablas ya están": aplicás este y listo.
+ * mal o las tablas ya están": aplicas este y listo.
  */
 export function dataPlanePermissionsCfnTemplate(): string {
   const resources = DATA_PLANE_TABLE_NAMES.flatMap((t) => [
@@ -684,7 +758,7 @@ export function dataPlanePermissionsCfnTemplate(): string {
   ]).join("\n");
   return `AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Vox CRM — Solo permisos del Data Plane. Usalo cuando las 14 tablas
+  Vox CRM — Solo permisos del Data Plane. Úsalo cuando las 14 tablas
   connectview-* YA EXISTEN en tu cuenta. Extiende el rol VoxCrmConnectAccess
   con permisos DynamoDB sobre ellas, SIN crear ni tocar las tablas. Seguro de
   re-aplicar (no toca datos).
@@ -712,7 +786,7 @@ Resources:
 ${resources}
 Outputs:
   Done:
-    Description: Permisos del Data Plane otorgados. Volvé a Vox y refrescá.
+    Description: Permisos del Data Plane otorgados. Vuelve a Vox y refrescá.
     Value: "ok"`;
 }
 
@@ -720,10 +794,7 @@ Outputs:
 
 /** Launch Stack URL para el rol de PROVISIÓN (crear instancias de Connect).
  *  Distinto del rol de lectura: este permite `connect:CreateInstance`. */
-export function connectProvisionLaunchUrl(opts: {
-  externalId: string;
-  region?: string;
-}): string {
+export function connectProvisionLaunchUrl(opts: { externalId: string; region?: string }): string {
   const region = opts.region || "us-east-1";
   const templateUrl = `${CFN_TEMPLATES_BASE}/connect-provision.yaml`;
   const qs =
@@ -747,7 +818,7 @@ export function connectProvisionCfnTemplate(externalId: string): string {
 Description: >-
   ARIA CRM — Rol cross-account TEMPORAL para crear una instancia de Amazon
   Connect nueva en tu cuenta. Más permisivo que el rol de lectura (incluye
-  Directory Service, requerido por connect:CreateInstance). Podés borrarlo una
+  Directory Service, requerido por connect:CreateInstance). Puedes borrarlo una
   vez creada tu instancia.
 Resources:
   VoxCrmConnectProvisionRole:
@@ -795,6 +866,6 @@ Resources:
                 Resource: "arn:aws:iam::*:role/aws-service-role/connect.amazonaws.com/*"
 Outputs:
   RoleArn:
-    Description: Pegá este ARN en ARIA (rol de provisión)
+    Description: Pega este ARN en ARIA (rol de provisión)
     Value: !GetAtt VoxCrmConnectProvisionRole.Arn`;
 }
