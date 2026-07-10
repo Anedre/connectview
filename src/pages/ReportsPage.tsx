@@ -6,6 +6,7 @@ import { ScheduledExportsPanel } from "@/components/reports/ScheduledExportsPane
 import { PowerBiFeedPanel } from "@/components/reports/PowerBiFeedPanel";
 import { ReportDownloads } from "@/components/reports/ReportDownloads";
 import { useContacts } from "@/hooks/useContacts";
+import { useContactEvents } from "@/lib/contactEvents";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { ContactFilters } from "@/components/reports/ContactFilters";
@@ -233,7 +234,7 @@ const REPORT_TABS: { id: ReportTab; label: string; icon: IconName; color: string
       label: "Descargas",
       icon: "download",
       color: "var(--gold)",
-      hint: "Exportá el detalle de conversaciones (Chat detail) y programá reportes por email.",
+      hint: "Exporta el detalle de conversaciones (Chat detail) y programa reportes por email.",
     },
   ];
 
@@ -308,6 +309,12 @@ export function ReportsPage() {
   useEffect(() => {
     searchContacts({ startDate: range.start.toISOString(), endDate: range.end.toISOString() });
   }, [range, searchContacts]);
+
+  // Auto-refresh: al terminar un contacto, re-corre la búsqueda del rango actual
+  // (sin que el supervisor toque «Actualizar»).
+  useContactEvents(() => {
+    searchContacts({ startDate: range.start.toISOString(), endDate: range.end.toISOString() });
+  }, ["contact:ended", "wrapup:saved"]);
 
   const kpis = useMemo(() => computeKpis(contacts), [contacts]);
 
@@ -580,7 +587,7 @@ export function ReportsPage() {
                   <EmptyState
                     icon={<Icon name="chart" size={20} />}
                     title="Sin contactos en el rango"
-                    description="Ajustá el período o los filtros para ver volumen por canal."
+                    description="Ajusta el período o los filtros para ver volumen por canal."
                   />
                 ) : (
                   <ExecBarsEChart data={volumeByChannel} height={264} />
@@ -696,8 +703,8 @@ export function ReportsPage() {
                   marginBottom: 14,
                 }}
               >
-                Bajá cualquier reporte como <strong>Excel</strong> o <strong>CSV</strong>. Los de
-                contactos (chat detail, agentes, llamadas, canal) respetan el{" "}
+                Descarga cualquier reporte como <strong>Excel</strong> o <strong>CSV</strong>. Los
+                de contactos (chat detail, agentes, llamadas, canal) respetan el{" "}
                 <strong>período</strong> elegido arriba; HSM, leads y conversaciones traen todo el
                 histórico.
               </div>
