@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ListTodo, X, Plus } from "lucide-react";
 import { useEscapeKey } from "@/hooks/useDropdown";
+import { COPILOT_ACTION_EVENT } from "@/lib/copilotActions";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useCallbacks } from "@/hooks/useCallbacks";
@@ -30,6 +31,18 @@ export function TasksLauncher() {
   });
   // Escape cierra el panel (salvo que esté abierto el modal de crear tarea).
   useEscapeKey(() => setOpen(false), open && !createOpen);
+
+  // El Copilot puede pedir "crear tarea" (marcador [[do|…|task.new]]) → abre el modal.
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      if ((e as CustomEvent<{ id?: string }>).detail?.id === "task.new") {
+        setOpen(true);
+        setCreateOpen(true);
+      }
+    };
+    window.addEventListener(COPILOT_ACTION_EVENT, onAction);
+    return () => window.removeEventListener(COPILOT_ACTION_EVENT, onAction);
+  }, []);
 
   const count = callbacks.length;
   const dueNow = callbacks.filter((c) => c.status === "DUE").length;

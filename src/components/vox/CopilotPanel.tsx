@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, X, Send, RotateCcw, Search, LayoutGrid } from "lucide-react";
 import { useLocation } from "react-router-dom";
-import MarkdownIt from "markdown-it";
 import { useEscapeKey } from "@/hooks/useDropdown";
 import { getApiEndpoints } from "@/lib/api";
 import { useCatalogs } from "@/hooks/useCatalogs";
 import { useCan } from "@/hooks/usePermissions";
 import { useActiveContact } from "@/hooks/useActiveContact";
 import { useProgramOptional } from "@/context/ProgramContext";
+import { CopilotMessage } from "./CopilotMessage";
+import { actionsPromptCatalog } from "@/lib/copilotActions";
 
 /**
  * CopilotPanel — the global "ARIA Copilot" assistant (Kommo-style floating
@@ -22,9 +23,16 @@ interface Msg {
   text: string;
 }
 
-// Render de markdown para las respuestas del bot (negritas, listas, código,
-// enlaces). html:false → NO pasa HTML crudo del modelo (seguro ante inyección).
-const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
+// Instrucciones que se le anteponen a cada pregunta: marca ARIA, emojis y los
+// MARCADORES que el front convierte en bloques interactivos (botones/chips/tips).
+const CATALOG = actionsPromptCatalog();
+const COPILOT_INSTRUCTIONS = `Eres ARIA Copilot, asistente de la plataforma ARIA (marca: ARIA; NUNCA la llames "Vox"). Responde en español neutro (tuteo), claro y breve, con markdown y EMOJIS pertinentes.
+Cuando ayude, adorna la respuesta con estos MARCADORES literales (el sistema los vuelve bloques interactivos):
+- Botón que abre una página: [[go|Texto del botón|/ruta]] — usa SOLO estas rutas: ${CATALOG.routes}
+- Botón que ejecuta algo aquí mismo: [[do|Texto|actionId]] — acciones: ${CATALOG.execs}
+- Consejo destacado: [[tip|texto]]
+- Métrica: [[kpi|Etiqueta|valor]]
+Reglas: NO inventes rutas ni actionId fuera de esas listas; pon los botones al final; máx. 3 botones. Ej.: "Puedes crearla desde aquí 👇\\n[[go|➕ Nueva campaña|/campaigns/nueva]]".`;
 
 const ROUTE_LABELS: Record<string, string> = {
   "/": "Inicio",
@@ -156,7 +164,11 @@ function CopilotPanelInner() {
       const r = await fetch(ep.generateCallSummary, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "assistant", question: `${buildContext()}\n\n${q}`, history }),
+        body: JSON.stringify({
+          mode: "assistant",
+          question: `${COPILOT_INSTRUCTIONS}\n\n${buildContext()}\n\nPregunta del usuario: ${q}`,
+          history,
+        }),
       });
       const d = await r.json();
       setMsgs((m) => [
@@ -353,7 +365,7 @@ function CopilotPanelInner() {
                 key={i}
                 style={{
                   alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-                  maxWidth: "85%",
+                  maxWidth: m.role === "user" ? "85%" : "100%",
                   padding: "8px 11px",
                   borderRadius: 12,
                   fontSize: 12.5,
@@ -364,15 +376,7 @@ function CopilotPanelInner() {
                   border: m.role === "user" ? "none" : "1px solid var(--border-1)",
                 }}
               >
-                {m.role === "bot" ? (
-                  // markdown-it con html:false → salida segura del modelo (no pasa HTML crudo)
-                  <div
-                    className="aria-md"
-                    dangerouslySetInnerHTML={{ __html: md.render(m.text) }}
-                  />
-                ) : (
-                  m.text
-                )}
+                {m.role === "bot" ? <CopilotMessage text={m.text} /> : m.text}
               </div>
             ))}
             {loading && (
