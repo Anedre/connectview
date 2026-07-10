@@ -334,6 +334,9 @@ function FlowBuilderInner({
   } | null>(null);
   // Origin of an in-progress connection drag (for quick-connect on empty drop).
   const connectFrom = useRef<{ nodeId: string; handleId: string | null } | null>(null);
+  // ¿El gesto actual creó una conexión válida? Distingue arrastre-a-target (edge)
+  // de click/arrastre-al-vacío (abrir el picker para agregar un paso conectado).
+  const madeConnection = useRef(false);
 
   // ── Historial (undo/redo) ──────────────────────────────────────────────
   // Stacks de snapshots {nodes, edges}. Refs (no estado) para no recrear
@@ -590,6 +593,7 @@ function FlowBuilderInner({
 
   const onConnect = useCallback(
     (c: Connection) => {
+      madeConnection.current = true;
       commit();
       setEdges((eds) => addEdge({ ...c, ...edgeDefaults }, eds));
     },
@@ -601,6 +605,7 @@ function FlowBuilderInner({
   // nodo, abrimos el picker para crear un paso ya conectado (patrón oficial
   // "add node on edge drop" de React Flow).
   const onConnectStart = useCallback<OnConnectStart>((_, params) => {
+    madeConnection.current = false;
     // Solo desde una SALIDA (source handle) → mantiene el flujo L→R y garantiza
     // un handle de origen válido para el edge que crea el quick-connect.
     connectFrom.current =
@@ -613,27 +618,35 @@ function FlowBuilderInner({
     (event) => {
       const from = connectFrom.current;
       connectFrom.current = null;
-      if (!from) return;
+      // Ya se creó un edge (arrastre a un target válido) → nada que hacer.
+      if (!from || madeConnection.current) {
+        madeConnection.current = false;
+        return;
+      }
       const target = event.target as HTMLElement | null;
-      // ¿Soltó en el vacío? (ni sobre un handle ni dentro de un nodo)
-      const droppedOnPane =
-        !!target &&
-        !target.classList.contains("react-flow__handle") &&
-        !target.closest(".react-flow__node");
-      if (!droppedOnPane) return;
       const point =
         "changedTouches" in event
           ? { x: event.changedTouches[0].clientX, y: event.changedTouches[0].clientY }
           : { x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY };
-      const flowPos = screenToFlowPosition(point);
+      // Soltó SOBRE la bolita/un nodo = CLICK para agregar → el paso nuevo va a la
+      // DERECHA del origen. Soltó en el VACÍO (quick-connect por arrastre) → va
+      // donde cayó el cursor. En ambos casos abrimos el picker ya conectado.
+      const onNode =
+        !!target &&
+        (target.classList.contains("react-flow__handle") || !!target.closest(".react-flow__node"));
+      let flowPos: { x: number; y: number };
+      if (onNode) {
+        const src = nodesRef.current.find((n) => n.id === from.nodeId);
+        const base = src?.position ?? { x: 120, y: 120 };
+        flowPos = { x: base.x + 280, y: base.y };
+      } else {
+        const f = screenToFlowPosition(point);
+        flowPos = { x: f.x - 117, y: f.y - 20 };
+      }
       setPicker({
         at: point,
         mode: "connect",
-        connect: {
-          source: from.nodeId,
-          sourceHandle: from.handleId ?? "out",
-          flowPos: { x: flowPos.x - 117, y: flowPos.y - 20 },
-        },
+        connect: { source: from.nodeId, sourceHandle: from.handleId ?? "out", flowPos },
       });
     },
     [screenToFlowPosition],

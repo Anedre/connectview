@@ -27,10 +27,12 @@ function renderWithVars(text: string): React.ReactNode {
   const parts = text.split(/(\{\{[^}]+\}\})/g);
   return parts.map((p, i) =>
     /^\{\{[^}]+\}\}$/.test(p) ? (
-      <span key={i} className="fb-var">{p}</span>
+      <span key={i} className="fb-var">
+        {p}
+      </span>
     ) : (
       <span key={i}>{p}</span>
-    )
+    ),
   );
 }
 
@@ -104,7 +106,14 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
         <Handle
           type="target"
           position={Position.Left}
-          style={{ width: 10, height: 10, background: "var(--bg-1)", border: "2px solid var(--border-2)", left: -5, top: "50%" }}
+          style={{
+            width: 10,
+            height: 10,
+            background: "var(--bg-1)",
+            border: "2px solid var(--border-2)",
+            left: -5,
+            top: "50%",
+          }}
         />
       )}
 
@@ -115,7 +124,11 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
         </span>
         <span className="fb-node__label">{def.label}</span>
         {hasIssue && (
-          <span className="fb-node__issue" title={nodeIssues.join("\n")} aria-label={nodeIssues.join(". ")}>
+          <span
+            className="fb-node__issue"
+            title={nodeIssues.join("\n")}
+            aria-label={nodeIssues.join(". ")}
+          >
             <AlertTriangle size={12} strokeWidth={2.4} />
           </span>
         )}
@@ -125,7 +138,11 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
       {/* Body */}
       <div className="fb-node__body">
         <div className="fb-node__summary">
-          {summary ? renderWithVars(summary) : <span style={{ color: "var(--text-3)", fontStyle: "italic" }}>Sin configurar…</span>}
+          {summary ? (
+            renderWithVars(summary)
+          ) : (
+            <span style={{ color: "var(--text-3)", fontStyle: "italic" }}>Sin configurar…</span>
+          )}
         </div>
 
         {/* Action buttons (url / phone) — chips, no branch */}
@@ -146,7 +163,9 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
             {rows.slice(0, 4).map((r) => (
               <div key={r.id} className="fb-node__listrow">
                 <span style={{ color: accent }}>•</span>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span
+                  style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                >
                   {r.title || "Opción"}
                 </span>
               </div>
@@ -159,11 +178,17 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
 
         {/* Inline add-button affordances (Kommo-style) */}
         {d.kind === "message" && builder && (
-          <div className="nodrag" style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+          <div
+            className="nodrag"
+            style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}
+          >
             <button
               className="nodrag"
               disabled={allButtons.length >= 3}
-              onClick={(e) => { e.stopPropagation(); addButton("reply"); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                addButton("reply");
+              }}
               style={pillStyle(allButtons.length >= 3)}
             >
               + Botón
@@ -171,7 +196,10 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
             <button
               className="nodrag"
               disabled={allButtons.length >= 3}
-              onClick={(e) => { e.stopPropagation(); addButton("url"); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                addButton("url");
+              }}
               style={pillStyle(allButtons.length >= 3)}
             >
               + Enlace
@@ -186,12 +214,23 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
           {outlets.map((o) => (
             <div key={o.id} className="fb-node__outlet">
               <span className="fb-node__outlet-dot" style={{ background: accent }} />
-              <span className="fb-node__outlet-label" title={o.label}>{o.label}</span>
+              <span className="fb-node__outlet-label" title={o.label}>
+                {o.label}
+              </span>
               <Handle
                 type="source"
                 id={o.id}
                 position={Position.Right}
-                style={{ width: 10, height: 10, background: accent, border: "2px solid var(--bg-1)", right: -5, top: "50%" }}
+                title="Click o arrastra para conectar un paso"
+                style={{
+                  width: 10,
+                  height: 10,
+                  background: accent,
+                  border: "2px solid var(--bg-1)",
+                  right: -5,
+                  top: "50%",
+                  cursor: "pointer",
+                }}
               />
             </div>
           ))}
@@ -204,7 +243,16 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
           type="source"
           id={bottomOut.id}
           position={Position.Right}
-          style={{ width: 10, height: 10, background: accent, border: "2px solid var(--bg-1)", right: -5, top: "50%" }}
+          title="Click o arrastra para conectar un paso"
+          style={{
+            width: 10,
+            height: 10,
+            background: accent,
+            border: "2px solid var(--bg-1)",
+            right: -5,
+            top: "50%",
+            cursor: "pointer",
+          }}
         />
       )}
     </div>
