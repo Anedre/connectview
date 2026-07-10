@@ -6,6 +6,8 @@ import { ConversationList } from "@/components/inbox/ConversationList";
 import { ConversationThread } from "@/components/inbox/ConversationThread";
 import { CustomerContextPanel } from "@/components/inbox/CustomerContextBar";
 import { slaInfo, slaChipStyle } from "@/components/inbox/sla";
+import { EmptyState, ErrorState } from "@/components/ui/empty-state";
+import { SkeletonList } from "@/components/ui/skeleton";
 
 /**
  * InboxPage — bandeja omnicanal (Pilar 6 · R13), re-skinneada al layout de 3
@@ -32,7 +34,7 @@ const OPTIONAL_FILTERS: Record<string, { id: ChannelFilter; label: string }> = {
 };
 
 export function InboxPage() {
-  const { conversations, unread, configured, loading, error } = useConversations();
+  const { conversations, unread, configured, loading, error, refetch } = useConversations();
   // Preselección por query param (?c=…) — el pop-up "Recibir" del ChatQueueAlert
   // navega a /inbox?c=<conversationId> para abrir esa conversación directo.
   // La conversación seleccionada VIVE en la URL (?c=…): así el pop-up "Recibir"
@@ -124,7 +126,7 @@ export function InboxPage() {
   }
 
   return (
-    <div className="inbox fadein" style={{ height: "100%" }}>
+    <div className="inbox page" style={{ height: "100%" }}>
       {/* ── Lista ── */}
       <div className="inbox__list">
         {/* Cabecera del sidebar: título + búsqueda real + filtros por canal. */}
@@ -199,30 +201,27 @@ export function InboxPage() {
 
         {/* Items */}
         {loading && conversations.length === 0 ? (
-          <div className="muted" style={{ padding: 20, fontSize: 13 }}>
-            Cargando…
-          </div>
+          <SkeletonList rows={7} />
         ) : error ? (
-          <div className="muted" style={{ padding: 20, fontSize: 13, color: "var(--red)" }}>
-            {error}
-          </div>
+          <ErrorState
+            title="No se pudieron cargar las conversaciones"
+            description={error}
+            onRetry={() => refetch()}
+          />
         ) : filtered.length === 0 ? (
-          <div
-            className="muted"
-            style={{ padding: 28, fontSize: 13, textAlign: "center", lineHeight: 1.5 }}
-          >
-            <Icon name="chats" size={28} style={{ opacity: 0.4, marginBottom: 8 }} />
-            <div>
-              {conversations.length === 0
-                ? "Aún no hay conversaciones."
-                : "Nada coincide con el filtro."}
-            </div>
-            {conversations.length === 0 && (
-              <div style={{ fontSize: 11.5, marginTop: 6 }}>
-                Cuando alguien te escriba por Instagram o Messenger, aparecerá aquí.
-              </div>
-            )}
-          </div>
+          <EmptyState
+            icon={<Icon name="chats" />}
+            title={
+              conversations.length === 0
+                ? "Aún no hay conversaciones"
+                : "Nada coincide con el filtro"
+            }
+            description={
+              conversations.length === 0
+                ? "Cuando alguien te escriba por Instagram, Messenger o WhatsApp, aparecerá aquí."
+                : undefined
+            }
+          />
         ) : (
           <ConversationList
             conversations={filtered}

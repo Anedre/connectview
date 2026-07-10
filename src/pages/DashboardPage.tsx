@@ -10,6 +10,7 @@ import { InsightsPanel } from "@/components/dashboard/InsightsPanel";
 import { Avatar, Card, CardBody, CardHead } from "@/components/vox/primitives";
 import { Btn, Stat, HeroBand, Num } from "@/components/aria";
 import { BlurText, SpotlightCard } from "@/components/fx";
+import { EmptyState } from "@/components/ui/empty-state";
 
 type Role = "Agents" | "Supervisors" | "Admins" | "";
 
@@ -28,13 +29,9 @@ function EmptyCardBody({
   title: string;
   body: string;
 }) {
-  return (
-    <div style={{ padding: 32, textAlign: "center", color: "var(--text-3)" }}>
-      <IconCmp size={26} style={{ opacity: 0.4 }} />
-      <div style={{ marginTop: 8, fontSize: 13, color: "var(--text-2)" }}>{title}</div>
-      <div style={{ marginTop: 4, fontSize: 11.5 }}>{body}</div>
-    </div>
-  );
+  // Delega al primitivo premium EmptyState (un solo patrón de "sin datos" en
+  // toda la app) preservando la firma local (icon como componente + title + body).
+  return <EmptyState icon={<IconCmp />} title={title} description={body} />;
 }
 
 function AgentDashSections({ navigate }: { navigate: (path: string) => void }) {
