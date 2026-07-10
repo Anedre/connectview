@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useDropdown } from "@/hooks/useDropdown";
 import { useProgram, type ActiveProgram } from "@/context/ProgramContext";
 import { type Program, type ProgramStatus } from "@/hooks/usePrograms";
 import { Stack, CaretDown, MagnifyingGlass, Check } from "@phosphor-icons/react";
@@ -18,7 +19,9 @@ const STATUS_DOT: Record<ProgramStatus, string> = {
 
 export function ProgramSwitcher() {
   const { programs, activeProgramId, activeProgram, setActiveProgram } = useProgram();
-  const [open, setOpen] = useState(false);
+  // Click para abrir; cierra al click afuera / Escape (sin backdrop que "coma"
+  // el click). Sin hover: el menú tiene buscador y conviene que persista.
+  const dd = useDropdown<HTMLDivElement>();
   const [q, setQ] = useState("");
 
   const label =
@@ -50,15 +53,15 @@ export function ProgramSwitcher() {
 
   const pick = (id: ActiveProgram) => {
     setActiveProgram(id);
-    setOpen(false);
+    dd.close();
     setQ("");
   };
 
   return (
-    <div className="tbx__status-wrap">
+    <div className="tbx__status-wrap" {...dd.wrapProps}>
       <button
         className="tbx__status"
-        onClick={() => setOpen((o) => !o)}
+        onClick={dd.toggle}
         title="Programa activo · scopea leads, campañas y reportes"
         style={{ background: "var(--bg-3)", color: "var(--text-1)" }}
       >
@@ -69,7 +72,7 @@ export function ProgramSwitcher() {
         <CaretDown size={12} style={{ opacity: 0.7 }} />
       </button>
 
-      {open && (
+      {dd.open && (
         <div className="tbx__menu" style={{ minWidth: 300, maxHeight: 440, overflow: "auto" }}>
           <div className="tbx__menu-head">Programa activo</div>
 
@@ -205,10 +208,6 @@ export function ProgramSwitcher() {
             </div>
           ))}
         </div>
-      )}
-
-      {open && (
-        <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
       )}
     </div>
   );

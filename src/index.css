@@ -324,6 +324,30 @@ textarea:focus {
   z-index: 200;
   max-height: 340px;
   overflow: auto;
+  transform-origin: top left;
+  animation: aria-menu-in 0.14s ease-out;
+}
+
+/* Animación de entrada compartida por menús/desplegables (fade + slide sutil). */
+@keyframes aria-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tbx__menu,
+  .aria-menu-anim {
+    animation: none;
+  }
+}
+.aria-menu-anim {
+  transform-origin: top;
+  animation: aria-menu-in 0.14s ease-out;
 }
 .tbx__menu-head {
   padding: 6px 10px;

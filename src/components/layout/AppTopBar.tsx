@@ -9,6 +9,7 @@ import * as Icon from "@/components/vox/primitives";
 import { ProgramSwitcher } from "@/components/layout/ProgramSwitcher";
 import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
 import { NotificationsBell } from "@/components/layout/NotificationsBell";
+import { useDropdown } from "@/hooks/useDropdown";
 
 /** ARIA sun/moon segmented theme toggle, wired to the real ThemeContext. */
 function ThemeToggle() {
@@ -108,7 +109,8 @@ export function AppTopBar() {
   const { isOnboarding } = useConnectAuth();
   const { agentState, availableStates, changeAgentState, error } = useCCP();
   const pageActions = useTopBarSlot();
-  const [statusOpen, setStatusOpen] = useState(false);
+  // Desplegable de estado: abre al hover, cierra al salir / click afuera / Escape.
+  const statusDd = useDropdown({ hover: true });
   const [helpOpen, setHelpOpen] = useState(false);
 
   const ccpError = isOnboarding ? null : error;
@@ -143,7 +145,7 @@ export function AppTopBar() {
           </span>
         )}
 
-        <div className="tbx__status-wrap">
+        <div className="tbx__status-wrap" {...statusDd.wrapProps}>
           {isOnboarding ? (
             <Link
               to="/admin"
@@ -156,7 +158,7 @@ export function AppTopBar() {
           ) : (
             <button
               className="tbx__status"
-              onClick={() => setStatusOpen((o) => !o)}
+              onClick={statusDd.toggle}
               style={{ background: c.bg, color: c.fg }}
               disabled={selectable.length === 0}
               title={
@@ -171,7 +173,7 @@ export function AppTopBar() {
             </button>
           )}
 
-          {statusOpen && selectable.length > 0 && (
+          {statusDd.open && selectable.length > 0 && (
             <div className="tbx__menu">
               <div className="tbx__menu-head">Estado del agente · Amazon Connect</div>
               {selectable.map((s) => {
@@ -183,7 +185,7 @@ export function AppTopBar() {
                     key={s.name}
                     onClick={() => {
                       changeAgentState(s);
-                      setStatusOpen(false);
+                      statusDd.close();
                     }}
                     className={`sb__item ${isCurrent ? "sb__item--active" : ""}`}
                     style={{ margin: 0, padding: "8px 10px" }}
@@ -219,13 +221,6 @@ export function AppTopBar() {
         </button>
 
         <NotificationsBell placement="down" />
-
-        {statusOpen && (
-          <div
-            onClick={() => setStatusOpen(false)}
-            style={{ position: "fixed", inset: 0, zIndex: 150 }}
-          />
-        )}
       </div>
 
       {/* Ayuda → atajos de teclado (controlado por el botón "?"). */}
