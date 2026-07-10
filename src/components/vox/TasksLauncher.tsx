@@ -6,6 +6,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCallbacks } from "@/hooks/useCallbacks";
 import { FollowupRow } from "@/components/workspace/CallbackHistoryDrawer";
 import { ScheduleCallbackModal } from "@/components/workspace/ScheduleCallbackModal";
+import { SkeletonList } from "@/components/ui/skeleton";
+import { EmptyState, ErrorState } from "@/components/ui/empty-state";
 
 /**
  * TasksLauncher — el ÚNICO punto de entrada a las Tareas del agente. Un pill
@@ -96,6 +98,36 @@ export function TasksLauncher() {
     );
   }
 
+  // Agrupar por tiempo: Vencidas (pasó su hora o estado DUE), Hoy (resto del
+  // día) y Próximas (días futuros). Convierte la lista plana en bandeja de trabajo.
+  // eslint-disable-next-line react-hooks/purity -- hora actual para bucketizar por tiempo; recomputar por render es intencional y benigno
+  const now = Date.now();
+  const isToday = (t: number) => {
+    const d = new Date(t);
+    const n = new Date(now);
+    return (
+      d.getFullYear() === n.getFullYear() &&
+      d.getMonth() === n.getMonth() &&
+      d.getDate() === n.getDate()
+    );
+  };
+  const buckets: {
+    key: string;
+    label: string;
+    tone: string;
+    items: typeof callbacks;
+  }[] = [
+    { key: "overdue", label: "Vencidas", tone: "var(--accent-red)", items: [] },
+    { key: "today", label: "Hoy", tone: "var(--accent-amber)", items: [] },
+    { key: "upcoming", label: "Próximas", tone: "var(--text-3)", items: [] },
+  ];
+  for (const c of callbacks) {
+    const t = new Date(c.scheduledAt).getTime();
+    const overdue = c.status === "DUE" || (Number.isFinite(t) && t < now);
+    const b = overdue ? buckets[0] : Number.isFinite(t) && isToday(t) ? buckets[1] : buckets[2];
+    b.items.push(c);
+  }
+
   // ── Panel abierto ──
   return (
     <>
@@ -182,75 +214,76 @@ export function TasksLauncher() {
             gap: 6,
           }}
         >
-          {loading && count === 0 && (
-            <div className="muted" style={{ fontSize: 12, textAlign: "center", padding: 16 }}>
-              Cargando…
-            </div>
-          )}
-          {error && (
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--accent-red)",
-                padding: "8px 10px",
-                background: "var(--accent-red-soft)",
-                borderRadius: 8,
-              }}
-            >
-              {error}
-            </div>
-          )}
-          {!loading && count === 0 && !error && (
-            <div
-              style={{
-                textAlign: "center",
-                color: "var(--text-3)",
-                fontSize: 12.5,
-                padding: "28px 12px",
-                lineHeight: 1.6,
-              }}
-            >
-              <ListTodo size={30} style={{ opacity: 0.4 }} />
-              <div style={{ marginTop: 10 }}>No tienes tareas pendientes.</div>
-              <button
-                type="button"
-                onClick={() => setCreateOpen(true)}
-                className="btn btn--sm"
-                style={{
-                  marginTop: 14,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                }}
-              >
-                <Plus size={13} /> Crear tarea
-              </button>
-            </div>
-          )}
-          {callbacks.map((c) => (
-            <FollowupRow
-              key={c.callbackId}
-              record={c}
-              onCancel={async () => {
-                try {
-                  await cancel(c.callbackId);
-                  toast.success("Tarea cancelada");
-                  refetch();
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "No se pudo cancelar");
-                }
-              }}
-              onComplete={async () => {
-                try {
-                  await complete(c.callbackId);
-                  toast.success("Tarea completada");
-                  refetch();
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : "No se pudo completar");
-                }
-              }}
+          {loading && count === 0 ? (
+            <SkeletonList rows={4} />
+          ) : error ? (
+            <ErrorState description={error} onRetry={refetch} />
+          ) : count === 0 ? (
+            <EmptyState
+              icon={<ListTodo />}
+              title="No tienes tareas pendientes"
+              description="Crea una para recordar un seguimiento, una llamada o un correo."
+              action={
+                <button
+                  type="button"
+                  onClick={() => setCreateOpen(true)}
+                  className="btn btn--sm"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+                >
+                  <Plus size={13} /> Crear tarea
+                </button>
+              }
             />
-          ))}
+          ) : (
+            buckets.map((b) =>
+              b.items.length === 0 ? null : (
+                <div key={b.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 10.5,
+                      fontWeight: 800,
+                      textTransform: "uppercase",
+                      letterSpacing: ".05em",
+                      color: b.tone,
+                      margin: "2px 0",
+                    }}
+                  >
+                    <span
+                      style={{ width: 6, height: 6, borderRadius: "50%", background: b.tone }}
+                    />
+                    {b.label} · {b.items.length}
+                  </div>
+                  {b.items.map((c) => (
+                    <FollowupRow
+                      key={c.callbackId}
+                      record={c}
+                      onCancel={async () => {
+                        try {
+                          await cancel(c.callbackId);
+                          toast.success("Tarea cancelada");
+                          refetch();
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : "No se pudo cancelar");
+                        }
+                      }}
+                      onComplete={async () => {
+                        try {
+                          await complete(c.callbackId);
+                          toast.success("Tarea completada");
+                          refetch();
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : "No se pudo completar");
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              ),
+            )
+          )}
         </div>
       </div>
 

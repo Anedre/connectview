@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, X, Send, RotateCcw, Search, LayoutGrid } from "lucide-react";
+import { useLocation } from "react-router-dom";
+import MarkdownIt from "markdown-it";
 import { useEscapeKey } from "@/hooks/useDropdown";
 import { getApiEndpoints } from "@/lib/api";
 import { useCatalogs } from "@/hooks/useCatalogs";
 import { useCan } from "@/hooks/usePermissions";
+import { useActiveContact } from "@/hooks/useActiveContact";
+import { useProgram } from "@/context/ProgramContext";
 
 /**
  * CopilotPanel — the global "ARIA Copilot" assistant (Kommo-style floating
@@ -18,11 +22,71 @@ interface Msg {
   text: string;
 }
 
-const SUGGESTIONS = [
-  "¿Cómo creo una campaña de WhatsApp?",
-  "Redacta un saludo para un lead nuevo",
-  "¿Qué es la tipificación unificada?",
-];
+// Render de markdown para las respuestas del bot (negritas, listas, código,
+// enlaces). html:false → NO pasa HTML crudo del modelo (seguro ante inyección).
+const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
+
+const ROUTE_LABELS: Record<string, string> = {
+  "/": "Inicio",
+  "/leads": "Leads",
+  "/inbox": "Bandeja omnicanal",
+  "/campaigns": "Campañas",
+  "/reports": "Reportes",
+  "/recordings": "Grabaciones",
+  "/agente": "Agente IA",
+  "/agent": "Agent Desktop",
+  "/monitoring": "Monitoreo",
+  "/programs": "Programas",
+};
+function labelForPath(path: string): string {
+  if (ROUTE_LABELS[path]) return ROUTE_LABELS[path];
+  const base = "/" + (path.split("/")[1] || "");
+  return ROUTE_LABELS[base] || "la plataforma";
+}
+
+// Sugerencias según DÓNDE está el agente (y si está en una llamada) — reemplaza
+// las 3 fijas por prompts pertinentes al contexto actual.
+function suggestFor(path: string, inCall: boolean): string[] {
+  if (inCall)
+    return [
+      "Resume lo que sabemos de este cliente",
+      "¿Cómo rebato la objeción de precio?",
+      "Redacta un cierre para esta llamada",
+    ];
+  const base = "/" + (path.split("/")[1] || "");
+  switch (base) {
+    case "/leads":
+      return [
+        "¿Cómo priorizo mis leads de hoy?",
+        "Redacta un primer mensaje para un lead nuevo",
+        "¿Qué significa el score de un lead?",
+      ];
+    case "/campaigns":
+      return [
+        "¿Cómo creo una campaña de WhatsApp?",
+        "¿Qué es el pacing de un dialer?",
+        "Diferencia entre concurrencia y cola por agente",
+      ];
+    case "/reports":
+      return [
+        "¿Por qué pudo bajar la conversión?",
+        "¿Qué métricas mira un supervisor?",
+        "Explícame el reporte de HSM",
+      ];
+    case "/inbox":
+      return [
+        "Redacta un saludo amable de bienvenida",
+        "¿Cómo tipifico una conversación?",
+        "¿Qué es el SLA de primera respuesta?",
+      ];
+    default:
+      return [
+        "¿Cómo creo una campaña de WhatsApp?",
+        "Redacta un saludo para un lead nuevo",
+        "¿Qué es la tipificación unificada?",
+      ];
+  }
+}
 
 export function CopilotPanel() {
   // R29 — Copilot "desactivable por rol": gate por la capability `use_copilot`.
@@ -42,6 +106,30 @@ function CopilotPanelInner() {
   const ep = getApiEndpoints();
   // Escape cierra el panel (no se cierra al click afuera: perdería el chat).
   useEscapeKey(() => setOpen(false), open);
+
+  const loc = useLocation();
+  const active = useActiveContact();
+  const { activeProgram } = useProgram();
+
+  // Contexto compacto del agente (pantalla + programa + llamada activa) que se
+  // antepone a la pregunta ENVIADA al asistente — responde "sabiendo" dónde está
+  // el agente. No se muestra en la burbuja del usuario.
+  const buildContext = (): string => {
+    const bits: string[] = [`pantalla: ${labelForPath(loc.pathname)}`];
+    if (activeProgram?.name) bits.push(`programa activo: ${activeProgram.name}`);
+    if (active) {
+      bits.push(
+        `contacto activo: ${active.channel}${
+          active.customerPhone ? ` (${active.customerPhone})` : ""
+        }, ${active.direction === "outbound" ? "saliente" : "entrante"}`,
+      );
+      const a = active.attributes || {};
+      for (const k of ["udep_intent", "udep_facultad", "udep_nivel", "intent"]) {
+        if (a[k]) bits.push(`${k}: ${a[k]}`);
+      }
+    }
+    return `[Contexto del agente en ARIA — ${bits.join("; ")}]`;
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -66,7 +154,7 @@ function CopilotPanelInner() {
       const r = await fetch(ep.generateCallSummary, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "assistant", question: q, history }),
+        body: JSON.stringify({ mode: "assistant", question: `${buildContext()}\n\n${q}`, history }),
       });
       const d = await r.json();
       setMsgs((m) => [
@@ -237,7 +325,7 @@ function CopilotPanelInner() {
                   pídeme que redacte un mensaje.
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
-                  {SUGGESTIONS.map((s) => (
+                  {suggestFor(loc.pathname, !!active).map((s) => (
                     <button
                       key={s}
                       onClick={() => ask(s)}
@@ -268,13 +356,21 @@ function CopilotPanelInner() {
                   borderRadius: 12,
                   fontSize: 12.5,
                   lineHeight: 1.5,
-                  whiteSpace: "pre-wrap",
+                  whiteSpace: m.role === "user" ? "pre-wrap" : "normal",
                   background: m.role === "user" ? "#6E54E0" : "var(--bg-2)",
                   color: m.role === "user" ? "#fff" : "var(--text-1)",
                   border: m.role === "user" ? "none" : "1px solid var(--border-1)",
                 }}
               >
-                {m.text}
+                {m.role === "bot" ? (
+                  // markdown-it con html:false → salida segura del modelo (no pasa HTML crudo)
+                  <div
+                    className="aria-md"
+                    dangerouslySetInnerHTML={{ __html: md.render(m.text) }}
+                  />
+                ) : (
+                  m.text
+                )}
               </div>
             ))}
             {loading && (
