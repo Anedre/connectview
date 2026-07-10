@@ -1684,6 +1684,7 @@ function SuppressionPreview({
   useEffect(() => {
     const phones = phonesKey ? phonesKey.split(",") : [];
     if (phones.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset intencional al vaciar teléfonos
       setSummary(null);
       return;
     }
