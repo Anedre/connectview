@@ -935,14 +935,34 @@ function FlowBuilderInner({
     return m;
   }, [issues]);
 
+  // Botón "+" de una salida: abre el picker ya conectado y coloca el paso nuevo
+  // a la derecha del origen (click garantizado; no depende del arrastre).
+  const connectFromHandle = useCallback(
+    (nodeId: string, handleId: string, screenX: number, screenY: number) => {
+      const src = nodesRef.current.find((n) => n.id === nodeId);
+      const base = src?.position ?? { x: 120, y: 120 };
+      setPicker({
+        at: { x: screenX, y: screenY },
+        mode: "connect",
+        connect: {
+          source: nodeId,
+          sourceHandle: handleId,
+          flowPos: { x: base.x + 280, y: base.y },
+        },
+      });
+    },
+    [],
+  );
+
   const builderActions = useMemo(
     () => ({
       updateNodeData,
       selectNode: (id: string) => setSelectedId(id),
       numberOf: (id: string) => numberMap.get(id),
       issuesOf: (id: string) => issuesByNode.get(id) ?? [],
+      connectFromHandle,
     }),
-    [updateNodeData, numberMap, issuesByNode],
+    [updateNodeData, numberMap, issuesByNode, connectFromHandle],
   );
 
   // Inyecta el callback del "+" en cada edge SOLO para el render (no se guarda:

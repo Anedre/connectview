@@ -15,6 +15,12 @@ export interface BuilderActions {
    * coincide). Vacío si el paso está sano. Alimenta el badge de alerta inline.
    */
   issuesOf: (id: string) => string[];
+  /**
+   * Abre el selector de bloques para agregar un paso YA conectado desde la
+   * salida (nodeId, handleId). El paso nuevo se coloca a la derecha del origen.
+   * screenX/Y = dónde posicionar el menú. Alimenta el botón "+" de la salida.
+   */
+  connectFromHandle: (nodeId: string, handleId: string, screenX: number, screenY: number) => void;
 }
 
 export const BuilderCtx = createContext<BuilderActions | null>(null);

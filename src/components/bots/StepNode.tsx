@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Link2, PhoneCall, AlertTriangle } from "lucide-react";
+import { Link2, PhoneCall, AlertTriangle, Plus } from "lucide-react";
 import {
   NODE_KINDS,
   type NodeKind,
@@ -217,6 +217,33 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
               <span className="fb-node__outlet-label" title={o.label}>
                 {o.label}
               </span>
+              {builder && (
+                <button
+                  type="button"
+                  className="nodrag"
+                  title="Agregar paso conectado"
+                  aria-label="Agregar paso conectado"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    builder.connectFromHandle(id, o.id, e.clientX, e.clientY);
+                  }}
+                  style={{
+                    flex: "0 0 auto",
+                    width: 18,
+                    height: 18,
+                    borderRadius: "50%",
+                    background: accent,
+                    color: "#fff",
+                    border: "none",
+                    display: "grid",
+                    placeItems: "center",
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  <Plus size={11} strokeWidth={3} />
+                </button>
+              )}
               <Handle
                 type="source"
                 id={o.id}
@@ -239,21 +266,54 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
 
       {/* Single unlabelled outlet → right-centre handle (flujo L→R) */}
       {bottomOut && (
-        <Handle
-          type="source"
-          id={bottomOut.id}
-          position={Position.Right}
-          title="Click o arrastra para conectar un paso"
-          style={{
-            width: 10,
-            height: 10,
-            background: accent,
-            border: "2px solid var(--bg-1)",
-            right: -5,
-            top: "50%",
-            cursor: "pointer",
-          }}
-        />
+        <>
+          <Handle
+            type="source"
+            id={bottomOut.id}
+            position={Position.Right}
+            title="Click o arrastra para conectar un paso"
+            style={{
+              width: 10,
+              height: 10,
+              background: accent,
+              border: "2px solid var(--bg-1)",
+              right: -5,
+              top: "50%",
+              cursor: "pointer",
+            }}
+          />
+          {builder && (
+            <button
+              type="button"
+              className="nodrag"
+              title="Agregar paso conectado"
+              aria-label="Agregar paso conectado"
+              onClick={(e) => {
+                e.stopPropagation();
+                builder.connectFromHandle(id, bottomOut.id, e.clientX, e.clientY);
+              }}
+              style={{
+                position: "absolute",
+                right: -34,
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                background: accent,
+                color: "#fff",
+                border: "2px solid var(--bg-1)",
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+                padding: 0,
+                zIndex: 6,
+              }}
+            >
+              <Plus size={13} strokeWidth={3} />
+            </button>
+          )}
+        </>
       )}
     </div>
   );
