@@ -7976,6 +7976,12 @@ textarea.vox-field {
     background-position: -200% 0;
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  .skel {
+    animation: none;
+    background: var(--bg-2);
+  }
+}
 
 /* ============================================================
    Bots / Flow builder (#16) — premium "studio" look.
