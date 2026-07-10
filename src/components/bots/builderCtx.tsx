@@ -15,6 +15,12 @@ export interface BuilderActions {
    * coincide). Vacío si el paso está sano. Alimenta el badge de alerta inline.
    */
   issuesOf: (id: string) => string[];
+  /**
+   * Click en una salida (bolita/conector) → abre el picker para agregar el
+   * siguiente paso YA conectado a ese outlet. (screenX/Y = dónde anclar el
+   * picker.) No usa el click del handle de react-flow (ver connectOnClick=false).
+   */
+  addFromOutlet: (nodeId: string, handleId: string, screenX: number, screenY: number) => void;
 }
 
 export const BuilderCtx = createContext<BuilderActions | null>(null);

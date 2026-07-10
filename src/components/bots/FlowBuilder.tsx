@@ -715,6 +715,28 @@ function FlowBuilderInner({
     [screenToFlowPosition],
   );
 
+  // ── Click en una salida = agregar el siguiente paso (ya conectado) ──
+  // NO depende del click del handle de react-flow: con `connectOnClick={false}`
+  // el click ya no inicia esa conexión flotante que "parpadea", y StepNode nos
+  // llama directo. El paso nuevo cae a la derecha del origen (respeta el L→R).
+  const openPickerFromOutlet = useCallback(
+    (nodeId: string, handleId: string, screenX: number, screenY: number) => {
+      const src = nodesRef.current.find((n) => n.id === nodeId);
+      const base = src?.position ?? { x: 120, y: 120 };
+      const w = src?.measured?.width ?? 250;
+      setPicker({
+        at: { x: screenX, y: screenY },
+        mode: "connect",
+        connect: {
+          source: nodeId,
+          sourceHandle: handleId,
+          flowPos: { x: base.x + w + 50, y: base.y },
+        },
+      });
+    },
+    [],
+  );
+
   // ── "+" en una conexión: inserta un paso ENTRE origen y destino ──
   const openInsertOnEdge = useCallback((edgeId: string, screenX: number, screenY: number) => {
     setPicker({ at: { x: screenX, y: screenY }, mode: "insert", insertEdgeId: edgeId });
@@ -1004,8 +1026,9 @@ function FlowBuilderInner({
       selectNode: (id: string) => setSelectedId(id),
       numberOf: (id: string) => numberMap.get(id),
       issuesOf: (id: string) => issuesByNode.get(id) ?? [],
+      addFromOutlet: openPickerFromOutlet,
     }),
-    [updateNodeData, numberMap, issuesByNode],
+    [updateNodeData, numberMap, issuesByNode, openPickerFromOutlet],
   );
 
   // Inyecta el callback del "+" en cada edge SOLO para el render (no se guarda:
@@ -1174,6 +1197,7 @@ function FlowBuilderInner({
                 onConnect={onConnect}
                 onConnectStart={onConnectStart}
                 onConnectEnd={onConnectEnd}
+                connectOnClick={false}
                 onNodeDragStart={onNodeDragStart}
                 onNodeDragStop={onNodeDragStop}
                 onNodesDelete={onNodesDelete}
@@ -1221,9 +1245,9 @@ function FlowBuilderInner({
                   <div>
                     <div className="fb-coach__h">Arma tu primer flujo</div>
                     <div className="fb-coach__p">
-                      Arrastra un paso desde la izquierda (o haz clic en uno). Para conectar dos
-                      pasos, traza una línea de un punto al siguiente — o suelta un paso cerca de la
-                      salida de otro y se conecta solo.
+                      Arrastra un paso desde la izquierda (o haz clic en uno). Para seguir el flujo,
+                      <strong> haz clic en el conector verde</strong> del borde derecho y elige el
+                      siguiente paso — o arrástralo hasta otro para enlazarlos.
                     </div>
                   </div>
                 </div>

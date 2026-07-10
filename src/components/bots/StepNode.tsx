@@ -223,7 +223,11 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
                 id={o.id}
                 position={Position.Right}
                 className="fb-out-branch"
-                title="Arrastra para conectar este camino"
+                title="Clic para agregar un paso en este camino · o arrastra"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  builder?.addFromOutlet(id, o.id, e.clientX, e.clientY);
+                }}
                 style={{ ["--out-accent" as string]: branchColor(o.id) }}
               />
             </div>
@@ -238,7 +242,11 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
           id={bottomOut.id}
           position={Position.Right}
           className="fb-out"
-          title="Arrastra para conectar el siguiente paso"
+          title="Clic para agregar el siguiente paso · o arrastra para conectar"
+          onClick={(e) => {
+            e.stopPropagation();
+            builder?.addFromOutlet(id, bottomOut.id, e.clientX, e.clientY);
+          }}
           style={{ ["--out-accent" as string]: accent }}
         />
       )}
