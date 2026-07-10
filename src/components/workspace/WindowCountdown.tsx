@@ -32,9 +32,7 @@ export function WindowCountdown({ messages, channel, channelLabel }: Props) {
   if (!isWhatsApp(channel, channelLabel)) return null;
 
   // Last inbound customer message timestamp.
-  const lastInbound = [...messages]
-    .reverse()
-    .find((m) => m.participantRole === "CUSTOMER");
+  const lastInbound = [...messages].reverse().find((m) => m.participantRole === "CUSTOMER");
   if (!lastInbound) return null;
 
   const lastTs = Date.parse(lastInbound.timestamp) || 0;
@@ -50,11 +48,12 @@ export function WindowCountdown({ messages, channel, channelLabel }: Props) {
   const remLabel = hours > 0 ? `${hours}h ${mins}m` : `${Math.max(0, mins)}m`;
 
   // Color: red if expired or <1h, amber <3h, green otherwise.
-  const tone = expired || remaining < 3_600_000
-    ? { fg: "var(--accent-red)", bg: "rgba(239,68,68,0.10)", bd: "rgba(239,68,68,0.35)" }
-    : remaining < 3 * 3_600_000
-    ? { fg: "var(--accent-amber)", bg: "rgba(245,158,11,0.12)", bd: "rgba(245,158,11,0.35)" }
-    : { fg: "var(--accent-green)", bg: "rgba(16,185,129,0.12)", bd: "rgba(16,185,129,0.35)" };
+  const tone =
+    expired || remaining < 3_600_000
+      ? { fg: "var(--accent-red)", bg: "rgba(239,68,68,0.10)", bd: "rgba(239,68,68,0.35)" }
+      : remaining < 3 * 3_600_000
+        ? { fg: "var(--accent-amber)", bg: "rgba(245,158,11,0.12)", bd: "rgba(245,158,11,0.35)" }
+        : { fg: "var(--accent-green)", bg: "rgba(16,185,129,0.12)", bd: "rgba(16,185,129,0.35)" };
 
   return (
     <div
@@ -73,7 +72,7 @@ export function WindowCountdown({ messages, channel, channelLabel }: Props) {
       }}
       title={
         expired
-          ? "La ventana de 24h de WhatsApp se cerró. Solo podés enviar plantillas aprobadas hasta que el cliente vuelva a escribir."
+          ? "La ventana de 24h de WhatsApp se cerró. Solo puedes enviar plantillas aprobadas hasta que el cliente vuelva a escribir."
           : `Quedan ${remLabel} de la ventana de 24h de WhatsApp para enviar texto libre.`
       }
     >

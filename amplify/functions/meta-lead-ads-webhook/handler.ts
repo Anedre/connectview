@@ -15,7 +15,7 @@ import { loadMetaAppSecret, verifyMetaSignature } from "../_shared/metaSignature
 /**
  * meta-lead-ads-webhook — ingesta nativa de Meta Lead Ads (Pilar 5 · R12).
  * Reemplaza Zapier: cuando un lead llena un formulario de Facebook/Instagram,
- * Meta manda un evento `leadgen` acá → leemos el lead por Graph API → lo metemos
+ * Meta manda un evento `leadgen` aquí → leemos el lead por Graph API → lo metemos
  * al hub (`propagateLead`: tabla leads + Customer Profile + Salesforce, con dedup)
  * → `fireAutomation("lead_created")` dispara el WhatsApp de bienvenida (speed-to-lead).
  *
@@ -375,7 +375,7 @@ export const handler: Handler = async (event: any) => {
   }
 
   // SEC-C5 — validar la firma HMAC de Meta (X-Hub-Signature-256) sobre el body
-  // CRUDO antes de procesar los leadgen. El backfill (arriba) ya retornó; acá solo
+  // CRUDO antes de procesar los leadgen. El backfill (arriba) ya retornó; aquí solo
   // entran eventos server-to-server de Meta, que sí llevan firma.
   {
     const hdrs = (event?.headers || {}) as Record<string, string | undefined>;

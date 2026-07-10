@@ -55,10 +55,14 @@ export function CatalogEditor() {
     setLoading(true);
     try {
       const r = await authedFetch(ep.manageCatalog);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
       const list: CatalogDoc[] = Array.isArray(d.catalogs) ? d.catalogs : [];
       setCatalogs(list);
       if (list.length && !activeId) hydrate(list[0]);
+    } catch {
+      // Antes se tragaba el error → un fallo de red se veía como «sin catálogos».
+      toast.error("No se pudieron cargar los catálogos. Reintenta.");
     } finally {
       setLoading(false);
     }
@@ -120,7 +124,7 @@ export function CatalogEditor() {
   const doImport = () => {
     const text = importText.trim();
     if (!text) {
-      toast.error("Pegá algo primero (copiá un rango de Excel o Sheets)");
+      toast.error("Pega algo primero (copia un rango de Excel o Sheets)");
       return;
     }
     const res = Papa.parse<string[]>(text, { skipEmptyLines: "greedy" });
@@ -219,7 +223,7 @@ export function CatalogEditor() {
             style={{ fontSize: 12.5, marginTop: 3, maxWidth: 620, lineHeight: 1.5 }}
           >
             Listas de referencia reutilizables (precios, programas, motivos…).{" "}
-            <strong>Importá tu Excel pegándolo</strong> y queda listo para que el equipo lo
+            <strong>Importa tu Excel pegándolo</strong> y queda listo para que el equipo lo
             consulte.
           </div>
         </div>
@@ -259,7 +263,7 @@ export function CatalogEditor() {
           }}
         >
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>
-            Pegá tu tabla desde Excel o Google Sheets
+            Pega tu tabla desde Excel o Google Sheets
           </div>
           <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.5 }}>
             La <b>primera fila</b> se toma como encabezado. Detecta tabulaciones o comas solo.
@@ -437,9 +441,9 @@ export function CatalogEditor() {
               >
                 <Icon.Pad size={24} />
               </div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Todavía no tenés catálogos</div>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>Todavía no tienes catálogos</div>
               <div className="muted" style={{ fontSize: 13, marginTop: 4, marginBottom: 18 }}>
-                Creá uno en blanco, importá tu Excel, o arrancá con una plantilla.
+                Crea uno en blanco, importá tu Excel, o arranca con una plantilla.
               </div>
               <div className="row" style={{ gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                 <button className="btn btn--primary" onClick={newCatalog}>
@@ -459,7 +463,7 @@ export function CatalogEditor() {
                   margin: "22px 0 10px",
                 }}
               >
-                O empezá con una plantilla
+                O empieza con una plantilla
               </div>
               <div className="row" style={{ gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                 {TEMPLATES.map((t) => (
@@ -663,7 +667,7 @@ export function CatalogEditor() {
                     >
                       {query
                         ? "Ninguna fila coincide con la búsqueda."
-                        : "Sin filas. Agregá la primera abajo."}
+                        : "Sin filas. Agrega la primera abajo."}
                     </td>
                   </tr>
                 ) : (

@@ -15,7 +15,7 @@ import { normalizePhone } from "../_shared/phone";
  * abierta; los Flows en plantillas masivas son v2).
  *
  * El Flow (las pantallas) se diseña y publica en Meta Business Manager →
- * WhatsApp Manager → Flows; acá solo se dispara por su flow_id. La respuesta
+ * WhatsApp Manager → Flows; aquí solo se dispara por su flow_id. La respuesta
  * del cliente llega como `interactive.nfm_reply` al webhook
  * (whatsapp-meta-webhook, tenants modo "meta") → lead + Customer Profile +
  * trigger de Automatizaciones `whatsapp_flow_completed`.
@@ -62,7 +62,7 @@ async function recordFlowSend(s: {
         status: { S: "sent" },
         sentAt: { S: new Date().toISOString() },
       },
-    })
+    }),
   );
 }
 
@@ -103,8 +103,7 @@ export const handler: Handler = async (event: any) => {
 
   let body: SendFlowBody;
   try {
-    body =
-      typeof event.body === "string" ? JSON.parse(event.body) : (event.body as SendFlowBody);
+    body = typeof event.body === "string" ? JSON.parse(event.body) : (event.body as SendFlowBody);
   } catch {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: "Invalid JSON" }) };
   }
@@ -121,8 +120,7 @@ export const handler: Handler = async (event: any) => {
   const identity = await getIdentity(event?.headers).catch(() => null);
   const hdrs = event?.headers || {};
   const internalOk =
-    !!INTERNAL_SECRET &&
-    (hdrs["x-vox-internal"] || hdrs["X-Vox-Internal"]) === INTERNAL_SECRET;
+    !!INTERNAL_SECRET && (hdrs["x-vox-internal"] || hdrs["X-Vox-Internal"]) === INTERNAL_SECRET;
   const claimsTenant = !!body.tenantId && !isLegacyTenant(body.tenantId);
   if (claimsTenant && !identity?.tenantId && !internalOk) {
     return {
@@ -143,8 +141,18 @@ export const handler: Handler = async (event: any) => {
     };
   }
 
-  const { client: waClient, phoneNumberId, mode, metaPhoneNumberId, tenantId } =
-    await resolveWhatsApp(event?.headers, legacyClient, LEGACY_PHONE_NUMBER_ID, effectiveTenantId);
+  const {
+    client: waClient,
+    phoneNumberId,
+    mode,
+    metaPhoneNumberId,
+    tenantId,
+  } = await resolveWhatsApp(
+    event?.headers,
+    legacyClient,
+    LEGACY_PHONE_NUMBER_ID,
+    effectiveTenantId,
+  );
   const hasNumber = mode === "meta" ? !!metaPhoneNumberId : !!phoneNumberId;
   if (!hasNumber) {
     return {
@@ -152,15 +160,14 @@ export const handler: Handler = async (event: any) => {
       headers: CORS,
       body: JSON.stringify({
         error:
-          "WhatsApp no está configurado para esta organización. Cargá tu número en Configuración → Integraciones.",
+          "WhatsApp no está configurado para esta organización. Carga tu número en Configuración → Integraciones.",
       }),
     };
   }
 
   const phone = normalisePhone(body.phone);
   const toDigits = phone.startsWith("+") ? phone : `+${phone}`;
-  const flowToken =
-    body.flowToken || `vox:${tenantId}:${phone}:${Date.now()}`;
+  const flowToken = body.flowToken || `vox:${tenantId}:${phone}:${Date.now()}`;
 
   // Payload Meta — interactive Flow (Flows API v3, navigate = Flow estático
   // publicado; la respuesta completa llega luego en interactive.nfm_reply).
@@ -176,7 +183,7 @@ export const handler: Handler = async (event: any) => {
   }
   const interactive: Record<string, unknown> = {
     type: "flow",
-    body: { text: body.bodyText || "Completá el formulario para continuar 👉" },
+    body: { text: body.bodyText || "Completa el formulario para continuar 👉" },
     action: { name: "flow", parameters: flowParameters },
   };
   if (body.headerText) interactive.header = { type: "text", text: body.headerText };
@@ -218,7 +225,7 @@ export const handler: Handler = async (event: any) => {
   try {
     const res = await sendWhatsApp(
       { mode, awsClient: waClient, awsPhoneNumberId: phoneNumberId, metaPhoneNumberId, tenantId },
-      whatsappPayload
+      whatsappPayload,
     );
     await recordFlowSend({
       messageId: res.messageId,

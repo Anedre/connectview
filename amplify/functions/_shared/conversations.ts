@@ -59,7 +59,7 @@ const HUMAN_PHRASES = [
   "no quiero un bot",
   "no quiero hablar con un bot",
   "eres un bot",
-  "sos un bot",
+  "eres un bot",
   "deja de responder",
 ];
 /** Palabras sueltas que, por sí solas, señalan pedido de humano (deburr-eadas).

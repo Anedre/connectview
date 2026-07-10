@@ -17,13 +17,12 @@ import { resolveDynamo } from "../_shared/tenantConnect";
 
 // BYO Data Plane (#46): DDB del tenant (su tabla en su cuenta) primero;
 // fallback a Vox pooled. ConnectCampaignsV2 queda con cred legacy (AWS service
-// que opera a nivel instancia Connect, no se migra acá).
+// que opera a nivel instancia Connect, no se migra aquí).
 const legacyDynamo = new DynamoDBClient({});
 let dynamo: DynamoDBClient = legacyDynamo;
 const campaignsV2 = new ConnectCampaignsV2Client({ maxAttempts: 2 });
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
-const CONTACTS_TABLE =
-  process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+const CONTACTS_TABLE = process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -33,7 +32,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
 
 async function pushResetsToAws(
   awsCampaignId: string,
-  rows: Array<Record<string, unknown>>
+  rows: Array<Record<string, unknown>>,
 ): Promise<number> {
   let queued = 0;
   const toPush = rows.filter((r) => r.rowId && r.phone);
@@ -70,14 +69,14 @@ async function pushResetsToAws(
                           k.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 127),
                           String(v).slice(0, 256),
                         ])
-                        .filter(([k]) => k.length > 0)
+                        .filter(([k]) => k.length > 0),
                     ),
                   },
                 },
               },
             };
           }),
-        })
+        }),
       );
       // Mark each as dialing
       for (const r of batch) {
@@ -98,7 +97,7 @@ async function pushResetsToAws(
                 ":zero": { N: "0" },
                 ":one": { N: "1" },
               },
-            })
+            }),
           )
           .catch(() => {
             /* best effort */
@@ -122,7 +121,7 @@ interface RelaunchBody {
 
 async function listContacts(
   campaignId: string,
-  statusFilter?: string
+  statusFilter?: string,
 ): Promise<Array<Record<string, unknown>>> {
   const items: Array<Record<string, unknown>> = [];
   let lastKey: Record<string, unknown> | undefined;
@@ -145,7 +144,7 @@ async function listContacts(
             KeyConditionExpression: "campaignId = :cid",
             ExpressionAttributeValues: { ":cid": { S: campaignId } },
             ExclusiveStartKey: lastKey as never,
-          })
+          }),
     );
     for (const it of res.Items || []) items.push(unmarshall(it));
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
@@ -176,7 +175,7 @@ export const handler: Handler = async (event: any) => {
       new GetItemCommand({
         TableName: CAMPAIGNS_TABLE,
         Key: { campaignId: { S: campaignId } },
-      })
+      }),
     );
     if (!current.Item) {
       return {
@@ -224,7 +223,7 @@ export const handler: Handler = async (event: any) => {
               ":now": { S: now },
               ...(resetAttempts ? { ":zero": { N: "0" } } : {}),
             },
-          })
+          }),
         );
         resetCount++;
       } catch (err) {
@@ -265,7 +264,7 @@ export const handler: Handler = async (event: any) => {
           ":now": { S: now },
           ":null": { NULL: true },
         },
-      })
+      }),
     );
 
     // Avoid unused warning
@@ -285,11 +284,9 @@ export const handler: Handler = async (event: any) => {
           .catch(async (err) => {
             const msg = err instanceof Error ? err.message : String(err);
             if (/already|invalid state/i.test(msg)) {
-              await campaignsV2
-                .send(new ResumeCampaignCommand({ id: awsCampaignId }))
-                .catch(() => {
-                  /* ignore */
-                });
+              await campaignsV2.send(new ResumeCampaignCommand({ id: awsCampaignId })).catch(() => {
+                /* ignore */
+              });
             }
           });
         pushed = await pushResetsToAws(awsCampaignId, rowsToReset);

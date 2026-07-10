@@ -1,7 +1,7 @@
 /**
  * salesforce-oauth-callback — paso 2 del OAuth 2.0 Web Server flow.
  *
- * Salesforce redirige acá tras el consentimiento del usuario:
+ * Salesforce redirige aquí tras el consentimiento del usuario:
  *   GET /?code=<auth_code>&state=<tenantId|environment>
  *
  * Hacemos el code-for-token exchange contra SF, persistimos refresh_token +
@@ -9,7 +9,7 @@
  * y redirigimos al usuario al frontend (/admin?sf=ok | ?sf=err).
  *
  * IMPORTANTE: SF redirige al navegador del usuario, NO trae el JWT de Cognito,
- * así que NO podemos verificar identidad acá. Confiamos en el `state` (que
+ * así que NO podemos verificar identidad aquí. Confiamos en el `state` (que
  * salesforce-oauth-start firmó con el tenantId del JWT del usuario que arrancó
  * el flujo). Si hace falta endurecer, ver TODO de nonce abajo.
  */
@@ -19,11 +19,7 @@ import {
   PutSecretValueCommand,
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  PutItemCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, GetItemCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { verifyOAuthState } from "../_shared/tenantSalesforce";
 
 const secrets = new SecretsManagerClient({});
@@ -65,9 +61,7 @@ let cachedOauthCreds: OAuthCreds | null = null;
 async function loadOauthCreds(): Promise<OAuthCreds | null> {
   if (cachedOauthCreds) return cachedOauthCreds;
   try {
-    const r = await secrets.send(
-      new GetSecretValueCommand({ SecretId: MASTER_SECRET })
-    );
+    const r = await secrets.send(new GetSecretValueCommand({ SecretId: MASTER_SECRET }));
     if (!r.SecretString) return null;
     const parsed = JSON.parse(r.SecretString);
     if (!parsed.oauthConsumerKey || !parsed.oauthConsumerSecret) return null;
@@ -92,7 +86,7 @@ async function putTenantSfSecret(
     refreshToken: string;
     instanceUrl: string;
     environment: "production" | "sandbox";
-  }
+  },
 ): Promise<void> {
   const name = tenantSecretName(tenantId);
   const SecretString = JSON.stringify(state);
@@ -100,9 +94,7 @@ async function putTenantSfSecret(
     await secrets.send(new CreateSecretCommand({ Name: name, SecretString }));
   } catch (e) {
     if (e instanceof Error && e.name === "ResourceExistsException") {
-      await secrets.send(
-        new PutSecretValueCommand({ SecretId: name, SecretString })
-      );
+      await secrets.send(new PutSecretValueCommand({ SecretId: name, SecretString }));
     } else {
       throw e;
     }
@@ -114,7 +106,7 @@ async function putTenantSfSecret(
 async function reflectConnectionState(
   tenantId: string,
   instanceUrl: string,
-  environment: "production" | "sandbox"
+  environment: "production" | "sandbox",
 ): Promise<void> {
   // Leer config actual (puede tener Connect/WhatsApp config existente) y
   // agregarle el bloque salesforce sin pisar.
@@ -124,7 +116,7 @@ async function reflectConnectionState(
       new GetItemCommand({
         TableName: CONNECTIONS_TABLE,
         Key: { tenantId: { S: tenantId } },
-      })
+      }),
     );
     const json = r.Item?.configJson?.S;
     if (json) currentConfig = JSON.parse(json);
@@ -145,14 +137,12 @@ async function reflectConnectionState(
         configJson: { S: JSON.stringify(currentConfig) },
         updatedAt: { S: new Date().toISOString() },
       },
-    })
+    }),
   );
 }
 
 function failRedirect(reason: string) {
-  return redirectResp(
-    `${APP_URL}/admin?sf=err&reason=${encodeURIComponent(reason)}`
-  );
+  return redirectResp(`${APP_URL}/admin?sf=err&reason=${encodeURIComponent(reason)}`);
 }
 
 export const handler = async (event: FnEvent) => {
@@ -164,8 +154,7 @@ export const handler = async (event: FnEvent) => {
   const errorParam = event.queryStringParameters?.error;
   if (errorParam) {
     return failRedirect(
-      `${errorParam}:${event.queryStringParameters?.error_description || ""}`
-        .slice(0, 200)
+      `${errorParam}:${event.queryStringParameters?.error_description || ""}`.slice(0, 200),
     );
   }
   if (!code || !stateRaw) {
@@ -190,13 +179,12 @@ export const handler = async (event: FnEvent) => {
   if (!tenantId || tenantId === "default") {
     return failRedirect("invalid_state");
   }
-  const environment: "production" | "sandbox" = verified.environment === "sandbox" ? "sandbox" : "production";
+  const environment: "production" | "sandbox" =
+    verified.environment === "sandbox" ? "sandbox" : "production";
 
   // Code-for-token exchange.
   const host =
-    environment === "sandbox"
-      ? "https://test.salesforce.com"
-      : "https://login.salesforce.com";
+    environment === "sandbox" ? "https://test.salesforce.com" : "https://login.salesforce.com";
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -219,7 +207,7 @@ export const handler = async (event: FnEvent) => {
     // SEGURIDAD: NUNCA loguear `j` — puede contener access_token/refresh_token
     // (el secreto de mayor valor del sistema). Solo status + el campo error
     // (no sensible). Una respuesta 200 con token pero sin instance_url caería
-    // acá y filtraría el token a CloudWatch.
+    // aquí y filtraría el token a CloudWatch.
     console.error("SF code-for-token falló:", r.status, j.error || "(sin error explícito)");
     return failRedirect(`exchange_failed:${j.error || r.status}`);
   }

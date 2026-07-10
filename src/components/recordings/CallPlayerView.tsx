@@ -337,7 +337,7 @@ export function CallPlayerView({
             <CallPlayer key={selected.contactId} row={selected} onActiveCall={onActiveCall} />
           ) : (
             <div className="cpv__msg" style={{ margin: "auto" }}>
-              Elegí una llamada del día para reproducirla.
+              Elige una llamada del día para reproducirla.
             </div>
           )}
         </main>

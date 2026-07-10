@@ -78,7 +78,7 @@ export function SuppressionManager() {
   const doAdd = async () => {
     const p = phone.trim();
     if (!p) {
-      toast.error("Ingresá un número");
+      toast.error("Ingresa un número");
       return;
     }
     setSaving(true);
@@ -197,8 +197,8 @@ export function SuppressionManager() {
             </span>
             <div style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--text-2)" }}>
               Cuando un cliente responde <b>STOP</b> o <b>BAJA</b> por WhatsApp, se agrega
-              automáticamente acá y se le confirma la baja (responder <b>ALTA</b> lo reactiva).
-              También podés <b>bloquear un número a mano</b> abajo. El anti-doble-envío y la
+              automáticamente aquí y se le confirma la baja (responder <b>ALTA</b> lo reactiva).
+              También puedes <b>bloquear un número a mano</b> abajo. El anti-doble-envío y la
               frecuencia se configuran en <b>Reglas</b>.
             </div>
           </div>
@@ -367,8 +367,8 @@ export function SuppressionManager() {
                   </div>
                   <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
                     {query
-                      ? "Probá otra búsqueda."
-                      : "Las bajas por STOP y los bloqueos manuales aparecerán acá."}
+                      ? "Prueba otra búsqueda."
+                      : "Las bajas por STOP y los bloqueos manuales aparecerán aquí."}
                   </div>
                 </div>
               ) : (

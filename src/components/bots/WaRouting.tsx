@@ -8,11 +8,11 @@ import type { WhatsAppNumberRef } from "@/hooks/useConnections";
 /**
  * WaRouting — vista de Ruteo de WhatsApp (sección Bots). Ancla cada número de
  * WhatsApp de Meta a UN flujo/bot (`number.botId`). Las credenciales del número se
- * cargan en Configuración → Integraciones; acá SOLO se decide QUÉ flujo lo atiende.
+ * cargan en Configuración → Integraciones; aquí SOLO se decide QUÉ flujo lo atiende.
  * 1 número = 1 flujo (nunca dos bots peleando por un número). Persiste vía
  * manage-connections { action: "setWaNumberBot", id, botId }.
  *
- * Los números "de Connect (AWS)" no se rutean acá: entran como contacto y los
+ * Los números "de Connect (AWS)" no se rutean aquí: entran como contacto y los
  * atiende el flow de Amazon Connect (colas + agente en vivo), no un bot de ARIA.
  */
 interface BotLite {
@@ -104,8 +104,8 @@ export function WaRouting({ onBack }: { onBack: () => void }) {
             className="muted"
             style={{ fontSize: 13, marginTop: 4, maxWidth: 620, lineHeight: 1.5 }}
           >
-            Elegí qué flujo atiende cada número de Meta. <b>1 número = 1 flujo.</b> Las credenciales
-            se cargan en Configuración → Integraciones; acá solo el ruteo.
+            Elige qué flujo atiende cada número de Meta. <b>1 número = 1 flujo.</b> Las credenciales
+            se cargan en Configuración → Integraciones; aquí solo el ruteo.
           </div>
         </div>
         <Btn variant="ghost" size="sm" onClick={onBack}>
@@ -126,8 +126,8 @@ export function WaRouting({ onBack }: { onBack: () => void }) {
             No hay números de WhatsApp de Meta registrados
           </div>
           <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.6 }}>
-            Registrá un número en <b>Configuración → Integraciones → WhatsApp</b> (modo “Número de
-            Meta aparte”) y volvé acá para elegir su flujo.
+            Registra un número en <b>Configuración → Integraciones → WhatsApp</b> (modo “Número de
+            Meta aparte”) y vuelve aquí para elegir su flujo.
           </div>
         </div>
       ) : (
@@ -199,7 +199,7 @@ export function WaRouting({ onBack }: { onBack: () => void }) {
       {awsCount > 0 && (
         <div className="muted" style={{ fontSize: 12, marginTop: 14, lineHeight: 1.5 }}>
           {awsCount} número{awsCount > 1 ? "s" : ""} de <b>Connect (AWS)</b> no aparece
-          {awsCount > 1 ? "n" : ""} acá: entra{awsCount > 1 ? "n" : ""} como contacto y se rutea
+          {awsCount > 1 ? "n" : ""} aquí: entra{awsCount > 1 ? "n" : ""} como contacto y se rutea
           {awsCount > 1 ? "n" : ""} por el flow de Amazon Connect (colas + agente en vivo), no por
           un bot de ARIA.
         </div>

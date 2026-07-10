@@ -275,7 +275,7 @@ function citeInstruction(sources: RagSource[], cite: boolean): string {
     `Terminá SIEMPRE tu respuesta con un marcador OCULTO con las etiquetas EXACTAS que usaste y tu confianza, ` +
     `formato EXACTO: ⟦src:F1,C1|conf:NN⟧ (NN = 0-100). ` +
     `Ejemplo: si respondiste con un dato de la FAQ [F1], el marcador va al final así: ⟦src:F1|conf:90⟧. ` +
-    `Usá src:- SOLO si de verdad no usaste ningún dato de la base. ` +
+    `Usa src:- SOLO si de verdad no usaste ningún dato de la base. ` +
     `NUNCA muestres las etiquetas ni el marcador en el texto visible — el cliente NO debe verlo. ` +
     `Etiquetas disponibles: ${sources.map((s) => `${s.id}=${s.label}`).join("; ")}.\n`
   );
@@ -327,13 +327,13 @@ async function runAi(
     .join("\n");
 
   const system =
-    `Sos un asistente conversacional de atención al cliente. ${instructions}\n` +
+    `Eres un asistente conversacional de atención al cliente. ${instructions}\n` +
     (objective ? `Tu objetivo: ${objective}\n` : "") +
     (knowledge
-      ? `Base de conocimiento que podés usar para responder (no inventes fuera de esto):\n${knowledge}\n`
+      ? `Base de conocimiento que puedes usar para responder (no inventes fuera de esto):\n${knowledge}\n`
       : "") +
     (guardrails ? `Restricciones — NO hagas esto: ${guardrails}\n` : "") +
-    (handoffWhen ? `Derivá a un humano si: ${handoffWhen}.\n` : "") +
+    (handoffWhen ? `Deriva a un humano si: ${handoffWhen}.\n` : "") +
     `Responde SIEMPRE en español, breve (1-3 oraciones), tono cordial.`;
   // Fase B — en el path JSON la citación va DENTRO del JSON (campo "cited"); el
   // marcador oculto sólo sirve en el path de tools (texto libre).
@@ -343,7 +343,7 @@ async function runAi(
     (wantCite
       ? `La base de conocimiento marca cada bloque con una etiqueta entre corchetes ([F1], [C1], [P1]…): ${sources.map((s) => `${s.id}=${s.label}`).join("; ")}.\n`
       : "") +
-    `Generá el siguiente mensaje del BOT para avanzar hacia el objetivo. ` +
+    `Genera el siguiente mensaje del BOT para avanzar hacia el objetivo. ` +
     `Responde SOLO un JSON válido: {"reply":"<tu mensaje>","status":"continue"|"resolved"|"handoff","confidence":<0-100>${wantCite ? `,"cited":[<etiquetas EXACTAS de la base que usaste, ej "F1","C1"; [] si ninguna>]` : ""}}. ` +
     `Usa "resolved" cuando ya lograste el objetivo, "handoff" si hay que pasar a un humano, si no "continue". ` +
     `"confidence" = qué tan seguro estás de tu respuesta (0=adivinando, 100=certeza).`;
@@ -417,7 +417,7 @@ async function runAi(
  */
 const BOOK_DEF = {
   name: "book_appointment",
-  description: "Agenda una cita para el cliente. Pedí teléfono y fecha/hora si no los tenés.",
+  description: "Agenda una cita para el cliente. Pide teléfono y fecha/hora si no los tienes.",
   input_schema: {
     type: "object",
     properties: {
@@ -572,7 +572,7 @@ async function runAiWithTools(
     },
     {
       name: "resolve_conversation",
-      description: "Marcá la conversación como resuelta cuando lograste el objetivo.",
+      description: "Marca la conversación como resuelta cuando lograste el objetivo.",
       input_schema: { type: "object", properties: {} },
     },
   ];
@@ -585,20 +585,20 @@ async function runAiWithTools(
   const threshold = Number(data.confidenceThreshold) || 0;
   const confirmSensitive = data.confirmSensitive !== false && data.confirmSensitive !== "No"; // default true
   const system =
-    `Sos un agente de atención al cliente que puede USAR HERRAMIENTAS para actuar, no solo conversar. ${instructions}\n` +
+    `Eres un agente de atención al cliente que puede USAR HERRAMIENTAS para actuar, no solo conversar. ${instructions}\n` +
     (objective ? `Tu objetivo: ${objective}\n` : "") +
     (knowledge ? `Base de conocimiento (no inventes fuera de esto):\n${knowledge}\n` : "") +
     (guardrails ? `Restricciones — NO hagas esto: ${guardrails}\n` : "") +
-    (handoffWhen ? `Llamá a handoff_to_human si: ${handoffWhen}.\n` : "") +
+    (handoffWhen ? `Llama a handoff_to_human si: ${handoffWhen}.\n` : "") +
     (threshold > 0
-      ? `Si tu confianza para resolver bien la consulta es baja (por debajo de ~${threshold}%), NO adivines: llamá a handoff_to_human.\n`
+      ? `Si tu confianza para resolver bien la consulta es baja (por debajo de ~${threshold}%), NO adivines: llama a handoff_to_human.\n`
       : "") +
     (confirmSensitive
-      ? `IMPORTANTE: antes de ejecutar acciones que envían algo o crean/modifican datos (send_whatsapp_template, book_appointment, upsert_lead), CONFIRMÁ con el cliente primero — resumí qué vas a hacer y esperá su "sí". Las consultas de solo lectura (lookup_customer) NO necesitan confirmación.\n`
+      ? `IMPORTANTE: antes de ejecutar acciones que envían algo o crean/modifican datos (send_whatsapp_template, book_appointment, upsert_lead), CONFIRMA con el cliente primero — resume qué vas a hacer y espera su "sí". Las consultas de solo lectura (lookup_customer) NO necesitan confirmación.\n`
       : "") +
     citeInstruction(sources, cite) +
     `Cuando te falte un dato para una herramienta (teléfono, fecha…), pedíselo al cliente primero. ` +
-    `Llamá a resolve_conversation al completar el objetivo. Responde SIEMPRE en español, breve y cordial.`;
+    `Llama a resolve_conversation al completar el objetivo. Responde SIEMPRE en español, breve y cordial.`;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messages: any[] = history.map((h) => ({
@@ -667,7 +667,7 @@ async function runAiWithTools(
           type: "tool_result",
           tool_use_id: tu.id,
           content:
-            "LÍMITE: se alcanzó el máximo de acciones de esta conversación. Derivá a un humano.",
+            "LÍMITE: se alcanzó el máximo de acciones de esta conversación. Deriva a un humano.",
         });
         toolNotes.push("⛔ Límite de acciones alcanzado");
       } else {
@@ -915,7 +915,7 @@ export const handler: Handler = async (event: any) => {
         continue;
       }
       if (k === "list") {
-        const text = fill(str(d.body, str(d.header, "Elegí una opción:")), state.vars);
+        const text = fill(str(d.body, str(d.header, "Elige una opción:")), state.vars);
         const rows = Array.isArray(d.rows)
           ? (d.rows as { id: string; title: string; description?: string }[]).map((r) => ({
               id: `r:${r.id}`,
@@ -1137,7 +1137,7 @@ export const handler: Handler = async (event: any) => {
         const amount = fill(str(d.amount), state.vars);
         const currency = str(d.currency, "PEN");
         const url = fill(str(d.url), state.vars);
-        const text = `💳 ${concept || "Pago"}${amount ? ` — ${currency} ${amount}` : ""}\n${url ? `Pagá acá: ${url}` : "(Falta el link de pago)"}`;
+        const text = `💳 ${concept || "Pago"}${amount ? ` — ${currency} ${amount}` : ""}\n${url ? `Pagá aquí: ${url}` : "(Falta el link de pago)"}`;
         messages.push({ kind: "bot", text });
         state.history.push({ role: "bot", text });
         cur = nextFrom(cur.id, "out");

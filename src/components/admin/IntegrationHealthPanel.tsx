@@ -28,8 +28,18 @@ const STATUS_META: Record<
   { color: string; bg: string; icon: "Check" | "Close"; label: string }
 > = {
   ok: { color: "var(--accent-green)", bg: "var(--accent-green-soft)", icon: "Check", label: "OK" },
-  warn: { color: "var(--accent-amber)", bg: "var(--accent-amber-soft)", icon: "Close", label: "Atención" },
-  error: { color: "var(--accent-red)", bg: "var(--accent-red-soft)", icon: "Close", label: "Error" },
+  warn: {
+    color: "var(--accent-amber)",
+    bg: "var(--accent-amber-soft)",
+    icon: "Close",
+    label: "Atención",
+  },
+  error: {
+    color: "var(--accent-red)",
+    bg: "var(--accent-red-soft)",
+    icon: "Close",
+    label: "Error",
+  },
 };
 
 /** Props: hasConnect indica si ya hay config de Connect (sino no diagnostica). */
@@ -72,7 +82,7 @@ export function IntegrationHealthPanel({ hasConnect }: { hasConnect: boolean }) 
   // Resumen: cuántos OK / warn / error.
   const counts = (checks || []).reduce(
     (acc, c) => ((acc[c.status] = (acc[c.status] || 0) + 1), acc),
-    {} as Record<CheckStatus, number>
+    {} as Record<CheckStatus, number>,
   );
 
   return (
@@ -85,7 +95,10 @@ export function IntegrationHealthPanel({ hasConnect }: { hasConnect: boolean }) 
         border: "1px solid var(--border-1)",
       }}
     >
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+      <div
+        className="row"
+        style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}
+      >
         <div>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Estado de la integración</div>
           <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
@@ -94,20 +107,36 @@ export function IntegrationHealthPanel({ hasConnect }: { hasConnect: boolean }) 
               <>
                 {" · "}
                 <span style={{ color: "var(--accent-green)" }}>{counts.ok || 0} OK</span>
-                {counts.warn ? <span style={{ color: "var(--accent-amber)" }}>{" · "}{counts.warn} atención</span> : null}
-                {counts.error ? <span style={{ color: "var(--accent-red)" }}>{" · "}{counts.error} error</span> : null}
+                {counts.warn ? (
+                  <span style={{ color: "var(--accent-amber)" }}>
+                    {" · "}
+                    {counts.warn} atención
+                  </span>
+                ) : null}
+                {counts.error ? (
+                  <span style={{ color: "var(--accent-red)" }}>
+                    {" · "}
+                    {counts.error} error
+                  </span>
+                ) : null}
               </>
             )}
           </div>
         </div>
         <button className="btn btn--sm" onClick={run} disabled={loading || !hasConnect}>
-          {loading ? "Diagnosticando…" : <><Icon.Settings size={12} /> Re-diagnosticar</>}
+          {loading ? (
+            "Diagnosticando…"
+          ) : (
+            <>
+              <Icon.Settings size={12} /> Re-diagnosticar
+            </>
+          )}
         </button>
       </div>
 
       {!hasConnect && (
         <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>
-          Configurá tu Amazon Connect arriba para poder diagnosticar la integración.
+          Configura tu Amazon Connect arriba para poder diagnosticar la integración.
         </div>
       )}
 
@@ -127,7 +156,9 @@ export function IntegrationHealthPanel({ hasConnect }: { hasConnect: boolean }) 
       )}
 
       {loading && !checks && (
-        <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Corriendo chequeos…</div>
+        <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>
+          Corriendo chequeos…
+        </div>
       )}
 
       {checks && (
@@ -179,7 +210,9 @@ export function IntegrationHealthPanel({ hasConnect }: { hasConnect: boolean }) 
                       {m.label}
                     </span>
                   </div>
-                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{c.detail}</div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                    {c.detail}
+                  </div>
                   {c.remediation && (
                     <div
                       style={{

@@ -190,7 +190,7 @@ export function ConsumptionManager() {
           <CardBody>
             <div style={{ fontSize: 13, lineHeight: 1.6 }}>
               El reporte de consumo se habilita al desplegar el backend <code>get-cost-report</code>
-              . Ya podés ver el modelo de precios en <code>design/consumo.md</code>.
+              . Ya puedes ver el modelo de precios en <code>design/consumo.md</code>.
             </div>
           </CardBody>
         </Card>
@@ -254,7 +254,7 @@ export function ConsumptionManager() {
                   data.realAvailable.connect && "Connect (AWS)",
                 ]
                   .filter(Boolean)
-                  .join(" + ") || "conectá las fuentes de facturación"
+                  .join(" + ") || "conecta las fuentes de facturación"
               }
             />
           </div>
@@ -271,7 +271,7 @@ export function ConsumptionManager() {
                     WhatsApp ✓ conectado (Graph de Meta)
                   </span>
                 ) : (
-                  <span>WhatsApp — conectá tu número de Meta para verlo</span>
+                  <span>WhatsApp — conecta tu número de Meta para verlo</span>
                 )}
                 {"; "}
                 {data.realAvailable.connect ? (
@@ -445,9 +445,9 @@ export function ConsumptionManager() {
                       <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border-1)" }}>
                         <span className="muted" style={{ fontSize: 11.5, lineHeight: 1.55 }}>
                           <strong style={{ color: "var(--text-1)" }}>Estimado.</strong> Para ver el{" "}
-                          <strong>cobro real de solo ARIA</strong>, activá la etiqueta{" "}
+                          <strong>cobro real de solo ARIA</strong>, activa la etiqueta{" "}
                           <code>aria:product=ARIA</code> como <em>cost allocation tag</em> en
-                          Facturación de AWS (~24 h, no retroactivo) y etiquetá los recursos (los
+                          Facturación de AWS (~24 h, no retroactivo) y etiqueta los recursos (los
                           Lambdas ya están; DynamoDB y demás con{" "}
                           <code>scripts/tag-resources.mjs</code>
                           ). Cost Explorer devuelve entonces el gasto de <strong>solo ARIA</strong>,

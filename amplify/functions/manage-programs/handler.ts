@@ -21,7 +21,7 @@ import { resolveDynamo } from "../_shared/tenantConnect";
  * Tablas:
  *   connectview-programs       (PK=programId)
  *   connectview-lead-programs  (PK=programId, SK=leadId, GSI "byLead") — membership N:N
- *                              (se consulta acá solo para conteos; se puebla en Fase B)
+ *                              (se consulta aquí solo para conteos; se puebla en Fase B)
  *
  * GET    ?programId=ID                          → un programa + salud (leads, byStage)
  * GET    [?status=&faculty=&includeArchived=1]  → lista + conteo de leads por programa
@@ -41,7 +41,11 @@ const MEMBERSHIP = process.env.LEAD_PROGRAMS_TABLE || "connectview-lead-programs
 const CORS = { "Content-Type": "application/json" };
 
 const ok = (b: unknown) => ({ statusCode: 200, headers: CORS, body: JSON.stringify(b) });
-const bad = (c: number, e: string) => ({ statusCode: c, headers: CORS, body: JSON.stringify({ error: e }) });
+const bad = (c: number, e: string) => ({
+  statusCode: c,
+  headers: CORS,
+  body: JSON.stringify({ error: e }),
+});
 
 const STATUSES = ["borrador", "activo", "pausado", "cerrado", "archivado"] as const;
 type Status = (typeof STATUSES)[number];
@@ -134,7 +138,7 @@ async function leadCount(programId: string): Promise<number> {
           Select: "COUNT",
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ExclusiveStartKey: ExclusiveStartKey as any,
-        })
+        }),
       );
       count += res.Count || 0;
       ExclusiveStartKey = res.LastEvaluatedKey;
@@ -161,7 +165,7 @@ async function programHealth(programId: string): Promise<ProgramMetrics> {
           ProjectionExpression: "stageId, updatedAt",
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ExclusiveStartKey: ExclusiveStartKey as any,
-        })
+        }),
       );
       for (const it of res.Items || []) {
         const m = unmarshall(it);
@@ -182,7 +186,7 @@ async function programHealth(programId: string): Promise<ProgramMetrics> {
 
 async function getProgram(programId: string): Promise<Program | null> {
   const res = await dynamo.send(
-    new GetItemCommand({ TableName: TABLE, Key: { programId: { S: programId } } })
+    new GetItemCommand({ TableName: TABLE, Key: { programId: { S: programId } } }),
   );
   return res.Item ? (unmarshall(res.Item) as Program) : null;
 }
@@ -190,7 +194,7 @@ async function getProgram(programId: string): Promise<Program | null> {
 async function putProgram(p: Program, actor: string) {
   const item = { ...p, updatedAt: new Date().toISOString(), updatedBy: actor };
   await dynamo.send(
-    new PutItemCommand({ TableName: TABLE, Item: marshall(item, { removeUndefinedValues: true }) })
+    new PutItemCommand({ TableName: TABLE, Item: marshall(item, { removeUndefinedValues: true }) }),
   );
   return item;
 }
@@ -277,7 +281,10 @@ export const handler: Handler = async (event: any) => {
               created += 1;
               byCode.set(doc.code.toLowerCase(), doc.programId);
             }
-            await putProgram({ ...doc, createdBy: actor, createdAt: new Date().toISOString() }, actor);
+            await putProgram(
+              { ...doc, createdBy: actor, createdAt: new Date().toISOString() },
+              actor,
+            );
           } catch (e) {
             errors.push(e instanceof Error ? e.message : "fila inválida");
           }
@@ -297,17 +304,24 @@ export const handler: Handler = async (event: any) => {
               new PutItemCommand({
                 TableName: MEMBERSHIP,
                 Item: marshall(
-                  { programId, leadId, stageId: str(body.stageId), source: "manual", addedAt: now, updatedAt: now },
-                  { removeUndefinedValues: true }
+                  {
+                    programId,
+                    leadId,
+                    stageId: str(body.stageId),
+                    source: "manual",
+                    addedAt: now,
+                    updatedAt: now,
+                  },
+                  { removeUndefinedValues: true },
                 ),
-              })
+              }),
             );
           } else {
             await dynamo.send(
               new DeleteItemCommand({
                 TableName: MEMBERSHIP,
                 Key: { programId: { S: programId }, leadId: { S: leadId } },
-              })
+              }),
             );
           }
         }
@@ -342,7 +356,7 @@ export const handler: Handler = async (event: any) => {
           return bad(409, `no se puede borrar: el programa tiene ${n} leads (ciérralo/archívalo)`);
       }
       await dynamo.send(
-        new DeleteItemCommand({ TableName: TABLE, Key: { programId: { S: params.programId } } })
+        new DeleteItemCommand({ TableName: TABLE, Key: { programId: { S: params.programId } } }),
       );
       return ok({ deleted: true, programId: params.programId });
     }

@@ -49,7 +49,7 @@ export const handler: Handler = async (event: any) => {
         templates: [],
         accounts: [],
         wabaId: "",
-        note: "WhatsApp no está configurado para esta organización. Cargá tu número en Configuración → Integraciones.",
+        note: "WhatsApp no está configurado para esta organización. Carga tu número en Configuración → Integraciones.",
       }),
     };
   }

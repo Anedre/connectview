@@ -82,9 +82,9 @@ export function PowerBiFeedPanel() {
           className="muted"
           style={{ fontSize: 12.5, marginTop: 3, maxWidth: 720, lineHeight: 1.5 }}
         >
-          Conectá <strong>Power BI</strong> (o Excel, Looker, Tableau…) a los datos de ARIA para
+          Conecta <strong>Power BI</strong> (o Excel, Looker, Tableau…) a los datos de ARIA para
           armar tus propios tableros, que se <strong>refrescan solos</strong>. En Power BI:{" "}
-          <strong>Obtener datos → Web</strong> y pegá una de estas URLs.
+          <strong>Obtener datos → Web</strong> y pega una de estas URLs.
         </div>
       </div>
 
@@ -143,7 +143,7 @@ export function PowerBiFeedPanel() {
                 </button>
               </div>
               <div className="muted" style={{ fontSize: 11, marginTop: 8, lineHeight: 1.5 }}>
-                Es una <strong>credencial de solo lectura</strong> de tu cuenta. Tratala como una
+                Es una <strong>credencial de solo lectura</strong> de tu cuenta. Trátala como una
                 contraseña: no la compartas ni la subas a repos. Cualquiera con esta URL puede leer
                 estos datos.
               </div>
@@ -220,14 +220,14 @@ export function PowerBiFeedPanel() {
                     Power BI Desktop → <strong>Inicio → Obtener datos → Web</strong>.
                   </li>
                   <li>
-                    Pegá la URL de un dataset (botón «Copiar URL») y aceptá con acceso{" "}
+                    Pega la URL de un dataset (botón «Copiar URL») y acepta con acceso{" "}
                     <strong>Anónimo</strong>.
                   </li>
                   <li>
-                    Power BI abre el JSON: expandí <code>rows</code> a tabla y listo.
+                    Power BI abre el JSON: expande <code>rows</code> a tabla y listo.
                   </li>
                   <li>
-                    Para refrescar: <strong>Actualizar</strong> (o programá el refresco en el
+                    Para refrescar: <strong>Actualizar</strong> (o programa el refresco en el
                     servicio).
                   </li>
                 </ol>

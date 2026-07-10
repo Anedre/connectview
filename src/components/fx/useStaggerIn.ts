@@ -4,7 +4,7 @@ import { animate, stagger } from "animejs";
 /**
  * useStaggerIn — entrada en cascada con anime.js para hijos que aparecen
  * DESPUÉS del mount (datos async). Complementa a motion.css, que solo anima
- * la entrada de página: acá el disparo es cuando cambia `key` (p. ej. la
+ * la entrada de página: aquí el disparo es cuando cambia `key` (p. ej. la
  * longitud de la lista al resolver el fetch).
  *
  *   const ref = useStaggerIn<HTMLDivElement>(items.length);

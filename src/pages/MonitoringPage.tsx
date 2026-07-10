@@ -35,7 +35,9 @@ const STATE: Record<string, { label: string; color: string }> = {
   Offline: { label: "Off", color: "var(--text-3)" },
   MissedCallAgent: { label: "Perdida", color: "var(--coral)" },
 };
-function stateOf(s: string) { return STATE[s] || { label: s, color: "var(--iris)" }; }
+function stateOf(s: string) {
+  return STATE[s] || { label: s, color: "var(--iris)" };
+}
 
 /** Channel meta from a queue/contact channel string. */
 function channelMeta(ch?: string): { label: string; color: string } {
@@ -77,7 +79,11 @@ function inFilter(a: AgentStatus, f: AgentFilter): boolean {
   if (f === "available") return a.status === "Available";
   if (f === "busy") return a.status === "Busy";
   if (f === "acw") return a.status === "AfterCallWork";
-  if (f === "attention") return a.status === "MissedCallAgent" || (a.status === "AfterCallWork" && since(a.statusStartTimestamp) > 120);
+  if (f === "attention")
+    return (
+      a.status === "MissedCallAgent" ||
+      (a.status === "AfterCallWork" && since(a.statusStartTimestamp) > 120)
+    );
   return true;
 }
 
@@ -114,10 +120,16 @@ export function MonitoringPage() {
   const seen = useRef<Set<string>>(new Set());
 
   const [, setTick] = useState(0);
-  useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 2000); return () => clearInterval(id); }, []);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 2000);
+    return () => clearInterval(id);
+  }, []);
   useEffect(() => {
     if (!auto) return;
-    const id = setInterval(() => { refresh(); refreshLiveQueue(); }, refreshSecs * 1000);
+    const id = setInterval(() => {
+      refresh();
+      refreshLiveQueue();
+    }, refreshSecs * 1000);
     return () => clearInterval(id);
   }, [auto, refreshSecs, refresh, refreshLiveQueue]);
 
@@ -127,11 +139,21 @@ export function MonitoringPage() {
     const fresh = crit.filter((a) => !seen.current.has(a.id));
     if (fresh.length && !muted) {
       try {
-        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        const c = new Ctx(); const o = c.createOscillator(); const g = c.createGain();
-        o.connect(g); g.connect(c.destination); o.frequency.value = 880; g.gain.value = 0.05;
-        o.start(); o.stop(c.currentTime + 0.18);
-      } catch { /* no audio */ }
+        const Ctx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const c = new Ctx();
+        const o = c.createOscillator();
+        const g = c.createGain();
+        o.connect(g);
+        g.connect(c.destination);
+        o.frequency.value = 880;
+        g.gain.value = 0.05;
+        o.start();
+        o.stop(c.currentTime + 0.18);
+      } catch {
+        /* no audio */
+      }
     }
     for (const a of crit) seen.current.add(a.id);
   }, [alerts, muted]);
@@ -141,19 +163,34 @@ export function MonitoringPage() {
   // ref.current directly (react-hooks/refs). Same pattern as useQueueInsights.
   type Hist = { queue: number[]; conv: number[]; sla: number[]; wait: number[]; aband: number[] };
   const histRef = useRef<Hist>({ queue: [], conv: [], sla: [], wait: [], aband: [] });
-  const [barHist, setBarHist] = useState<Hist>({ queue: [], conv: [], sla: [], wait: [], aband: [] });
+  const [barHist, setBarHist] = useState<Hist>({
+    queue: [],
+    conv: [],
+    sla: [],
+    wait: [],
+    aband: [],
+  });
   const stamp = metrics?.timestamp;
   useEffect(() => {
     if (!metrics) return;
     const h = histRef.current;
-    const push = (a: number[], v: number) => { a.push(v); if (a.length > 16) a.shift(); };
+    const push = (a: number[], v: number) => {
+      a.push(v);
+      if (a.length > 16) a.shift();
+    };
     const sl = metrics.summary.today?.serviceLevel;
     push(h.queue, metrics.summary.totalContactsInQueue);
     push(h.conv, metrics.agents.filter((a) => a.status === "Busy").length);
     push(h.sla, sl == null ? slaPct : sl);
     push(h.wait, metrics.summary.longestWaitSeconds);
     push(h.aband, metrics.summary.today?.abandonRate ?? 0);
-    setBarHist({ queue: [...h.queue], conv: [...h.conv], sla: [...h.sla], wait: [...h.wait], aband: [...h.aband] });
+    setBarHist({
+      queue: [...h.queue],
+      conv: [...h.conv],
+      sla: [...h.sla],
+      wait: [...h.wait],
+      aband: [...h.aband],
+    });
   }, [stamp, metrics, slaPct]);
 
   const onCall = metrics?.agents.filter((a) => a.status === "Busy").length ?? 0;
@@ -183,23 +220,27 @@ export function MonitoringPage() {
   }, [metrics?.queues]);
 
   const shownQueues = useMemo(() => {
-    const list = (metrics?.queues ?? []).slice().sort((a, b) => b.contactsInQueue - a.contactsInQueue);
+    const list = (metrics?.queues ?? [])
+      .slice()
+      .sort((a, b) => b.contactsInQueue - a.contactsInQueue);
     return queueFilter === "all" ? list : list.filter((q) => q.queueName.startsWith(queueFilter));
   }, [metrics?.queues, queueFilter]);
 
   // Waiting contacts (real) — joined with queue name
   const waiting = useMemo(() => {
-    return (liveQueue?.inQueue ?? [])
-      .slice()
-      .sort((a, b) => b.waitingSeconds - a.waitingSeconds);
+    return (liveQueue?.inQueue ?? []).slice().sort((a, b) => b.waitingSeconds - a.waitingSeconds);
   }, [liveQueue?.inQueue]);
   const breachCount = waiting.filter((c) => c.waitingSeconds > WAIT_SLA_SECONDS).length;
 
   // Real customer-based priority for the top waiting contacts (returning /
   // previously-abandoned callers), derived from Customer Profiles history.
   const waitingPhones = useMemo(
-    () => waiting.slice(0, 8).map((c) => c.phone).filter((p): p is string => !!p),
-    [waiting]
+    () =>
+      waiting
+        .slice(0, 8)
+        .map((c) => c.phone)
+        .filter((p): p is string => !!p),
+    [waiting],
   );
   const custSignals = useWaitingPriority(waitingPhones);
 
@@ -211,8 +252,18 @@ export function MonitoringPage() {
       .filter((a) => !needle || a.username.toLowerCase().includes(needle))
       .slice()
       .sort((a, b) => {
-        const rank = (x: AgentStatus) => (x.status === "MissedCallAgent" ? 0 : x.status === "AfterCallWork" ? 1 : x.status === "Busy" ? 2 : x.status === "Available" ? 3 : 4);
-        const ra = rank(a), rb = rank(b);
+        const rank = (x: AgentStatus) =>
+          x.status === "MissedCallAgent"
+            ? 0
+            : x.status === "AfterCallWork"
+              ? 1
+              : x.status === "Busy"
+                ? 2
+                : x.status === "Available"
+                  ? 3
+                  : 4;
+        const ra = rank(a),
+          rb = rank(b);
         return ra !== rb ? ra - rb : since(b.statusStartTimestamp) - since(a.statusStartTimestamp);
       });
   }, [metrics?.agents, agentQuery, agentFilter]);
@@ -222,29 +273,109 @@ export function MonitoringPage() {
       <div className="page" style={{ display: "grid", placeItems: "center", minHeight: "60vh" }}>
         <div style={{ textAlign: "center" }}>
           <Icon name="live" size={28} style={{ color: "var(--gold)" }} />
-          <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>Cargando supervisión en tiempo real…</div>
+          <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>
+            Cargando supervisión en tiempo real…
+          </div>
         </div>
       </div>
     );
   }
-  if (!metrics) return null;
+  // Fallo en la carga inicial (error seteado, sin métricas aún): antes retornaba
+  // null → página en blanco sin salida. Ahora muestra el error + reintentar.
+  if (!metrics) {
+    return (
+      <div className="page" style={{ display: "grid", placeItems: "center", minHeight: "60vh" }}>
+        <div style={{ textAlign: "center", maxWidth: 420 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, color: "var(--coral)" }}>
+            No se pudo cargar la supervisión en tiempo real
+          </div>
+          <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+            {error || "Revisa tu conexión con Amazon Connect e inténtalo de nuevo."}
+          </div>
+          <button
+            className="btn btn--sm btn--primary"
+            style={{ marginTop: 14 }}
+            onClick={() => refresh()}
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  const tone: Record<string, string> = { ok: "var(--green)", warn: "var(--gold)", crit: "var(--coral)", info: "var(--cyan)" };
+  const tone: Record<string, string> = {
+    ok: "var(--green)",
+    warn: "var(--gold)",
+    crit: "var(--coral)",
+    info: "var(--cyan)",
+  };
   const kpis = [
-    { label: "En cola", icon: "headset", value: String(inQueue), sub: inQueue > 0 ? `${inQueue} esperando` : "sin contactos", t: inQueue > 5 ? "crit" : "ok", bars: barHist.queue },
-    { label: "En conversación", icon: "phone", value: String(onCall), sub: `${util}% utilización`, t: "info", bars: barHist.conv },
-    { label: "SLA hoy", icon: "check", value: `${slaDisplay}%`, sub: slaToday == null ? "en vivo · meta 80%" : "atend. <30s · meta 80%", t: slaDisplay >= 80 ? "ok" : slaDisplay >= 50 ? "warn" : "crit", bars: barHist.sla },
-    { label: "Abandono hoy", icon: "missed", value: `${abandRate}%`, sub: today ? `${today.abandoned} de ${today.queued}` : "sin datos aún", t: abandRate > 8 ? "crit" : abandRate > 4 ? "warn" : "ok", bars: barHist.aband },
-    { label: "Espera máx.", icon: "clock", value: fmt(longest), sub: `${breachCount} en breach`, t: longest > 120 ? "crit" : "ok", bars: barHist.wait },
-    { label: "Disponibles", icon: "users", value: String(available), sub: `${acw} en ACW · ${handledToday} atend.`, t: "ok", bars: barHist.conv.map((_, i) => available + (i % 2)) },
+    {
+      label: "En cola",
+      icon: "headset",
+      value: String(inQueue),
+      sub: inQueue > 0 ? `${inQueue} esperando` : "sin contactos",
+      t: inQueue > 5 ? "crit" : "ok",
+      bars: barHist.queue,
+    },
+    {
+      label: "En conversación",
+      icon: "phone",
+      value: String(onCall),
+      sub: `${util}% utilización`,
+      t: "info",
+      bars: barHist.conv,
+    },
+    {
+      label: "SLA hoy",
+      icon: "check",
+      value: `${slaDisplay}%`,
+      sub: slaToday == null ? "en vivo · meta 80%" : "atend. <30s · meta 80%",
+      t: slaDisplay >= 80 ? "ok" : slaDisplay >= 50 ? "warn" : "crit",
+      bars: barHist.sla,
+    },
+    {
+      label: "Abandono hoy",
+      icon: "missed",
+      value: `${abandRate}%`,
+      sub: today ? `${today.abandoned} de ${today.queued}` : "sin datos aún",
+      t: abandRate > 8 ? "crit" : abandRate > 4 ? "warn" : "ok",
+      bars: barHist.aband,
+    },
+    {
+      label: "Espera máx.",
+      icon: "clock",
+      value: fmt(longest),
+      sub: `${breachCount} en breach`,
+      t: longest > 120 ? "crit" : "ok",
+      bars: barHist.wait,
+    },
+    {
+      label: "Disponibles",
+      icon: "users",
+      value: String(available),
+      sub: `${acw} en ACW · ${handledToday} atend.`,
+      t: "ok",
+      bars: barHist.conv.map((_, i) => available + (i % 2)),
+    },
   ];
 
   const doMonitor = async (agent: LiveAgent, mode: "SILENT_MONITOR" | "BARGE") => {
-    if (!agent.activeContact || !user?.userId) { toast.error("No disponible"); return; }
+    if (!agent.activeContact || !user?.userId) {
+      toast.error("No disponible");
+      return;
+    }
     try {
       await monitorContact(agent.activeContact.contactId, user.userId, mode);
-      toast.success(mode === "BARGE" ? "Interviniendo — usa la barra inferior" : "Escuchando — usa la barra inferior");
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error"); }
+      toast.success(
+        mode === "BARGE"
+          ? "Interviniendo — usa la barra inferior"
+          : "Escuchando — usa la barra inferior",
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error");
+    }
   };
 
   const filters: { id: AgentFilter; label: string; n: number }[] = [
@@ -252,7 +383,11 @@ export function MonitoringPage() {
     { id: "available", label: "Disponible", n: available },
     { id: "busy", label: "En llamada", n: onCall },
     { id: "acw", label: "ACW", n: acw },
-    { id: "attention", label: "Atención", n: metrics.agents.filter((a) => inFilter(a, "attention")).length },
+    {
+      id: "attention",
+      label: "Atención",
+      n: metrics.agents.filter((a) => inFilter(a, "attention")).length,
+    },
   ];
 
   return (
@@ -261,21 +396,51 @@ export function MonitoringPage() {
           controles reales (auto-refresh, coach IA). Reemplaza el header propio
           por el lenguaje premium de ARIA sin perder ningún control. */}
       <HeroBand
-        title={<span className="row gap10">Cola en vivo · Supervisión <span className="dot dot--live" /></span>}
-        chip={<>Live · {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</>}
+        title={
+          <span className="row gap10">
+            Cola en vivo · Supervisión <span className="dot dot--live" />
+          </span>
+        }
+        chip={
+          <>
+            Live ·{" "}
+            {lastRefresh.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}
+          </>
+        }
         chipIcon="live"
         chipTone="var(--green)"
         right={
           <div className="row gap8" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
             {areas.length > 0 && (
               <div className="row gap4">
-                <Btn variant={queueFilter === "all" ? "soft" : "ghost"} size="sm" onClick={() => setQueueFilter("all")}>Todos</Btn>
+                <Btn
+                  variant={queueFilter === "all" ? "soft" : "ghost"}
+                  size="sm"
+                  onClick={() => setQueueFilter("all")}
+                >
+                  Todos
+                </Btn>
                 {areas.map((a) => (
-                  <Btn key={a} variant={queueFilter === a ? "soft" : "ghost"} size="sm" onClick={() => setQueueFilter(a)}>{a}</Btn>
+                  <Btn
+                    key={a}
+                    variant={queueFilter === a ? "soft" : "ghost"}
+                    size="sm"
+                    onClick={() => setQueueFilter(a)}
+                  >
+                    {a}
+                  </Btn>
                 ))}
               </div>
             )}
-            <label className="row gap6" style={{ fontSize: 12.5, cursor: "pointer", color: "var(--text-2)" }} title="Auto-actualizar">
+            <label
+              className="row gap6"
+              style={{ fontSize: 12.5, cursor: "pointer", color: "var(--text-2)" }}
+              title="Auto-actualizar"
+            >
               <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
               Auto-refresh
             </label>
@@ -293,11 +458,29 @@ export function MonitoringPage() {
       />
 
       {error && (
-        <div style={{ marginBottom: 14, padding: 12, borderRadius: "var(--r-md)", background: "color-mix(in srgb,var(--gold) 14%,transparent)", color: "var(--gold)", fontSize: 12.5 }}>{error}</div>
+        <div
+          style={{
+            marginBottom: 14,
+            padding: 12,
+            borderRadius: "var(--r-md)",
+            background: "color-mix(in srgb,var(--gold) 14%,transparent)",
+            color: "var(--gold)",
+            fontSize: 12.5,
+          }}
+        >
+          {error}
+        </div>
       )}
 
       {/* 6 KPIs — familia ARIA (Stat + spark MiniBars). */}
-      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 20 }}>
+      <div
+        className="grid"
+        style={{
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 16,
+          marginBottom: 20,
+        }}
+      >
         {kpis.map((k) => (
           <Stat
             key={k.label}
@@ -323,12 +506,23 @@ export function MonitoringPage() {
           extra={
             <div className="row gap8">
               {breachCount > 0 && <Pill tone="coral">{breachCount} en breach SLA</Pill>}
-              <span className="dim" style={{ fontSize: 12 }}>{waiting.length} en cola</span>
+              <span className="dim" style={{ fontSize: 12 }}>
+                {waiting.length} en cola
+              </span>
             </div>
           }
         >
           {waiting.length === 0 ? (
-            <div style={{ padding: "28px 8px", textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>Sin contactos en espera · todo atendido.</div>
+            <div
+              style={{
+                padding: "28px 8px",
+                textAlign: "center",
+                color: "var(--text-3)",
+                fontSize: 13,
+              }}
+            >
+              Sin contactos en espera · todo atendido.
+            </div>
           ) : (
             <div className="col gap8">
               {waiting.slice(0, 8).map((c) => {
@@ -338,35 +532,76 @@ export function MonitoringPage() {
                 const over = c.waitingSeconds - WAIT_SLA_SECONDS;
                 const breach = over > 0;
                 const cm = channelMeta(c.channel);
-                const pct = breach ? 100 : Math.min(100, (c.waitingSeconds / WAIT_SLA_SECONDS) * 100);
+                const pct = breach
+                  ? 100
+                  : Math.min(100, (c.waitingSeconds / WAIT_SLA_SECONDS) * 100);
                 return (
                   <div
                     key={c.contactId}
                     className="row gap12"
                     style={{
                       padding: "10px 12px",
-                      border: "1px solid " + (breach ? "color-mix(in srgb,var(--coral) 40%,var(--border-1))" : "var(--border-1)"),
+                      border:
+                        "1px solid " +
+                        (breach
+                          ? "color-mix(in srgb,var(--coral) 40%,var(--border-1))"
+                          : "var(--border-1)"),
                       borderRadius: "var(--r-md)",
-                      background: breach ? "color-mix(in srgb,var(--coral) 7%,var(--bg-2))" : "var(--bg-2)",
+                      background: breach
+                        ? "color-mix(in srgb,var(--coral) 7%,var(--bg-2))"
+                        : "var(--bg-2)",
                     }}
                   >
                     <ChBadge ch={c.channel} />
                     <div className="grow" style={{ minWidth: 0 }}>
                       <div className="row gap8" style={{ minWidth: 0 }}>
-                        <b style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.customerName || c.phone || "Contacto"}</b>
-                        <span className="dim" style={{ fontSize: 11.5 }}>· {cm.label}</span>
+                        <b
+                          style={{
+                            fontSize: 13,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {c.customerName || c.phone || "Contacto"}
+                        </b>
+                        <span className="dim" style={{ fontSize: 11.5 }}>
+                          · {cm.label}
+                        </span>
                       </div>
                       <div className="dim" style={{ fontSize: 11.5, marginTop: 2 }}>
-                        {c.queueName || "—"}{sig?.reason ? ` · ${sig.reason}` : ""}
+                        {c.queueName || "—"}
+                        {sig?.reason ? ` · ${sig.reason}` : ""}
                       </div>
                       <div className="bar" style={{ height: 5, marginTop: 6 }}>
-                        <span style={{ width: `${pct}%`, background: breach ? "var(--coral)" : "var(--gold)" }} />
+                        <span
+                          style={{
+                            width: `${pct}%`,
+                            background: breach ? "var(--coral)" : "var(--gold)",
+                          }}
+                        />
                       </div>
                     </div>
-                    <div className="col" style={{ alignItems: "flex-end", gap: 5, flex: "0 0 auto" }}>
+                    <div
+                      className="col"
+                      style={{ alignItems: "flex-end", gap: 5, flex: "0 0 auto" }}
+                    >
                       <Pill tone={prio.tone}>{prio.label}</Pill>
-                      <span className="mono tnum" style={{ fontSize: 13, fontWeight: 700, color: breach ? "var(--coral-2)" : "var(--text-1)" }}>
-                        {fmt(c.waitingSeconds)}{breach && <span className="dim" style={{ fontWeight: 500 }}> +{fmt(over)}</span>}
+                      <span
+                        className="mono tnum"
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: breach ? "var(--coral-2)" : "var(--text-1)",
+                        }}
+                      >
+                        {fmt(c.waitingSeconds)}
+                        {breach && (
+                          <span className="dim" style={{ fontWeight: 500 }}>
+                            {" "}
+                            +{fmt(over)}
+                          </span>
+                        )}
                       </span>
                     </div>
                   </div>
@@ -376,26 +611,99 @@ export function MonitoringPage() {
           )}
         </Card>
 
-        <Card title="Salud de colas" icon="layers" extra={<span className="dim" style={{ fontSize: 12 }}>{metrics.queues.length} activas</span>}>
+        <Card
+          title="Salud de colas"
+          icon="layers"
+          extra={
+            <span className="dim" style={{ fontSize: 12 }}>
+              {metrics.queues.length} activas
+            </span>
+          }
+        >
           <div className="col gap8">
             {shownQueues.map((q: QueueMetrics) => {
-              const chKey = q.queueName.toLowerCase().includes("whats") ? "wa" : q.queueName.toLowerCase().includes("chat") ? "chat" : q.queueName.toLowerCase().includes("email") ? "email" : q.queueName.toLowerCase().includes("sms") ? "sms" : "voz";
+              const chKey = q.queueName.toLowerCase().includes("whats")
+                ? "wa"
+                : q.queueName.toLowerCase().includes("chat")
+                  ? "chat"
+                  : q.queueName.toLowerCase().includes("email")
+                    ? "email"
+                    : q.queueName.toLowerCase().includes("sms")
+                      ? "sms"
+                      : "voz";
               const wait = q.oldestContactAge ?? 0;
               const st = wait > 120 ? "crit" : wait > WAIT_SLA_SECONDS ? "warn" : "ok";
-              const sl = q.serviceLevelToday;                       // real SLA hoy (null = sin datos)
-              const slColor = sl == null ? "var(--text-3)" : sl >= 80 ? tone.ok : sl >= 50 ? tone.warn : tone.crit;
+              const sl = q.serviceLevelToday; // real SLA hoy (null = sin datos)
+              const slColor =
+                sl == null
+                  ? "var(--text-3)"
+                  : sl >= 80
+                    ? tone.ok
+                    : sl >= 50
+                      ? tone.warn
+                      : tone.crit;
               const aba = q.abandonRateToday ?? 0;
               return (
-                <div key={q.queueId} className="row gap12" style={{ padding: "10px 12px", border: "1px solid var(--border-1)", borderRadius: "var(--r-md)", background: "var(--bg-2)" }}>
+                <div
+                  key={q.queueId}
+                  className="row gap12"
+                  style={{
+                    padding: "10px 12px",
+                    border: "1px solid var(--border-1)",
+                    borderRadius: "var(--r-md)",
+                    background: "var(--bg-2)",
+                  }}
+                >
                   <ChBadge ch={chKey} />
                   <div className="grow" style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.queueName}</div>
-                    <div className="dim" style={{ fontSize: 11.5, marginTop: 2 }}>{aba}% abandono hoy · meta SLA 80%</div>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {q.queueName}
+                    </div>
+                    <div className="dim" style={{ fontSize: 11.5, marginTop: 2 }}>
+                      {aba}% abandono hoy · meta SLA 80%
+                    </div>
                   </div>
-                  <div className="col" style={{ alignItems: "center", minWidth: 40 }}><b className="tnum" style={{ fontSize: 14 }}>{q.contactsInQueue}</b><span className="dim" style={{ fontSize: 9.5, letterSpacing: 0.3 }}>COLA</span></div>
-                  <div className="col" style={{ alignItems: "center", minWidth: 46 }}><b className="tnum" style={{ fontSize: 14, color: slColor }}>{sl == null ? "—" : `${Math.round(sl)}%`}</b><span className="dim" style={{ fontSize: 9.5, letterSpacing: 0.3 }}>SLA HOY</span></div>
-                  <div className="col" style={{ alignItems: "center", minWidth: 44 }}><b className="tnum mono" style={{ fontSize: 13, color: tone[st] }}>{fmt(wait)}</b><span className="dim" style={{ fontSize: 9.5, letterSpacing: 0.3 }}>MÁX</span></div>
-                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: tone[st], flex: "0 0 auto" }} />
+                  <div className="col" style={{ alignItems: "center", minWidth: 40 }}>
+                    <b className="tnum" style={{ fontSize: 14 }}>
+                      {q.contactsInQueue}
+                    </b>
+                    <span className="dim" style={{ fontSize: 9.5, letterSpacing: 0.3 }}>
+                      COLA
+                    </span>
+                  </div>
+                  <div className="col" style={{ alignItems: "center", minWidth: 46 }}>
+                    <b className="tnum" style={{ fontSize: 14, color: slColor }}>
+                      {sl == null ? "—" : `${Math.round(sl)}%`}
+                    </b>
+                    <span className="dim" style={{ fontSize: 9.5, letterSpacing: 0.3 }}>
+                      SLA HOY
+                    </span>
+                  </div>
+                  <div className="col" style={{ alignItems: "center", minWidth: 44 }}>
+                    <b className="tnum mono" style={{ fontSize: 13, color: tone[st] }}>
+                      {fmt(wait)}
+                    </b>
+                    <span className="dim" style={{ fontSize: 9.5, letterSpacing: 0.3 }}>
+                      MÁX
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      width: 9,
+                      height: 9,
+                      borderRadius: "50%",
+                      background: tone[st],
+                      flex: "0 0 auto",
+                    }}
+                  />
                 </div>
               );
             })}
@@ -414,12 +722,28 @@ export function MonitoringPage() {
         const longAcw = Math.max(90, Math.round((acwMeta || 90) * 1.5));
         const signals = (liveQueue?.agents ?? [])
           .map((a) => {
-            const secs = since(a.activeContact?.connectedToAgentTimestamp || a.statusStartTimestamp);
+            const secs = since(
+              a.activeContact?.connectedToAgentTimestamp || a.statusStartTimestamp,
+            );
             if (a.activeContact && secs > longCall)
-              return { a, kind: "aht", text: ahtMeta ? `Llamada ${fmt(secs)} · meta AHT hoy ${fmt(ahtMeta)} (×1.5)` : `Llamada larga ${fmt(secs)}`, action: "Whisper" };
+              return {
+                a,
+                kind: "aht",
+                text: ahtMeta
+                  ? `Llamada ${fmt(secs)} · meta AHT hoy ${fmt(ahtMeta)} (×1.5)`
+                  : `Llamada larga ${fmt(secs)}`,
+                action: "Whisper",
+              };
             const acwSecs = since(a.statusStartTimestamp);
             if (a.statusName === "AfterCallWork" && acwSecs > longAcw)
-              return { a, kind: "acw", text: acwMeta ? `ACW ${fmt(acwSecs)} · meta ACW hoy ${fmt(acwMeta)} (×1.5)` : `ACW ${fmt(acwSecs)} · wrap-up prolongado`, action: "Mensaje" };
+              return {
+                a,
+                kind: "acw",
+                text: acwMeta
+                  ? `ACW ${fmt(acwSecs)} · meta ACW hoy ${fmt(acwMeta)} (×1.5)`
+                  : `ACW ${fmt(acwSecs)} · wrap-up prolongado`,
+                action: "Mensaje",
+              };
             return null;
           })
           .filter(Boolean)
@@ -434,13 +758,37 @@ export function MonitoringPage() {
           >
             <div className="col gap8">
               {signals.map((s) => (
-                <div key={s.a.userId} className="row gap12" style={{ padding: "10px 12px", border: "1px solid var(--border-1)", borderRadius: "var(--r-md)", background: "var(--bg-2)" }}>
+                <div
+                  key={s.a.userId}
+                  className="row gap12"
+                  style={{
+                    padding: "10px 12px",
+                    border: "1px solid var(--border-1)",
+                    borderRadius: "var(--r-md)",
+                    background: "var(--bg-2)",
+                  }}
+                >
                   <Av name={s.a.username} size={34} color={stateOf(s.a.statusName || "").color} />
                   <div className="grow" style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.a.username} <span className="dim" style={{ fontWeight: 400 }}>· {s.a.routingProfile || "—"}</span></div>
-                    <div className="dim" style={{ fontSize: 12, marginTop: 2 }}>{s.text}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+                      {s.a.username}{" "}
+                      <span className="dim" style={{ fontWeight: 400 }}>
+                        · {s.a.routingProfile || "—"}
+                      </span>
+                    </div>
+                    <div className="dim" style={{ fontSize: 12, marginTop: 2 }}>
+                      {s.text}
+                    </div>
                   </div>
-                  <Btn variant="soft" size="sm" icon="mic" disabled={pending || !s.a.activeContact} onClick={() => doMonitor(s.a, "SILENT_MONITOR")}>{s.action}</Btn>
+                  <Btn
+                    variant="soft"
+                    size="sm"
+                    icon="mic"
+                    disabled={pending || !s.a.activeContact}
+                    onClick={() => doMonitor(s.a, "SILENT_MONITOR")}
+                  >
+                    {s.action}
+                  </Btn>
                 </div>
               ))}
             </div>
@@ -455,64 +803,173 @@ export function MonitoringPage() {
         extra={
           <label className="searchbox" style={{ maxWidth: 240 }}>
             <Icon name="search" size={13} />
-            <input value={agentQuery} onChange={(e) => setAgentQuery(e.target.value)} placeholder="Buscar agente…" />
+            <input
+              value={agentQuery}
+              onChange={(e) => setAgentQuery(e.target.value)}
+              placeholder="Buscar agente…"
+            />
           </label>
         }
       >
         <div className="row gap6" style={{ flexWrap: "wrap", marginBottom: 12 }}>
           {filters.map((f) => (
-            <Btn key={f.id} variant={agentFilter === f.id ? "soft" : "ghost"} size="sm" onClick={() => setAgentFilter(f.id)}>
-              {f.label} <b className="tnum" style={{ marginLeft: 4 }}>{f.n}</b>
+            <Btn
+              key={f.id}
+              variant={agentFilter === f.id ? "soft" : "ghost"}
+              size="sm"
+              onClick={() => setAgentFilter(f.id)}
+            >
+              {f.label}{" "}
+              <b className="tnum" style={{ marginLeft: 4 }}>
+                {f.n}
+              </b>
             </Btn>
           ))}
         </div>
-        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(268px, 1fr))", gap: 12 }}>
+        <div
+          className="grid"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(268px, 1fr))", gap: 12 }}
+        >
           {sortedAgents.length === 0 ? (
-            <div style={{ gridColumn: "1 / -1", padding: "28px 8px", textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>Sin agentes que coincidan.</div>
-          ) : sortedAgents.map((a) => {
-            const meta = stateOf(a.status);
-            const live = liveQueue?.agents.find((la) => la.userId === a.agentId) || null;
-            const ac = live?.activeContact;
-            const inState = since(a.statusStartTimestamp);
-            const longAcw = a.status === "AfterCallWork" && inState > 120;
-            const callSecs = ac ? since(ac.connectedToAgentTimestamp) : 0;
-            const callPct = Math.min(100, (callSecs / 480) * 100); // 8min full bar
-            return (
-              <div key={a.agentId} className="card" style={{ padding: 14, borderLeft: `3px solid ${meta.color}`, ["--_c" as string]: meta.color }}>
-                <div className="row gap10">
-                  <div style={{ position: "relative", flex: "0 0 auto" }}>
-                    <Av name={a.username} size={36} color={meta.color} />
-                    <span style={{ position: "absolute", right: -2, bottom: -2, width: 12, height: 12, borderRadius: "50%", background: meta.color, border: "2px solid var(--bg-1)" }} />
-                  </div>
-                  <div className="grow" style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.username}</div>
-                    <div className="dim" style={{ fontSize: 11.5 }}>{live?.routingProfile || "Agente"}</div>
-                  </div>
-                  <span className="row gap4 tnum" style={{ fontSize: 12, fontWeight: 600, color: longAcw ? "var(--coral)" : meta.color }}>
-                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: meta.color }} />{inState > 0 ? fmt(inState) : "—"}
-                  </span>
-                </div>
-                {ac ? (
-                  <>
-                    <div className="row gap8" style={{ marginTop: 10, fontSize: 12, color: "var(--text-2)" }}>
-                      <ChBadge ch={ac.channel} size={20} />
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>En contacto · {ac.phone || ac.queueName || "Cliente"}</span>
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                padding: "28px 8px",
+                textAlign: "center",
+                color: "var(--text-3)",
+                fontSize: 13,
+              }}
+            >
+              Sin agentes que coincidan.
+            </div>
+          ) : (
+            sortedAgents.map((a) => {
+              const meta = stateOf(a.status);
+              const live = liveQueue?.agents.find((la) => la.userId === a.agentId) || null;
+              const ac = live?.activeContact;
+              const inState = since(a.statusStartTimestamp);
+              const longAcw = a.status === "AfterCallWork" && inState > 120;
+              const callSecs = ac ? since(ac.connectedToAgentTimestamp) : 0;
+              const callPct = Math.min(100, (callSecs / 480) * 100); // 8min full bar
+              return (
+                <div
+                  key={a.agentId}
+                  className="card"
+                  style={{
+                    padding: 14,
+                    borderLeft: `3px solid ${meta.color}`,
+                    ["--_c" as string]: meta.color,
+                  }}
+                >
+                  <div className="row gap10">
+                    <div style={{ position: "relative", flex: "0 0 auto" }}>
+                      <Av name={a.username} size={36} color={meta.color} />
+                      <span
+                        style={{
+                          position: "absolute",
+                          right: -2,
+                          bottom: -2,
+                          width: 12,
+                          height: 12,
+                          borderRadius: "50%",
+                          background: meta.color,
+                          border: "2px solid var(--bg-1)",
+                        }}
+                      />
                     </div>
-                    <div className="bar" style={{ height: 6, marginTop: 8 }}><span style={{ width: `${callPct}%`, background: meta.color }} /></div>
-                    {live && (
-                      <div className="row gap6" style={{ marginTop: 10 }}>
-                        <Btn variant="ghost" size="sm" icon="headset" onClick={() => doMonitor(live, "SILENT_MONITOR")}>Whisper</Btn>
-                        <Btn variant="soft" size="sm" icon="mic" onClick={() => doMonitor(live, "BARGE")}>Barge</Btn>
-                        <Btn variant="ghost" size="sm" icon="fileText" onClick={() => setSelectedAgent(live)} title="Más" />
+                    <div className="grow" style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 13.5,
+                          fontWeight: 600,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {a.username}
                       </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="dim" style={{ marginTop: 10, fontSize: 12 }}>{a.status === "AfterCallWork" ? "En wrap-up…" : a.status === "Available" ? "Esperando contacto" : a.status === "Offline" ? "Fuera de turno" : "En pausa"}</div>
-                )}
-              </div>
-            );
-          })}
+                      <div className="dim" style={{ fontSize: 11.5 }}>
+                        {live?.routingProfile || "Agente"}
+                      </div>
+                    </div>
+                    <span
+                      className="row gap4 tnum"
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: longAcw ? "var(--coral)" : meta.color,
+                      }}
+                    >
+                      <span
+                        style={{ width: 7, height: 7, borderRadius: "50%", background: meta.color }}
+                      />
+                      {inState > 0 ? fmt(inState) : "—"}
+                    </span>
+                  </div>
+                  {ac ? (
+                    <>
+                      <div
+                        className="row gap8"
+                        style={{ marginTop: 10, fontSize: 12, color: "var(--text-2)" }}
+                      >
+                        <ChBadge ch={ac.channel} size={20} />
+                        <span
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          En contacto · {ac.phone || ac.queueName || "Cliente"}
+                        </span>
+                      </div>
+                      <div className="bar" style={{ height: 6, marginTop: 8 }}>
+                        <span style={{ width: `${callPct}%`, background: meta.color }} />
+                      </div>
+                      {live && (
+                        <div className="row gap6" style={{ marginTop: 10 }}>
+                          <Btn
+                            variant="ghost"
+                            size="sm"
+                            icon="headset"
+                            onClick={() => doMonitor(live, "SILENT_MONITOR")}
+                          >
+                            Whisper
+                          </Btn>
+                          <Btn
+                            variant="soft"
+                            size="sm"
+                            icon="mic"
+                            onClick={() => doMonitor(live, "BARGE")}
+                          >
+                            Barge
+                          </Btn>
+                          <Btn
+                            variant="ghost"
+                            size="sm"
+                            icon="fileText"
+                            onClick={() => setSelectedAgent(live)}
+                            title="Más"
+                          />
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="dim" style={{ marginTop: 10, fontSize: 12 }}>
+                      {a.status === "AfterCallWork"
+                        ? "En wrap-up…"
+                        : a.status === "Available"
+                          ? "Esperando contacto"
+                          : a.status === "Offline"
+                            ? "Fuera de turno"
+                            : "En pausa"}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </Card>
 
@@ -521,7 +978,10 @@ export function MonitoringPage() {
         statuses={liveQueue?.statuses || []}
         open={!!selectedAgent}
         onClose={() => setSelectedAgent(null)}
-        onActionCompleted={() => { refresh(); refreshLiveQueue(); }}
+        onActionCompleted={() => {
+          refresh();
+          refreshLiveQueue();
+        }}
       />
     </div>
   );

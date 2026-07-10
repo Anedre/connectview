@@ -11,7 +11,7 @@
  * Solución: una sola pestaña toma la propiedad vía **Web Locks API** (el navegador
  * garantiza exclusión mutua y libera el lock automáticamente al cerrar la pestaña
  * → sin locks huérfanos ni heartbeats). Las demás quedan "secundarias" y NO inician
- * el CCP (así no hay contención); el banner les ofrece "Usar acá" para el traspaso.
+ * el CCP (así no hay contención); el banner les ofrece "Usar aquí" para el traspaso.
  */
 
 const LOCK_NAME = "aria:connect:softphone";
@@ -78,7 +78,7 @@ function clearClaim() {
 export type SoftphoneRole = "owner" | "secondary";
 
 export interface ClaimHandlers {
-  /** Éramos dueñas y nos robaron el lock (otra pestaña hizo "Usar acá").
+  /** Éramos dueñas y nos robaron el lock (otra pestaña hizo "Usar aquí").
    *  El consumidor termina el CCP y pasa a mostrar el banner de secundaria. */
   onLost: () => void;
   /** Éramos secundarias y la pestaña dueña se cerró → ahora podemos iniciar el
@@ -103,7 +103,7 @@ export async function claimSoftphone(handlers: ClaimHandlers): Promise<{ role: S
   const iAmClaimant = !!claim && claim.tabId === me;
   const someoneElseClaiming = !!claim && claim.tabId !== me;
 
-  // Si otra pestaña acaba de pulsar "Usar acá" (claim fresco de otra), me quedo
+  // Si otra pestaña acaba de pulsar "Usar aquí" (claim fresco de otra), me quedo
   // secundaria sin siquiera sondear el lock → evito robarle el relevo.
   if (someoneElseClaiming) {
     enqueueWaiter(handlers);
@@ -132,14 +132,14 @@ export async function claimSoftphone(handlers: ClaimHandlers): Promise<{ role: S
     };
 
     const req = iAmClaimant
-      ? // Reclamante designado (venimos de "Usar acá" + reload): robamos el lock
+      ? // Reclamante designado (venimos de "Usar aquí" + reload): robamos el lock
         // por si el dueño anterior todavía no lo soltó → traspaso determinista.
         navigator.locks.request(LOCK_NAME, { steal: true }, hold)
       : navigator.locks.request(LOCK_NAME, { ifAvailable: true }, hold);
 
     req.catch(() => {
       // El lock se rompió estando de dueñas → nos lo robaron (otra pestaña
-      // hizo "Usar acá"). Avisamos y encolamos un waiter por si vuelve a quedar libre.
+      // hizo "Usar aquí"). Avisamos y encolamos un waiter por si vuelve a quedar libre.
       if (settledOwner) {
         handlers.onLost();
         enqueueWaiter(handlers);
@@ -168,7 +168,7 @@ function enqueueWaiter(handlers: ClaimHandlers) {
     });
 }
 
-/** "Usar acá": esta pestaña quiere tomar el softphone. Marca el claim, pide al
+/** "Usar aquí": esta pestaña quiere tomar el softphone. Marca el claim, pide al
  *  dueño actual que suelte, y recarga para reinicializar el CCP limpio como dueña. */
 export function takeOverSoftphone() {
   writeClaim(tabId());

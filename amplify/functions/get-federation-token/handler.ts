@@ -14,10 +14,7 @@
  * Multi-tenant: usa `resolveConnect` para asumir el rol cross-account del
  * tenant; si el tenant no configuró Connect, intenta con el legacy de Vox.
  */
-import {
-  ConnectClient,
-  GetFederationTokenCommand,
-} from "@aws-sdk/client-connect";
+import { ConnectClient, GetFederationTokenCommand } from "@aws-sdk/client-connect";
 import { resolveConnect } from "../_shared/tenantConnect";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 
@@ -26,7 +23,7 @@ const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 
 const CORS: Record<string, string> = {
   // CORS lo provee la Function URL (config de AWS). NO setear Access-Control-*
-  // acá: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
+  // aquí: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
   // rechaza la respuesta con "Failed to fetch" (mismo quirk que web-form-capture).
   "Content-Type": "application/json",
 };
@@ -55,18 +52,12 @@ export const handler = async (event: FnEvent) => {
   }
 
   try {
-    const { client, instanceId } = await resolveConnect(
-      event.headers,
-      legacyConnect,
-      INSTANCE_ID
-    );
+    const { client, instanceId } = await resolveConnect(event.headers, legacyConnect, INSTANCE_ID);
     if (!instanceId) {
       return resp(500, { error: "Amazon Connect no configurado para esta org" });
     }
 
-    const res = await client.send(
-      new GetFederationTokenCommand({ InstanceId: instanceId })
-    );
+    const res = await client.send(new GetFederationTokenCommand({ InstanceId: instanceId }));
     // El SDK devuelve { Credentials, SignInUrl, UserArn, UserId }. SignInUrl
     // es la URL que el browser abre para autenticarse silenciosamente.
     const signInUrl = res.SignInUrl || null;

@@ -71,7 +71,7 @@ export const handler = async (event: FnEvent) => {
     let pages = 0;
     do {
       const r = await idp.send(
-        new ListUsersCommand({ UserPoolId: POOL_ID, Limit: 60, PaginationToken: token })
+        new ListUsersCommand({ UserPoolId: POOL_ID, Limit: 60, PaginationToken: token }),
       );
       for (const u of r.Users || []) {
         if (attr(u, "custom:tenantId") === tenantId) mine.push(u);
@@ -87,12 +87,12 @@ export const handler = async (event: FnEvent) => {
         let role = "Agents";
         try {
           const g = await idp.send(
-            new AdminListGroupsForUserCommand({ UserPoolId: POOL_ID, Username: username })
+            new AdminListGroupsForUserCommand({ UserPoolId: POOL_ID, Username: username }),
           );
           const names = (g.Groups || []).map((x) => x.GroupName || "");
           role = names.reduce(
             (best, n) => ((ROLE_RANK[n] || 0) > (ROLE_RANK[best] || 0) ? n : best),
-            "Agents"
+            "Agents",
           );
         } catch {
           /* sin grupos → Agents por defecto */
@@ -111,11 +111,11 @@ export const handler = async (event: FnEvent) => {
           // Estado en la UI: sin asignar / pendiente / confirmado ✓ / mismatch.
           assigned: attr(u, "custom:connectAssigned"),
           connectUser: attr(u, "custom:connectUser"),
-          // El que creó la org (vos) — para marcarlo en la UI y no dejarte
-          // borrarte a vos mismo más adelante.
+          // El que creó la org (tú) — para marcarlo en la UI y no dejarte
+          // borrarte a ti mismo más adelante.
           isYou: (attr(u, "sub") || username) === id.sub,
         };
-      })
+      }),
     );
 
     // Orden: admins primero, después por email.

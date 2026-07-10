@@ -2,7 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { Paperclip } from "lucide-react";
-import { useCustomerThread, type ThreadMessage, type ThreadSession } from "@/hooks/useCustomerThread";
+import {
+  useCustomerThread,
+  type ThreadMessage,
+  type ThreadSession,
+} from "@/hooks/useCustomerThread";
 import { ThreadDatePicker } from "@/components/recordings/ThreadDatePicker";
 import * as Icon from "@/components/vox/primitives";
 import { sanitizeText } from "@/lib/utils";
@@ -36,29 +40,31 @@ type TimelineItem =
     };
 
 const MONTHS_ES = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
 ];
-const DOW_ES = [
-  "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado",
-];
+const DOW_ES = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
 function dayLabel(yyyyMmDd: string): string {
   // yyyy-mm-dd → "jueves 22 mayo 2026"
   const [y, m, d] = yyyyMmDd.split("-").map(Number);
   const date = new Date(y, m - 1, d);
   const today = new Date();
-  const isToday =
-    today.getFullYear() === y &&
-    today.getMonth() === m - 1 &&
-    today.getDate() === d;
+  const isToday = today.getFullYear() === y && today.getMonth() === m - 1 && today.getDate() === d;
   if (isToday) return "Hoy";
   const yest = new Date(today);
   yest.setDate(yest.getDate() - 1);
-  const isYest =
-    yest.getFullYear() === y &&
-    yest.getMonth() === m - 1 &&
-    yest.getDate() === d;
+  const isYest = yest.getFullYear() === y && yest.getMonth() === m - 1 && yest.getDate() === d;
   if (isYest) return "Ayer";
   return `${DOW_ES[date.getDay()]} ${d} de ${MONTHS_ES[m - 1]} ${y}`;
 }
@@ -122,10 +128,7 @@ function renderInteractive(raw: string): string | null {
   }
 }
 
-function buildTimeline(
-  messages: ThreadMessage[],
-  sessions: ThreadSession[]
-): TimelineItem[] {
+function buildTimeline(messages: ThreadMessage[], sessions: ThreadSession[]): TimelineItem[] {
   const sessionMap = new Map(sessions.map((s) => [s.contactId, s]));
   const out: TimelineItem[] = [];
   let prevDay: string | null = null;
@@ -145,19 +148,19 @@ function buildTimeline(
           : null;
       let label = prevContact == null ? "Inicio del historial" : "Nueva conversación";
       if (gapDays != null && gapDays > 0) {
-        label += gapDays === 1
-          ? " · al día siguiente"
-          : ` · ${gapDays} días después`;
+        label += gapDays === 1 ? " · al día siguiente" : ` · ${gapDays} días después`;
       }
       out.push({
         kind: "session",
-        session: s || ({
-          contactId: m.contactId,
-          startTime: m.timestamp,
-          endTime: m.timestamp,
-          agentUsername: m.agentUsername || "",
-          messageCount: 0,
-        } as ThreadSession),
+        session:
+          s ||
+          ({
+            contactId: m.contactId,
+            startTime: m.timestamp,
+            endTime: m.timestamp,
+            agentUsername: m.agentUsername || "",
+            messageCount: 0,
+          } as ThreadSession),
         gapDays,
         label,
       });
@@ -271,7 +274,8 @@ export function WhatsAppThreadView({ phone }: Props) {
                 opacity: 0.75,
               }}
             >
-              diagnóstico · perfil: {dg!.profileFound ? "sí" : "no"} · CTRs: {dg!.ctrTotal} · chat: {dg!.chatMatched} · canales: [{dg!.channelsSeen.join(", ")}] · vía: {dg!.strategy}
+              diagnóstico · perfil: {dg!.profileFound ? "sí" : "no"} · CTRs: {dg!.ctrTotal} · chat:{" "}
+              {dg!.chatMatched} · canales: [{dg!.channelsSeen.join(", ")}] · vía: {dg!.strategy}
             </div>
           )}
         </div>
@@ -282,7 +286,16 @@ export function WhatsAppThreadView({ phone }: Props) {
     // decía "no tiene mensajes" y contradecía el conteo del canal.
     return (
       <div style={{ display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border-1)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        <div
+          style={{
+            padding: "10px 14px",
+            borderBottom: "1px solid var(--border-1)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexShrink: 0,
+          }}
+        >
           <Icon.User size={14} style={{ color: "var(--text-3)" }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{phone}</div>
@@ -291,17 +304,63 @@ export function WhatsAppThreadView({ phone }: Props) {
             </div>
           </div>
         </div>
-        <div style={{ maxHeight: "62vh", overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ background: "var(--accent-amber-soft)", color: "var(--accent-amber)", borderRadius: 8, padding: "10px 12px", fontSize: 12, lineHeight: 1.5 }}>
-            Hay {data.totalSessions} conversación{data.totalSessions === 1 ? "" : "es"} de WhatsApp con este cliente, pero su transcripción todavía no se pudo cargar. Las transcripciones se archivan poco después de que el chat se cierra; si la conversación es reciente, probá de nuevo en unos minutos.
+        <div
+          style={{
+            maxHeight: "62vh",
+            overflowY: "auto",
+            padding: 16,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              background: "var(--accent-amber-soft)",
+              color: "var(--accent-amber)",
+              borderRadius: 8,
+              padding: "10px 12px",
+              fontSize: 12,
+              lineHeight: 1.5,
+            }}
+          >
+            Hay {data.totalSessions} conversación{data.totalSessions === 1 ? "" : "es"} de WhatsApp
+            con este cliente, pero su transcripción todavía no se pudo cargar. Las transcripciones
+            se archivan poco después de que el chat se cierra; si la conversación es reciente,
+            prueba de nuevo en unos minutos.
           </div>
           {data.sessions.map((s) => (
-            <div key={s.contactId} style={{ border: "1px solid var(--border-1)", borderRadius: 10, background: "var(--bg-1)", padding: "10px 12px" }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-                <Icon.WhatsApp size={13} style={{ color: "var(--accent-green)" }} /> WhatsApp{s.subChannel ? ` · ${s.subChannel}` : ""}
+            <div
+              key={s.contactId}
+              style={{
+                border: "1px solid var(--border-1)",
+                borderRadius: 10,
+                background: "var(--bg-1)",
+                padding: "10px 12px",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Icon.WhatsApp size={13} style={{ color: "var(--accent-green)" }} /> WhatsApp
+                {s.subChannel ? ` · ${s.subChannel}` : ""}
               </div>
               <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
-                {s.startTime ? new Date(s.startTime).toLocaleString("es-PE", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+                {s.startTime
+                  ? new Date(s.startTime).toLocaleString("es-PE", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "—"}
                 {s.agentUsername ? ` · ${s.agentUsername}` : ""}
               </div>
             </div>
@@ -329,22 +388,28 @@ export function WhatsAppThreadView({ phone }: Props) {
           flexShrink: 0,
         }}
       >
-        <span style={{ width: 34, height: 34, flex: "0 0 34px", borderRadius: 10, display: "grid", placeItems: "center", background: "var(--accent-green-soft)", color: "var(--accent-green)" }}>
+        <span
+          style={{
+            width: 34,
+            height: 34,
+            flex: "0 0 34px",
+            borderRadius: 10,
+            display: "grid",
+            placeItems: "center",
+            background: "var(--accent-green-soft)",
+            color: "var(--accent-green)",
+          }}
+        >
           <Icon.WhatsApp size={17} />
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 800 }}>Hilo unificado de WhatsApp</div>
-          <div
-            className="muted"
-            style={{ fontSize: 11, marginTop: 1 }}
-          >
-            {data.totalMessages} mensajes · {data.totalSessions} conversaci{data.totalSessions === 1 ? "ón" : "ones"}
+          <div className="muted" style={{ fontSize: 11, marginTop: 1 }}>
+            {data.totalMessages} mensajes · {data.totalSessions} conversaci
+            {data.totalSessions === 1 ? "ón" : "ones"}
           </div>
         </div>
-        <ThreadDatePicker
-          daysWithActivity={data.daysWithActivity}
-          onPick={handlePickDate}
-        />
+        <ThreadDatePicker daysWithActivity={data.daysWithActivity} onPick={handlePickDate} />
       </div>
 
       {/* Scroller (WhatsApp-like background) */}
@@ -353,8 +418,7 @@ export function WhatsAppThreadView({ phone }: Props) {
         style={{
           maxHeight: "62vh",
           overflowY: "auto",
-          background:
-            "linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%)",
+          background: "linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%)",
           padding: "12px 14px",
         }}
       >
@@ -396,9 +460,7 @@ export function WhatsAppThreadView({ phone }: Props) {
           }
 
           if (item.kind === "session") {
-            return (
-              <SessionSeparator key={`sess:${item.session.contactId}:${i}`} item={item} />
-            );
+            return <SessionSeparator key={`sess:${item.session.contactId}:${i}`} item={item} />;
           }
 
           return (
@@ -419,14 +481,8 @@ export function WhatsAppThreadView({ phone }: Props) {
 
 // ─── sub-components ───────────────────────────────────────────────────────
 
-function SessionSeparator({
-  item,
-}: {
-  item: Extract<TimelineItem, { kind: "session" }>;
-}) {
-  const startDate = item.session.startTime
-    ? new Date(item.session.startTime)
-    : null;
+function SessionSeparator({ item }: { item: Extract<TimelineItem, { kind: "session" }> }) {
+  const startDate = item.session.startTime ? new Date(item.session.startTime) : null;
   const relativeAgo = startDate
     ? formatDistanceToNow(startDate, { addSuffix: true, locale: es })
     : "";
@@ -507,18 +563,14 @@ function MessageBubble({
 
   const isAgent = msg.participant === "AGENT";
   const isSystem = msg.participant === "SYSTEM";
-  const align: "left" | "right" | "center" = isSystem
-    ? "center"
-    : isAgent
-    ? "right"
-    : "left";
+  const align: "left" | "right" | "center" = isSystem ? "center" : isAgent ? "right" : "left";
 
   // WhatsApp palette: customer (incoming) → white-ish, agent (outgoing) → green
   const bg = isSystem
     ? "var(--accent-violet-soft, #ebe0ff)"
     : isAgent
-    ? "var(--accent-green-soft, #d9fdd3)"
-    : "var(--bg-1)";
+      ? "var(--accent-green-soft, #d9fdd3)"
+      : "var(--bg-1)";
 
   // Connect serves interactive WhatsApp/web-chat payloads as
   // `application/vnd.amazonaws.connect.message.interactive` (or sometimes
@@ -570,7 +622,11 @@ function MessageBubble({
         )}
 
         {msg.type === "attachment" && msg.attachment ? (
-          <AttachmentInline attachment={msg.attachment} participant={msg.participant} onPreview={onPreview} />
+          <AttachmentInline
+            attachment={msg.attachment}
+            participant={msg.participant}
+            onPreview={onPreview}
+          />
         ) : (
           <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {displayContent || (
@@ -603,7 +659,7 @@ function eventLabel(kind: string | undefined, participant: string): string {
     "participant.left": "salió del chat",
     "chat.ended": "Chat terminado",
     transferred: "Transferencia",
-    typing: "",  // skip noisy "typing" events visually
+    typing: "", // skip noisy "typing" events visually
     read: "",
     delivered: "",
     unknown: "Evento",
@@ -613,11 +669,7 @@ function eventLabel(kind: string | undefined, participant: string): string {
   if (!label) return ""; // suppressed events render nothing
   if (kind.startsWith("participant.") && participant !== "SYSTEM") {
     const who =
-      participant === "AGENT"
-        ? "Agente"
-        : participant === "CUSTOMER"
-        ? "Cliente"
-        : participant;
+      participant === "AGENT" ? "Agente" : participant === "CUSTOMER" ? "Cliente" : participant;
     return `${who} ${label}`;
   }
   return label;
@@ -698,7 +750,9 @@ function AttachmentInline({
         title="Adjunto de chat — Connect no permite descargarlo después de cerrada la conversación"
       >
         <Paperclip size={14} style={{ flexShrink: 0 }} /> {attachment.name || attachment.id}
-        <span className="muted" style={{ fontSize: 10.5 }}>· no descargable</span>
+        <span className="muted" style={{ fontSize: 10.5 }}>
+          · no descargable
+        </span>
       </span>
     );
   }

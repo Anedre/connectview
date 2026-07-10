@@ -23,7 +23,7 @@ import { getIdentity } from "../_shared/cognitoAuth";
  *   · sk = "run#<ruleId>#<ISO>#<rnd>" → log de ejecución (sin PII; TTL expireAt)
  *
  * SEGURIDAD: tenantId SIEMPRE del JWT (getIdentity); anónimo → 401. Escrituras
- * solo Admins. CORS vive en la config del Function URL (G1) — acá solo
+ * solo Admins. CORS vive en la config del Function URL (G1) — aquí solo
  * Content-Type (duplicar Access-Control-* rompe el preflight del browser).
  *
  * GET                  → { rules: [...] }
@@ -38,7 +38,11 @@ const TABLE = process.env.RULES_TABLE || "connectview-automation-rules";
 const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
 const HDRS = { "Content-Type": "application/json" };
 const ok = (b: unknown) => ({ statusCode: 200, headers: HDRS, body: JSON.stringify(b) });
-const bad = (c: number, e: string) => ({ statusCode: c, headers: HDRS, body: JSON.stringify({ error: e }) });
+const bad = (c: number, e: string) => ({
+  statusCode: c,
+  headers: HDRS,
+  body: JSON.stringify({ error: e }),
+});
 
 export type TriggerType =
   | "lead_created"
@@ -107,7 +111,7 @@ async function queryPrefix(tenantId: string, prefix: string, limit?: number, new
         ScanIndexForward: !newestFirst,
         Limit: limit,
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
     for (const it of res.Items || []) out.push(unmarshall(it));
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
@@ -120,7 +124,7 @@ async function queryPrefix(tenantId: string, prefix: string, limit?: number, new
 // Réplica MÍNIMA de la lógica del engine (matchesConditions + tokens) para
 // previsualizar una regla SIN ejecutarla ni importar el engine (evita arrastrar
 // sus deps de runtime SDK). Si el engine cambia el operador de condiciones,
-// actualizar acá también.
+// actualizar aquí también.
 
 interface DryCtx {
   leadId?: string;
@@ -145,7 +149,10 @@ function fillTokens(s: string, ctx: DryCtx): string {
 function evalConditions(
   conditions: Array<{ field: string; op: "eq" | "neq"; value: string }>,
   ctx: DryCtx,
-): { pass: boolean; detail: Array<{ field: string; op: string; value: string; actual: string; pass: boolean }> } {
+): {
+  pass: boolean;
+  detail: Array<{ field: string; op: string; value: string; actual: string; pass: boolean }>;
+} {
   const detail = (conditions || []).map((c) => {
     const actual = String((ctx as unknown as Record<string, unknown>)[c.field] ?? "").toLowerCase();
     const expected = String(c.value ?? "").toLowerCase();
@@ -164,7 +171,9 @@ function previewAction(
   const who = ctx.phone || ctx.name || ctx.leadId || "el lead";
   switch (action.type) {
     case "send_whatsapp_template": {
-      const vars = (Array.isArray(p.variables) ? p.variables : []).map((v) => fillTokens(String(v), ctx));
+      const vars = (Array.isArray(p.variables) ? p.variables : []).map((v) =>
+        fillTokens(String(v), ctx),
+      );
       return `Enviaría la plantilla "${String(p.templateName || "(sin plantilla)")}" a ${who}${
         vars.length ? ` con variables [${vars.join(", ")}]` : ""
       }`;
@@ -259,7 +268,10 @@ export const handler: Handler = async (event: any) => {
         let leadFound = false;
         if (rawBody.leadId) {
           const lr = await dynamo.send(
-            new GetItemCommand({ TableName: LEADS_TABLE, Key: { leadId: { S: String(rawBody.leadId) } } }),
+            new GetItemCommand({
+              TableName: LEADS_TABLE,
+              Key: { leadId: { S: String(rawBody.leadId) } },
+            }),
           );
           if (lr.Item) {
             const l = unmarshall(lr.Item) as DryCtx & { leadId?: string };
@@ -315,7 +327,7 @@ export const handler: Handler = async (event: any) => {
           new GetItemCommand({
             TableName: TABLE,
             Key: marshall({ tenantId, sk: `rule#${ruleId}` }),
-          })
+          }),
         );
         if (r.Item) prev = unmarshall(r.Item) as AutomationRule;
       }
@@ -337,9 +349,9 @@ export const handler: Handler = async (event: any) => {
           TableName: TABLE,
           Item: marshall(
             { tenantId, sk: `rule#${ruleId}`, ...rule },
-            { removeUndefinedValues: true }
+            { removeUndefinedValues: true },
           ),
-        })
+        }),
       );
       return ok({ rule, saved: true, isNew });
     }
@@ -351,7 +363,7 @@ export const handler: Handler = async (event: any) => {
         new DeleteItemCommand({
           TableName: TABLE,
           Key: marshall({ tenantId, sk: `rule#${params.ruleId}` }),
-        })
+        }),
       );
       return ok({ deleted: true, ruleId: params.ruleId });
     }

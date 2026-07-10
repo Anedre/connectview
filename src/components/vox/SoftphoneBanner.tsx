@@ -14,7 +14,7 @@ import * as Icon from "./primitives";
  *  2. Multi-pestaña (esta pestaña es "secundaria"): otra pestaña de ARIA ya maneja
  *     el softphone. El CCP de Connect solo puede vivir en UNA pestaña (pelean el
  *     "master" del SharedWorker y se cuelgan). En vez de un "Conectando…" infinito,
- *     avisamos claro y ofrecemos "Usar acá" para el traspaso limpio.
+ *     avisamos claro y ofrecemos "Usar aquí" para el traspaso limpio.
  */
 export function SoftphoneBanner() {
   const { isOnboarding, instanceUrl, softphoneTabRole, takeOverSoftphone } = useConnectAuth();
@@ -34,7 +34,7 @@ export function SoftphoneBanner() {
 
   // ── Modo multi-pestaña ────────────────────────────────────────────────────
   // Esta pestaña es secundaria a propósito (otra ya tiene el softphone). Lo
-  // mostramos de una (sin esperar la gracia): sabemos que NO va a inicializar acá.
+  // mostramos de una (sin esperar la gracia): sabemos que NO va a inicializar aquí.
   if (softphoneTabRole === "secondary") {
     return (
       <BannerShell tone="info" icon={<Icon.Copy size={16} />}>
@@ -50,17 +50,17 @@ export function SoftphoneBanner() {
               lineHeight: 1.45,
             }}
           >
-            Amazon Connect maneja el teléfono en <b>una sola pestaña</b>. Podés seguir usando ARIA
-            acá; para traer el softphone a esta pestaña, tocá «Usar acá».
+            Amazon Connect maneja el teléfono en <b>una sola pestaña</b>. Puedes seguir usando ARIA
+            aquí; para traer el softphone a esta pestaña, toca «Usar aquí».
           </div>
         </div>
         <button
           className="btn btn--sm btn--primary"
           onClick={takeOverSoftphone}
           style={{ flex: "0 0 auto" }}
-          title="Mueve el softphone a esta pestaña. Recarga para reconectar el teléfono acá."
+          title="Mueve el softphone a esta pestaña. Recarga para reconectar el teléfono aquí."
         >
-          <Icon.Headset size={12} /> Usar acá
+          <Icon.Headset size={12} /> Usar aquí
         </button>
       </BannerShell>
     );
@@ -75,7 +75,7 @@ export function SoftphoneBanner() {
   return (
     <BannerShell tone="warm" icon={<Icon.Headset size={16} />}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 13.5 }}>Conectá tu Amazon Connect</div>
+        <div style={{ fontWeight: 700, fontSize: 13.5 }}>Conecta tu Amazon Connect</div>
         <div
           style={{
             fontSize: 12.5,
@@ -85,7 +85,7 @@ export function SoftphoneBanner() {
           }}
         >
           Iniciá sesión para activar tu teléfono y <b>confirmar tu agente asignado</b>. Tus
-          credenciales las ponés en la página de Connect — ARIA nunca las ve.
+          credenciales las pones en la página de Connect — ARIA nunca las ve.
         </div>
       </div>
       <button

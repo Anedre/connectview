@@ -31,10 +31,10 @@ interface Step {
 const STEPS: Step[] = [
   {
     icon: MousePointerClick,
-    title: "Agregá pasos al lienzo",
+    title: "Agrega pasos al lienzo",
     body: (
       <>
-        Arrastrá un paso desde el panel de la izquierda hacia el lienzo — o hacé <b>clic</b> en él
+        Arrastra un paso desde el panel de la izquierda hacia el lienzo — o haz <b>clic</b> en él
         para agregarlo al centro.
       </>
     ),
@@ -42,46 +42,46 @@ const STEPS: Step[] = [
   },
   {
     icon: Workflow,
-    title: "Conectá el flujo",
+    title: "Conecta el flujo",
     body: (
       <>
-        Tirá una línea desde el punto de salida de un paso hasta el siguiente. O soltá un paso{" "}
+        Traza una línea desde el punto de salida de un paso hasta el siguiente. O suelta un paso{" "}
         <b>cerca de la salida</b> de otro y se conecta solo.
       </>
     ),
-    tip: "Arrastrá una conexión al vacío para crear y enlazar un paso nuevo de una sola vez.",
+    tip: "Arrastra una conexión al vacío para crear y enlazar un paso nuevo de una sola vez.",
   },
   {
     icon: Variable,
-    title: "Guardá y reutilizá datos",
+    title: "Guarda y reutiliza datos",
     body: (
       <>
-        Con <b>«Preguntar y guardar»</b> capturás lo que responde el cliente, y con{" "}
-        <b>«Insertar variable»</b> lo reutilizás en cualquier mensaje.
+        Con <b>«Preguntar y guardar»</b> capturas lo que responde el cliente, y con{" "}
+        <b>«Insertar variable»</b> lo reutilizas en cualquier mensaje.
       </>
     ),
-    tip: "Ej.: guardás el nombre y luego saludás con «Hola, {{nombre}} 👋».",
+    tip: "Ej.: guardas el nombre y luego saludas con «Hola, {{nombre}} 👋».",
   },
   {
     icon: Eye,
-    title: "Previsualizá el mensaje",
+    title: "Previsualiza el mensaje",
     body: (
       <>
-        Abrí la <b>«Vista previa»</b> del inspector (panel derecho) para ver exactamente cómo le
+        Abre la <b>«Vista previa»</b> del inspector (panel derecho) para ver exactamente cómo le
         llega el mensaje al cliente, con botones y variables.
       </>
     ),
   },
   {
     icon: Rocket,
-    title: "Ordená y probá",
+    title: "Ordena y prueba",
     body: (
       <>
         <b>«Ordenar»</b> acomoda el flujo de izquierda a derecha, y <b>«Probar»</b> abre un chat
         para conversar con el bot antes de publicarlo.
       </>
     ),
-    tip: "Recordá «Guardar» cuando termines: mientras tanto el bot queda en borrador.",
+    tip: "Recuerda «Guardar» cuando termines: mientras tanto el bot queda en borrador.",
   },
 ];
 
@@ -143,7 +143,7 @@ export function FlowHelpWizard({ open, onClose }: { open: boolean; onClose: () =
           </div>
           <div className="fhw__head-txt">
             <div className="fhw__head-title">Cómo funciona el constructor</div>
-            <div className="fhw__head-sub">Armá tu bot en 5 pasos</div>
+            <div className="fhw__head-sub">Arma tu bot en 5 pasos</div>
           </div>
           <button className="fhw__x" onClick={onClose} aria-label="Cerrar" title="Cerrar (Esc)">
             <X size={16} />

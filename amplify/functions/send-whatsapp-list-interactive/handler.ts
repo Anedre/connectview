@@ -21,7 +21,7 @@ import { normalizePhone } from "../_shared/phone";
  * Body:
  *   {
  *     phone: "+51953730189",
- *     body: "Elegí una opción:",          // requerido (≤4096)
+ *     body: "Elige una opción:",          // requerido (≤4096)
  *     header?: "Título",                   // texto (≤60)
  *     footer?: "Pie",                      // (≤60)
  *     button?: "Ver opciones",             // texto del botón (≤20)

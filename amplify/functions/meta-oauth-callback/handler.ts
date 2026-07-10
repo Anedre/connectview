@@ -1,7 +1,7 @@
 /**
  * meta-oauth-callback — paso 2 del "Login con Facebook" (OAuth) para conectar las
  * cuentas de Instagram / Messenger / Facebook de un tenant (auto-servicio
- * multi-cuenta, estilo Chattigo/ManyChat). Meta redirige acá tras el
+ * multi-cuenta, estilo Chattigo/ManyChat). Meta redirige aquí tras el
  * consentimiento del usuario:
  *
  *   GET /?code=<auth_code>&state=<firmado>
@@ -18,7 +18,7 @@
  *   5. redirigir al frontend (/admin?meta=connected | ?meta=err&reason=…).
  *
  * IMPORTANTE: Meta redirige al navegador del usuario, sin el JWT de Cognito → no
- * podemos verificar identidad acá; confiamos en el `state` firmado que
+ * podemos verificar identidad aquí; confiamos en el `state` firmado que
  * meta-oauth-start generó con el tenantId del JWT de quien inició el flujo.
  *
  * Build-ahead (calcado de salesforce-oauth-callback + mercadolibre): necesita el
@@ -32,11 +32,7 @@
 import { SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import { verifyOAuthState } from "../_shared/tenantSalesforce";
-import {
-  readMetaSecret,
-  writeMetaSecret,
-  type PendingPage,
-} from "../_shared/metaAccounts";
+import { readMetaSecret, writeMetaSecret, type PendingPage } from "../_shared/metaAccounts";
 
 const secrets = new SecretsManagerClient({});
 const META_SECRET = process.env.META_SECRET_NAME || "connectview/meta";
@@ -57,10 +53,16 @@ function redirectResp(url: string) {
   return { statusCode: 302, headers: { Location: url, "Content-Type": "text/plain" }, body: "" };
 }
 function errResp(statusCode: number, body: unknown) {
-  return { statusCode, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  return {
+    statusCode,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
 }
 function failRedirect(reason: string) {
-  return redirectResp(`${APP_URL}/admin?meta=err&reason=${encodeURIComponent(reason.slice(0, 200))}`);
+  return redirectResp(
+    `${APP_URL}/admin?meta=err&reason=${encodeURIComponent(reason.slice(0, 200))}`,
+  );
 }
 
 async function loadCreds(): Promise<{ appId: string; appSecret: string } | null> {
@@ -134,7 +136,9 @@ async function fetchPages(userToken: string): Promise<PendingPage[]> {
       pages.push({
         pageId: String(p.id),
         pageName: p.name ? String(p.name) : undefined,
-        igId: p.instagram_business_account?.id ? String(p.instagram_business_account.id) : undefined,
+        igId: p.instagram_business_account?.id
+          ? String(p.instagram_business_account.id)
+          : undefined,
         igUsername: p.instagram_business_account?.username
           ? String(p.instagram_business_account.username)
           : undefined,
@@ -142,7 +146,7 @@ async function fetchPages(userToken: string): Promise<PendingPage[]> {
       });
     }
     after = j.paging?.cursors?.after;
-    if (!after || !(j.paging?.next)) break;
+    if (!after || !j.paging?.next) break;
   }
   return pages;
 }
@@ -155,9 +159,7 @@ export const handler = async (event: FnEvent) => {
   const stateRaw = event.queryStringParameters?.state;
   const errorParam = event.queryStringParameters?.error;
   if (errorParam) {
-    return failRedirect(
-      `${errorParam}:${event.queryStringParameters?.error_description || ""}`,
-    );
+    return failRedirect(`${errorParam}:${event.queryStringParameters?.error_description || ""}`);
   }
   if (!code || !stateRaw) return errResp(400, { error: "missing code/state" });
   if (!CALLBACK_URL) return errResp(500, { error: "META_OAUTH_CALLBACK_URL no configurado" });

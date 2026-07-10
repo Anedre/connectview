@@ -44,12 +44,12 @@ export function OnboardingBanner() {
     stage === "connect"
       ? {
           title: "Falta conectar tu Amazon Connect",
-          body: "Tus datos viven en TU cuenta AWS, no en la nuestra. Completá el wizard de Integraciones para empezar.",
+          body: "Tus datos viven en TU cuenta AWS, no en la nuestra. Completa el wizard de Integraciones para empezar.",
           cta: "Ir a Integraciones",
         }
       : {
-          title: "Activá BYO Data Plane para guardar tus datos",
-          body: "ARIA no guarda datos de empresas en su instancia. Aplicá el CFN del paso 4 en tu cuenta y activá el toggle — recién ahí empieza a poblar la app.",
+          title: "Activa BYO Data Plane para guardar tus datos",
+          body: "ARIA no guarda datos de empresas en su instancia. Aplica el CFN del paso 4 en tu cuenta y activa el toggle — recién ahí empieza a poblar la app.",
           cta: "Configurar Data Plane",
         };
 
@@ -92,7 +92,12 @@ export function OnboardingBanner() {
       <button
         className="btn btn--sm"
         onClick={() => navigate("/admin")}
-        style={{ flex: "0 0 auto", background: "var(--accent-amber)", color: "white", borderColor: "var(--accent-amber)" }}
+        style={{
+          flex: "0 0 auto",
+          background: "var(--accent-amber)",
+          color: "white",
+          borderColor: "var(--accent-amber)",
+        }}
       >
         <Icon.ChevRight size={12} /> {copy.cta}
       </button>

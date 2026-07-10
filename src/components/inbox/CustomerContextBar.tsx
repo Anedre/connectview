@@ -265,10 +265,7 @@ export function CustomerContextPanel({ conversationId }: { conversationId: strin
                     Cancelar
                   </Btn>
                 </div>
-                <div
-                  className="col"
-                  style={{ maxHeight: 220, overflowY: "auto", gap: 2 }}
-                >
+                <div className="col" style={{ maxHeight: 220, overflowY: "auto", gap: 2 }}>
                   {searching ? (
                     <div className="dim" style={{ padding: 8, fontSize: 12 }}>
                       Cargando leads…
@@ -341,7 +338,7 @@ export function CustomerContextPanel({ conversationId }: { conversationId: strin
             Sugerencia IA
           </div>
           <span className="dim" style={{ fontSize: 12.5 }}>
-            Las sugerencias contextuales de respuesta llegarán acá muy pronto.
+            Las sugerencias contextuales de respuesta llegarán aquí muy pronto.
           </span>
         </div>
       </div>

@@ -33,7 +33,7 @@ interface ConnectAuthContextValue {
   /** URL de la instancia de Amazon Connect efectivamente usada (la del
    *  tenant si está configurada en Integraciones, o la del .env como
    *  fallback durante la transición). Los componentes que linkean al CCP
-   *  externo (LoginScreen, Wisdom, Cases) la leen de acá en vez del env. */
+   *  externo (LoginScreen, Wisdom, Cases) la leen de aquí en vez del env. */
   instanceUrl: string;
   /** TRUE cuando el tenant todavía no conectó su Connect (no hay softphone).
    *  En este modo CCPContext NO se suscribe a connect.* (sino tira "Cannot read
@@ -47,9 +47,9 @@ interface ConnectAuthContextValue {
   /** Rol de ESTA pestaña respecto al softphone (guard multi-pestaña). "owner" =
    *  maneja el CCP; "secondary" = otra pestaña ya lo tiene, así que esta NO inicia
    *  el CCP (si no, pelean el "master" de Connect y AMBAS se cuelgan en
-   *  "Conectando…"). "pending" = resolviendo. El banner usa esto para "Usar acá". */
+   *  "Conectando…"). "pending" = resolviendo. El banner usa esto para "Usar aquí". */
   softphoneTabRole: "pending" | SoftphoneRole;
-  /** "Usar acá": mueve la propiedad del softphone a esta pestaña (traspaso limpio,
+  /** "Usar aquí": mueve la propiedad del softphone a esta pestaña (traspaso limpio,
    *  con reload para reinicializar el CCP sin contención). */
   takeOverSoftphone: () => void;
   /** Despedida de chat/WhatsApp configurable por tenant
@@ -178,7 +178,7 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
       }
       // Arranca el iframe del CCP → crea connect.core + el event bus. El estado
       // del softphone (agente, contactos) lo maneja CCPContext con su propia
-      // suscripción a connect.agent/contact; acá ya NO nos suscribimos para la
+      // suscripción a connect.agent/contact; aquí ya NO nos suscribimos para la
       // identidad (esa viene de Vox).
       initCCP(container, resolvedInstanceUrl, {
         federationSignInUrl,
@@ -202,10 +202,10 @@ export function ConnectAuthProvider({ children }: { children: ReactNode }) {
     // Guard multi-pestaña (#softphone): SOLO la pestaña "dueña" inicia el CCP. Si
     // varias pestañas de ARIA lo inician a la vez, pelean el "master" de Connect
     // (SharedWorker por origen) y las perdedoras se cuelgan en "Conectando…". Las
-    // secundarias NO inician el CCP y el SoftphoneBanner ofrece "Usar acá".
+    // secundarias NO inician el CCP y el SoftphoneBanner ofrece "Usar aquí".
     void claimSoftphone({
       onLost: () => {
-        // Nos robaron el softphone (otra pestaña hizo "Usar acá") → soltamos el CCP
+        // Nos robaron el softphone (otra pestaña hizo "Usar aquí") → soltamos el CCP
         // y quedamos secundarias (el banner lo refleja).
         terminateCCP();
         ccpInitialized = false;

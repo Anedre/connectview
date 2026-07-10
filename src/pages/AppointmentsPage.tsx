@@ -674,7 +674,7 @@ export function AppointmentsPage() {
         <div style={{ padding: "14px 22px 0" }}>
           <NotIntegrated
             title="Todavía no integraste tu base de datos"
-            message="Tus citas y seguimientos se guardan en TU cuenta AWS (BYO Data Plane). Activala en Integraciones para agendar y ver tu calendario con datos."
+            message="Tus citas y seguimientos se guardan en TU cuenta AWS (BYO Data Plane). Actívala en Integraciones para agendar y ver tu calendario con datos."
             ctaLabel="Conectar base de datos"
           />
         </div>

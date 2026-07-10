@@ -178,7 +178,7 @@ export function ConversationCanvas({ phone, name, demo }: Props) {
         }}
       >
         <Icon.Chat size={30} style={{ opacity: 0.4 }} />
-        <div style={{ marginTop: 10 }}>Elegí un cliente para ver su conversación completa.</div>
+        <div style={{ marginTop: 10 }}>Elige un cliente para ver su conversación completa.</div>
         <div style={{ marginTop: 4, fontSize: 11 }}>
           Llamadas, WhatsApp y emails — un solo hilo, en orden.
         </div>

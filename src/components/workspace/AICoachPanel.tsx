@@ -29,12 +29,7 @@ interface AICoachPanelProps {
 // `type`; unknown types are silently dropped so a forward-compatible
 // schema change won't crash the panel.
 
-type CtaKind =
-  | "schedule_callback"
-  | "send_template"
-  | "transfer"
-  | "note"
-  | "none";
+type CtaKind = "schedule_callback" | "send_template" | "transfer" | "note" | "none";
 
 interface ActionCta {
   label: string;
@@ -82,7 +77,10 @@ function extractCoachBlocks(raw: unknown): CoachBlock[] {
     return normaliseBlocks(raw);
   }
   let text = raw.trim();
-  text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  text = text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
 
   const direct = tryParseJson(text);
   if (direct) return normaliseBlocks(direct);
@@ -125,7 +123,8 @@ function normaliseBlocks(parsed: unknown): CoachBlock[] {
   } else if (typeof parsed === "object") {
     const obj = parsed as Record<string, unknown>;
     if (Array.isArray(obj.blocks)) items = obj.blocks;
-    else if (Array.isArray(obj.actions)) items = obj.actions; // legacy
+    else if (Array.isArray(obj.actions))
+      items = obj.actions; // legacy
     else items = [obj]; // bare single-object response
   }
   const out: CoachBlock[] = [];
@@ -164,18 +163,11 @@ function normaliseBlocks(parsed: unknown): CoachBlock[] {
         items,
       });
     } else if (t === "callout" && typeof b.text === "string") {
-      const tone = b.tone === "warn" || b.tone === "success" || b.tone === "error"
-        ? b.tone
-        : "info";
+      const tone =
+        b.tone === "warn" || b.tone === "success" || b.tone === "error" ? b.tone : "info";
       out.push({ type: "callout", tone, text: String(b.text) });
-    } else if (
-      t === "table" &&
-      Array.isArray(b.columns) &&
-      Array.isArray(b.rows)
-    ) {
-      const columns = b.columns.filter(
-        (x): x is string => typeof x === "string"
-      );
+    } else if (t === "table" && Array.isArray(b.columns) && Array.isArray(b.rows)) {
+      const columns = b.columns.filter((x): x is string => typeof x === "string");
       const rows = b.rows
         .filter((r): r is unknown[] => Array.isArray(r))
         .map((r) => r.map((c) => String(c ?? "")));
@@ -186,11 +178,7 @@ function normaliseBlocks(parsed: unknown): CoachBlock[] {
         columns,
         rows,
       });
-    } else if (
-      t === "form" &&
-      typeof b.title === "string" &&
-      Array.isArray(b.fields)
-    ) {
+    } else if (t === "form" && typeof b.title === "string" && Array.isArray(b.fields)) {
       const fields = b.fields
         .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
         .map((f) => normaliseField(f))
@@ -200,8 +188,7 @@ function normaliseBlocks(parsed: unknown): CoachBlock[] {
         type: "form",
         title: String(b.title),
         fields,
-        submitLabel:
-          typeof b.submitLabel === "string" ? b.submitLabel : "Guardar",
+        submitLabel: typeof b.submitLabel === "string" ? b.submitLabel : "Guardar",
       });
     }
   }
@@ -238,10 +225,7 @@ function normaliseField(f: Record<string, unknown>): FormField | null {
   const label = typeof f.label === "string" ? f.label : name;
   if (!name) return null;
   const type =
-    f.type === "textarea" ||
-    f.type === "number" ||
-    f.type === "email" ||
-    f.type === "select"
+    f.type === "textarea" || f.type === "number" || f.type === "email" || f.type === "select"
       ? f.type
       : "text";
   const options =
@@ -265,7 +249,7 @@ export function AICoachPanel({
 }: AICoachPanelProps) {
   const { user } = useAuth();
   const [blocks, setBlocks] = useState<CoachBlock[]>(() =>
-    initialBlocks ? extractCoachBlocks(initialBlocks) : []
+    initialBlocks ? extractCoachBlocks(initialBlocks) : [],
   );
   const [loading, setLoading] = useState(false);
   const lastSegmentCount = useRef(0);
@@ -287,9 +271,13 @@ export function AICoachPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contactId, mode: "next-action" }),
       });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       const parsed = extractCoachBlocks(data.result);
       if (parsed.length > 0) setBlocks(parsed);
+    } catch {
+      // Antes se tragaba el error (try/finally sin catch) → el coach fallaba mudo.
+      toast.error("No se pudo cargar la sugerencia del coach. Reintenta.");
     } finally {
       setLoading(false);
     }
@@ -309,10 +297,7 @@ export function AICoachPanel({
   if (!isActive) {
     if (inline) {
       return (
-        <div
-          className="muted"
-          style={{ fontSize: 12.5, padding: 14, textAlign: "center" }}
-        >
+        <div className="muted" style={{ fontSize: 12.5, padding: 14, textAlign: "center" }}>
           <Icon.Sparkles size={16} style={{ opacity: 0.4, marginBottom: 6 }} />
           <div>Las sugerencias aparecerán durante una llamada activa.</div>
         </div>
@@ -374,20 +359,13 @@ export function AICoachPanel({
           gap: 8,
         }}
       >
-        <div
-          className="row"
-          style={{ justifyContent: "flex-end", gap: 6, marginBottom: 2 }}
-        >
+        <div className="row" style={{ justifyContent: "flex-end", gap: 6, marginBottom: 2 }}>
           {sentiment === "NEGATIVE" && (
             <span className="chip chip--red" style={{ height: 18, fontSize: 10 }}>
               <Icon.Shield size={10} /> Urgente
             </span>
           )}
-          <button
-            className="btn btn--ghost btn--sm"
-            onClick={fetchSuggestions}
-            disabled={loading}
-          >
+          <button className="btn btn--ghost btn--sm" onClick={fetchSuggestions} disabled={loading}>
             <Icon.Refresh
               size={12}
               style={loading ? { animation: "spin 1s linear infinite" } : undefined}
@@ -425,10 +403,7 @@ export function AICoachPanel({
           {loading ? "Pensando…" : "Actualizar"}
         </button>
       </div>
-      <div
-        className="q-card__body"
-        style={{ display: "flex", flexDirection: "column", gap: 8 }}
-      >
+      <div className="q-card__body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {body}
       </div>
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
@@ -454,10 +429,7 @@ interface RendererCtx {
   actorUsername: string;
 }
 
-function BlockRenderer({
-  block,
-  ...ctx
-}: { block: CoachBlock } & RendererCtx) {
+function BlockRenderer({ block, ...ctx }: { block: CoachBlock } & RendererCtx) {
   switch (block.type) {
     case "action":
       return <ActionBlock block={block} {...ctx} />;
@@ -513,8 +485,7 @@ function ActionBlock({
           borderRadius: "50%",
           display: "grid",
           placeItems: "center",
-          background:
-            "linear-gradient(135deg, var(--accent-violet), var(--accent-pink))",
+          background: "linear-gradient(135deg, var(--accent-violet), var(--accent-pink))",
           color: "white",
           fontSize: 11,
           fontWeight: 700,
@@ -524,9 +495,7 @@ function ActionBlock({
         <Icon.Sparkles size={11} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text-1)" }}>
-          {block.title}
-        </div>
+        <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text-1)" }}>{block.title}</div>
         {block.reason && (
           <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>
             {block.reason}
@@ -547,11 +516,7 @@ function ActionBlock({
   );
 }
 
-function ScriptBlock({
-  block,
-}: {
-  block: Extract<CoachBlock, { type: "script" }>;
-}) {
+function ScriptBlock({ block }: { block: Extract<CoachBlock, { type: "script" }> }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -570,10 +535,7 @@ function ScriptBlock({
         borderLeft: "3px solid var(--accent-violet)",
       }}
     >
-      <div
-        className="row"
-        style={{ justifyContent: "space-between", marginBottom: 4 }}
-      >
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: 4 }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-violet)" }}>
           GUION{block.title ? ` · ${block.title}` : ""}
         </span>
@@ -595,24 +557,25 @@ function ScriptBlock({
   );
 }
 
-function ChecklistBlock({
-  block,
-}: {
-  block: Extract<CoachBlock, { type: "checklist" }>;
-}) {
-  const [checked, setChecked] = useState<boolean[]>(
-    () => new Array(block.items.length).fill(false)
+function ChecklistBlock({ block }: { block: Extract<CoachBlock, { type: "checklist" }> }) {
+  const [checked, setChecked] = useState<boolean[]>(() =>
+    new Array(block.items.length).fill(false),
   );
-  const toggle = (i: number) =>
-    setChecked((prev) => prev.map((v, idx) => (idx === i ? !v : v)));
+  const toggle = (i: number) => setChecked((prev) => prev.map((v, idx) => (idx === i ? !v : v)));
   const doneCount = checked.filter(Boolean).length;
   return (
     <div style={CARD_BASE}>
-      <div
-        className="row"
-        style={{ justifyContent: "space-between", marginBottom: 6 }}
-      >
-        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-1)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: "var(--text-1)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
           <CheckSquare size={12} /> {block.title || "Checklist"}
         </span>
         <span className="muted" style={{ fontSize: 11 }}>
@@ -683,11 +646,7 @@ const TONE_COLOR: Record<
   },
 };
 
-function CalloutBlock({
-  block,
-}: {
-  block: Extract<CoachBlock, { type: "callout" }>;
-}) {
+function CalloutBlock({ block }: { block: Extract<CoachBlock, { type: "callout" }> }) {
   const c = TONE_COLOR[block.tone];
   return (
     <div
@@ -701,19 +660,23 @@ function CalloutBlock({
         alignItems: "flex-start",
       }}
     >
-      <span style={{ color: c.fg, display: "inline-flex", alignItems: "center", flexShrink: 0, marginTop: 1 }}>{c.icon}</span>
-      <span style={{ fontSize: 12.5, color: c.fg, fontWeight: 500 }}>
-        {block.text}
+      <span
+        style={{
+          color: c.fg,
+          display: "inline-flex",
+          alignItems: "center",
+          flexShrink: 0,
+          marginTop: 1,
+        }}
+      >
+        {c.icon}
       </span>
+      <span style={{ fontSize: 12.5, color: c.fg, fontWeight: 500 }}>{block.text}</span>
     </div>
   );
 }
 
-function TableBlock({
-  block,
-}: {
-  block: Extract<CoachBlock, { type: "table" }>;
-}) {
+function TableBlock({ block }: { block: Extract<CoachBlock, { type: "table" }> }) {
   return (
     <div style={CARD_BASE}>
       {block.title && (
@@ -787,8 +750,7 @@ function FormBlock({
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const set = (name: string, value: string) =>
-    setValues((prev) => ({ ...prev, [name]: value }));
+  const set = (name: string, value: string) => setValues((prev) => ({ ...prev, [name]: value }));
 
   const onSubmit = async () => {
     if (!contactId) {
@@ -927,11 +889,7 @@ function FormBlock({
 
 // ─── CTA dispatcher ──────────────────────────────────────────────────────
 
-async function dispatchCta(
-  cta: ActionCta,
-  fallbackTitle: string,
-  ctx: RendererCtx
-): Promise<void> {
+async function dispatchCta(cta: ActionCta, fallbackTitle: string, ctx: RendererCtx): Promise<void> {
   const endpoints = getApiEndpoints();
   const p = cta.payload || {};
 
@@ -1027,19 +985,13 @@ async function dispatchCta(
  * typed manually. The new block is delimited so it's easy to identify
  * later as coach-generated.
  */
-async function appendAgentNotes(
-  contactId: string,
-  actor: string,
-  newBlock: string
-): Promise<void> {
+async function appendAgentNotes(contactId: string, actor: string, newBlock: string): Promise<void> {
   const endpoints = getApiEndpoints();
   if (!endpoints?.saveAgentNotes) throw new Error("Endpoint de notas no configurado");
 
   let existing = "";
   try {
-    const g = await fetch(
-      `${endpoints.saveAgentNotes}?contactId=${encodeURIComponent(contactId)}`
-    );
+    const g = await fetch(`${endpoints.saveAgentNotes}?contactId=${encodeURIComponent(contactId)}`);
     if (g.ok) {
       const j = await g.json();
       existing = typeof j.notes === "string" ? j.notes : "";

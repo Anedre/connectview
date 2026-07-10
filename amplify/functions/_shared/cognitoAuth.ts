@@ -2,7 +2,7 @@
  * cognitoAuth — verificación del JWT de Cognito + resolución de tenant.
  *
  * Los endpoints (Function URLs) son auth NONE a nivel infra, así que la
- * identidad se valida ACÁ: el front manda el ID token de Cognito como
+ * identidad se valida AQUÍ: el front manda el ID token de Cognito como
  * `Authorization: Bearer <token>` y este helper lo verifica contra el pool y
  * saca el `custom:tenantId` (que viaja en el token). Nunca confiamos en un
  * tenantId mandado por el cliente.

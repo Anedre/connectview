@@ -225,7 +225,10 @@ export function CampaignDetailPage() {
           <div className="skel skel--text" style={{ width: 240, height: 26 }} />
           <div className="skel skel--text" style={{ width: 90, height: 22, borderRadius: 999 }} />
         </div>
-        <div className="grid" style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 20 }}>
+        <div
+          className="grid"
+          style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 20 }}
+        >
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="card skel" style={{ minHeight: 116 }} />
           ))}
@@ -519,20 +522,38 @@ export function CampaignDetailPage() {
            acciones (editar/clonar/iniciar/pausar/…) las sube HeroBand al topbar
            — el bloque hero se retiró de todas las secciones. */}
       <div className="row gap10" style={{ marginBottom: 14, flexWrap: "wrap", minWidth: 0 }}>
-        <Btn variant="ghost" size="sm" icon="chevL" onClick={() => navigate("/campaigns")} title="Volver a campañas" />
-        <h1 style={{ fontSize: 21, fontWeight: 800, letterSpacing: "-.02em", margin: 0, minWidth: 0 }}>{c.name}</h1>
+        <Btn
+          variant="ghost"
+          size="sm"
+          icon="chevL"
+          onClick={() => navigate("/campaigns")}
+          title="Volver a campañas"
+        />
+        <h1
+          style={{ fontSize: 21, fontWeight: 800, letterSpacing: "-.02em", margin: 0, minWidth: 0 }}
+        >
+          {c.name}
+        </h1>
         <Pill tone={CAMPAIGN_STATUS_TONE[c.status] || "outline"} icon="dot">
           {CAMPAIGN_STATUS_LABEL[c.status] || c.status}
         </Pill>
         <span className="dim mono" style={{ fontSize: 12 }}>
           {c.sourcePhoneNumber} · {isWa ? "WhatsApp" : c.dialMode}
-          {c.createdAt ? ` · creada ${formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}` : ""}
+          {c.createdAt
+            ? ` · creada ${formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}`
+            : ""}
         </span>
       </div>
       <HeroBand
         title={
           <span className="row gap10" style={{ flexWrap: "wrap" }}>
-            <Btn variant="ghost" size="sm" icon="chevL" onClick={() => navigate("/campaigns")} title="Volver a campañas" />
+            <Btn
+              variant="ghost"
+              size="sm"
+              icon="chevL"
+              onClick={() => navigate("/campaigns")}
+              title="Volver a campañas"
+            />
             <span style={{ minWidth: 0 }}>{c.name}</span>
             <Pill tone={CAMPAIGN_STATUS_TONE[c.status] || "outline"} icon="dot">
               {CAMPAIGN_STATUS_LABEL[c.status] || c.status}
@@ -570,7 +591,9 @@ export function CampaignDetailPage() {
             {c.createdAt && (
               <>
                 <span>·</span>
-                <span>creada {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}</span>
+                <span>
+                  creada {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
+                </span>
               </>
             )}
           </span>
@@ -581,23 +604,47 @@ export function CampaignDetailPage() {
           <div className="row gap8" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
             {/* Edit — only while still editable */}
             {(c.status === "DRAFT" || c.status === "RUNNING" || c.status === "PAUSED") && (
-              <Btn variant="ghost" size="sm" icon="settings" onClick={() => setEditOpen(true)} disabled={controlling}>
+              <Btn
+                variant="ghost"
+                size="sm"
+                icon="settings"
+                onClick={() => setEditOpen(true)}
+                disabled={controlling}
+              >
                 Editar
               </Btn>
             )}
 
             {/* Clone — always available */}
-            <Btn variant="ghost" size="sm" icon="copy" onClick={handleClone} disabled={mutations.pending}>
+            <Btn
+              variant="ghost"
+              size="sm"
+              icon="copy"
+              onClick={handleClone}
+              disabled={mutations.pending}
+            >
               Clonar
             </Btn>
 
             {/* Relaunch — only for terminal states */}
             {(c.status === "COMPLETED" || c.status === "CANCELLED") && (
               <>
-                <Btn variant="ghost" size="sm" icon="refresh" onClick={() => handleRelaunch("failed")} disabled={mutations.pending}>
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  icon="refresh"
+                  onClick={() => handleRelaunch("failed")}
+                  disabled={mutations.pending}
+                >
                   Relanzar fallidos
                 </Btn>
-                <Btn variant="primary" size="sm" icon="refresh" onClick={() => handleRelaunch("all")} disabled={mutations.pending}>
+                <Btn
+                  variant="primary"
+                  size="sm"
+                  icon="refresh"
+                  onClick={() => handleRelaunch("all")}
+                  disabled={mutations.pending}
+                >
                   Relanzar todos
                 </Btn>
               </>
@@ -605,23 +652,50 @@ export function CampaignDetailPage() {
 
             {/* DRAFT → Start */}
             {c.status === "DRAFT" && (
-              <Btn variant="primary" size="sm" icon="play" onClick={() => handleControl("start")} disabled={controlling}>
+              <Btn
+                variant="primary"
+                size="sm"
+                icon="play"
+                onClick={() => handleControl("start")}
+                disabled={controlling}
+              >
                 Iniciar
               </Btn>
             )}
             {c.status === "RUNNING" && (
               <>
-                <Btn variant="ghost" size="sm" icon="pause" onClick={() => handleControl("pause")} disabled={controlling}>
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  icon="pause"
+                  onClick={() => handleControl("pause")}
+                  disabled={controlling}
+                >
                   Pausar
                 </Btn>
-                <Btn variant="ghost" size="sm" icon="x" onClick={() => handleControl("cancel")} disabled={controlling}
-                  style={{ color: "var(--red)", borderColor: "color-mix(in srgb,var(--red) 40%,var(--border-1))" }}>
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  icon="x"
+                  onClick={() => handleControl("cancel")}
+                  disabled={controlling}
+                  style={{
+                    color: "var(--red)",
+                    borderColor: "color-mix(in srgb,var(--red) 40%,var(--border-1))",
+                  }}
+                >
                   Cancelar
                 </Btn>
               </>
             )}
             {c.status === "PAUSED" && (
-              <Btn variant="primary" size="sm" icon="play" onClick={() => handleControl("resume")} disabled={controlling}>
+              <Btn
+                variant="primary"
+                size="sm"
+                icon="play"
+                onClick={() => handleControl("resume")}
+                disabled={controlling}
+              >
                 Reanudar
               </Btn>
             )}
@@ -657,8 +731,8 @@ export function CampaignDetailPage() {
             </div>
             <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
               La campaña está activa con {counts.pending} pendiente{counts.pending === 1 ? "" : "s"}
-              . {isWa ? "Se enviarán" : "Se discarán"} automáticamente al volver al horario, o podés
-              forzar ahora.
+              . {isWa ? "Se enviarán" : "Se discarán"} automáticamente al volver al horario, o
+              puedes forzar ahora.
             </div>
           </div>
           <Btn variant="primary" size="sm" icon="play" onClick={dialNow} disabled={controlling}>
@@ -691,7 +765,10 @@ export function CampaignDetailPage() {
       )}
 
       {/* ── Progress banner · ARIA accent-bar Card ───────────────── */}
-      <Card className="card__accent-bar" style={{ ["--_c" as string]: isWa ? "var(--green)" : "var(--accent)" }}>
+      <Card
+        className="card__accent-bar"
+        style={{ ["--_c" as string]: isWa ? "var(--green)" : "var(--accent)" }}
+      >
         <CardBody>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
             <div>
@@ -725,8 +802,7 @@ export function CampaignDetailPage() {
                     style={{
                       border: "1px solid var(--border-1)",
                       cursor: "pointer",
-                      background:
-                        filterStatus === "pending" ? "var(--gold-soft)" : "transparent",
+                      background: filterStatus === "pending" ? "var(--gold-soft)" : "transparent",
                     }}
                     title="Filtrar pendientes"
                   >
@@ -751,8 +827,7 @@ export function CampaignDetailPage() {
                         onClick={() => setFilterStatus(filterStatus === "done" ? null : "done")}
                         style={{
                           cursor: "pointer",
-                          outline:
-                            filterStatus === "done" ? "2px solid var(--green)" : "none",
+                          outline: filterStatus === "done" ? "2px solid var(--green)" : "none",
                         }}
                         title="Filtrar completados"
                       >
@@ -767,8 +842,7 @@ export function CampaignDetailPage() {
                         }
                         style={{
                           cursor: "pointer",
-                          outline:
-                            filterStatus === "no_answer" ? "2px solid var(--gold)" : "none",
+                          outline: filterStatus === "no_answer" ? "2px solid var(--gold)" : "none",
                         }}
                         title="Filtrar sin contestar"
                       >
@@ -781,8 +855,7 @@ export function CampaignDetailPage() {
                         onClick={() => setFilterStatus(filterStatus === "failed" ? null : "failed")}
                         style={{
                           cursor: "pointer",
-                          outline:
-                            filterStatus === "failed" ? "2px solid var(--red)" : "none",
+                          outline: filterStatus === "failed" ? "2px solid var(--red)" : "none",
                         }}
                         title="Filtrar fallidos"
                       >
@@ -900,7 +973,9 @@ export function CampaignDetailPage() {
                   maxWidth: 240,
                   minWidth: 160,
                   borderColor: active ? s.color : undefined,
-                  boxShadow: active ? `0 0 0 3px color-mix(in srgb, ${s.color} 16%, transparent) inset` : undefined,
+                  boxShadow: active
+                    ? `0 0 0 3px color-mix(in srgb, ${s.color} 16%, transparent) inset`
+                    : undefined,
                 }}
                 title={`Filtrar por ${s.label.toLowerCase()}`}
               >

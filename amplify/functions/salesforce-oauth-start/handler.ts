@@ -14,10 +14,7 @@
  *   - Callback URL: el Function URL del Lambda `salesforce-oauth-callback`
  *   - oauthConsumerKey + oauthConsumerSecret en el secret `connectview/salesforce`
  */
-import {
-  SecretsManagerClient,
-  GetSecretValueCommand,
-} from "@aws-sdk/client-secrets-manager";
+import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import { sfAuthHost, signOAuthState } from "../_shared/tenantSalesforce";
 
@@ -30,7 +27,7 @@ const CALLBACK_URL = process.env.SF_OAUTH_CALLBACK_URL || "";
 
 const CORS: Record<string, string> = {
   // CORS lo provee la Function URL (config de AWS). NO setear Access-Control-*
-  // acá: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
+  // aquí: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
   // rechaza la respuesta con "Failed to fetch" (mismo quirk que web-form-capture).
   "Content-Type": "application/json",
 };
@@ -40,9 +37,7 @@ let cachedCreds: { key: string; secret: string } | null = null;
 async function loadCreds(): Promise<{ key: string; secret: string } | null> {
   if (cachedCreds) return cachedCreds;
   try {
-    const r = await secrets.send(
-      new GetSecretValueCommand({ SecretId: MASTER_SECRET })
-    );
+    const r = await secrets.send(new GetSecretValueCommand({ SecretId: MASTER_SECRET }));
     if (!r.SecretString) return null;
     const parsed = JSON.parse(r.SecretString);
     if (!parsed.oauthConsumerKey || !parsed.oauthConsumerSecret) return null;
@@ -90,18 +85,14 @@ export const handler = async (event: FnEvent) => {
   }
   const consumerKey = creds.key;
 
-  const envParam = (event.queryStringParameters?.environment || "production")
-    .toLowerCase();
-  const environment: "production" | "sandbox" =
-    envParam === "sandbox" ? "sandbox" : "production";
+  const envParam = (event.queryStringParameters?.environment || "production").toLowerCase();
+  const environment: "production" | "sandbox" = envParam === "sandbox" ? "sandbox" : "production";
 
   // SEGURIDAD (anti-CSRF): el state va FIRMADO con HMAC + exp (10 min). Antes
   // era `tenantId|environment` en claro → un atacante podía armar un callback
   // con su code + el state de la víctima y vincular su org SF al tenant ajeno.
   // Ahora el atacante no puede forjar un state válido sin el consumerSecret.
-  const state = encodeURIComponent(
-    signOAuthState(tenantId, environment, creds.secret)
-  );
+  const state = encodeURIComponent(signOAuthState(tenantId, environment, creds.secret));
   const scope = encodeURIComponent("api refresh_token offline_access");
   const redirectUri = encodeURIComponent(CALLBACK_URL);
 

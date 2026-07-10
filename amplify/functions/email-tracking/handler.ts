@@ -16,7 +16,7 @@ import { setActiveTenant } from "../_shared/salesforceClient";
  * SEC-A4 — open redirect: antes `/click` validaba SÓLO el esquema de `?u=`
  * (`/^https?:/`), no el host → `GET /click?u=https://evil` hacía 302 al sitio del
  * atacante (nuestro dominio como hop de phishing). Fix: el destino se FIRMA con
- * HMAC-SHA256 al generar el email (`buildTrackedHtml`); acá verificamos la firma
+ * HMAC-SHA256 al generar el email (`buildTrackedHtml`); aquí verificamos la firma
  * (`?s=`) constant-time antes de redirigir. Sin firma válida NO hay 302.
  */
 const dynamo = new DynamoDBClient({});

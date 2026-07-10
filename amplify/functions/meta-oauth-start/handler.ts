@@ -79,7 +79,7 @@ export const handler = async (event: FnEvent) => {
     return resp(500, {
       error:
         "Falta appSecret en el secret connectview/meta. Registrá la App de Meta con Facebook " +
-        "Login for Business y guardá { appId, appSecret } antes de conectar cuentas.",
+        "Login for Business y guarda { appId, appSecret } antes de conectar cuentas.",
     });
   }
 

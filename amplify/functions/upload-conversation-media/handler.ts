@@ -1,16 +1,12 @@
 import type { Handler } from "aws-lambda";
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-} from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 
 /**
  * upload-conversation-media — subida de adjuntos para el inbox omnicanal (Pilar 6).
  *
- * El agente elige un archivo en el hilo → el frontend pide acá un presigned PUT,
+ * El agente elige un archivo en el hilo → el frontend pide aquí un presigned PUT,
  * sube el binario DIRECTO a S3 (sin pasar por Lambda → sin límite de 6 MB de
  * payload), y luego llama a manage-conversations { action:"sendMedia", mediaUrl:
  * publicUrl, ... }. La Graph API de Meta descarga el media desde `publicUrl`.
@@ -58,7 +54,7 @@ export const handler: Handler = async (event: any) => {
   const method = event?.requestContext?.http?.method || event?.httpMethod || "POST";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
 
-  // Identidad: los Function URLs son auth NONE → validamos el JWT acá. Anónimo → 401.
+  // Identidad: los Function URLs son auth NONE → validamos el JWT aquí. Anónimo → 401.
   const tenantId = await resolveTenantId(event?.headers);
   if (!tenantId) return resp(401, { error: "no autorizado" });
 

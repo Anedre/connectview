@@ -25,7 +25,7 @@ const idp = new CognitoIdentityProviderClient({ region: REGION });
 
 const CORS: Record<string, string> = {
   // CORS lo provee la Function URL (config de AWS). NO setear Access-Control-*
-  // acá: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
+  // aquí: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
   // rechaza la respuesta con "Failed to fetch" (mismo quirk que web-form-capture).
   "Content-Type": "application/json",
 };
@@ -74,7 +74,7 @@ export const handler = async (event: FnEvent) => {
           createdAt: { S: new Date().toISOString() },
         },
         ConditionExpression: "attribute_not_exists(tenantId)",
-      })
+      }),
     );
 
     await idp.send(
@@ -82,13 +82,17 @@ export const handler = async (event: FnEvent) => {
         UserPoolId: POOL_ID,
         Username: username,
         UserAttributes: [{ Name: "custom:tenantId", Value: tenantId }],
-      })
+      }),
     );
 
     // El creador de la org es Admin.
     try {
       await idp.send(
-        new AdminAddUserToGroupCommand({ UserPoolId: POOL_ID, Username: username, GroupName: "Admins" })
+        new AdminAddUserToGroupCommand({
+          UserPoolId: POOL_ID,
+          Username: username,
+          GroupName: "Admins",
+        }),
       );
     } catch {
       /* el grupo podría no existir o ya estar — no es crítico */

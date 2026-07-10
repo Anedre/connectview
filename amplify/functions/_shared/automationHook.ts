@@ -6,7 +6,7 @@
  * NUNCA rompe ni demora (más de 1.5s) al handler que lo llama. NO-OP si
  * faltan los envs (rollout seguro: sin AUTOMATION_ENGINE_URL no pasa nada).
  *
- * El engine corre a término aunque abortemos acá (Function URL buffered:
+ * El engine corre a término aunque abortemos aquí (Function URL buffered:
  * una vez que el request llegó, la invocación sigue sola).
  */
 import type { AutomationEvent } from "../automation-engine/handler";

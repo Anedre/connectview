@@ -1,8 +1,5 @@
 import type { Handler } from "aws-lambda";
-import {
-  ConnectClient,
-  DescribeContactCommand,
-} from "@aws-sdk/client-connect";
+import { ConnectClient, DescribeContactCommand } from "@aws-sdk/client-connect";
 import {
   ConnectContactLensClient,
   ListRealtimeContactAnalysisSegmentsCommand,
@@ -21,7 +18,7 @@ const startTsCache = new Map<string, string>();
 async function getContactStartTimestamp(
   connect: ConnectClient,
   instanceId: string,
-  contactId: string
+  contactId: string,
 ): Promise<string | null> {
   const ck = `${instanceId}:${contactId}`;
   if (startTsCache.has(ck)) return startTsCache.get(ck)!;
@@ -30,7 +27,7 @@ async function getContactStartTimestamp(
       new DescribeContactCommand({
         InstanceId: instanceId,
         ContactId: contactId,
-      })
+      }),
     );
     const ts =
       res.Contact?.ConnectedToSystemTimestamp?.toISOString() ||
@@ -57,7 +54,7 @@ export const handler: Handler = async (event: any) => {
   // Auth + tenant: resuelve el Connect del tenant del JWT. Anónimo / tenant sin
   // instancia → instancia bloqueada → cortamos (NO leakeamos las transcripciones
   // EN VIVO de Novasys, que antes eran públicas por contactId). Contact Lens no
-  // tiene blocked-client, así que el corte es explícito acá.
+  // tiene blocked-client, así que el corte es explícito aquí.
   const r = await resolveConnect(event.headers, connectClient, INSTANCE_ID);
   const instanceId = r.instanceId;
   if (!instanceId || instanceId.startsWith("blocked")) {
@@ -95,7 +92,7 @@ export const handler: Handler = async (event: any) => {
         InstanceId: instanceId,
         ContactId: contactId,
         MaxResults: 100,
-      })
+      }),
     );
 
     for (const s of result.Segments || []) {
@@ -110,10 +107,8 @@ export const handler: Handler = async (event: any) => {
           endOffsetMs: s.Transcript.EndOffsetMillis || 0,
           issueText: s.Transcript.IssuesDetected?.[0]
             ? s.Transcript.Content?.substring(
-                s.Transcript.IssuesDetected[0].CharacterOffsets
-                  ?.BeginOffsetChar || 0,
-                s.Transcript.IssuesDetected[0].CharacterOffsets
-                  ?.EndOffsetChar || 0
+                s.Transcript.IssuesDetected[0].CharacterOffsets?.BeginOffsetChar || 0,
+                s.Transcript.IssuesDetected[0].CharacterOffsets?.EndOffsetChar || 0,
               )
             : undefined,
         });
@@ -132,7 +127,11 @@ export const handler: Handler = async (event: any) => {
 
     // Get the contact start timestamp so the frontend can render absolute clock times.
     // Cached after first lookup so this only adds ~150ms once per contactId.
-    const transcriptStartTimestamp = await getContactStartTimestamp(r.client, instanceId, contactId);
+    const transcriptStartTimestamp = await getContactStartTimestamp(
+      r.client,
+      instanceId,
+      contactId,
+    );
 
     // Sort transcript segments by time
     segments.sort((a, b) => a.beginOffsetMs - b.beginOffsetMs);
@@ -142,18 +141,11 @@ export const handler: Handler = async (event: any) => {
     const positive = transcripts.filter((s) => s.sentiment === "POSITIVE").length;
     const negative = transcripts.filter((s) => s.sentiment === "NEGATIVE").length;
     const neutral = transcripts.filter((s) => s.sentiment === "NEUTRAL").length;
-    const overall =
-      negative > positive
-        ? "NEGATIVE"
-        : positive > negative
-        ? "POSITIVE"
-        : "NEUTRAL";
+    const overall = negative > positive ? "NEGATIVE" : positive > negative ? "POSITIVE" : "NEUTRAL";
 
     // Unique categories
     const categories = Array.from(
-      new Set(
-        segments.filter((s) => s.type === "category").map((s) => s.categoryName!)
-      )
+      new Set(segments.filter((s) => s.type === "category").map((s) => s.categoryName!)),
     );
 
     return {

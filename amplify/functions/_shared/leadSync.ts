@@ -958,7 +958,7 @@ export async function bulkUpsertVoxLeads(
   contacts: BulkLeadContact[],
   // SEC-A1: `tenantId` opcional para estampar el dueño de cada fila. Obligatorio
   // que lo pasen los callers de bulk (create-campaign / edit-campaign-contacts):
-  // ellos NO llaman setActiveTenant, así que acá NO se cae al tenant activo (sería
+  // ellos NO llaman setActiveTenant, así que aquí NO se cae al tenant activo (sería
   // "" o stale). Sin este override las filas quedan sin tenantId (legacy).
   opts: { source?: string; deadlineMs?: number; programId?: string; tenantId?: string } = {},
 ): Promise<{
@@ -971,7 +971,7 @@ export async function bulkUpsertVoxLeads(
   const summary = { attempted: 0, created: 0, updated: 0, skipped: 0, dropped: 0 };
   const deadline = Date.now() + Math.max(1000, opts.deadlineMs ?? 20_000);
   const source = opts.source || "Vox Campaña";
-  // SEC-A1: tenant a estampar en cada fila. A DIFERENCIA de upsertVoxLead, acá
+  // SEC-A1: tenant a estampar en cada fila. A DIFERENCIA de upsertVoxLead, aquí
   // usamos SOLO el override explícito (opts.tenantId), NO el activo: los únicos
   // callers de bulk (create-campaign / edit-campaign-contacts) NO llaman
   // setActiveTenant, así que getActiveTenantId() daría "" o —peor— un valor STALE

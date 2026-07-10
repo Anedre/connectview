@@ -20,7 +20,7 @@ import { useAdminAudit, type AdminAuditEntry } from "@/hooks/useAdminAudit";
  *   `useCan()` lo aplica en vivo, sin redeploy.
  * - Bitácora de auditoría EN VIVO (auto-refresh 15s) con búsqueda, filtros,
  *   export CSV y filas premium (avatar del admin, chip de acción, pill de
- *   resultado). Toda acción privilegiada aterriza acá.
+ *   resultado). Toda acción privilegiada aterriza aquí.
  */
 
 const ROLE_SEQ = ["Agents", "Supervisors", "Admins"] as const;
@@ -318,7 +318,7 @@ export function SecurityManager() {
                 className="muted"
                 style={{ fontSize: 12, marginTop: 3, maxWidth: 560, lineHeight: 1.5 }}
               >
-                Definí el <strong>rol mínimo</strong> de cada capacidad. La app lo verifica en vivo
+                Define el <strong>rol mínimo</strong> de cada capacidad. La app lo verifica en vivo
                 (vía <code>useCan</code>) — cambiarlo re-escala quién puede hacer qué, sin redeploy.
               </div>
             </div>

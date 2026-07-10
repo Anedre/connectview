@@ -32,7 +32,7 @@ const sts = new STSClient({});
 
 const CORS: Record<string, string> = {
   // CORS lo provee la Function URL (config de AWS). NO setear Access-Control-*
-  // acá: duplicaría Allow-Origin y el browser rechaza con "Failed to fetch".
+  // aquí: duplicaría Allow-Origin y el browser rechaza con "Failed to fetch".
   "Content-Type": "application/json",
 };
 
@@ -76,7 +76,7 @@ async function assumedConnect(b: Body): Promise<ConnectClient> {
       RoleSessionName: "vox-provision-connect",
       ExternalId: b.externalId,
       DurationSeconds: 900,
-    })
+    }),
   );
   const c = a.Credentials;
   if (!c?.AccessKeyId || !c.SecretAccessKey || !c.SessionToken) {
@@ -112,7 +112,7 @@ export const handler = async (event: FnEvent) => {
     return resp(400, {
       error: "No pudimos asumir el rol de provisión",
       remediation:
-        "Revisá que (1) el stack VoxCrmConnectProvision terminó (CREATE_COMPLETE), " +
+        "Revisa que (1) el stack VoxCrmConnectProvision terminó (CREATE_COMPLETE), " +
         "(2) el ExternalId coincide, y (3) tu cuenta no bloquea roles con confianza externa.",
       message: e instanceof Error ? e.message.slice(0, 200) : String(e),
     });
@@ -136,7 +136,7 @@ export const handler = async (event: FnEvent) => {
           // después en la consola); si pasa false explícito, lo respetamos.
           InboundCallsEnabled: b.inboundCalls !== false,
           OutboundCallsEnabled: b.outboundCalls !== false,
-        })
+        }),
       );
       return resp(200, {
         instanceId: r.Id,
@@ -149,9 +149,7 @@ export const handler = async (event: FnEvent) => {
     // ── Modo STATUS: el frontend hace polling hasta ACTIVE ───────────────────
     if (mode === "status") {
       if (!b.instanceId) return resp(400, { error: "Falta instanceId" });
-      const d = await connect.send(
-        new DescribeInstanceCommand({ InstanceId: b.instanceId })
-      );
+      const d = await connect.send(new DescribeInstanceCommand({ InstanceId: b.instanceId }));
       const inst = d.Instance;
       const alias = inst?.InstanceAlias || "";
       return resp(200, {
@@ -173,7 +171,7 @@ export const handler = async (event: FnEvent) => {
           new AssociateApprovedOriginCommand({
             InstanceId: b.instanceId,
             Origin: b.origin,
-          })
+          }),
         );
       } catch (e) {
         // Si el origen ya estaba asociado, Connect tira DuplicateResourceException:

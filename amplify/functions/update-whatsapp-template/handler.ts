@@ -14,7 +14,7 @@ import { buildTemplateComponents, type ButtonIn } from "../_shared/waTemplateCom
  *   - `templateComponents` es el ARRAY de components (no el objeto completo), en
  *     base64 (≤3000 chars). NO se puede cambiar name ni language; category sí.
  *
- * Reglas de Meta (no las forzamos acá; el error de Meta es claro): no se puede
+ * Reglas de Meta (no las forzamos aquí; el error de Meta es claro): no se puede
  * editar una plantilla en revisión (PENDING); editar tiene límite (~1/24 h);
  * editar una APPROVED normalmente la manda de nuevo a revisión.
  *
@@ -79,7 +79,7 @@ export const handler: Handler = async (event: any) => {
   if (!resolved) {
     return resp(400, {
       error:
-        "WhatsApp no está configurado para esta organización. Cargá tu número en Configuración → Integraciones.",
+        "WhatsApp no está configurado para esta organización. Carga tu número en Configuración → Integraciones.",
     });
   }
 

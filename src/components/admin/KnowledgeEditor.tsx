@@ -85,7 +85,7 @@ const TEMPLATES: { name: string; entries: { q: string; a: string; tags?: string[
     entries: [
       {
         q: "¿Cómo recupero mi contraseña?",
-        a: "Desde la pantalla de ingreso, tocá «Olvidé mi contraseña» y seguí el correo que te enviamos.",
+        a: "Desde la pantalla de ingreso, toca «Olvidé mi contraseña» y sigue el correo que te enviamos.",
         tags: ["cuenta"],
       },
       {
@@ -118,10 +118,14 @@ export function KnowledgeEditor() {
     setLoading(true);
     try {
       const r = await authedFetch(ep.manageKnowledge);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
       const list: KbDoc[] = Array.isArray(d.kbs) ? d.kbs : [];
       setKbs(list);
       if (list.length && !activeId) hydrate(list[0]);
+    } catch {
+      // Antes se tragaba el error → un fallo de red se veía como «sin bases».
+      toast.error("No se pudieron cargar las bases de conocimiento. Reintenta.");
     } finally {
       setLoading(false);
     }
@@ -181,7 +185,7 @@ export function KnowledgeEditor() {
     }
     const clean = entries.map(fromDraft).filter((e) => e.q && e.a);
     if (clean.length === 0) {
-      toast.error("Agregá al menos una pregunta con su respuesta");
+      toast.error("Agrega al menos una pregunta con su respuesta");
       return;
     }
     setSaving(true);
@@ -266,7 +270,7 @@ export function KnowledgeEditor() {
             className="muted"
             style={{ fontSize: 12.5, marginTop: 3, maxWidth: 640, lineHeight: 1.5 }}
           >
-            Preguntas y respuestas que <strong>el Agente IA usa para responder</strong>. Anclás una
+            Preguntas y respuestas que <strong>el Agente IA usa para responder</strong>. Anclas una
             base a un nodo «Agente IA» y deja de inventar: contesta citando estas FAQs.
           </div>
         </div>
@@ -433,10 +437,10 @@ export function KnowledgeEditor() {
                 <Icon.Knowledge size={24} />
               </div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>
-                Todavía no tenés bases de conocimiento
+                Todavía no tienes bases de conocimiento
               </div>
               <div className="muted" style={{ fontSize: 13, marginTop: 4, marginBottom: 18 }}>
-                Creá una en blanco o arrancá con una plantilla de FAQs.
+                Crea una en blanco o arranca con una plantilla de FAQs.
               </div>
               <div className="row" style={{ gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                 <button className="btn btn--primary" onClick={newKb}>
@@ -453,7 +457,7 @@ export function KnowledgeEditor() {
                   margin: "22px 0 10px",
                 }}
               >
-                O empezá con una plantilla
+                O empieza con una plantilla
               </div>
               <div className="row" style={{ gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                 {TEMPLATES.map((t) => (
@@ -556,7 +560,7 @@ export function KnowledgeEditor() {
                 <div className="muted" style={{ padding: 22, textAlign: "center", fontSize: 12.5 }}>
                   {query
                     ? "Ninguna FAQ coincide con la búsqueda."
-                    : "Sin FAQs. Agregá la primera abajo."}
+                    : "Sin FAQs. Agrega la primera abajo."}
                 </div>
               </CardBody>
             </Card>

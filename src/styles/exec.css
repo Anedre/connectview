@@ -1475,7 +1475,7 @@
 /* ============================================================
    Animaciones extra — "página viva" (Inicio ejecutivo).
    Los KPIs y la tira de insights ya animan sus hijos con .exec-anim;
-   acá sumamos: entrada por filas (stagger), lift de paneles en hover,
+   aquí sumamos: entrada por filas (stagger), lift de paneles en hover,
    avatares que resaltan y el icono del KPI que acompaña el hover.
    ============================================================ */
 .exec-row {

@@ -36,7 +36,7 @@ const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connecti
 const VERIFY_TOKEN =
   process.env.META_LEADGEN_VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN || "";
 // El Page tiene UN solo override_callback_uri para todos sus campos → este webhook
-// es el unificado del Page: maneja messaging acá y reenvía leadgen al webhook de leads.
+// es el unificado del Page: maneja messaging aquí y reenvía leadgen al webhook de leads.
 const LEADGEN_WEBHOOK_URL = process.env.LEADGEN_WEBHOOK_URL || "";
 const GRAPH = "https://graph.facebook.com/v20.0";
 
@@ -165,7 +165,7 @@ export const handler: Handler = async (event: any) => {
 
   // El Page expone UN solo override_callback_uri para TODOS sus campos, así que
   // este webhook recibe también los leadgen del Pilar 5 → los reenvía al webhook
-  // de leads (fire-and-forget). Los eventos de messaging se manejan acá.
+  // de leads (fire-and-forget). Los eventos de messaging se manejan aquí.
   const hasLeadgen = (body.entry || []).some(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (e: any) => Array.isArray(e.changes) && e.changes.some((c: any) => c.field === "leadgen"),
@@ -245,7 +245,7 @@ export const handler: Handler = async (event: any) => {
         // ~8s → la bandeja muestra "escribiendo…". NOTA: el Messenger Platform NO
         // garantiza estos eventos para todos los usuarios (a diferencia de un DM);
         // por eso es aditivo y no bloquea nada. Recibo de LECTURA del cliente
-        // (`read`) tampoco se recibe acá de forma estándar → no lo inventamos.
+        // (`read`) tampoco se recibe aquí de forma estándar → no lo inventamos.
         const senderAction = String(ev.sender_action || "");
         if (senderAction === "typing_on") {
           try {

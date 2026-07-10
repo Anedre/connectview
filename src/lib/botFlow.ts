@@ -193,7 +193,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         placeholder: "Escribe lo que el bot dirá…",
         variable: "insert",
         counter: 4096,
-        help: "Podés personalizarlo con datos guardados usando «Insertar variable» (p. ej. ¡Hola {{nombre}}!).",
+        help: "Puedes personalizarlo con datos guardados usando «Insertar variable» (p. ej. ¡Hola {{nombre}}!).",
       },
       {
         key: "buttons",
@@ -232,7 +232,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         key: "body",
         label: "Mensaje",
         type: "textarea",
-        placeholder: "Elegí una opción para continuar:",
+        placeholder: "Elige una opción para continuar:",
         variable: "insert",
       },
       {
@@ -246,7 +246,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         key: "rows",
         label: "Opciones de la lista",
         type: "listrows",
-        help: "Cada opción crea una rama: conectá su salida al siguiente paso.",
+        help: "Cada opción crea una rama: conecta su salida al siguiente paso.",
       },
     ],
     outlets: (d) => {
@@ -286,7 +286,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         type: "var",
         placeholder: "nombre",
         variable: "define",
-        help: "Le ponés un nombre para reutilizarla después (p. ej. en un mensaje) con «Insertar variable».",
+        help: "Le pones un nombre para reutilizarla después (p. ej. en un mensaje) con «Insertar variable».",
       },
       {
         key: "validate",
@@ -315,7 +315,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         type: "var",
         placeholder: "carrera",
         variable: "use",
-        help: "Elegí una variable guardada antes (p. ej. con «Preguntar y guardar»).",
+        help: "Elige una variable guardada antes (p. ej. con «Preguntar y guardar»).",
       },
       {
         key: "op",
@@ -354,7 +354,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         key: "variables",
         label: "Variables",
         type: "varlist",
-        help: "Cada valor llena {{1}}, {{2}}… en orden. Dejalo vacío si la plantilla no tiene.",
+        help: "Cada valor llena {{1}}, {{2}}… en orden. Déjalo vacío si la plantilla no tiene.",
       },
     ],
     outlets: () => [{ id: "out" }],
@@ -453,7 +453,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         label: "Asignar a (opcional)",
         type: "text",
         placeholder: "usuario o vacío",
-        help: "Dejá vacío para que tome cualquier agente disponible de la cola.",
+        help: "Deja vacío para que tome cualquier agente disponible de la cola.",
       },
       {
         key: "note",
@@ -461,7 +461,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         type: "textarea",
         placeholder: "Contexto del lead…",
         variable: "insert",
-        help: "Contexto que ve el agente al recibir el chat. Podés insertar variables.",
+        help: "Contexto que ve el agente al recibir el chat. Puedes insertar variables.",
       },
     ],
     outlets: () => [{ id: "out", label: "Tras derivar" }],
@@ -483,7 +483,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         type: "textarea",
         placeholder: "Lead caliente — llamar hoy",
         variable: "insert",
-        help: "Aviso solo para tu equipo (no lo ve el cliente). Podés insertar variables.",
+        help: "Aviso solo para tu equipo (no lo ve el cliente). Puedes insertar variables.",
       },
       {
         key: "to",
@@ -519,7 +519,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         type: "text",
         placeholder: "https://api.tu-sistema.com/lead",
         variable: "insert",
-        help: "A dónde llama el bot. Podés meter variables en la ruta (p. ej. /lead/{{id}}).",
+        help: "A dónde llama el bot. Puedes meter variables en la ruta (p. ej. /lead/{{id}}).",
       },
       {
         key: "body",
@@ -528,7 +528,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         placeholder: '{ "phone": "{{phone}}" }',
         variable: "insert",
         json: true,
-        help: "Datos que se envían. Usá variables con «Insertar variable».",
+        help: "Datos que se envían. Usa variables con «Insertar variable».",
       },
     ],
     outlets: () => [
@@ -571,9 +571,9 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         key: "instructions",
         label: "Instrucciones / persona",
         type: "textarea",
-        placeholder: "Sos un asesor de admisión cordial. Respondé corto, en español…",
+        placeholder: "Eres un asesor de admisión cordial. Responde corto, en español…",
         variable: "insert",
-        help: "Tono y reglas de la IA. Podés insertar variables ya capturadas.",
+        help: "Tono y reglas de la IA. Puedes insertar variables ya capturadas.",
       },
       {
         key: "handoffWhen",
@@ -723,13 +723,13 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         type: "text",
         placeholder: "https://…/foto.jpg",
         variable: "insert",
-        help: "Link público al archivo. Podés usar una variable.",
+        help: "Link público al archivo. Puedes usar una variable.",
       },
       {
         key: "caption",
         label: "Texto (opcional)",
         type: "textarea",
-        placeholder: "Mirá esto 👇",
+        placeholder: "Mira esto 👇",
         variable: "insert",
       },
     ],
@@ -814,7 +814,7 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
         type: "text",
         placeholder: "{{telefono}}",
         variable: "insert",
-        help: "Usá una variable capturada antes (p. ej. {{telefono}}).",
+        help: "Usa una variable capturada antes (p. ej. {{telefono}}).",
       },
       {
         key: "whenISO",
@@ -1135,7 +1135,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
   {
     id: "blank",
     name: "En blanco",
-    description: "Empezá desde cero con solo el paso de Inicio.",
+    description: "Empieza desde cero con solo el paso de Inicio.",
     icon: "plus",
     accent: "#6B7A99",
     build: () => ({
@@ -1239,7 +1239,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     category: "trabajo",
     channels: ["whatsapp", "webchat"],
     preview: {
-      bubble: "Elegí un tema y te respondo al instante:",
+      bubble: "Elige un tema y te respondo al instante:",
       reply: "Pagos y becas",
       emoji: "💡",
     },
@@ -1256,7 +1256,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           position: { x: 220, y: 120 },
           data: {
             header: "¿En qué te ayudamos?",
-            body: "Elegí un tema y te respondo al instante:",
+            body: "Elige un tema y te respondo al instante:",
             buttonLabel: "Ver temas",
             rows: [
               { id: "pagos", title: "Pagos y becas", description: "Costos, financiamiento" },
@@ -1333,7 +1333,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           data: {
             model: "Claude Sonnet 4.6 (Bedrock)",
             objective: "Resolver dudas de admisión y agendar una cita si hay interés.",
-            instructions: "Sos un asesor de admisión UDEP cordial y conciso. Respondé en español.",
+            instructions: "Eres un asesor de admisión UDEP cordial y conciso. Responde en español.",
             handoffWhen: "el cliente pida un humano o se frustre",
             maxTurns: 6,
           },
@@ -1369,7 +1369,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     category: "cultivar",
     channels: ["whatsapp"],
     preview: {
-      bubble: "¿Seguís interesado? Estoy para ayudarte 😊",
+      bubble: "¿Sigues interesado? Estoy para ayudarte 😊",
       reply: "Sí, cuéntame",
       emoji: "🔔",
     },
@@ -1402,7 +1402,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           kind: "message",
           position: { x: 220, y: 440 },
           data: {
-            text: "¿Seguís interesado? Estoy para ayudarte 😊",
+            text: "¿Sigues interesado? Estoy para ayudarte 😊",
             buttons: [
               { id: "si", label: "Sí, cuéntame", type: "reply" },
               { id: "no", label: "Ahora no", type: "reply" },
@@ -1442,7 +1442,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     category: "leads",
     channels: ["whatsapp"],
     preview: {
-      bubble: "¡Hola! 👋 ¿Querés agendar una cita con nosotros?",
+      bubble: "¡Hola! 👋 ¿Quieres agendar una cita con nosotros?",
       reply: "Sí, agendar ✅",
       emoji: "📅",
     },
@@ -1458,7 +1458,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           kind: "message",
           position: { x: 240, y: 120 },
           data: {
-            text: "¡Hola! 👋 ¿Querés agendar una cita con nosotros?",
+            text: "¡Hola! 👋 ¿Quieres agendar una cita con nosotros?",
             buttons: [
               { id: "si", label: "Sí, agendar", type: "reply" },
               { id: "no", label: "Ahora no", type: "reply" },
@@ -1506,7 +1506,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#10B981",
     category: "leads",
     channels: ["instagram", "tiktok"],
-    preview: { bubble: "Dejá tu número y un asesor te llama 📞", reply: "+51 9...", emoji: "📞" },
+    preview: { bubble: "Deja tu número y un asesor te llama 📞", reply: "+51 9...", emoji: "📞" },
     build: () => ({
       botId: "",
       name: "Te llamamos",
@@ -1519,7 +1519,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           kind: "message",
           position: { x: 240, y: 120 },
           data: {
-            text: "¡Te llamamos! 📞 Dejanos tu número y un asesor se comunica con vos.",
+            text: "¡Te llamamos! 📞 Déjanos tu número y un asesor se comunica contigo.",
             buttons: [],
           },
         },
@@ -1652,7 +1652,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           kind: "message",
           position: { x: 240, y: 130 },
           data: {
-            text: "¡Gracias por seguirnos! 🎁 Acá tenés tu código: DESC20 — 20% off en tu primera compra.",
+            text: "¡Gracias por seguirnos! 🎁 Aquí tienes tu código: DESC20 — 20% off en tu primera compra.",
             buttons: [{ id: "comprar", label: "Quiero comprar", type: "reply" }],
           },
         },
@@ -1685,7 +1685,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     category: "cultivar",
     channels: ["whatsapp"],
     preview: {
-      bubble: "¿Olvidaste algo en tu carrito? 🛒 Lo guardé para vos.",
+      bubble: "¿Olvidaste algo en tu carrito? 🛒 Lo guardé para ti.",
       reply: "Ver carrito",
       emoji: "🛒",
     },
@@ -1712,7 +1712,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           kind: "message",
           position: { x: 220, y: 280 },
           data: {
-            text: "¿Olvidaste algo en tu carrito? 🛒 Lo guardé para vos.",
+            text: "¿Olvidaste algo en tu carrito? 🛒 Lo guardé para ti.",
             buttons: [
               { id: "ver", label: "Ver mi carrito", type: "reply" },
               { id: "no", label: "No, gracias", type: "reply" },
@@ -1812,9 +1812,9 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           kind: "message",
           position: { x: 240, y: 130 },
           data: {
-            text: "¡Gracias por seguirnos! 💜 ¿Querés que te muestre las novedades?",
+            text: "¡Gracias por seguirnos! 💜 ¿Quieres que te muestre las novedades?",
             buttons: [
-              { id: "si", label: "Sí, mostrame", type: "reply" },
+              { id: "si", label: "Sí, muéstrame", type: "reply" },
               { id: "no", label: "Ahora no", type: "reply" },
             ],
           },
@@ -1824,7 +1824,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           kind: "message",
           position: { x: -40, y: 360 },
           data: {
-            text: "¡Genial! Acá tenés lo último. 🛍️ Cualquier duda, escribime.",
+            text: "¡Genial! Aquí tienes lo último. 🛍️ Cualquier duda, escribime.",
             buttons: [],
           },
         },
@@ -1876,7 +1876,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           kind: "message",
           position: { x: -40, y: 360 },
           data: {
-            text: "¡Gracias! 🙌 Podés dejarla acá: https://g.page/r/tu-negocio",
+            text: "¡Gracias! 🙌 Puedes dejarla aquí: https://g.page/r/tu-negocio",
             buttons: [],
           },
         },
@@ -1900,7 +1900,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     category: "comercial",
     channels: ["whatsapp"],
     preview: {
-      bubble: "Mirá nuestro catálogo 🛍️ Elegí una categoría:",
+      bubble: "Mira nuestro catálogo 🛍️ Elige una categoría:",
       reply: "Ofertas",
       emoji: "🛍️",
     },
@@ -1917,7 +1917,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           position: { x: 220, y: 130 },
           data: {
             header: "Nuestro catálogo",
-            body: "Elegí una categoría para ver los productos:",
+            body: "Elige una categoría para ver los productos:",
             buttonLabel: "Ver categorías",
             rows: [
               { id: "ofertas", title: "Ofertas", description: "Lo más vendido en descuento" },
@@ -1930,7 +1930,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           id: "m1",
           kind: "message",
           position: { x: -80, y: 400 },
-          data: { text: "¡Mirá nuestras ofertas! 🔥 Te paso el link.", buttons: [] },
+          data: { text: "¡Mira nuestras ofertas! 🔥 Te paso el link.", buttons: [] },
         },
         {
           id: "m2",
@@ -1972,7 +1972,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     accent: "#0EA5E9",
     category: "trabajo",
     channels: ["webchat", "whatsapp"],
-    preview: { bubble: "¿Con qué necesitás ayuda hoy? 🛟", reply: "Soporte técnico", emoji: "🛟" },
+    preview: { bubble: "¿Con qué necesitas ayuda hoy? 🛟", reply: "Soporte técnico", emoji: "🛟" },
     build: () => ({
       botId: "",
       name: "Mesa de ayuda",
@@ -1986,7 +1986,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           position: { x: 220, y: 130 },
           data: {
             header: "¿Cómo te ayudamos?",
-            body: "Elegí el tipo de consulta:",
+            body: "Elige el tipo de consulta:",
             buttonLabel: "Ver opciones",
             rows: [
               { id: "tecnico", title: "Soporte técnico" },
@@ -2042,7 +2042,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     category: "trabajo",
     channels: ["whatsapp"],
     preview: {
-      bubble: "¡Hola! Dejanos tu consulta y te respondemos. 🕘",
+      bubble: "¡Hola! Déjanos tu consulta y te respondemos. 🕘",
       reply: "Consultar",
       emoji: "🕘",
     },
@@ -2137,7 +2137,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           kind: "message",
           position: { x: -40, y: 360 },
           data: {
-            text: "🎁 Oferta exclusiva por hoy: 20% de descuento. ¿Querés que te cuente?",
+            text: "🎁 Oferta exclusiva por hoy: 20% de descuento. ¿Quieres que te cuente?",
             buttons: [
               { id: "si", label: "Sí, quiero", type: "reply" },
               { id: "no", label: "Ahora no", type: "reply" },
@@ -2149,9 +2149,9 @@ export const BOT_TEMPLATES: BotTemplate[] = [
           kind: "message",
           position: { x: 520, y: 360 },
           data: {
-            text: "Hola 👋 Tenemos algo pensado para vos. ¿Te muestro los detalles?",
+            text: "Hola 👋 Tenemos algo pensado para ti. ¿Te muestro los detalles?",
             buttons: [
-              { id: "si", label: "Dale", type: "reply" },
+              { id: "si", label: "Sí", type: "reply" },
               { id: "no", label: "Paso", type: "reply" },
             ],
           },
@@ -2191,7 +2191,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     category: "comercial",
     channels: ["whatsapp"],
     preview: {
-      bubble: "Tu link de pago está listo 💳 Podés abonar de forma segura.",
+      bubble: "Tu link de pago está listo 💳 Puedes abonar de forma segura.",
       reply: "Pagar ahora",
       emoji: "💳",
     },
@@ -2250,7 +2250,7 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     category: "leads",
     channels: ["whatsapp", "instagram"],
     preview: {
-      bubble: "Contame qué buscás y te recomiendo la mejor opción. ✨",
+      bubble: "Cuéntame qué buscas y te recomiendo la mejor opción. ✨",
       reply: "Pregrado",
       emoji: "🧭",
     },

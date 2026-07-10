@@ -92,7 +92,7 @@ interface EditorButton {
 const BTN_LIMITS = { total: 10, URL: 2, PHONE_NUMBER: 1, COPY_CODE: 1, FLOW: 1 } as const;
 const BTN_META: Record<WaBtnType, { label: string; hint: string }> = {
   QUICK_REPLY: { label: "Respuesta rápida", hint: "El cliente toca y te responde con ese texto" },
-  URL: { label: "Enlace", hint: "Abre una página web (podés usar {{1}} para una URL dinámica)" },
+  URL: { label: "Enlace", hint: "Abre una página web (puedes usar {{1}} para una URL dinámica)" },
   PHONE_NUMBER: { label: "Llamar", hint: "Marca un número de teléfono" },
   COPY_CODE: { label: "Copiar código", hint: "El cliente copia un código (cupón/promo)" },
   FLOW: { label: "Formulario", hint: "Abre un WhatsApp Flow (formulario nativo de Meta)" },
@@ -112,7 +112,7 @@ interface WaFlow {
 type CardBtnType = "QUICK_REPLY" | "URL" | "PHONE_NUMBER";
 const CARD_BTN_META: Record<CardBtnType, { label: string; hint: string }> = {
   QUICK_REPLY: { label: "Respuesta rápida", hint: "El cliente toca y te responde con ese texto" },
-  URL: { label: "Enlace", hint: "Abre una página web (podés usar {{1}} para una URL dinámica)" },
+  URL: { label: "Enlace", hint: "Abre una página web (puedes usar {{1}} para una URL dinámica)" },
   PHONE_NUMBER: { label: "Llamar", hint: "Marca un número de teléfono" },
 };
 const CARD_MEDIA_FORMATS = [
@@ -495,7 +495,7 @@ export function WhatsAppTemplatesManager() {
     setHeaderMediaPreview("");
     if (MEDIA_HEADER.includes(hf)) {
       toast(
-        "Esta plantilla tiene un encabezado multimedia: volvé a subir el archivo para conservarlo al guardar.",
+        "Esta plantilla tiene un encabezado multimedia: vuelve a subir el archivo para conservarlo al guardar.",
       );
     }
     setBodyText(t.bodyText || "");
@@ -510,7 +510,7 @@ export function WhatsAppTemplatesManager() {
     setShowEditor(true);
     if (dropped) {
       toast(
-        "Esta plantilla tiene botones que el editor no soporta (ej. Flow); si guardás, se quitarán.",
+        "Esta plantilla tiene botones que el editor no soporta (ej. Flow); si guardas, se quitarán.",
       );
     }
     // Subir el editor a la vista una vez montado.
@@ -556,11 +556,11 @@ export function WhatsAppTemplatesManager() {
       | undefined;
     if (useCarousel) {
       if (!bodyText.trim()) {
-        toast.error("Escribí el texto de la burbuja (el mensaje arriba de las tarjetas).");
+        toast.error("Escribe el texto de la burbuja (el mensaje arriba de las tarjetas).");
         return;
       }
       if (varCount > 0 && varExamples.filter((v) => v.trim()).length < varCount) {
-        toast.error(`Completá los ${varCount} ejemplos de variables del texto de la burbuja.`);
+        toast.error(`Completa los ${varCount} ejemplos de variables del texto de la burbuja.`);
         return;
       }
       if (cards.length < MIN_CARDS || cards.length > MAX_CARDS) {
@@ -571,7 +571,7 @@ export function WhatsAppTemplatesManager() {
         const c = cards[ci];
         if (!c.headerHandle) {
           toast.error(
-            `Subí la ${cardMediaFormat === "VIDEO" ? "video" : "imagen"} de la tarjeta ${ci + 1}.`,
+            `Sube la ${cardMediaFormat === "VIDEO" ? "video" : "imagen"} de la tarjeta ${ci + 1}.`,
           );
           return;
         }
@@ -585,7 +585,7 @@ export function WhatsAppTemplatesManager() {
         }
         const cvc = countVars(c.bodyText);
         if (cvc > 0 && c.bodyExamples.filter((v) => v.trim()).length < cvc) {
-          toast.error(`Completá los ejemplos de variables de la tarjeta ${ci + 1}.`);
+          toast.error(`Completa los ejemplos de variables de la tarjeta ${ci + 1}.`);
           return;
         }
         for (let bi = 0; bi < cardBtnShape.length; bi++) {
@@ -633,7 +633,7 @@ export function WhatsAppTemplatesManager() {
     // genera el cuerpo, no hay body ni botones libres). El carousel ya se validó.
     if (!isAuth && !useCarousel) {
       if (isMedia && !headerHandle) {
-        toast.error("Subí el archivo del encabezado multimedia (o cambiá el tipo a Texto).");
+        toast.error("Sube el archivo del encabezado multimedia (o cambia el tipo a Texto).");
         return;
       }
       if (!bodyText.trim()) {
@@ -642,7 +642,7 @@ export function WhatsAppTemplatesManager() {
       }
       if (varCount > 0 && varExamples.filter((v) => v.trim()).length < varCount) {
         toast.error(
-          `Completá los ${varCount} ejemplos de variables (Meta los exige para aprobar).`,
+          `Completa los ${varCount} ejemplos de variables (Meta los exige para aprobar).`,
         );
         return;
       }
@@ -656,7 +656,7 @@ export function WhatsAppTemplatesManager() {
         }
         if (b.type === "FLOW") {
           if (!b.flowId) {
-            toast.error("Elegí un formulario (Flow) para el botón.");
+            toast.error("Elige un formulario (Flow) para el botón.");
             return;
           }
           if (!b.text.trim()) {
@@ -1008,7 +1008,7 @@ export function WhatsAppTemplatesManager() {
                   >
                     <div className="muted" style={{ fontSize: 11, lineHeight: 1.5 }}>
                       En plantillas de <b>autenticación</b>, Meta genera el cuerpo automáticamente:{" "}
-                      <i>«&lt;código&gt; es tu código de verificación.»</i> Solo configurás el
+                      <i>«&lt;código&gt; es tu código de verificación.»</i> Solo configuras el
                       resto.
                     </div>
                     <label
@@ -1178,7 +1178,7 @@ export function WhatsAppTemplatesManager() {
                       <span className="muted" style={{ fontSize: 10.5 }}>
                         {useCarousel
                           ? "Texto de la burbuja — el mensaje arriba de las tarjetas"
-                          : "Cuerpo — usá {{1}}, {{2}}… para variables"}
+                          : "Cuerpo — usa {{1}}, {{2}}… para variables"}
                       </span>
                       <textarea
                         style={{ ...inputStyle, minHeight: 88, resize: "vertical" }}
@@ -1186,7 +1186,7 @@ export function WhatsAppTemplatesManager() {
                         onChange={(e) => setBodyText(e.target.value)}
                         placeholder={
                           useCarousel
-                            ? "Conocé nuestros programas 👇"
+                            ? "Conoce nuestros programas 👇"
                             : "Hola {{1}}, tu cita es el {{2}}. ¡Te esperamos!"
                         }
                       />
@@ -2072,7 +2072,7 @@ export function WhatsAppTemplatesManager() {
           ) : templates.length === 0 ? (
             <div className="muted" style={{ fontSize: 12.5, padding: 24, textAlign: "center" }}>
               No hay plantillas todavía. Crea la primera con “Nueva plantilla”. (Si WhatsApp no está
-              configurado, cargá tu WABA en Configuración → Integraciones.)
+              configurado, carga tu WABA en Configuración → Integraciones.)
             </div>
           ) : (
             <div
@@ -2215,8 +2215,8 @@ export function WhatsAppTemplatesManager() {
               <span style={{ fontSize: 14, fontWeight: 600 }}>Borrar plantilla</span>
             </div>
             <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 16 }}>
-              ¿Seguro que querés borrar <b>{deleteTarget.name}</b>? Esta acción no se puede deshacer
-              y la plantilla dejará de estar disponible en Campañas, Bots y seguimientos.
+              ¿Seguro que quieres borrar <b>{deleteTarget.name}</b>? Esta acción no se puede
+              deshacer y la plantilla dejará de estar disponible en Campañas, Bots y seguimientos.
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button

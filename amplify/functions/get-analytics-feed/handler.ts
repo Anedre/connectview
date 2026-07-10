@@ -29,7 +29,7 @@ const CONVERSATIONS_TABLE = process.env.CONVERSATIONS_TABLE || "connectview-conv
 const FEED_SECRET = process.env.FEED_SECRET || "";
 
 // Solo Content-Type: los headers CORS los pone la Function URL (auth NONE + CORS).
-// Si los seteáramos acá TAMBIÉN, el navegador vería Access-Control-Allow-Origin
+// Si los seteáramos aquí TAMBIÉN, el navegador vería Access-Control-Allow-Origin
 // DUPLICADO (handler + Function URL) y bloquearía → "Failed to fetch".
 const CORS = { "Content-Type": "application/json" };
 const ok = (b: unknown) => ({ statusCode: 200, headers: CORS, body: JSON.stringify(b) });
@@ -111,9 +111,9 @@ async function scanAll<T>(
 const s = (v: unknown): string => (v == null ? "" : String(v));
 
 // ── Golpes / historial de leads (Pilar 2) ────────────────────────────────────
-// Espejo de _shared/leadSync GOLPE_TYPES. Se replica acá (en vez de importar
+// Espejo de _shared/leadSync GOLPE_TYPES. Se replica aquí (en vez de importar
 // leadSync) para no arrastrar el SDK de Salesforce/Profiles a este Lambda público
-// chico. Si cambian los tipos de golpe allá, sincronizar acá.
+// chico. Si cambian los tipos de golpe allá, sincronizar aquí.
 const GOLPE_TYPES = new Set([
   "gestion",
   "interaccion",

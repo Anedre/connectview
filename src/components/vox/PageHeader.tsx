@@ -9,7 +9,7 @@ import { useTopBarActions } from "@/components/layout/TopBarSlot";
  *  - las **acciones** se "suben" al top bar (a la derecha, junto al estado),
  *    como en el mockup — vía `useTopBarActions`.
  *
- * Lo que queda acá es el toolbar funcional: filtro · tabs · búsqueda · métrica.
+ * Lo que queda aquí es el toolbar funcional: filtro · tabs · búsqueda · métrica.
  * Si no queda nada de eso, el header no renderiza (evita una barra vacía).
  * `crumb`/`title`/`sub` se mantienen en la API para no romper las páginas.
  */

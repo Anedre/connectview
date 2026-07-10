@@ -264,7 +264,7 @@ function toRFEdges(bot: Bot): Edge[] {
  * Huella estable del bot para detectar cambios sin guardar. Ignora `botId`
  * (no cambia con la edición) y ordena las claves de cada nodo/edge para que el
  * mismo contenido dé siempre el mismo string. El `onInsert` de render nunca
- * llega acá porque `currentBot` lee de `edges`, no de `rfEdges`.
+ * llega aquí porque `currentBot` lee de `edges`, no de `rfEdges`.
  */
 function serializeBot(bot: Bot): string {
   return JSON.stringify({
@@ -956,7 +956,7 @@ function FlowBuilderInner({
           {onBack && (
             <button
               onClick={() => {
-                if (dirty && !window.confirm("Tenés cambios sin guardar. ¿Salir y descartarlos?"))
+                if (dirty && !window.confirm("Tienes cambios sin guardar. ¿Salir y descartarlos?"))
                   return;
                 onBack();
               }}
@@ -985,7 +985,7 @@ function FlowBuilderInner({
           </div>
 
           {dirty && (
-            <span className="fb-dirty" title="Tenés cambios sin guardar">
+            <span className="fb-dirty" title="Tienes cambios sin guardar">
               <span className="fb-dirty__dot" /> sin guardar
             </span>
           )}
@@ -1143,10 +1143,10 @@ function FlowBuilderInner({
                     ←
                   </span>
                   <div>
-                    <div className="fb-coach__h">Armá tu primer flujo</div>
+                    <div className="fb-coach__h">Arma tu primer flujo</div>
                     <div className="fb-coach__p">
-                      Arrastrá un paso desde la izquierda (o hacé click en uno). Para conectar dos
-                      pasos, tirá una línea de un punto al siguiente — o soltá un paso cerca de la
+                      Arrastra un paso desde la izquierda (o haz clic en uno). Para conectar dos
+                      pasos, traza una línea de un punto al siguiente — o suelta un paso cerca de la
                       salida de otro y se conecta solo.
                     </div>
                   </div>
@@ -1218,7 +1218,7 @@ function Palette({ onAdd }: { onAdd: (kind: NodeKind) => void }) {
                     e.dataTransfer.effectAllowed = "move";
                   }}
                   onClick={() => onAdd(def.kind)}
-                  title={`${def.blurb} — clic para agregar o arrastrá al lienzo`}
+                  title={`${def.blurb} — clic para agregar o arrastra al lienzo`}
                   className="fb-pal__item"
                 >
                   <span
@@ -1637,19 +1637,19 @@ function Field({
               Se crea la variable <span className="fb-var">{`{{${String(v).trim()}}}`}</span>
             </span>
           ) : (
-            <span>Ponele un nombre y se crea una variable reutilizable.</span>
+            <span>Ponle un nombre y se crea una variable reutilizable.</span>
           )}
         </div>
       )}
       {isUse && flowVars.length === 0 && (
         <div className="fb-varhint">
-          <Braces size={11} /> Primero guardá una variable con un paso «Preguntar y guardar».
+          <Braces size={11} /> Primero guarda una variable con un paso «Preguntar y guardar».
         </div>
       )}
       {isInsert && flowVars.length > 0 && <VarInsert vars={flowVars} onInsert={insertVar} />}
       {isInsert && flowVars.length === 0 && field.type === "textarea" && (
         <div className="fb-varhint">
-          <Braces size={11} /> Guardá datos con un paso «Preguntar y guardar» y aparecerán acá para
+          <Braces size={11} /> Guarda datos con un paso «Preguntar y guardar» y aparecerán aquí para
           insertarlos.
         </div>
       )}
@@ -1660,7 +1660,7 @@ function Field({
             <span className={jsonError ? "fb-meta-bad" : "fb-meta-ok"}>
               {jsonError ? (
                 <>
-                  <AlertTriangle size={11} /> Revisá el JSON
+                  <AlertTriangle size={11} /> Revisa el JSON
                 </>
               ) : (
                 <>
@@ -1739,9 +1739,9 @@ function ButtonsEditor({
         const type = b.type || "reply";
         const valErr =
           type === "url" && b.value && !/^https?:\/\/.+/i.test(b.value.trim())
-            ? "Empezá con http:// o https://"
+            ? "Empieza con http:// o https://"
             : type === "phone" && b.value && !/^\+?[\d\s().-]{6,}$/.test(b.value.trim())
-              ? "Usá formato internacional, p. ej. +51 999 888 777"
+              ? "Usa formato internacional, p. ej. +51 999 888 777"
               : null;
         return (
           <div

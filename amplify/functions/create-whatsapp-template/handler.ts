@@ -84,7 +84,7 @@ export const handler: Handler = async (event: any) => {
   if (!resolved) {
     return resp(400, {
       error:
-        "WhatsApp no está configurado para esta organización. Cargá tu número en Configuración → Integraciones.",
+        "WhatsApp no está configurado para esta organización. Carga tu número en Configuración → Integraciones.",
     });
   }
 

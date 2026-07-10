@@ -58,7 +58,7 @@ export const handler: Handler = async (event: any) => {
   // bloquea/desbloquea el contacto de un número → operación privilegiada. Antes sólo
   // había aislamiento por-tenant: cualquier usuario autenticado del tenant podía ver
   // y tocar la DNC. Ahora exigimos el grupo Cognito "Admins" (mismo patrón que
-  // list-users/manage-connections). El Function URL es auth=NONE → validamos acá.
+  // list-users/manage-connections). El Function URL es auth=NONE → validamos aquí.
   let identity;
   try {
     identity = await getIdentity(event?.headers);

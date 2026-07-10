@@ -414,7 +414,7 @@ export function BotTester({
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendText()}
-              placeholder={awaiting === "choice" ? "Elegí una opción…" : "Escribí un mensaje…"}
+              placeholder={awaiting === "choice" ? "Elige una opción…" : "Escribe un mensaje…"}
               disabled={awaiting === "choice" || loading}
               className="fb-wa__field"
             />

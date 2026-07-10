@@ -101,7 +101,11 @@ function AttachmentView({
   }
   if (isAudio) {
     return (
-      <audio controls src={url} style={{ width: 250, maxWidth: "100%", marginBottom: mb, display: "block" }} />
+      <audio
+        controls
+        src={url}
+        style={{ width: 250, maxWidth: "100%", marginBottom: mb, display: "block" }}
+      />
     );
   }
   if (isVideo) {
@@ -109,7 +113,13 @@ function AttachmentView({
       <video
         controls
         src={url}
-        style={{ maxWidth: "100%", maxHeight: 280, borderRadius: 10, marginBottom: mb, display: "block" }}
+        style={{
+          maxWidth: "100%",
+          maxHeight: 280,
+          borderRadius: 10,
+          marginBottom: mb,
+          display: "block",
+        }}
       />
     );
   }
@@ -146,12 +156,8 @@ function Bubble({ m }: { m: ConvMessage }) {
   const out = m.direction === "out";
   return (
     <div className={"msg " + (out ? "msg--out" : "msg--in")}>
-      {m.attachment?.url && (
-        <AttachmentView att={m.attachment} out={out} hasText={!!m.text} />
-      )}
-      {m.text && (
-        <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.text}</div>
-      )}
+      {m.attachment?.url && <AttachmentView att={m.attachment} out={out} hasText={!!m.text} />}
+      {m.text && <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.text}</div>}
       <div className="msg__time" style={{ textAlign: "right" }}>
         {m.agent ? `${m.agent} · ` : ""}
         {fmtTime(m.ts)}
@@ -180,8 +186,19 @@ const LIST_INP: React.CSSProperties = {
 
 export function ConversationThread({ conversationId }: { conversationId: string }) {
   const { conversation, loading } = useConversation(conversationId);
-  const { reply, replyComment, commentToDm, markRead, close, sendList, sendMedia, sendTemplate, assign, assignTo, release } =
-    useConversationActions();
+  const {
+    reply,
+    replyComment,
+    commentToDm,
+    markRead,
+    close,
+    sendList,
+    sendMedia,
+    sendTemplate,
+    assign,
+    assignTo,
+    release,
+  } = useConversationActions();
   const { placeCall, agentState } = useCCP();
   const { user } = useConnectAuth();
   const { users } = useUsers();
@@ -214,7 +231,7 @@ export function ConversationThread({ conversationId }: { conversationId: string 
         description: r.description.trim() || undefined,
       }));
     if (!listBody.trim() || !rows.length) {
-      toast.error("Poné un texto y al menos una opción con título");
+      toast.error("Pon un texto y al menos una opción con título");
       return;
     }
     try {
@@ -266,10 +283,10 @@ export function ConversationThread({ conversationId }: { conversationId: string 
       const mediaType = file.type.startsWith("image")
         ? "image"
         : file.type.startsWith("audio")
-        ? "audio"
-        : file.type.startsWith("video")
-        ? "video"
-        : "document";
+          ? "audio"
+          : file.type.startsWith("video")
+            ? "video"
+            : "document";
       await sendMedia.mutateAsync({
         conversationId,
         mediaUrl: publicUrl,
@@ -358,9 +375,9 @@ export function ConversationThread({ conversationId }: { conversationId: string 
       const msg = e instanceof Error ? e.message : "No se pudo enviar";
       toast.error(
         msg === "conversation_closed"
-          ? "La conversación está cerrada. Enviá una plantilla para reabrirla."
+          ? "La conversación está cerrada. Envía una plantilla para reabrirla."
           : msg === "owned_by_other"
-            ? "Este chat lo tomó otro agente. Pedí que te lo traspasen para responder."
+            ? "Este chat lo tomó otro agente. Pide que te lo traspasen para responder."
             : msg,
       );
     }
@@ -479,8 +496,7 @@ export function ConversationThread({ conversationId }: { conversationId: string 
   // "Escribiendo…" — typing entrante (IG/Messenger; WhatsApp no lo emite). El
   // poll de useConversation lo refresca; expira solo cuando pasa typingUntil.
   const isTyping =
-    !!conversation.typingUntil &&
-    new Date(conversation.typingUntil).getTime() > Date.now();
+    !!conversation.typingUntil && new Date(conversation.typingUntil).getTime() > Date.now();
   const channelLine = `${CH_LABEL[conversation.channel] || conversation.channel}${
     conversation.ml ? ` · ${conversation.ml.kind === "question" ? "Pregunta" : "Post-venta"}` : ""
   }`;
@@ -517,7 +533,10 @@ export function ConversationThread({ conversationId }: { conversationId: string 
             <div className="trunc" style={{ fontWeight: 750, fontSize: 15 }}>
               {name}
             </div>
-            <div className="row gap6" style={{ fontSize: 12, color: "var(--text-3)", alignItems: "center", minWidth: 0 }}>
+            <div
+              className="row gap6"
+              style={{ fontSize: 12, color: "var(--text-3)", alignItems: "center", minWidth: 0 }}
+            >
               <Pill tone={stateTone}>{stateLabel}</Pill>
               <span className="trunc">{channelLine}</span>
             </div>
@@ -531,7 +550,9 @@ export function ConversationThread({ conversationId }: { conversationId: string 
             icon="phone"
             onClick={callContact}
             disabled={!conversation.phone}
-            title={conversation.phone ? `Llamar a ${conversation.phone}` : "Sin teléfono para llamar"}
+            title={
+              conversation.phone ? `Llamar a ${conversation.phone}` : "Sin teléfono para llamar"
+            }
           />
           <Btn
             variant="ghost"
@@ -580,7 +601,7 @@ export function ConversationThread({ conversationId }: { conversationId: string 
                     onClick={() => {
                       setMenuOpen(false);
                       assign.mutate({ conversationId, assignee: "agent" });
-                      toast.success("Tomaste el chat — ahora lo atendés vos");
+                      toast.success("Tomaste el chat — ahora lo atiendes tú");
                     }}
                     style={menuItemStyle}
                   >
@@ -732,13 +753,16 @@ export function ConversationThread({ conversationId }: { conversationId: string 
           /* Ventana de 24h vencida o chat cerrado (WhatsApp): solo plantillas. */
           <div className="col gap10" style={{ padding: "2px 2px" }}>
             <div className="row gap8" style={{ alignItems: "flex-start" }}>
-              <span className="card__ico" style={{ ["--_c" as string]: "var(--gold)", flex: "0 0 auto" }}>
+              <span
+                className="card__ico"
+                style={{ ["--_c" as string]: "var(--gold)", flex: "0 0 auto" }}
+              >
                 <Icon name="wa" size={15} />
               </span>
               <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--text-2)" }}>
                 {closed
-                  ? "Conversación cerrada. Fuera de la ventana de 24h de WhatsApp solo podés enviar plantillas aprobadas (promociones, reactivación…)."
-                  : "Pasaron más de 24h desde el último mensaje del cliente. Por la política de WhatsApp solo podés enviar una plantilla aprobada para reabrir la conversación."}
+                  ? "Conversación cerrada. Fuera de la ventana de 24h de WhatsApp solo puedes enviar plantillas aprobadas (promociones, reactivación…)."
+                  : "Pasaron más de 24h desde el último mensaje del cliente. Por la política de WhatsApp solo puedes enviar una plantilla aprobada para reabrir la conversación."}
               </div>
             </div>
             <div className="row gap8">
@@ -753,7 +777,10 @@ export function ConversationThread({ conversationId }: { conversationId: string 
         ) : closedBlocked ? (
           /* IG/Messenger cerrado: sin plantillas → reabre solo el cliente. */
           <div className="row gap8" style={{ alignItems: "flex-start", padding: "2px 2px" }}>
-            <span className="card__ico" style={{ ["--_c" as string]: "var(--text-3)", flex: "0 0 auto" }}>
+            <span
+              className="card__ico"
+              style={{ ["--_c" as string]: "var(--text-3)", flex: "0 0 auto" }}
+            >
               <Icon name="checkCircle" size={15} />
             </span>
             <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--text-2)" }}>
@@ -770,161 +797,161 @@ export function ConversationThread({ conversationId }: { conversationId: string 
           </div>
         ) : (
           <>
-        <div className="composer__box" style={{ alignItems: "flex-end" }}>
-          <input
-            ref={fileRef}
-            type="file"
-            hidden
-            accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleAttach(f);
-              e.target.value = "";
-            }}
-          />
-          <Btn
-            variant="quiet"
-            size="sm"
-            icon="paperclip"
-            title="Adjuntar archivo (imagen, PDF, audio…)"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            style={{ flex: "0 0 auto" }}
-          />
-          {isWhatsApp && (
-            <Btn
-              variant="quiet"
-              size="sm"
-              icon="fileText"
-              title="Enviar plantilla de WhatsApp"
-              onClick={() => setTplOpen(true)}
-              style={{ flex: "0 0 auto" }}
-            />
-          )}
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              // En comentarios NO auto-enviamos con Enter (evita publicar en
-              // público sin querer); el agente elige público vs privado.
-              if (e.key === "Enter" && !e.shiftKey && !isComment) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            placeholder={
-              closed
-                ? "Reabrir respondiendo…"
-                : isComment
-                  ? "Escribe tu respuesta al comentario…"
-                  : "Escribe una respuesta…  (Enter para enviar)"
-            }
-            rows={1}
-            style={{
-              flex: 1,
-              resize: "none",
-              maxHeight: 120,
-              border: "none",
-              background: "none",
-              outline: "none",
-              padding: 0,
-              fontSize: 14,
-              color: "var(--text-1)",
-              fontFamily: "inherit",
-              lineHeight: 1.4,
-            }}
-          />
-          <Btn
-            variant="quiet"
-            size="sm"
-            icon="sparkle"
-            title="Sugerir respuesta con IA (próximamente)"
-            onClick={() => toast("Sugerir respuesta con IA llega pronto.")}
-            style={{ flex: "0 0 auto" }}
-          />
-          {isComment ? (
-            <div className="row gap6" style={{ flex: "0 0 auto" }}>
+            <div className="composer__box" style={{ alignItems: "flex-end" }}>
+              <input
+                ref={fileRef}
+                type="file"
+                hidden
+                accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleAttach(f);
+                  e.target.value = "";
+                }}
+              />
               <Btn
-                variant="soft"
+                variant="quiet"
                 size="sm"
-                icon="chat"
-                onClick={() => runComment("public")}
-                disabled={replyComment.isPending || !text.trim()}
-                title="Responder EN PÚBLICO al comentario (visible para todos)"
-              >
-                {replyComment.isPending ? "…" : "Público"}
-              </Btn>
-              <Btn
-                variant="primary"
-                size="sm"
-                icon="send"
-                onClick={() => runComment("dm")}
-                disabled={commentToDm.isPending || !text.trim() || conversation.dmSent}
-                title={
-                  conversation.dmSent
-                    ? "Ya se pasó a privado (Meta permite un solo DM por comentario)"
-                    : "Pasar a privado: enviar un DM al autor del comentario"
-                }
-              >
-                {commentToDm.isPending ? "…" : conversation.dmSent ? "DM enviado" : "Privado"}
-              </Btn>
-            </div>
-          ) : (
-            <div className="row gap6" style={{ flex: "0 0 auto" }}>
+                icon="paperclip"
+                title="Adjuntar archivo (imagen, PDF, audio…)"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                style={{ flex: "0 0 auto" }}
+              />
               {isWhatsApp && (
                 <Btn
-                  variant="soft"
+                  variant="quiet"
                   size="sm"
-                  icon="grid"
-                  onClick={() => setListOpen(true)}
-                  title="Enviar un menú de opciones (lista interactiva de WhatsApp)"
-                >
-                  Lista
-                </Btn>
+                  icon="fileText"
+                  title="Enviar plantilla de WhatsApp"
+                  onClick={() => setTplOpen(true)}
+                  style={{ flex: "0 0 auto" }}
+                />
               )}
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  // En comentarios NO auto-enviamos con Enter (evita publicar en
+                  // público sin querer); el agente elige público vs privado.
+                  if (e.key === "Enter" && !e.shiftKey && !isComment) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                placeholder={
+                  closed
+                    ? "Reabrir respondiendo…"
+                    : isComment
+                      ? "Escribe tu respuesta al comentario…"
+                      : "Escribe una respuesta…  (Enter para enviar)"
+                }
+                rows={1}
+                style={{
+                  flex: 1,
+                  resize: "none",
+                  maxHeight: 120,
+                  border: "none",
+                  background: "none",
+                  outline: "none",
+                  padding: 0,
+                  fontSize: 14,
+                  color: "var(--text-1)",
+                  fontFamily: "inherit",
+                  lineHeight: 1.4,
+                }}
+              />
               <Btn
-                variant="primary"
+                variant="quiet"
                 size="sm"
-                icon="send"
-                onClick={send}
-                disabled={reply.isPending || !text.trim()}
-                title="Enviar"
-              >
-                {reply.isPending ? "Enviando…" : "Enviar"}
-              </Btn>
+                icon="sparkle"
+                title="Sugerir respuesta con IA (próximamente)"
+                onClick={() => toast("Sugerir respuesta con IA llega pronto.")}
+                style={{ flex: "0 0 auto" }}
+              />
+              {isComment ? (
+                <div className="row gap6" style={{ flex: "0 0 auto" }}>
+                  <Btn
+                    variant="soft"
+                    size="sm"
+                    icon="chat"
+                    onClick={() => runComment("public")}
+                    disabled={replyComment.isPending || !text.trim()}
+                    title="Responder EN PÚBLICO al comentario (visible para todos)"
+                  >
+                    {replyComment.isPending ? "…" : "Público"}
+                  </Btn>
+                  <Btn
+                    variant="primary"
+                    size="sm"
+                    icon="send"
+                    onClick={() => runComment("dm")}
+                    disabled={commentToDm.isPending || !text.trim() || conversation.dmSent}
+                    title={
+                      conversation.dmSent
+                        ? "Ya se pasó a privado (Meta permite un solo DM por comentario)"
+                        : "Pasar a privado: enviar un DM al autor del comentario"
+                    }
+                  >
+                    {commentToDm.isPending ? "…" : conversation.dmSent ? "DM enviado" : "Privado"}
+                  </Btn>
+                </div>
+              ) : (
+                <div className="row gap6" style={{ flex: "0 0 auto" }}>
+                  {isWhatsApp && (
+                    <Btn
+                      variant="soft"
+                      size="sm"
+                      icon="grid"
+                      onClick={() => setListOpen(true)}
+                      title="Enviar un menú de opciones (lista interactiva de WhatsApp)"
+                    >
+                      Lista
+                    </Btn>
+                  )}
+                  <Btn
+                    variant="primary"
+                    size="sm"
+                    icon="send"
+                    onClick={send}
+                    disabled={reply.isPending || !text.trim()}
+                    title="Enviar"
+                  >
+                    {reply.isPending ? "Enviando…" : "Enviar"}
+                  </Btn>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Respuestas rápidas — al click rellenan el textarea. */}
-        {!closed && (
-          <div className="row gap8" style={{ marginTop: 9, flexWrap: "wrap" }}>
-            <span className="dim" style={{ fontSize: 11.5 }}>
-              Respuestas rápidas:
-            </span>
-            {QUICK_REPLIES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className="pill pill--outline"
-                style={{ cursor: "pointer" }}
-                onClick={() => setText(s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
+            {/* Respuestas rápidas — al click rellenan el textarea. */}
+            {!closed && (
+              <div className="row gap8" style={{ marginTop: 9, flexWrap: "wrap" }}>
+                <span className="dim" style={{ fontSize: 11.5 }}>
+                  Respuestas rápidas:
+                </span>
+                {QUICK_REPLIES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="pill pill--outline"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setText(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
 
-        <div className="dim" style={{ fontSize: 10.5, marginTop: 8 }}>
-          {isComment
-            ? "“Público” responde en el hilo del comentario; “Privado” abre un DM al autor (1 vez por comentario, ventana de Meta)."
-            : conversation.channel === "mercadolibre"
-              ? conversation.ml?.kind === "question"
-                ? "La respuesta se publica como respuesta a la pregunta en Mercado Libre."
-                : "La respuesta se envía por la mensajería post-venta de Mercado Libre."
-              : "La respuesta se envía por la Graph API de Meta al remitente."}
-        </div>
+            <div className="dim" style={{ fontSize: 10.5, marginTop: 8 }}>
+              {isComment
+                ? "“Público” responde en el hilo del comentario; “Privado” abre un DM al autor (1 vez por comentario, ventana de Meta)."
+                : conversation.channel === "mercadolibre"
+                  ? conversation.ml?.kind === "question"
+                    ? "La respuesta se publica como respuesta a la pregunta en Mercado Libre."
+                    : "La respuesta se envía por la mensajería post-venta de Mercado Libre."
+                  : "La respuesta se envía por la Graph API de Meta al remitente."}
+            </div>
           </>
         )}
       </div>
@@ -1053,7 +1080,13 @@ export function ConversationThread({ conversationId }: { conversationId: string 
           <div
             className="card card--pop"
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 460, maxWidth: "94vw", maxHeight: "80vh", display: "flex", flexDirection: "column" }}
+            style={{
+              width: 460,
+              maxWidth: "94vw",
+              maxHeight: "80vh",
+              display: "flex",
+              flexDirection: "column",
+            }}
           >
             <div className="card__head">
               <div className="card__title">
@@ -1072,7 +1105,10 @@ export function ConversationThread({ conversationId }: { conversationId: string 
                   Cargando plantillas…
                 </div>
               ) : templates.length === 0 ? (
-                <div className="dim" style={{ padding: 16, textAlign: "center", fontSize: 12.5, lineHeight: 1.5 }}>
+                <div
+                  className="dim"
+                  style={{ padding: 16, textAlign: "center", fontSize: 12.5, lineHeight: 1.5 }}
+                >
                   No hay plantillas aprobadas. Créalas en Configuración → Plantillas de WhatsApp.
                 </div>
               ) : (
@@ -1095,7 +1131,10 @@ export function ConversationThread({ conversationId }: { conversationId: string 
                     >
                       <span style={{ minWidth: 0 }}>
                         <b style={{ fontSize: 13 }}>{t.name}</b>
-                        <div className="dim trunc" style={{ fontSize: 11.5, marginTop: 2, maxWidth: 320 }}>
+                        <div
+                          className="dim trunc"
+                          style={{ fontSize: 11.5, marginTop: 2, maxWidth: 320 }}
+                        >
                           {t.body || t.bodyText || t.category || "Plantilla HSM"}
                         </div>
                       </span>
@@ -1114,10 +1153,7 @@ export function ConversationThread({ conversationId }: { conversationId: string 
 
       {/* Tipificar la conversación — misma taxonomía que el wrap-up de voz. */}
       {typifyOpen && (
-        <ConversationTypifyModal
-          conversation={conversation}
-          onClose={() => setTypifyOpen(false)}
-        />
+        <ConversationTypifyModal conversation={conversation} onClose={() => setTypifyOpen(false)} />
       )}
 
       {/* Traspasar / derivar el chat a otro agente (ownership). */}
@@ -1130,7 +1166,13 @@ export function ConversationThread({ conversationId }: { conversationId: string 
           <div
             className="card card--pop"
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 420, maxWidth: "94vw", maxHeight: "80vh", display: "flex", flexDirection: "column" }}
+            style={{
+              width: 420,
+              maxWidth: "94vw",
+              maxHeight: "80vh",
+              display: "flex",
+              flexDirection: "column",
+            }}
           >
             <div className="card__head">
               <div className="card__title">
@@ -1145,7 +1187,7 @@ export function ConversationThread({ conversationId }: { conversationId: string 
             </div>
             <div className="card__pad" style={{ overflowY: "auto" }}>
               <div className="dim" style={{ fontSize: 12, marginBottom: 10, lineHeight: 1.5 }}>
-                Elegí a quién derivar el chat. Le aparecerá en su bandeja y saldrá de la tuya.
+                Elige a quién derivar el chat. Le aparecerá en su bandeja y saldrá de la tuya.
               </div>
               {agentsToShow.length === 0 ? (
                 <div className="dim" style={{ padding: 16, textAlign: "center", fontSize: 12.5 }}>

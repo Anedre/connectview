@@ -184,7 +184,7 @@ async function findChatContactIds(phone: string): Promise<{
         // Channel match must be case/space-insensitive: distintos tenants
         // ingieren el CTR con "CHAT" / "chat" / "Chat" (y a veces la clave es
         // `Channel`). El badge (useLeadOverview) ya normaliza con toUpperCase,
-        // así que si acá comparábamos `=== "CHAT"` exacto, el hilo encontraba 0
+        // así que si aquí comparábamos `=== "CHAT"` exacto, el hilo encontraba 0
         // mientras el badge contaba N → "sin mensajes" falso. (#grabaciones)
         .filter(
           (ctr) =>

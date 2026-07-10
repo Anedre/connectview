@@ -81,7 +81,7 @@ export function FlowsPopover({
           flowName: f.name,
           cta: f.cta,
           screen: f.screen,
-          bodyText: `Completá el formulario "${f.name}" para continuar 👉`,
+          bodyText: `Completa el formulario "${f.name}" para continuar 👉`,
         }),
       });
       const d = await r.json();
@@ -135,8 +135,15 @@ export function FlowsPopover({
             Formularios · WhatsApp Flows
           </div>
           {flows.length === 0 ? (
-            <div style={{ padding: "10px 10px 12px", fontSize: 12, color: "var(--text-2)", maxWidth: 260 }}>
-              No hay formularios configurados. Registrá tus Flows (id + nombre) en{" "}
+            <div
+              style={{
+                padding: "10px 10px 12px",
+                fontSize: 12,
+                color: "var(--text-2)",
+                maxWidth: 260,
+              }}
+            >
+              No hay formularios configurados. Registra tus Flows (id + nombre) en{" "}
               <b>Configuración → Integraciones → WhatsApp</b>.
             </div>
           ) : (

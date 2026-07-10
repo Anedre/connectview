@@ -57,11 +57,8 @@ interface UserAttrs {
 }
 
 async function getAttrs(username: string): Promise<UserAttrs> {
-  const u = await idp.send(
-    new AdminGetUserCommand({ UserPoolId: POOL_ID, Username: username })
-  );
-  const pick = (n: string) =>
-    u.UserAttributes?.find((a: AttributeType) => a.Name === n)?.Value;
+  const u = await idp.send(new AdminGetUserCommand({ UserPoolId: POOL_ID, Username: username }));
+  const pick = (n: string) => u.UserAttributes?.find((a: AttributeType) => a.Name === n)?.Value;
   return {
     tenantId: pick("custom:tenantId"),
     assigned: pick("custom:connectAssigned"),
@@ -75,7 +72,7 @@ async function setAttrs(username: string, attrs: AttributeType[]): Promise<void>
       UserPoolId: POOL_ID,
       Username: username,
       UserAttributes: attrs,
-    })
+    }),
   );
 }
 
@@ -126,9 +123,7 @@ export const handler = async (event: FnEvent) => {
       // Asignar. Si la confirmación previa ya no coincide con la nueva
       // asignación, la borramos → el agente tendrá que re-confirmar con su login.
       const keepConfirmed = target.confirmed && target.confirmed === connectUser;
-      const attrs: AttributeType[] = [
-        { Name: "custom:connectAssigned", Value: connectUser },
-      ];
+      const attrs: AttributeType[] = [{ Name: "custom:connectAssigned", Value: connectUser }];
       if (!keepConfirmed) attrs.push({ Name: "custom:connectUser", Value: "" });
       await setAttrs(targetSub, attrs);
       return resp(200, {
@@ -154,13 +149,13 @@ export const handler = async (event: FnEvent) => {
   }
   if (!mine.assigned) {
     return resp(409, {
-      error: "No tenés un agente asignado todavía. Pedile a tu administrador que te asigne uno.",
+      error: "No tienes un agente asignado todavía. Pídele a tu administrador que te asigne uno.",
       code: "no_assignment",
     });
   }
   if (!connectUser || connectUser !== mine.assigned) {
     return resp(409, {
-      error: `Entraste a Connect como "${connectUser || "?"}", pero tu admin te asignó "${mine.assigned}". No coincide — avisale a tu admin.`,
+      error: `Entraste a Connect como "${connectUser || "?"}", pero tu admin te asignó "${mine.assigned}". No coincide — avísale a tu admin.`,
       code: "mismatch",
       assigned: mine.assigned,
       loggedInAs: connectUser,

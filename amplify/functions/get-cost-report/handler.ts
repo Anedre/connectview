@@ -391,7 +391,7 @@ export const handler: Handler = async (event: any) => {
     real: waReal,
     note: meta.wabaId
       ? "Real = costo de Meta por conversación (todas las categorías) del número conectado."
-      : "Conectá tu número de Meta para ver el cobro real de Meta.",
+      : "Conecta tu número de Meta para ver el cobro real de Meta.",
   });
 
   // ── Amazon Connect · WhatsApp/omnicanal saliente (mensajes) ───────────────

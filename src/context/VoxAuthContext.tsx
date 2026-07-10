@@ -89,7 +89,7 @@ I18n.setLanguage("es");
  * VoxAuthContext — capa de identidad de Vox (Cognito), el PORTÓN del SaaS.
  *
  * Es ADITIVA: envuelve la app por fuera. El SSO de Connect y todo lo de adentro
- * siguen igual (el Agent Desktop usa su CCP). Acá resolvemos:
+ * siguen igual (el Agent Desktop usa su CCP). Aquí resolvemos:
  *   · login propio de Vox (Authenticator de Amplify)
  *   · la identidad + tenantId (de los claims del ID token)
  *   · provisión de organización en el primer login (si no hay tenantId)

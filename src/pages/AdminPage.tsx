@@ -146,11 +146,18 @@ export function AdminPage() {
               variant="ghost"
               size="sm"
               icon="external"
-              onClick={() => window.open(`${instanceUrl}/connect/users`, "_blank")}
+              disabled={!instanceUrl}
+              onClick={() => instanceUrl && window.open(`${instanceUrl}/connect/users`, "_blank")}
             >
               Abrir en Connect
             </Btn>
-            <Btn variant="primary" size="sm" icon="refresh" onClick={() => fetchUsers()} disabled={loading}>
+            <Btn
+              variant="primary"
+              size="sm"
+              icon="refresh"
+              onClick={() => fetchUsers()}
+              disabled={loading}
+            >
               Actualizar
             </Btn>
           </div>
@@ -181,7 +188,7 @@ export function AdminPage() {
               <TeamManager />
 
               {/* Agentes de Amazon Connect (telefonía) — capa separada: los que
-                  toman llamadas/chats. Acá solo se ven; se crean/gestionan en la
+                  toman llamadas/chats. Aquí solo se ven; se crean/gestionan en la
                   consola de Connect. La separación enseña el modelo de 2 capas. */}
               <div style={{ borderTop: "1px solid var(--border-1)", paddingTop: 18, marginTop: 4 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-2)" }}>
@@ -197,13 +204,37 @@ export function AdminPage() {
                 className="grid"
                 style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 16 }}
               >
-                <Stat icon="users" color="var(--accent)" label="Usuarios totales" value={<Num value={stats.total} />} sub="en Amazon Connect" />
+                <Stat
+                  icon="users"
+                  color="var(--accent)"
+                  label="Usuarios totales"
+                  value={<Num value={stats.total} />}
+                  sub="en Amazon Connect"
+                />
                 {/* Mantenemos el español puro para alinear con el resto
                     de la app. "Managers" → "Supervisores" para reflejar el
                     rol CallCenterManager del Connect security profile. */}
-                <Stat icon="shield" color="var(--coral)" label="Administradores" value={<Num value={stats.admins} />} sub="perfil Admin" />
-                <Stat icon="headset" color="var(--cyan)" label="Supervisores" value={<Num value={stats.managers} />} sub="CallCenterManager" />
-                <Stat icon="phone" color="var(--green)" label="Agentes" value={<Num value={stats.agents} />} sub="perfil Agent" />
+                <Stat
+                  icon="shield"
+                  color="var(--coral)"
+                  label="Administradores"
+                  value={<Num value={stats.admins} />}
+                  sub="perfil Admin"
+                />
+                <Stat
+                  icon="headset"
+                  color="var(--cyan)"
+                  label="Supervisores"
+                  value={<Num value={stats.managers} />}
+                  sub="CallCenterManager"
+                />
+                <Stat
+                  icon="phone"
+                  color="var(--green)"
+                  label="Agentes"
+                  value={<Num value={stats.agents} />}
+                  sub="perfil Agent"
+                />
               </div>
               <div className="muted" style={{ fontSize: 11.5, marginTop: -4 }}>
                 Un mismo usuario puede tener varios perfiles, por lo que la suma de
@@ -230,7 +261,9 @@ export function AdminPage() {
                   right={
                     <button
                       className="btn btn--sm"
+                      disabled={!instanceUrl}
                       onClick={() =>
+                        instanceUrl &&
                         window.open(`${instanceUrl}/connect/users`, "_blank", "noopener")
                       }
                     >
@@ -348,6 +381,7 @@ export function AdminPage() {
           {section === "security" && <SecurityManager />}
 
           {section !== "users" &&
+            section !== "segments" &&
             section !== "tipificacion" &&
             section !== "catalogos" &&
             section !== "knowledge" &&
@@ -377,7 +411,9 @@ export function AdminPage() {
                   <button
                     className="btn btn--ghost btn--sm"
                     style={{ marginTop: 14 }}
-                    onClick={() => window.open(`${instanceUrl}/connect`, "_blank", "noopener")}
+                    onClick={() =>
+                      instanceUrl && window.open(`${instanceUrl}/connect`, "_blank", "noopener")
+                    }
                   >
                     Abrir consola de Connect <Icon name="arrowRight" size={12} />
                   </button>

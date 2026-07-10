@@ -37,7 +37,7 @@ export function ProgramSwitcher() {
           !needle ||
           p.name.toLowerCase().includes(needle) ||
           p.code.toLowerCase().includes(needle) ||
-          (p.faculty || "").toLowerCase().includes(needle)
+          (p.faculty || "").toLowerCase().includes(needle),
       );
     const m = new Map<string, Program[]>();
     for (const p of live) {
@@ -73,7 +73,15 @@ export function ProgramSwitcher() {
         <div className="tbx__menu" style={{ minWidth: 300, maxHeight: 440, overflow: "auto" }}>
           <div className="tbx__menu-head">Programa activo</div>
 
-          <div style={{ padding: "6px 8px", position: "sticky", top: 0, background: "var(--bg-1)", zIndex: 1 }}>
+          <div
+            style={{
+              padding: "6px 8px",
+              position: "sticky",
+              top: 0,
+              background: "var(--bg-1)",
+              zIndex: 1,
+            }}
+          >
             <div
               style={{
                 display: "flex",
@@ -107,7 +115,15 @@ export function ProgramSwitcher() {
             style={{ margin: 0 }}
             onClick={() => pick("all")}
           >
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent-cyan)", flex: "0 0 auto" }} />
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "var(--accent-cyan)",
+                flex: "0 0 auto",
+              }}
+            />
             <span className="sb__label">Todos los programas</span>
             {activeProgramId === "all" && <Check size={12} />}
           </button>
@@ -116,14 +132,22 @@ export function ProgramSwitcher() {
             style={{ margin: 0 }}
             onClick={() => pick("none")}
           >
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--text-3)", flex: "0 0 auto" }} />
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "var(--text-3)",
+                flex: "0 0 auto",
+              }}
+            />
             <span className="sb__label">Sin programa</span>
             {activeProgramId === "none" && <Check size={12} />}
           </button>
 
           {programs.length === 0 && (
             <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-3)" }}>
-              No hay programas aún. Creá uno en <strong>Crecimiento › Programas</strong>.
+              No hay programas aún. Crea uno en <strong>Crecimiento › Programas</strong>.
             </div>
           )}
 
@@ -142,9 +166,33 @@ export function ProgramSwitcher() {
                     onClick={() => pick(p.programId)}
                     title={p.code}
                   >
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: STATUS_DOT[p.status], flex: "0 0 auto" }} />
-                    <span className="sb__label" style={{ display: "flex", flexDirection: "column", lineHeight: 1.2, overflow: "hidden" }}>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: STATUS_DOT[p.status],
+                        flex: "0 0 auto",
+                      }}
+                    />
+                    <span
+                      className="sb__label"
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        lineHeight: 1.2,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {p.name}
+                      </span>
                       <span style={{ fontSize: 11, color: "var(--text-3)" }}>
                         {p.code}
                         {typeof p.leadCount === "number" ? ` · ${p.leadCount} leads` : ""}
@@ -159,7 +207,9 @@ export function ProgramSwitcher() {
         </div>
       )}
 
-      {open && <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />}
+      {open && (
+        <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
+      )}
     </div>
   );
 }

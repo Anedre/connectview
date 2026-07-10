@@ -55,7 +55,10 @@ function Metric({ label, value, tone }: { label: string; value: React.ReactNode;
       >
         {label}
       </div>
-      <div className="tnum" style={{ fontSize: 15, fontWeight: 750, marginTop: 2, color: tone || "var(--text-1)" }}>
+      <div
+        className="tnum"
+        style={{ fontSize: 15, fontWeight: 750, marginTop: 2, color: tone || "var(--text-1)" }}
+      >
         {value}
       </div>
     </div>
@@ -183,7 +186,12 @@ export function CampaignsPage() {
             <Btn variant="ghost" size="sm" icon="megaphone">
               Plantillas
             </Btn>
-            <Btn variant="primary" size="sm" icon="plus" onClick={() => navigate("/campaigns/nueva")}>
+            <Btn
+              variant="primary"
+              size="sm"
+              icon="plus"
+              onClick={() => navigate("/campaigns/nueva")}
+            >
               Nueva campaña
             </Btn>
           </div>
@@ -191,7 +199,10 @@ export function CampaignsPage() {
       />
 
       {/* KPI strip — métricas reales agregadas de las campañas. */}
-      <div className="grid" style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 20 }}>
+      <div
+        className="grid"
+        style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 20 }}
+      >
         <Stat
           icon="megaphone"
           color="var(--accent)"
@@ -285,7 +296,7 @@ export function CampaignsPage() {
           (campaigns.length === 0 && !dataPlaneEnabled ? (
             <NotIntegrated
               title="Todavía no integraste tu base de datos"
-              message="Tus campañas y sus contactos se guardan en TU cuenta AWS (BYO Data Plane). Activala en Integraciones para crear y correr campañas."
+              message="Tus campañas y sus contactos se guardan en TU cuenta AWS (BYO Data Plane). Actívala en Integraciones para crear y correr campañas."
               ctaLabel="Conectar base de datos"
               icon={<Icon name="megaphone" size={26} />}
             />
@@ -354,7 +365,9 @@ export function CampaignsPage() {
                           </span>
                           {c.sourcePhoneNumber && <span>{c.sourcePhoneNumber}</span>}
                           {c.createdAt && (
-                            <span>{formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}</span>
+                            <span>
+                              {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -396,10 +409,7 @@ export function CampaignsPage() {
                     </div>
                   </div>
 
-                  <div
-                    className="row between"
-                    style={{ fontSize: 11.5, marginBottom: 5 }}
-                  >
+                  <div className="row between" style={{ fontSize: 11.5, marginBottom: 5 }}>
                     {/* Bug #22/#23 — for finished campaigns "Avance" is
                         misleading; it's really the success rate. */}
                     <span

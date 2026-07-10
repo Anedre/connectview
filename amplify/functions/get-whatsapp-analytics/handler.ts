@@ -5,7 +5,7 @@ import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-sec
  * get-whatsapp-analytics — entrega agregada por plantilla desde Meta (Pilar 4 ·
  * Fase C). Para un número de WhatsApp en modo Meta Cloud API (no anclado a
  * Connect), Meta NO empuja eventos a ARIA, pero SÍ expone analytics por la
- * Graph API. Acá los traemos con el token del tenant:
+ * Graph API. Aquí los traemos con el token del tenant:
  *   message_templates → ids · template_analytics → sent/delivered/read por plantilla.
  *
  * Es la "HSM Shipment Summary" de Chattigo (delivered%, read%) sin tocar el

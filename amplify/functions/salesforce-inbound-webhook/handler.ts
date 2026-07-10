@@ -48,8 +48,7 @@ const CORS: Record<string, string> = { "Content-Type": "application/json" };
 // (legacyClient/legacyDomain). Como el tenant se resuelve del token (real) y el
 // 403 de abajo exige BYO Data Plane, la rama legacy ya NO se alcanza.
 const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 2 });
-const LEGACY_PROFILES_DOMAIN =
-  process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+const LEGACY_PROFILES_DOMAIN = process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
 
 interface InboundLead {
   /** IGNORADO. El tenant se resuelve del token `x-vox-token`, no del body.
@@ -82,8 +81,7 @@ function normalizePhone(raw?: string): string | null {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
-  const method =
-    event?.requestContext?.http?.method || event.httpMethod || "POST";
+  const method = event?.requestContext?.http?.method || event.httpMethod || "POST";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
 
   // Auth per-tenant. Header names arrive lowercased on Function URLs. El tenant
@@ -134,7 +132,7 @@ export const handler: Handler = async (event: any) => {
       undefined,
       legacyProfiles,
       LEGACY_PROFILES_DOMAIN,
-      tenantId
+      tenantId,
     );
     setActiveProfiles(cp.client, cp.domainName);
   }
@@ -150,13 +148,10 @@ export const handler: Handler = async (event: any) => {
     };
   }
 
-  const customerName = [lead.firstName, lead.lastName]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+  const customerName = [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim();
 
   // Atributos extra que viajan al lead/perfil (los keyword-mapeados como
-  // email/empresa los resuelve el hub; acá guardamos la huella de SF).
+  // email/empresa los resuelve el hub; aquí guardamos la huella de SF).
   const attributes: Record<string, string> = {};
   if (lead.status) attributes.sf_lead_status = lead.status;
   if (lead.source) attributes.sf_lead_source = lead.source;
@@ -177,7 +172,7 @@ export const handler: Handler = async (event: any) => {
         source: lead.source || "Salesforce",
         attributes,
       },
-      { origin: "salesforce" } // no re-empuja a SF (anti-loop)
+      { origin: "salesforce" }, // no re-empuja a SF (anti-loop)
     );
     // Registrar el cambio venido de SF en el historial del lead (si hubo cambio real).
     if (result.leadId && result.voxAction !== "unchanged") {
@@ -203,7 +198,13 @@ export const handler: Handler = async (event: any) => {
         await fireAutomation({
           type: "lead_created",
           tenantId,
-          lead: { leadId: result.leadId, phone, name: customerName, stageId, source: lead.source || "Salesforce" },
+          lead: {
+            leadId: result.leadId,
+            phone,
+            name: customerName,
+            stageId,
+            source: lead.source || "Salesforce",
+          },
         });
       } catch {
         /* no romper el inbound sync por una automatización */

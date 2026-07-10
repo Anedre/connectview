@@ -10,8 +10,7 @@ const MOCK_BLOCKS = {
     {
       type: "script",
       title: "Apertura de retención",
-      text:
-        "Entiendo tu preocupación, María. Antes de procesar la cancelación, quiero ofrecerte una opción que muchos clientes en tu situación eligieron y quedaron contentos.",
+      text: "Entiendo tu preocupación, María. Antes de procesar la cancelación, quiero ofrecerte una opción que muchos clientes en tu situación eligieron y quedaron contentos.",
     },
     {
       type: "checklist",
@@ -98,24 +97,16 @@ export function CoachDemoPage() {
       <div>
         <h1 style={{ marginTop: 0 }}>Coach interactivo · demo</h1>
         <p style={{ color: "var(--text-2)", fontSize: 14, lineHeight: 1.6 }}>
-          Esta página monta el AICoachPanel con bloques mock para verificar
-          cada tipo de renderer. Los CTAs llaman a endpoints reales — el
-          de programar callback va a hacer una llamada de verdad si lo
-          tocás. El de form persiste en notas del contacto vía
-          save-agent-notes.
+          Esta página monta el AICoachPanel con bloques mock para verificar cada tipo de renderer.
+          Los CTAs llaman a endpoints reales — el de programar callback va a hacer una llamada de
+          verdad si lo tocas. El de form persiste en notas del contacto vía save-agent-notes.
         </p>
         <p style={{ color: "var(--text-3)", fontSize: 12, marginTop: 16 }}>
           Tipos cubiertos: callout · script · checklist · table · action · form
         </p>
       </div>
-      <div
-        className="call__panel"
-        style={{ minHeight: "70vh" }}
-      >
-        <div
-          className="call__panel-head"
-          style={{ padding: "12px 14px", gap: 8 }}
-        >
+      <div className="call__panel" style={{ minHeight: "70vh" }}>
+        <div className="call__panel-head" style={{ padding: "12px 14px", gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>Coach · Claude</span>
           <span
             style={{
