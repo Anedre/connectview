@@ -48,15 +48,19 @@ const PARTICIPANT_STYLES: Record<
   string,
   { align: "left" | "right" | "center"; bg: string; fg: string; label: string }
 > = {
+  // Convención unificada con WhatsAppThreadView / RecordingsShowcase / Email: el
+  // negocio (AGENT) va a la DERECHA con burbuja de acento ("yo"); el CLIENTE a la
+  // IZQUIERDA, neutra. Antes estaba espejado (cliente a la derecha en verde), así
+  // que el mismo cliente aparecía en lados opuestos según la vista.
   CUSTOMER: {
-    align: "right",
-    bg: "var(--accent-green-soft, #d9fdd3)",
+    align: "left",
+    bg: "var(--bg-1, #ffffff)",
     fg: "var(--text-1, #111b21)",
     label: "Cliente",
   },
   AGENT: {
-    align: "left",
-    bg: "var(--bg-1, #ffffff)",
+    align: "right",
+    bg: "var(--accent-green-soft, #d9fdd3)",
     fg: "var(--text-1, #111b21)",
     label: "Agente",
   },
@@ -78,22 +82,18 @@ const EVENT_LABELS: Record<string, string> = {
   "participant.joined": "se unió al chat",
   "participant.left": "salió del chat",
   "chat.ended": "Chat terminado",
-  "transferred": "Transferencia",
-  "typing": "Escribiendo…",
-  "read": "Leído",
-  "delivered": "Entregado",
-  "unknown": "Evento",
+  transferred: "Transferencia",
+  typing: "Escribiendo…",
+  read: "Leído",
+  delivered: "Entregado",
+  unknown: "Evento",
 };
 
 function localizeEvent(kind: string, participant: string): string {
   const label = EVENT_LABELS[kind] || `Evento · ${kind}`;
   if (kind.startsWith("participant.") && participant !== "SYSTEM") {
     const who =
-      participant === "AGENT"
-        ? "Agente"
-        : participant === "CUSTOMER"
-        ? "Cliente"
-        : participant;
+      participant === "AGENT" ? "Agente" : participant === "CUSTOMER" ? "Cliente" : participant;
     return `${who} ${label}`;
   }
   return label;
@@ -168,12 +168,10 @@ function AttachmentBubble({
   // Prefer the chat-provided AttachmentName ("SUNAT - Menú SOL.pdf") over
   // the S3-key-derived fileName ("20260223T20:50_UTC.pdf") — the original
   // chat name is always human-readable, the derived one is just a path tail.
-  const name =
-    ref_.name ||
-    attachment?.fileName ||
-    ref_.attachmentId.slice(0, 8) ||
-    "archivo";
-  const ct = ref_.contentType || (attachment?.fileStatus === "APPROVED" ? undefined : attachment?.fileStatus);
+  const name = ref_.name || attachment?.fileName || ref_.attachmentId.slice(0, 8) || "archivo";
+  const ct =
+    ref_.contentType ||
+    (attachment?.fileStatus === "APPROVED" ? undefined : attachment?.fileStatus);
   const url = attachment?.url || null;
   const sizeLabel = fmtFileSize(attachment?.fileSizeBytes);
 
@@ -368,11 +366,7 @@ function InteractiveMessage({ raw }: { raw: string }) {
   );
 }
 
-export function ChatTranscriptView({
-  segments,
-  attachments,
-  dense,
-}: ChatTranscriptViewProps) {
+export function ChatTranscriptView({ segments, attachments, dense }: ChatTranscriptViewProps) {
   // Resolve attachments by id so each bubble can grab its presigned URL.
   const attachmentById = useMemo(() => {
     const map = new Map<string, ChatAttachment>();
@@ -438,8 +432,7 @@ export function ChatTranscriptView({
             </div>
           )}
           {g.segments.map((s, i) => {
-            const style =
-              PARTICIPANT_STYLES[s.participant] || PARTICIPANT_STYLES.UNKNOWN;
+            const style = PARTICIPANT_STYLES[s.participant] || PARTICIPANT_STYLES.UNKNOWN;
 
             if (s.type === "event") {
               return (
@@ -463,8 +456,8 @@ export function ChatTranscriptView({
               style.align === "right"
                 ? "flex-end"
                 : style.align === "center"
-                ? "center"
-                : "flex-start";
+                  ? "center"
+                  : "flex-start";
 
             // Render attachment bubble
             if (s.type === "attachment" && s.attachmentRef) {
@@ -482,17 +475,11 @@ export function ChatTranscriptView({
                     boxShadow: "0 1px 0.5px rgba(0,0,0,0.13)",
                   }}
                 >
-                  <div
-                    className="muted"
-                    style={{ fontSize: 10, marginBottom: 4 }}
-                  >
+                  <div className="muted" style={{ fontSize: 10, marginBottom: 4 }}>
                     {style.label}
                   </div>
                   <AttachmentBubble ref_={s.attachmentRef} attachment={att} />
-                  <div
-                    className="muted"
-                    style={{ fontSize: 10, marginTop: 4, textAlign: "right" }}
-                  >
+                  <div className="muted" style={{ fontSize: 10, marginTop: 4, textAlign: "right" }}>
                     {fmtTime(s.timestamp)}
                   </div>
                 </div>
@@ -501,8 +488,7 @@ export function ChatTranscriptView({
 
             // Regular text/interactive message
             const isInteractive =
-              s.contentType?.includes("interactive") ||
-              s.contentType === "application/json";
+              s.contentType?.includes("interactive") || s.contentType === "application/json";
             return (
               <div
                 key={i}
@@ -518,10 +504,7 @@ export function ChatTranscriptView({
                   wordBreak: "break-word",
                 }}
               >
-                <div
-                  className="muted"
-                  style={{ fontSize: 10, marginBottom: 2 }}
-                >
+                <div className="muted" style={{ fontSize: 10, marginBottom: 2 }}>
                   {style.label}
                 </div>
                 {isInteractive ? (
