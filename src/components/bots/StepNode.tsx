@@ -9,6 +9,7 @@ import {
   type ListRow,
 } from "@/lib/botFlow";
 import { FLOW_ICONS } from "@/components/bots/icons";
+import { branchColor } from "@/components/bots/PlusEdge";
 import { useBuilder } from "@/components/bots/builderCtx";
 
 /**
@@ -213,7 +214,7 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
         <div className="fb-node__outlets">
           {outlets.map((o) => (
             <div key={o.id} className="fb-node__outlet">
-              <span className="fb-node__outlet-dot" style={{ background: accent }} />
+              <span className="fb-node__outlet-dot" style={{ background: branchColor(o.id) }} />
               <span className="fb-node__outlet-label" title={o.label}>
                 {o.label}
               </span>
@@ -221,16 +222,9 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
                 type="source"
                 id={o.id}
                 position={Position.Right}
-                title="Click o arrastra para conectar un paso"
-                style={{
-                  width: 10,
-                  height: 10,
-                  background: accent,
-                  border: "2px solid var(--bg-1)",
-                  right: -5,
-                  top: "50%",
-                  cursor: "pointer",
-                }}
+                className="fb-out-branch"
+                title="Arrastra para conectar este camino"
+                style={{ ["--out-accent" as string]: branchColor(o.id) }}
               />
             </div>
           ))}

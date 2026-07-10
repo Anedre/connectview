@@ -92,25 +92,33 @@ const edgeDefaults = {
 };
 
 /**
- * Auto-layout izquierda→derecha. BFS desde el nodo de inicio: la profundidad de
- * cada nodo = su columna (x), y dentro de la columna se apilan centrados (y).
- * Los nodos no alcanzados van a la última columna. Sin dependencias (dagre/elk).
+ * Auto-layout izquierda→derecha, PROLIJO y consciente de alturas:
+ *  1) Columna = profundidad BFS desde inicio (los inalcanzables, a la última).
+ *  2) Orden dentro de la columna por BARICENTRO de vecinos (barre L→R y R→L)
+ *     → minimiza cruces de conectores para que el flujo se lea claro.
+ *  3) Y por altura MEDIDA de cada tarjeta (nada encimado) + alineación de cada
+ *     paso al promedio de sus padres (los hijos quedan "en línea" con su origen).
+ * Sin dependencias (dagre/elk).
  */
-const COL_GAP = 300;
-const ROW_GAP = 175;
+const COL_GAP = 360; // pitch horizontal (tarjeta 250 + ~110 de aire)
+const GAP_Y = 44; // aire vertical mínimo entre tarjetas apiladas
+const NODE_H_APPROX = 92;
 function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
   const outgoing = new Map<string, string[]>();
-  const indeg = new Map<string, number>();
+  const incoming = new Map<string, string[]>();
   nodes.forEach((n) => {
     outgoing.set(n.id, []);
-    indeg.set(n.id, 0);
+    incoming.set(n.id, []);
   });
   edges.forEach((e) => {
-    if (outgoing.has(e.source) && indeg.has(e.target)) {
+    if (outgoing.has(e.source) && incoming.has(e.target)) {
       outgoing.get(e.source)!.push(e.target);
-      indeg.set(e.target, (indeg.get(e.target) || 0) + 1);
+      incoming.get(e.target)!.push(e.source);
     }
   });
+
+  // (1) Profundidad = columna. BFS desde el inicio; raíces sueltas también en 0.
   const depth = new Map<string, number>();
   const queue: string[] = [];
   const start = nodes.find((n) => (n.data as { kind?: string }).kind === "start");
@@ -119,7 +127,7 @@ function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
     queue.push(start.id);
   }
   nodes.forEach((n) => {
-    if (!depth.has(n.id) && (indeg.get(n.id) || 0) === 0) {
+    if (!depth.has(n.id) && (incoming.get(n.id)?.length ?? 0) === 0) {
       depth.set(n.id, 0);
       queue.push(n.id);
     }
@@ -145,16 +153,71 @@ function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
     if (!cols.has(d)) cols.set(d, []);
     cols.get(d)!.push(n.id);
   });
-  const pos = new Map<string, { x: number; y: number }>();
-  [...cols.keys()]
-    .sort((a, b) => a - b)
-    .forEach((d) => {
-      const ids = cols.get(d)!;
-      ids.forEach((id, i) => {
-        pos.set(id, { x: d * COL_GAP, y: i * ROW_GAP - ((ids.length - 1) * ROW_GAP) / 2 });
+  const colKeys = [...cols.keys()].sort((a, b) => a - b);
+
+  // (2) Orden por baricentro para reducir cruces (varias barridas L→R / R→L).
+  const idxIn = new Map<string, number>();
+  const reindex = () => colKeys.forEach((d) => cols.get(d)!.forEach((id, i) => idxIn.set(id, i)));
+  reindex();
+  for (let pass = 0; pass < 4; pass++) {
+    const ltr = pass % 2 === 0;
+    const sweep = ltr ? colKeys : [...colKeys].reverse();
+    for (const d of sweep) {
+      const neigh = ltr ? incoming : outgoing;
+      const arr = cols.get(d)!;
+      const bary = new Map<string, number>();
+      arr.forEach((id) => {
+        const ns = (neigh.get(id) || [])
+          .map((x) => idxIn.get(x))
+          .filter((v): v is number => v != null);
+        bary.set(id, ns.length ? ns.reduce((a, b) => a + b, 0) / ns.length : idxIn.get(id)!);
       });
+      arr.sort((a, b) => bary.get(a)! - bary.get(b)! || idxIn.get(a)! - idxIn.get(b)!);
+      reindex();
+    }
+  }
+
+  // (3) Y por altura medida: apila la columna y alinea cada nodo a sus padres.
+  const H = (id: string) => byId.get(id)?.measured?.height ?? NODE_H_APPROX;
+  const yc = new Map<string, number>(); // centro vertical de cada nodo
+  colKeys.forEach((d) => {
+    const arr = cols.get(d)!;
+    const total = arr.reduce((s, id) => s + H(id), 0) + GAP_Y * Math.max(0, arr.length - 1);
+    let cur = -total / 2;
+    arr.forEach((id) => {
+      yc.set(id, cur + H(id) / 2);
+      cur += H(id) + GAP_Y;
     });
-  return nodes.map((n) => ({ ...n, position: pos.get(n.id) || n.position }));
+  });
+  for (let pass = 0; pass < 3; pass++) {
+    for (const d of colKeys) {
+      const arr = cols.get(d)!;
+      const want = arr.map((id) => {
+        const ps = (incoming.get(id) || [])
+          .map((p) => yc.get(p))
+          .filter((v): v is number => v != null);
+        return ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : yc.get(id)!;
+      });
+      arr.forEach((id, i) => yc.set(id, want[i]));
+      // Deshacer encimados empujando hacia abajo, preservando el orden.
+      for (let i = 1; i < arr.length; i++) {
+        const prev = arr[i - 1];
+        const curId = arr[i];
+        const minY = yc.get(prev)! + H(prev) / 2 + GAP_Y + H(curId) / 2;
+        if (yc.get(curId)! < minY) yc.set(curId, minY);
+      }
+    }
+  }
+
+  // Recentrar el grafo verticalmente (que no quede cargado hacia abajo).
+  const ys = [...yc.values()];
+  const mid = ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 0;
+
+  return nodes.map((n) => {
+    const d = depth.get(n.id)!;
+    const cy = (yc.get(n.id) ?? 0) - mid;
+    return { ...n, position: { x: d * COL_GAP, y: cy - H(n.id) / 2 } };
+  });
 }
 
 /**
