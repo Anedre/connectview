@@ -8228,6 +8228,32 @@ textarea.vox-field {
   border-color: var(--border-2);
 }
 
+/* Conector de salida "hover-reveal": el nodo queda LIMPIO (sin bolita); al pasar
+   el mouse por el nodo (o al seleccionarlo) aparece un blanco de conexión grande
+   en el borde derecho. Click = agregar paso (onConnectEnd abre el picker),
+   arrastre = conectar. El área de click sigue activa aunque esté invisible. */
+.react-flow__handle.fb-out {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    box-shadow 0.12s;
+}
+.fb-node:hover .react-flow__handle.fb-out,
+.react-flow__node.selected .react-flow__handle.fb-out {
+  background: var(--out-accent, var(--accent, #25b873));
+  box-shadow: 0 0 0 3px var(--bg-1);
+}
+.react-flow__handle.fb-out:hover {
+  box-shadow:
+    0 0 0 3px var(--bg-1),
+    0 0 0 7px color-mix(in srgb, var(--out-accent, #25b873) 28%, transparent);
+}
+
 /* ── Builder toolbar ── */
 .fb-bar {
   display: flex;

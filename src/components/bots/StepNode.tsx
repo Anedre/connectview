@@ -243,16 +243,9 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
           type="source"
           id={bottomOut.id}
           position={Position.Right}
-          title="Click o arrastra para conectar un paso"
-          style={{
-            width: 10,
-            height: 10,
-            background: accent,
-            border: "2px solid var(--bg-1)",
-            right: -5,
-            top: "50%",
-            cursor: "pointer",
-          }}
+          className="fb-out"
+          title="Arrastra para conectar el siguiente paso"
+          style={{ ["--out-accent" as string]: accent }}
         />
       )}
     </div>
