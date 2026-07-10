@@ -7,7 +7,7 @@ import { getApiEndpoints } from "@/lib/api";
 import { useCatalogs } from "@/hooks/useCatalogs";
 import { useCan } from "@/hooks/usePermissions";
 import { useActiveContact } from "@/hooks/useActiveContact";
-import { useProgram } from "@/context/ProgramContext";
+import { useProgramOptional } from "@/context/ProgramContext";
 
 /**
  * CopilotPanel — the global "ARIA Copilot" assistant (Kommo-style floating
@@ -109,14 +109,16 @@ function CopilotPanelInner() {
 
   const loc = useLocation();
   const active = useActiveContact();
-  const { activeProgram } = useProgram();
+  // Opcional: Copilot es un overlay global montado FUERA del ProgramProvider,
+  // así que leemos el programa activo de forma tolerante (null si no hay).
+  const program = useProgramOptional();
 
   // Contexto compacto del agente (pantalla + programa + llamada activa) que se
   // antepone a la pregunta ENVIADA al asistente — responde "sabiendo" dónde está
   // el agente. No se muestra en la burbuja del usuario.
   const buildContext = (): string => {
     const bits: string[] = [`pantalla: ${labelForPath(loc.pathname)}`];
-    if (activeProgram?.name) bits.push(`programa activo: ${activeProgram.name}`);
+    if (program?.activeProgram?.name) bits.push(`programa activo: ${program.activeProgram.name}`);
     if (active) {
       bits.push(
         `contacto activo: ${active.channel}${

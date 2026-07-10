@@ -1,10 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { usePrograms, type Program } from "@/hooks/usePrograms";
 
 /**
@@ -54,7 +48,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       activeProgramId !== "all" && activeProgramId !== "none"
         ? programs.find((p) => p.programId === activeProgramId)
         : undefined,
-    [programs, activeProgramId]
+    [programs, activeProgramId],
   );
 
   const value: ProgramContextValue = {
@@ -76,4 +70,13 @@ export function useProgram(): ProgramContextValue {
   const v = useContext(Ctx);
   if (!v) throw new Error("useProgram must be used within ProgramProvider");
   return v;
+}
+
+/**
+ * Variante que NO lanza si se usa fuera del ProgramProvider — devuelve null.
+ * Para overlays globales (p.ej. CopilotPanel) que viven por encima del provider
+ * y solo quieren leer el programa activo "si existe".
+ */
+export function useProgramOptional(): ProgramContextValue | null {
+  return useContext(Ctx);
 }
