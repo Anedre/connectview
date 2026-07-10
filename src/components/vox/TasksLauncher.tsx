@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ListTodo, X, Plus } from "lucide-react";
-import { useEscapeKey } from "@/hooks/useDropdown";
+import { useClickOutside } from "@/hooks/useDropdown";
 import { COPILOT_ACTION_EVENT } from "@/lib/copilotActions";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,13 +24,15 @@ import { EmptyState, ErrorState } from "@/components/ui/empty-state";
 export function TasksLauncher() {
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const { callbacks, loading, error, refetch, cancel, complete, available } = useCallbacks({
     status: "PENDING",
     pollIntervalSec: 60,
   });
-  // Escape cierra el panel (salvo que esté abierto el modal de crear tarea).
-  useEscapeKey(() => setOpen(false), open && !createOpen);
+  // Cierra al click afuera o con Escape — salvo con el modal de crear tarea abierto
+  // (ahí el click cae fuera del panel pero no debe cerrarlo).
+  useClickOutside(panelRef, () => setOpen(false), open && !createOpen);
 
   // El Copilot puede pedir "crear tarea" (marcador [[do|…|task.new]]) → abre el modal.
   useEffect(() => {
@@ -145,6 +147,8 @@ export function TasksLauncher() {
   return (
     <>
       <div
+        ref={panelRef}
+        className="aria-side-panel-in"
         style={{
           position: "fixed",
           right: 16,

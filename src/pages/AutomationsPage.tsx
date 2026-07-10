@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { SegmentedControl } from "@/components/ui/segmented";
 import { getApiEndpoints } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FeatureCompare, FeatureCompareButton } from "@/components/aria/FeatureCompare";
@@ -591,18 +593,19 @@ export function AutomationsPage() {
                         </option>
                       ))}
                     </select>
-                    <select
-                      className="wf-input wf-input--op"
+                    <SegmentedControl
                       value={c.op}
-                      onChange={(e) => {
+                      onValueChange={(op) => {
                         const conditions = [...conds];
-                        conditions[i] = { ...c, op: e.target.value as RuleCondition["op"] };
+                        conditions[i] = { ...c, op: op as RuleCondition["op"] };
                         setEditing({ ...editing, conditions });
                       }}
-                    >
-                      <option value="eq">es</option>
-                      <option value="neq">no es</option>
-                    </select>
+                      options={[
+                        { value: "eq", label: "es" },
+                        { value: "neq", label: "no es" },
+                      ]}
+                      size="sm"
+                    />
                     {c.field === "stageId" ? (
                       <select
                         className="wf-input"
@@ -1087,36 +1090,12 @@ export function AutomationsPage() {
                       {` · ${r.actions.length} ${r.actions.length === 1 ? "acción" : "acciones"}`}
                     </div>
                   </div>
-                  <button
-                    onClick={() => toggle(r)}
-                    title={r.enabled ? "Click para pausar" : "Click para activar"}
+                  <Switch
+                    checked={r.enabled}
+                    onCheckedChange={() => toggle(r)}
+                    accent="var(--green)"
                     aria-label={r.enabled ? "Pausar regla" : "Activar regla"}
-                    style={{
-                      width: 44,
-                      height: 26,
-                      borderRadius: 99,
-                      border: "none",
-                      cursor: "pointer",
-                      background: r.enabled ? "var(--green)" : "var(--bg-3)",
-                      position: "relative",
-                      transition: ".18s",
-                      flex: "0 0 auto",
-                    }}
-                  >
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: 3,
-                        left: r.enabled ? 21 : 3,
-                        width: 20,
-                        height: 20,
-                        borderRadius: "50%",
-                        background: "#fff",
-                        transition: ".18s",
-                        boxShadow: "var(--sh-1)",
-                      }}
-                    />
-                  </button>
+                  />
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {r.actions.map((a, i) => {

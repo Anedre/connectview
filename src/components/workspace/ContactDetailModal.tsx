@@ -7,10 +7,7 @@ import {
   type ContactWrapUp,
 } from "@/hooks/useContactDetail";
 import { useContactSummary } from "@/hooks/useContactSummary";
-import {
-  ChatTranscriptView,
-  type ChatSegment,
-} from "@/components/recordings/ChatTranscriptView";
+import { ChatTranscriptView, type ChatSegment } from "@/components/recordings/ChatTranscriptView";
 import { VALORACION_META } from "@/lib/dispositions";
 import { sanitizeText } from "@/lib/utils";
 import * as Icon from "@/components/vox/primitives";
@@ -50,20 +47,17 @@ function fmtFileSize(bytes: number | undefined): string {
 
 function channelMeta(
   channel: string,
-  subChannel?: string
+  subChannel?: string,
 ): { icon: LucideIcon; label: string; color: string } {
   const k = (channel || "").toUpperCase();
   const isWA = (subChannel || "").toLowerCase().includes("messaging");
-  if (k === "VOICE")
-    return { icon: Phone, label: "Llamada", color: "var(--accent-green)" };
+  if (k === "VOICE") return { icon: Phone, label: "Llamada", color: "var(--accent-green)" };
   if (k === "CHAT")
     return isWA
       ? { icon: MessageCircle, label: "WhatsApp", color: "var(--accent-green)" }
       : { icon: MessageCircle, label: "Chat", color: "var(--accent-cyan)" };
-  if (k === "EMAIL")
-    return { icon: Mail, label: "Email", color: "var(--accent-amber)" };
-  if (k === "TASK")
-    return { icon: ClipboardList, label: "Tarea", color: "var(--accent-violet)" };
+  if (k === "EMAIL") return { icon: Mail, label: "Email", color: "var(--accent-amber)" };
+  if (k === "TASK") return { icon: ClipboardList, label: "Tarea", color: "var(--accent-violet)" };
   return { icon: FileText, label: channel, color: "var(--text-2)" };
 }
 
@@ -79,11 +73,7 @@ function channelMeta(
  * Always renders an AI-generated summary card at the top so the agent
  * sees the gist of the previous interaction at a glance.
  */
-export function ContactDetailModal({
-  open,
-  onClose,
-  contactId,
-}: ContactDetailModalProps) {
+export function ContactDetailModal({ open, onClose, contactId }: ContactDetailModalProps) {
   const { detail, loading, error } = useContactDetail(open ? contactId : null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [showAttributes, setShowAttributes] = useState(false);
@@ -118,18 +108,18 @@ export function ContactDetailModal({
 
   const meta = useMemo(
     () => channelMeta(detail?.channel || "VOICE", detail?.subChannel),
-    [detail?.channel, detail?.subChannel]
+    [detail?.channel, detail?.subChannel],
   );
 
   // AI summary uses the transcript segments we already fetched, so it
   // works for historical contacts where the live ContactLens API is empty.
   const summarySegments = useMemo(
     () => detail?.transcript?.segments || null,
-    [detail?.transcript?.segments]
+    [detail?.transcript?.segments],
   );
   const { summary, loading: summaryLoading } = useContactSummary(
     open ? contactId : null,
-    summarySegments
+    summarySegments,
   );
 
   if (!open) return null;
@@ -143,6 +133,7 @@ export function ContactDetailModal({
     <div
       role="dialog"
       aria-modal="true"
+      className="aria-overlay-in"
       onClick={onClose}
       style={{
         position: "fixed",
@@ -158,6 +149,7 @@ export function ContactDetailModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        className="aria-dialog-in"
         style={{
           width: "min(1100px, 96vw)",
           maxHeight: "92vh",
@@ -189,8 +181,8 @@ export function ContactDetailModal({
               {detail
                 ? `${format(new Date(detail.initiationTimestamp), "dd MMM yyyy HH:mm")} · ${fmtDuration(detail.duration)} · ${detail.agentUsername || "Sin agente"} · ${detail.queueName || "Sin cola"}`
                 : loading
-                ? "Cargando…"
-                : error || "—"}
+                  ? "Cargando…"
+                  : error || "—"}
             </div>
           </div>
           <button
@@ -253,20 +245,12 @@ export function ContactDetailModal({
               <SummaryCard
                 summary={summary}
                 loading={summaryLoading}
-                hasTranscript={
-                  (detail.transcript?.segments?.length || 0) > 0
-                }
+                hasTranscript={(detail.transcript?.segments?.length || 0) > 0}
                 channel={ch}
               />
 
               {/* Channel-specific body */}
-              {isVoice && (
-                <VoiceBody
-                  detail={detail}
-                  audioRef={audioRef}
-                  onSeek={setSeekTarget}
-                />
-              )}
+              {isVoice && <VoiceBody detail={detail} audioRef={audioRef} onSeek={setSeekTarget} />}
               {isChat && <ChatBody detail={detail} />}
               {isEmail && <EmailBody detail={detail} />}
               {!isVoice && !isChat && !isEmail && (
@@ -362,9 +346,7 @@ export function ContactDetailModal({
                 }}
               >
                 ContactId · <span className="mono">{detail.contactId}</span>
-                {detail.disconnectReason && (
-                  <> · {detail.disconnectReason}</>
-                )}
+                {detail.disconnectReason && <> · {detail.disconnectReason}</>}
               </div>
             </>
           )}
@@ -395,9 +377,7 @@ function WrapUpCard({ wrapUp }: { wrapUp: ContactWrapUp }) {
       return "";
     }
   })();
-  const followUpEntries = Object.entries(wrapUp.followUps || {}).filter(
-    ([, v]) => v === true
-  );
+  const followUpEntries = Object.entries(wrapUp.followUps || {}).filter(([, v]) => v === true);
   return (
     <div
       style={{
@@ -463,10 +443,7 @@ function WrapUpCard({ wrapUp }: { wrapUp: ContactWrapUp }) {
               <span className="muted" style={{ fontSize: 11 }}>
                 →
               </span>
-              <span
-                className="chip"
-                style={{ fontSize: 11, background: "var(--bg-1)" }}
-              >
+              <span className="chip" style={{ fontSize: 11, background: "var(--bg-1)" }}>
                 {wrapUp.subStageLabel}
               </span>
             </>
@@ -545,11 +522,17 @@ function WrapUpCard({ wrapUp }: { wrapUp: ContactWrapUp }) {
               }
             >
               {k === "task24h" ? (
-                <><Check size={12} /> Tarea 24h</>
+                <>
+                  <Check size={12} /> Tarea 24h
+                </>
               ) : k === "emailConfirm" ? (
-                <><Mail size={12} /> Email confirmación</>
+                <>
+                  <Mail size={12} /> Email confirmación
+                </>
               ) : k === "nps" ? (
-                <><BarChart3 size={12} /> NPS</>
+                <>
+                  <BarChart3 size={12} /> NPS
+                </>
               ) : (
                 k
               )}
@@ -560,9 +543,7 @@ function WrapUpCard({ wrapUp }: { wrapUp: ContactWrapUp }) {
 
       {/* Audit trail — only render when there's more than one entry
           (otherwise it would just duplicate the current card). */}
-      {wrapUp.history && wrapUp.history.length > 1 && (
-        <WrapUpHistory entries={wrapUp.history} />
-      )}
+      {wrapUp.history && wrapUp.history.length > 1 && <WrapUpHistory entries={wrapUp.history} />}
     </div>
   );
 }
@@ -573,11 +554,7 @@ function WrapUpCard({ wrapUp }: { wrapUp: ContactWrapUp }) {
  * older ones so QA / supervisors can see the disposition evolution
  * (agent reopens, status changes, multiple attempts, etc.).
  */
-function WrapUpHistory({
-  entries,
-}: {
-  entries: NonNullable<ContactWrapUp["history"]>;
-}) {
+function WrapUpHistory({ entries }: { entries: NonNullable<ContactWrapUp["history"]> }) {
   const [open, setOpen] = useState(false);
   // Skip the first entry (it's already the "current" card above).
   const older = entries.slice(1);
@@ -668,19 +645,13 @@ function WrapUpHistory({
                     <span className="muted" style={{ fontSize: 10.5 }}>
                       →
                     </span>
-                    <span
-                      className="chip"
-                      style={{ fontSize: 10.5, background: "var(--bg-2)" }}
-                    >
+                    <span className="chip" style={{ fontSize: 10.5, background: "var(--bg-2)" }}>
                       {entry.subStageLabel}
                     </span>
                   </>
                 )}
                 {entry.valoracion && (
-                  <span
-                    className="chip"
-                    style={{ fontSize: 10, opacity: 0.85 }}
-                  >
+                  <span className="chip" style={{ fontSize: 10, opacity: 0.85 }}>
                     {entry.valoracion}
                   </span>
                 )}
@@ -709,11 +680,7 @@ function WrapUpHistory({
                   }}
                 >
                   {entry.tags.map((t) => (
-                    <span
-                      key={t}
-                      className="chip chip--cyan"
-                      style={{ fontSize: 10 }}
-                    >
+                    <span key={t} className="chip chip--cyan" style={{ fontSize: 10 }}>
                       {t}
                     </span>
                   ))}
@@ -780,9 +747,7 @@ function SummaryCard({
           Sin transcripción disponible para generar el resumen automático.
         </span>
       ) : (
-        <span className="muted">
-          Resumen automático no disponible en este momento.
-        </span>
+        <span className="muted">Resumen automático no disponible en este momento.</span>
       )}
     </div>
   );
@@ -835,7 +800,7 @@ function VoiceBody({
               src={detail.recording.url}
               controls
               preload="metadata"
-              style={{ width: "100%", colorScheme: "dark" }}
+              style={{ width: "100%" }}
             />
           </div>
         ) : (
@@ -859,10 +824,7 @@ function VoiceBody({
               <div className="section-title" style={{ margin: 0 }}>
                 Transcripción
               </div>
-              <span
-                className="chip"
-                style={{ fontSize: 10, padding: "1px 6px" }}
-              >
+              <span className="chip" style={{ fontSize: 10, padding: "1px 6px" }}>
                 {detail.transcript.segments.length} segmentos
               </span>
               {detail.transcript.overallSentiment && (
@@ -875,24 +837,21 @@ function VoiceBody({
                       detail.transcript.overallSentiment === "POSITIVE"
                         ? "var(--accent-green-soft)"
                         : detail.transcript.overallSentiment === "NEGATIVE"
-                        ? "var(--accent-red-soft)"
-                        : "var(--bg-3)",
+                          ? "var(--accent-red-soft)"
+                          : "var(--bg-3)",
                     color:
                       detail.transcript.overallSentiment === "POSITIVE"
                         ? "var(--accent-green)"
                         : detail.transcript.overallSentiment === "NEGATIVE"
-                        ? "var(--accent-red)"
-                        : "var(--text-2)",
+                          ? "var(--accent-red)"
+                          : "var(--text-2)",
                   }}
                 >
                   {detail.transcript.overallSentiment.toLowerCase()}
                 </span>
               )}
               {detail.recording && (
-                <span
-                  className="muted"
-                  style={{ marginLeft: "auto", fontSize: 10.5 }}
-                >
+                <span className="muted" style={{ marginLeft: "auto", fontSize: 10.5 }}>
                   Click un segmento para saltar el audio
                 </span>
               )}
@@ -920,12 +879,7 @@ function VoiceBody({
                 </div>
               )}
               {detail.transcript.segments.map((s, i) => (
-                <TranscriptRow
-                  key={i}
-                  segment={s}
-                  clickable={!!detail.recording}
-                  onSeek={onSeek}
-                />
+                <TranscriptRow key={i} segment={s} clickable={!!detail.recording} onSeek={onSeek} />
               ))}
             </div>
           </div>
@@ -989,8 +943,7 @@ function EmailBody({
 }) {
   const attrs = detail.attributes || {};
   const subject =
-    sanitizeText(attrs.email_subject || attrs.subject || attrs.Subject || "") ||
-    "(sin asunto)";
+    sanitizeText(attrs.email_subject || attrs.subject || attrs.Subject || "") || "(sin asunto)";
   const from = attrs.email_from || attrs.from || attrs.From || "";
   const to = attrs.email_to || attrs.to || attrs.To || "";
   const cc = attrs.email_cc || attrs.cc || attrs.Cc || "";
@@ -1053,23 +1006,16 @@ function EmailBody({
               style={{
                 marginBottom: 10,
                 paddingBottom: 10,
-                borderBottom:
-                  i < segments.length - 1
-                    ? "1px solid var(--border-1)"
-                    : "none",
+                borderBottom: i < segments.length - 1 ? "1px solid var(--border-1)" : "none",
               }}
             >
-              <div
-                className="muted"
-                style={{ fontSize: 10.5, marginBottom: 4 }}
-              >
+              <div className="muted" style={{ fontSize: 10.5, marginBottom: 4 }}>
                 {s.participant === "AGENT"
                   ? "Agente"
                   : s.participant === "CUSTOMER"
-                  ? "Cliente"
-                  : "Sistema"}
-                {s.timestamp &&
-                  ` · ${new Date(s.timestamp).toLocaleString("es-PE")}`}
+                    ? "Cliente"
+                    : "Sistema"}
+                {s.timestamp && ` · ${new Date(s.timestamp).toLocaleString("es-PE")}`}
               </div>
               <div>{sanitizeText(s.content || "")}</div>
             </div>
@@ -1086,8 +1032,8 @@ function EmailBody({
             borderRadius: 8,
           }}
         >
-          El cuerpo del email no está disponible en el transcript. Los adjuntos
-          sí — los puedes descargar abajo.
+          El cuerpo del email no está disponible en el transcript. Los adjuntos sí — los puedes
+          descargar abajo.
         </div>
       )}
     </div>
@@ -1103,10 +1049,7 @@ function AttachmentsList({
     <div>
       <div className="section-title" style={{ marginBottom: 8 }}>
         Documentos adjuntos
-        <span
-          className="chip"
-          style={{ marginLeft: 8, fontSize: 10, padding: "1px 6px" }}
-        >
+        <span className="chip" style={{ marginLeft: 8, fontSize: 10, padding: "1px 6px" }}>
           {attachments.length}
         </span>
       </div>
@@ -1149,9 +1092,7 @@ function AttachmentsList({
               </div>
             </div>
             {a.url ? (
-              <span style={{ fontSize: 11, color: "var(--accent-cyan)" }}>
-                Descargar ↓
-              </span>
+              <span style={{ fontSize: 11, color: "var(--accent-cyan)" }}>Descargar ↓</span>
             ) : (
               <span className="muted" style={{ fontSize: 10.5 }}>
                 {a.fileStatus || "no disponible"}
@@ -1178,8 +1119,8 @@ function TranscriptRow({
     segment.sentiment === "POSITIVE"
       ? "var(--accent-green)"
       : segment.sentiment === "NEGATIVE"
-      ? "var(--accent-red)"
-      : null;
+        ? "var(--accent-red)"
+        : null;
   const offsetSec = segment.beginOffsetMs / 1000;
   const offsetLabel = useMemo(() => {
     const m = Math.floor(offsetSec / 60);
@@ -1221,8 +1162,8 @@ function TranscriptRow({
           {isCustomer
             ? "Cliente"
             : segment.participant === "AGENT"
-            ? "Agente"
-            : segment.participant}
+              ? "Agente"
+              : segment.participant}
         </span>
         <span className="mono" style={{ fontSize: 10, color: "var(--text-3)" }}>
           {offsetLabel}

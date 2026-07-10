@@ -714,6 +714,7 @@ export function StageColumn({
       )}
 
       <div
+        className="aria-stagger"
         style={{ display: "flex", flexDirection: "column", gap: 11, minHeight: 60, padding: 10 }}
       >
         {items.map((l) => (

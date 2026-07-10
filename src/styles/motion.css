@@ -386,6 +386,92 @@ a.pill:hover {
   animation: fx-ico-bounce 0.5s ease;
 }
 
+/* Paneles laterales (Copilot, Tareas): entran con slide+fade en vez de aparecer de
+   golpe. El transform va sobre el propio panel `position:fixed` (no atrapa ningún
+   descendiente fixed, y su overflow:hidden solo recorta su chat, que es lo deseado). */
+@keyframes aria-side-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.aria-side-panel-in {
+  animation: aria-side-panel-in 0.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* ── Vocabulario de motion reutilizable. Regla de seguridad: NO aplicar un
+   transform animado a un contenedor overflow:hidden con hijos que sobresalen
+   (ver design/audit-css-clip-traps-2026-07-10.md). Todo cae en el reset de
+   prefers-reduced-motion de abajo. ── */
+
+/* Backdrop de modal: fade. */
+@keyframes aria-overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+.aria-overlay-in {
+  animation: aria-overlay-in 0.16s ease-out;
+}
+
+/* Diálogo/tarjeta de modal: sube + escala leve. El transform va sobre el diálogo
+   centrado (no atrapa fixed ni recorta nada). */
+@keyframes aria-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+.aria-dialog-in {
+  animation: aria-dialog-in 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+/* Stagger de listas: cada hijo directo entra escalonado (reusa aria-rise). */
+.aria-stagger > * {
+  animation: aria-rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+.aria-stagger > *:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.aria-stagger > *:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.aria-stagger > *:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.aria-stagger > *:nth-child(4) {
+  animation-delay: 0.14s;
+}
+.aria-stagger > *:nth-child(5) {
+  animation-delay: 0.18s;
+}
+.aria-stagger > *:nth-child(6) {
+  animation-delay: 0.22s;
+}
+.aria-stagger > *:nth-child(n + 7) {
+  animation-delay: 0.26s;
+}
+
+/* Barras (progreso/embudo) que crecen desde la izquierda al aparecer. */
+@keyframes aria-bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+.aria-bar-grow {
+  transform-origin: left center;
+  animation: aria-bar-grow 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+/* Micro: "press" táctil en botones .btn (se hunde levemente al click). */
+.btn:active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.985);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page > * {
     animation: none !important;
@@ -395,7 +481,12 @@ a.pill:hover {
   .fx-float,
   .fx-pop,
   .fx-shake,
-  .fx-pulse-ring {
+  .fx-pulse-ring,
+  .aria-side-panel-in,
+  .aria-overlay-in,
+  .aria-dialog-in,
+  .aria-stagger > *,
+  .aria-bar-grow {
     animation: none !important;
   }
   .fx-ico-swing:hover > svg,
@@ -421,7 +512,8 @@ a.pill:hover {
   .btn--primary:hover,
   .btn--success:hover,
   .btn--danger:hover,
-  .btn--icon:hover {
+  .btn--icon:hover,
+  .btn:active:not(:disabled) {
     transform: none;
   }
 }

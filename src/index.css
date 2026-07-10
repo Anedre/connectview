@@ -2579,6 +2579,7 @@ textarea:focus {
 
 /* Events — rounded, channel-color rail */
 .gcal__ev {
+  /* clip-ok: solo texto + .gcal__ev-resize a ras (bottom:0); nada sobresale (audit 2026-07-10) */
   position: absolute;
   left: 4px;
   right: 4px;
@@ -4488,12 +4489,9 @@ textarea:focus {
    de ExecCharts.tsx usan esa estructura). El bloque viejo que estaba aquí se
    removió para deduplicar y que no compita en la cascada. */
 
-.card {
-  background: var(--bg-1);
-  border: 1px solid var(--border-1);
-  border-radius: var(--radius-3);
-  box-shadow: var(--shadow-card);
-}
+/* .card base vive en styles/aria-base.css (fuente única; gana con --r-lg/--sh-1 y
+   fija background/border idénticos). El duplicado se removió de aquí para no dejar
+   tokens muertos (--radius-3/--shadow-card). Los .card__* de abajo siguen vigentes. */
 .card__head {
   display: flex;
   align-items: center;
@@ -5017,9 +5015,8 @@ textarea:focus {
   background: var(--border-1);
   margin: 16px 0;
 }
-.muted {
-  color: var(--text-3);
-}
+/* .muted vive en styles/aria-base.css (color: var(--text-2)) y gana la cascada.
+   El duplicado se removió de aquí; para --text-3 usa .dim (aria-base). */
 .row {
   display: flex;
   align-items: center;
@@ -6003,6 +6000,7 @@ textarea:focus {
 /* primary button — gradient + animated shine. Uses ::after for the sweep. */
 .amplify-button[data-variation="primary"],
 .amplify-button--primary {
+  /* clip-ok: shine ::after recortado a propósito (barrido); sin hijo que sobresalga (audit 2026-07-10) */
   position: relative;
   overflow: hidden;
   width: 100% !important;
@@ -6293,6 +6291,7 @@ textarea:focus {
   flex-shrink: 0;
 }
 .vox-login__cta {
+  /* clip-ok: shine ::after recortado a propósito (barrido); sin hijo que sobresalga (audit 2026-07-10) */
   position: relative;
   overflow: hidden;
   width: 100%;
@@ -7623,12 +7622,8 @@ textarea.vox-field {
 }
 
 /* progress bar */
-.bar {
-  height: 6px;
-  background: var(--bg-3);
-  border-radius: 999px;
-  overflow: hidden;
-}
+/* .bar (contenedor) vive en styles/aria-base.css (height:8px) y gana la cascada.
+   El duplicado se removió de aquí; se conserva .bar > div (relleno, sin colisión). */
 .bar > div {
   height: 100%;
   background: var(--accent-cyan);
@@ -8074,18 +8069,30 @@ textarea.vox-field {
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.04),
     0 8px 20px -14px rgba(0, 0, 0, 0.22);
-  overflow: hidden;
+  /* Sin overflow:hidden en el nodo: el clip vive en .fb-node__clip (solo el tope),
+     así .fb-node puede hacer su lift en hover SIN recortar los conectores que
+     sobresalen (fb-out / fb-out-branch). Ver design/audit-css-clip-traps-2026-07-10. */
   cursor: grab;
   transition:
     box-shadow 0.16s ease,
     border-color 0.16s ease,
     transform 0.12s ease;
 }
+/* Recorta SOLO el tope (riel + header) para redondear las esquinas superiores.
+   Radio 13px = 14px del nodo menos su borde de 1px. NO contiene handles, así que
+   el lift del nodo nunca lo usa para recortar un conector. clip-ok. */
+.fb-node__clip {
+  border-radius: 13px 13px 0 0;
+  overflow: hidden;
+}
 .fb-node:hover {
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.05),
     0 18px 38px -18px rgba(0, 0, 0, 0.42);
   border-color: var(--border-2);
+  /* Lift premium restaurado. Es SEGURO porque el overflow:hidden se movió a
+     .fb-node__clip (que no contiene handles); el nodo es overflow:visible y su
+     transform ya no recorta los conectores. */
   transform: translateY(-1px);
 }
 /* Draggability affordance (Kommo-style): grab on the card, grabbing while moving.
@@ -9633,6 +9640,7 @@ textarea.vox-field {
   font-size: 13px;
 }
 .tg-card {
+  /* clip-ok: los badges cuelgan de .tg-card__preview (position:relative propio), no del card (audit 2026-07-10) */
   text-align: left;
   padding: 0;
   overflow: hidden;
@@ -13095,6 +13103,42 @@ textarea.vox-field {
 }
 .wf-input--op {
   flex: 0 0 96px;
+}
+
+/* ── Controles nativos de los inspectores de builders → look moderno sin reescribir:
+   chevron custom en los <select> (appearance:none) + focus ring con la identidad de
+   color de cada builder (bots=teal, journeys=verde; automations ya usa --wf-c gold).
+   CSS-only y aditivo — no toca la lógica de los renderers de campos. ── */
+.fb-insp select,
+.jb-inspect select,
+select.wf-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%237F8EA4' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  padding-right: 28px !important;
+  cursor: pointer;
+}
+.fb-insp :is(input, select, textarea),
+.jb-inspect :is(input, select, textarea) {
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.fb-insp :is(input, select, textarea):hover,
+.jb-inspect :is(input, select, textarea):hover {
+  border-color: var(--border-strong);
+}
+.fb-insp :is(input, select, textarea):focus {
+  outline: none;
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cyan) 16%, transparent);
+}
+.jb-inspect :is(input, select, textarea):focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 16%, transparent);
 }
 .wf-icon-btn {
   display: grid;

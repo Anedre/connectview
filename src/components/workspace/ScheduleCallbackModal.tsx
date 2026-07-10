@@ -551,7 +551,6 @@ export function ScheduleFollowupModal({
                 outline: "none",
                 fontSize: 12.5,
                 fontFamily: "var(--font-ui)",
-                colorScheme: "dark",
               }}
             />
           </div>

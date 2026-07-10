@@ -536,6 +536,7 @@
 
 /* KPI card */
 .exec-stat {
+  /* clip-ok: glow ::after inset; ningún hijo sobresale (audit css-clip-traps 2026-07-10) */
   background: var(--e-card);
   border: 1px solid var(--e-border);
   border-radius: 14px;
@@ -1125,6 +1126,7 @@
 }
 
 .exec-ins {
+  /* clip-ok: barra ::before a ras (left:0) + contenido en flujo; nada sobresale (audit 2026-07-10) */
   position: relative;
   flex: 1 1 0;
   min-width: 0;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, X, Send, RotateCcw, Search, LayoutGrid } from "lucide-react";
 import { useLocation } from "react-router-dom";
-import { useEscapeKey } from "@/hooks/useDropdown";
+import { useClickOutside } from "@/hooks/useDropdown";
 import { getApiEndpoints } from "@/lib/api";
 import { useCatalogs } from "@/hooks/useCatalogs";
 import { useCan } from "@/hooks/usePermissions";
@@ -111,9 +111,11 @@ function CopilotPanelInner() {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const ep = getApiEndpoints();
-  // Escape cierra el panel (no se cierra al click afuera: perdería el chat).
-  useEscapeKey(() => setOpen(false), open);
+  // Cierra al click afuera (o con Escape). El chat NO se pierde: `msgs` es state
+  // que persiste montado, así que reabrir el Copilot lo muestra igual.
+  useClickOutside(panelRef, () => setOpen(false), open);
 
   const loc = useLocation();
   const active = useActiveContact();
@@ -219,6 +221,8 @@ function CopilotPanelInner() {
 
   return (
     <div
+      ref={panelRef}
+      className="aria-side-panel-in"
       style={{
         position: "fixed",
         right: 16,

@@ -26,6 +26,8 @@ import type {
 import { useSegments, type FilterRule, type FilterOp } from "@/hooks/useSegments";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
+import { Switch } from "@/components/ui/switch";
+import { SegmentedControl } from "@/components/ui/segmented";
 
 /**
  * JourneyBuilder — el editor del motor de Journeys, rediseñado a su identidad
@@ -971,14 +973,25 @@ function JourneyInspector({
                 </select>
               </Field>
             )}
-            <label className="jb-check">
-              <input
-                type="checkbox"
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "2px 0" }}>
+              <Switch
                 checked={reenroll}
-                onChange={(e) => onReenroll(e.target.checked)}
+                onCheckedChange={onReenroll}
+                accent="var(--green)"
+                aria-label="Permitir re-inscripción"
               />
-              Permitir re-inscripción (volver a entrar si ya pasó)
-            </label>
+              <span
+                onClick={() => onReenroll(!reenroll)}
+                style={{
+                  cursor: "pointer",
+                  fontSize: 12.5,
+                  color: "var(--text-2)",
+                  lineHeight: 1.4,
+                }}
+              >
+                Permitir re-inscripción (volver a entrar si ya pasó)
+              </span>
+            </div>
             <div className="jb-note">
               La entrada automática por disparador/segmento la activa el tick del runner. La
               inscripción manual ya funciona desde Leads.
@@ -989,14 +1002,15 @@ function JourneyInspector({
         {node.kind === "send" && (
           <>
             <Field label="Canal">
-              <select
+              <SegmentedControl
                 value={String(p.channel || "whatsapp")}
-                onChange={(e) => set({ channel: e.target.value })}
-                style={jbInput()}
-              >
-                <option value="whatsapp">WhatsApp</option>
-                <option value="email">Email</option>
-              </select>
+                onValueChange={(channel) => set({ channel })}
+                options={[
+                  { value: "whatsapp", label: "WhatsApp", color: "var(--green)" },
+                  { value: "email", label: "Email", color: "var(--gold)" },
+                ]}
+                block
+              />
             </Field>
             {p.channel === "email" ? (
               <>

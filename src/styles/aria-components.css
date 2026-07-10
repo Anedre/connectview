@@ -1589,6 +1589,7 @@
 }
 
 .insight {
+  /* clip-ok: legacy sin uso en .tsx; glow inset, nada sobresale (audit 2026-07-10) */
   position: relative;
   padding: 18px 18px 16px;
   border-radius: var(--r-lg);
@@ -1652,6 +1653,7 @@
 }
 
 .heromet {
+  /* clip-ok: legacy sin uso en .tsx; nada sobresale (audit 2026-07-10) */
   padding: 20px 22px;
   border-radius: var(--r-lg);
   border: 1px solid var(--border-1);

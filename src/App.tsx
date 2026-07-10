@@ -619,9 +619,16 @@ function AnimatedRoutes() {
       <AnimatePresence mode="wait">
         <motion.div
           key={location.pathname}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
+          /* Solo opacity — SIN transform (antes: y:8→0→-8). Un transform en este
+             wrapper de ruta lo convierte en el bloque contenedor de TODO
+             `position:fixed` descendiente; durante la transición los modales/overlays
+             fixed se anclaban a este div (área de contenido, sin header/sidebar) en vez
+             del viewport y se descuadraban. Fade puro = ningún fixed queda atrapado, así
+             no hace falta portalizar cada modal. Ver design/audit-css-clip-traps-2026-07-10.md
+             (Patrón 1). Mismo motivo por el que .fb-node dejó de recortar su conector. */
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
           /* height: 100% so the route wrapper inherits `.app__main`'s
              allocated grid row (viewport - header). Without this,

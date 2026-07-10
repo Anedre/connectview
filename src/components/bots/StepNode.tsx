@@ -100,9 +100,6 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
       className={`fb-node ${selected ? "fb-node--sel" : ""} ${hasIssue ? "fb-node--issue" : ""}`}
       style={rootStyle}
     >
-      {/* Accent top-rail — gives each step a colored identity */}
-      <div style={{ height: 3, background: `linear-gradient(90deg, ${accent}, ${accent}88)` }} />
-
       {hasTarget && (
         <Handle
           type="target"
@@ -118,22 +115,30 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
         />
       )}
 
-      {/* Header */}
-      <div className="fb-node__head">
-        <span className="fb-node__icon" style={{ background: `${accent}1a`, color: accent }}>
-          <Icon size={14} strokeWidth={2.2} />
-        </span>
-        <span className="fb-node__label">{def.label}</span>
-        {hasIssue && (
-          <span
-            className="fb-node__issue"
-            title={nodeIssues.join("\n")}
-            aria-label={nodeIssues.join(". ")}
-          >
-            <AlertTriangle size={12} strokeWidth={2.4} />
+      {/* Clip SOLO del tope (riel + header) → redondea las esquinas superiores.
+          Deja a .fb-node en overflow:visible para que su lift en hover no recorte
+          los conectores (fb-out / fb-out-branch), que cuelgan fuera de este clip. */}
+      <div className="fb-node__clip">
+        {/* Accent top-rail — gives each step a colored identity */}
+        <div style={{ height: 3, background: `linear-gradient(90deg, ${accent}, ${accent}88)` }} />
+
+        {/* Header */}
+        <div className="fb-node__head">
+          <span className="fb-node__icon" style={{ background: `${accent}1a`, color: accent }}>
+            <Icon size={14} strokeWidth={2.2} />
           </span>
-        )}
-        {stepNo !== undefined && <span className="fb-node__no">{stepNo}</span>}
+          <span className="fb-node__label">{def.label}</span>
+          {hasIssue && (
+            <span
+              className="fb-node__issue"
+              title={nodeIssues.join("\n")}
+              aria-label={nodeIssues.join(". ")}
+            >
+              <AlertTriangle size={12} strokeWidth={2.4} />
+            </span>
+          )}
+          {stepNo !== undefined && <span className="fb-node__no">{stepNo}</span>}
+        </div>
       </div>
 
       {/* Body */}

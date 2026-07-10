@@ -9,6 +9,7 @@ import { AgentActionsDialog } from "@/components/queue/AgentActionsDialog";
 import { formatDurationSec } from "@/lib/utils";
 import { toast } from "sonner";
 import { Icon, Btn, Card, Stat, Pill, Av, MiniBars, HeroBand } from "@/components/aria";
+import { Switch } from "@/components/ui/switch";
 import type { AgentStatus, QueueMetrics } from "@/types/monitoring";
 
 /**
@@ -436,14 +437,16 @@ export function MonitoringPage() {
                 ))}
               </div>
             )}
-            <label
+            <div
               className="row gap6"
-              style={{ fontSize: 12.5, cursor: "pointer", color: "var(--text-2)" }}
+              style={{ fontSize: 12.5, color: "var(--text-2)" }}
               title="Auto-actualizar"
             >
-              <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-              Auto-refresh
-            </label>
+              <Switch checked={auto} onCheckedChange={setAuto} aria-label="Auto-actualizar" />
+              <span onClick={() => setAuto(!auto)} style={{ cursor: "pointer" }}>
+                Auto-refresh
+              </span>
+            </div>
             <Btn
               variant={muted ? "ghost" : "soft"}
               size="sm"
