@@ -341,16 +341,30 @@ EPICAS = [
  ]),
 ]
 
+# ── Temas / Iniciativas: rollup de las 20 épicas en 6 (jerarquía de 3 niveles).
+# Tema → Épica → Historia. Da vista ejecutiva y ordena el backlog en Jira/ADO. ──
+TEMAS = [
+ ("T1", "Plataforma y gobierno", ["E01", "E02", "E18", "E20"]),
+ ("T2", "Atención omnicanal", ["E03", "E04", "E05", "E06", "E07"]),
+ ("T3", "Adquisición y ventas", ["E08", "E09", "E10", "E16"]),
+ ("T4", "Automatización e IA", ["E11", "E12", "E13", "E19"]),
+ ("T5", "Comunicaciones", ["E14", "E15"]),
+ ("T6", "Analítica", ["E17"]),
+]
+TEMA_OF = {ep: (tid, tname) for tid, tname, eps in TEMAS for ep in eps}
+
 PRIOR = {"Must": 0, "Should": 1, "Could": 2, "Won't": 3}
 
 # ── Aplanar con IDs autonumerados ──
 HU, CA, CP, TZ = [], [], [], []
 n = 0
 for ep, epname, stories in EPICAS:
+    tid, tname = TEMA_OF[ep]
+    tema = f"{tid} · {tname}"
     for rol, texto, prio, cu, crits, tests in stories:
         n += 1
         hu = f"HU-{n:03d}"
-        HU.append([hu, ep, epname, f"Como {rol}, quiero {texto}.", prio, cu or "—"])
+        HU.append([hu, tema, ep, epname, f"Como {rol}, quiero {texto}.", prio, cu or "—"])
         cas = []
         for k, (esc, dado, cuando, ent) in enumerate(crits, 1):
             ca = f"CA-{n:03d}.{k}"; cas.append(ca)
@@ -358,7 +372,15 @@ for ep, epname, stories in EPICAS:
         for k, (ti, tp, tpr, pc, pa, da, ex) in enumerate(tests, 1):
             cp = f"CP-{n:03d}.{k}"
             CP.append([cp, ti, ep, hu, cu or "—", tp, tpr, pc, pa, da, ex, "Pendiente"])
-            TZ.append([epname, cu or "—", hu, ", ".join(cas), cp, ti])
+            TZ.append([tema, epname, cu or "—", hu, ", ".join(cas), cp, ti])
+
+# Conteos por tema (rollup de la portada)
+n_hu_t = {tid: 0 for tid, _, _ in TEMAS}
+n_cp_t = {tid: 0 for tid, _, _ in TEMAS}
+for row in HU:
+    n_hu_t[row[1].split(" · ")[0]] += 1
+for row in CP:
+    n_cp_t[TEMA_OF[row[2]][0]] += 1
 
 wb = Workbook()
 
@@ -371,10 +393,10 @@ def prow(r, t, s, c, b=True, h=16):
     cc.alignment = Alignment(wrap_text=True, vertical="center"); ws.row_dimensions[r].height = h
 prow(3, "ARIA · by Novasys", 12, MAGENTA, h=20)
 prow(4, "Historias de Usuario, Criterios de Aceptación y Casos de Prueba", 19, PLUM, h=32)
-prow(5, "Cobertura integral de la plataforma ARIA por épicas (E01–E20). Actualizado 2026-07-10.", 11, INK, b=False, h=20)
+prow(5, f"Cobertura integral de ARIA en 3 niveles: 6 temas → 20 épicas → {len(HU)} historias. Actualizado 2026-07-10.", 11, INK, b=False, h=20)
 prow(7, "Contenido de este libro", 13, PLUM, h=22)
 idx = [
- ("Historias de Usuario", f"{len(HU)} historias en 20 épicas — «Como… quiero… para…» con prioridad MoSCoW."),
+ ("Historias de Usuario", f"{len(HU)} historias en 20 épicas (agrupadas en 6 temas) — «Como… quiero… para…» con prioridad MoSCoW."),
  ("Criterios de Aceptación", f"{len(CA)} escenarios — formato Dado / Cuando / Entonces (Gherkin)."),
  ("Casos de Prueba", f"{len(CP)} casos — pasos, datos y resultado esperado; Estado editable."),
  ("Matriz de Trazabilidad", "Épica → Caso de uso → Historia → Criterios → Caso de prueba."),
@@ -384,13 +406,18 @@ for name, desc in idx:
     a = ws.cell(row=r, column=2, value=f"•  {name}"); a.font = Font(name=FONT, size=11, bold=True, color=INK); r += 1
     d = ws.cell(row=r, column=2, value=f"     {desc}"); d.font = Font(name=FONT, size=10, color=GREY)
     d.alignment = Alignment(wrap_text=True); r += 1
-prow(r+1, "Épicas: E01 Identidad · E02 Onboarding/Integraciones · E03 Softphone · E04 Escritorio del agente · E05 Inbox omnicanal · E06 Supervisión · E07 Grabaciones · E08 Leads/Programas · E09 Ingesta · E10 Campañas/Dialer · E11 Bots · E12 Agente IA · E13 Automatizaciones/Journeys · E14 Correo · E15 WhatsApp · E16 Citas/Tareas · E17 Reportes · E18 Cumplimiento · E19 IA transversal · E20 Administración.", 9.5, GREY, b=False, h=54)
-prow(r+2, "Prioridad (MoSCoW): Must · Should · Could.   Tipo de prueba: Funcional · Negativa · E2E.   Estado: Pendiente · En progreso · Pasó · Falló · Bloqueado.", 9.5, GREY, b=False, h=16)
+prow(r+1, "Vista por tema — rollup de 3 niveles (Tema → Épica → Historia)", 12, PLUM, h=22)
+rr = r + 2
+for tid, tname, eps in TEMAS:
+    prow(rr, f"    {tid} · {tname}   —   {len(eps)} épicas · {n_hu_t[tid]} historias · {n_cp_t[tid]} casos de prueba", 10, INK, b=False, h=15)
+    rr += 1
+prow(rr+1, "Épicas (20): E01 Identidad · E02 Onboarding/Integraciones · E03 Softphone · E04 Escritorio del agente · E05 Inbox · E06 Supervisión · E07 Grabaciones · E08 Leads/Programas · E09 Ingesta · E10 Campañas/Dialer · E11 Bots · E12 Agente IA · E13 Automatizaciones/Journeys · E14 Correo · E15 WhatsApp · E16 Citas/Tareas · E17 Reportes · E18 Cumplimiento · E19 IA transversal · E20 Administración.", 9, GREY, b=False, h=44)
+prow(rr+2, "Prioridad (MoSCoW): Must · Should · Could.   Tipo de prueba: Funcional · Negativa · E2E.   Estado: Pendiente · En progreso · Pasó · Falló · Bloqueado.", 9, GREY, b=False, h=16)
 
 ws = wb.create_sheet("Historias de Usuario")
-HU.sort(key=lambda x: (x[1], PRIOR.get(x[4], 9), x[0]))
-sheet_table(ws, ["ID","Épica","Nombre de épica","Historia de usuario","Prioridad","Caso de uso"],
-            [10, 8, 22, 74, 11, 12], HU)
+HU.sort(key=lambda x: (x[1], x[2], PRIOR.get(x[5], 9), x[0]))
+sheet_table(ws, ["ID","Tema / Iniciativa","Épica","Nombre de épica","Historia de usuario","Prioridad","Caso de uso"],
+            [10, 22, 8, 20, 64, 11, 12], HU)
 
 ws = wb.create_sheet("Criterios de Aceptacion")
 sheet_table(ws, ["ID","Historia","Escenario","Dado","Cuando","Entonces"],
@@ -402,8 +429,8 @@ sheet_table(ws, ["ID","Título","Épica","Historia","Caso de uso","Tipo","Priori
             [11, 26, 8, 10, 12, 10, 10, 24, 32, 15, 36, 12], CP, estado_col=12, tall=52)
 
 ws = wb.create_sheet("Matriz de Trazabilidad")
-sheet_table(ws, ["Épica","Caso de uso","Historia","Criterios","Caso de prueba","Título del caso de prueba"],
-            [22, 12, 10, 20, 12, 40], TZ)
+sheet_table(ws, ["Tema / Iniciativa","Épica","Caso de uso","Historia","Criterios","Caso de prueba","Título del caso de prueba"],
+            [22, 20, 12, 10, 18, 12, 38], TZ)
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                    "docs", "tecnico", "ARIA-Historias-de-Usuario-y-Casos-de-Prueba.xlsx")
