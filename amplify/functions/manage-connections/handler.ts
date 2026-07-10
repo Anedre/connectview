@@ -95,7 +95,7 @@ async function detectWhatsAppNumbers(client: SocialMessagingClient): Promise<Wha
 
 const CORS: Record<string, string> = {
   // CORS lo provee la Function URL (config de AWS). NO setear Access-Control-*
-  // acá: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
+  // aquí: duplicaría Allow-Origin (uno del código + uno de AWS) y el browser
   // rechaza la respuesta con "Failed to fetch" (mismo quirk que web-form-capture).
   "Content-Type": "application/json",
 };
@@ -115,6 +115,29 @@ function resp(statusCode: number, body: unknown) {
 async function putWhatsAppSecret(tenantId: string, token: string): Promise<void> {
   const name = `connectview/tenant/${tenantId}/whatsapp`;
   const SecretString = JSON.stringify({ token });
+  try {
+    await sm.send(new CreateSecretCommand({ Name: name, SecretString }));
+  } catch (e) {
+    if (e instanceof Error && e.name === "ResourceExistsException") {
+      await sm.send(new PutSecretValueCommand({ SecretId: name, SecretString }));
+    } else {
+      throw e;
+    }
+  }
+}
+
+/** Guarda (merge) el secreto de correo del tenant en Secrets Manager. Merge para
+ *  que cambiar el proveedor/remitente no borre la contraseña ya guardada. */
+async function putEmailSecret(tenantId: string, patch: Record<string, unknown>): Promise<void> {
+  const name = `connectview/email/${tenantId}`;
+  let existing: Record<string, unknown> = {};
+  try {
+    const r = await sm.send(new GetSecretValueCommand({ SecretId: name }));
+    if (r.SecretString) existing = JSON.parse(r.SecretString);
+  } catch {
+    /* aún no existe → se crea */
+  }
+  const SecretString = JSON.stringify({ ...existing, ...patch });
   try {
     await sm.send(new CreateSecretCommand({ Name: name, SecretString }));
   } catch (e) {
@@ -282,7 +305,25 @@ export const handler = async (event: FnEvent) => {
         token?: string;
         id?: string;
         botId?: string;
+        provider?: Record<string, unknown>;
+        emailSecret?: Record<string, unknown>;
       };
+
+      // Guardar la config de correo del tenant: el secreto (si viene) va a Secrets
+      // Manager; el configJson solo guarda el proveedor + el flag `secretSet`.
+      // Acción aislada — no pisa el resto del config con un body.config parcial.
+      if (body.action === "saveEmailConn") {
+        const stored = await readStoredConfig(tenantId);
+        const hasSecret = !!body.emailSecret && Object.keys(body.emailSecret).length > 0;
+        if (hasSecret) await putEmailSecret(tenantId, body.emailSecret!);
+        const prevEmail = (stored.email as { secretSet?: boolean } | undefined) || {};
+        stored.email = {
+          provider: body.provider,
+          secretSet: hasSecret ? true : (prevEmail.secretSet ?? false),
+        };
+        await writeStoredConfig(tenantId, stored);
+        return resp(200, { ok: true, email: stored.email });
+      }
 
       // Provisión/ROTACIÓN del token de ENTRADA de Salesforce (SF→Vox). Mina un
       // token NUEVO per-tenant, lo guarda en Secrets Manager y devuelve el

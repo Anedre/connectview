@@ -8,7 +8,7 @@ import { useRefetchOnFocus } from "./useRefetchOnFocus";
  * Salesforce / WhatsApp). Hoy persiste en localStorage como fallback; cuando el
  * endpoint `manageConnections` esté desplegado, lee/escribe del backend.
  *
- * IMPORTANTE: acá NUNCA se guardan secretos crudos (token de WhatsApp, refresh
+ * IMPORTANTE: aquí NUNCA se guardan secretos crudos (token de WhatsApp, refresh
  * token de Salesforce). Esos van a Secrets Manager vía el backend. El cliente
  * sólo guarda config NO sensible + flags ("tokenSet", "connected").
  */
@@ -43,7 +43,7 @@ export interface SalesforceConn {
   environment?: "production" | "sandbox";
   connectedAt?: string;
   /** Flag — el token de ENTRADA per-tenant (SF→Vox) ya fue generado. El token
-   *  vive en Secrets Manager (`connectview/tenant/<id>/sf-inbound`), nunca acá.
+   *  vive en Secrets Manager (`connectview/tenant/<id>/sf-inbound`), nunca aquí.
    *  El plaintext se muestra UNA vez al generarlo (para pegarlo en el Flow). */
   inboundTokenSet?: boolean;
   inboundTokenRotatedAt?: string;
@@ -52,7 +52,7 @@ export interface SalesforceConn {
   fieldMapping?: Record<string, string>;
 }
 /** Un WhatsApp Flow (formulario nativo de Meta, #10) registrado por el tenant.
- *  El Flow se diseña/publica en Meta Business Manager; acá vive solo su
+ *  El Flow se diseña/publica en Meta Business Manager; aquí vive solo su
  *  referencia para que el composer del agente pueda enviarlo. */
 export interface WaFlowDef {
   /** flow_id del Flow publicado en Meta. */
@@ -83,7 +83,7 @@ export interface WhatsAppConn {
 }
 
 /** Un número de WhatsApp registrado por el tenant (multi-número). El access token
- *  vive en Secrets Manager (connectview/tenant/<id>/whatsapp), NUNCA acá. El ruteo
+ *  vive en Secrets Manager (connectview/tenant/<id>/whatsapp), NUNCA aquí. El ruteo
  *  número→flujo es `botId`, decidido en la vista de Ruteo (sección Bots). Espejo de
  *  `WhatsAppNumber` de amplify/functions/_shared/whatsappNumbers.ts. */
 export interface WhatsAppNumberRef {
@@ -146,7 +146,7 @@ export interface MessagingConn {
   /** Mensaje de fuera de horario o sin agentes disponibles (Canales). */
   away?: string;
   /** Snippet del widget de chat web (Amazon Connect) que el cliente pega en su
-   *  sitio. Solo se almacena/edita acá; el widget se genera en la consola de Connect. */
+   *  sitio. Solo se almacena/edita aquí; el widget se genera en la consola de Connect. */
   webChatSnippet?: string;
 }
 /** Contact flows canónicos de ARIA provisionados en la instancia del tenant
@@ -180,7 +180,7 @@ export interface BrandingConn {
 }
 /**
  * F4.3 — SSO SAML/OIDC por-tenant. Config NO sensible (routing + metadata pública);
- * el clientSecret de OIDC vive en Secrets/Amplify, acá solo `clientSecretSet`. El
+ * el clientSecret de OIDC vive en Secrets/Amplify, aquí solo `clientSecretSet`. El
  * registro real del IdP en Cognito es el paso `ampx pipeline-deploy` (ver
  * amplify/auth/resource.ts + design/sso.md). Esta config es la capa de la app:
  * qué IdP, para qué dominios de email, con qué nombre de provider.
@@ -204,7 +204,7 @@ export interface SsoConn {
  * F4.1 — Canal Mercado Libre. Config NO sensible por-tenant: el `userId` del
  * seller (para rutear el webhook al tenant), el sitio/país, y flags de estado.
  * Los tokens OAuth viven en Secrets Manager (`connectview/tenant/<id>/mercadolibre`),
- * NO acá. Ver design/mercadolibre.md.
+ * NO aquí. Ver design/mercadolibre.md.
  */
 export interface MlConn {
   connected?: boolean;
@@ -217,7 +217,7 @@ export interface MlConn {
  * Meta multi-cuenta ("Conectar con Facebook", auto-servicio estilo Chattigo/
  * ManyChat). Cada tenant conecta VARIAS páginas de Facebook; cada una trae
  * Messenger (de la página) y, si tiene un Instagram Business Account conectado,
- * también Instagram DM. Metadata NO sensible acá; los page tokens viven en
+ * también Instagram DM. Metadata NO sensible aquí; los page tokens viven en
  * Secrets Manager (connectview/tenant/<id>/meta), NUNCA en el navegador.
  */
 export interface MetaAccountRef {
@@ -236,6 +236,38 @@ export interface MetaConn {
   pageName?: string;
   connectedAt?: string;
 }
+/** Proveedor de correo saliente del tenant (BYO). Credenciales → Secrets Manager. */
+export interface EmailConn {
+  provider?:
+    | { kind: "novasys" }
+    | {
+        kind: "ses";
+        fromEmail: string;
+        fromName?: string;
+        region?: string;
+        useTenantRole?: boolean;
+      }
+    | {
+        kind: "smtp";
+        host: string;
+        port: number;
+        secure?: boolean;
+        user: string;
+        fromEmail: string;
+        fromName?: string;
+      }
+    | { kind: "gmail"; fromEmail: string; fromName?: string }
+    | { kind: "microsoft"; fromEmail: string; fromName?: string; sender?: string }
+    | {
+        kind: "sendgrid" | "resend" | "mailgun";
+        fromEmail: string;
+        fromName?: string;
+        region?: string;
+        domain?: string;
+      };
+  /** true si el secreto ya está guardado (la UI no lo vuelve a pedir). */
+  secretSet?: boolean;
+}
 export interface ConnectionsConfig {
   connect?: ConnectConn;
   salesforce?: SalesforceConn;
@@ -247,6 +279,7 @@ export interface ConnectionsConfig {
   sso?: SsoConn;
   mercadolibre?: MlConn;
   meta?: MetaConn;
+  email?: EmailConn;
 }
 
 const LS_KEY = "vox:connections";
@@ -300,12 +333,15 @@ export function useConnections() {
   }, [refetch]);
 
   // Re-sincroniza al volver el foco a la pestaña: si la conexión se editó por
-  // fuera (CLI, wizard en otra ventana), el badge "Configurá Connect" se
+  // fuera (CLI, wizard en otra ventana), el badge "Configura Connect" se
   // corrige solo, sin necesidad de un reload manual.
   useRefetchOnFocus(refetch);
 
   const save = useCallback(
-    async (next: ConnectionsConfig) => {
+    // Devuelve `true` solo si el backend confirmó el guardado. Antes se tragaba
+    // el error (y no chequeaba `r.ok`), así que los callers mostraban «guardado»
+    // en falso. El cache local sigue siendo optimista; el caller decide el feedback.
+    async (next: ConnectionsConfig): Promise<boolean> => {
       setConfig(next);
       try {
         localStorage.setItem(LS_KEY, JSON.stringify(next));
@@ -313,16 +349,17 @@ export function useConnections() {
         /* ignore */
       }
       const endpoint = ep?.manageConnections;
-      if (!endpoint) return;
+      if (!endpoint) return true;
       setSaving(true);
       try {
-        await authedFetch(endpoint, {
+        const r = await authedFetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ config: next }),
         });
+        return r.ok;
       } catch {
-        /* el cache local ya guardó; reintenta en el próximo save */
+        return false; // el cache local ya guardó; reintenta en el próximo save
       } finally {
         setSaving(false);
       }

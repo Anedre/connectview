@@ -160,7 +160,7 @@ interface ApiEndpoints {
   metaOAuthCallback?: string;
   // Inicia el flujo OAuth web de Salesforce (devuelve la URL de autorización).
   salesforceOAuthStart?: string;
-  // Callback del OAuth web de Salesforce. SF redirige acá con ?code=…&state=…
+  // Callback del OAuth web de Salesforce. SF redirige aquí con ?code=…&state=…
   // intercambia el code por refresh_token y lo persiste en Secrets per-tenant.
   // El frontend NO lo llama; el navegador del usuario lo abre vía redirect.
   salesforceOAuthCallback?: string;
@@ -206,6 +206,8 @@ interface ApiEndpoints {
   /** Feed de datos para Power BI/Excel/BI (get-analytics-feed). Dual: `?meta=1`
    *  autenticado devuelve token+URL; `?token=&dataset=` sirve el JSON. */
   getAnalyticsFeed?: string;
+  /** Envío de correo por el proveedor configurado del tenant (send-email). */
+  sendEmail?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;
