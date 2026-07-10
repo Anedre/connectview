@@ -4,6 +4,9 @@ import { usePrograms, type Program, type ProgramStatus } from "@/hooks/useProgra
 import { useProgram } from "@/context/ProgramContext";
 import { useRoles } from "@/hooks/useRoles";
 import { getApiEndpoints } from "@/lib/api";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { EmptyState, ErrorState } from "@/components/ui/empty-state";
 import { Btn, Card, Pill, SegBar, Stat, Num, HeroBand, Icon } from "@/components/aria";
 import {
   PencilSimple,
@@ -93,6 +96,7 @@ export function ProgramsHubPage() {
   const [importText, setImportText] = useState<string | null>(null); // null = modal cerrado
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "error" | "ok"; text: string } | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
 
   const endpointReady = !!getApiEndpoints()?.managePrograms;
 
@@ -171,7 +175,12 @@ export function ProgramsHubPage() {
   async function doTransition(p: Program, to: ProgramStatus) {
     if (
       to === "cerrado" &&
-      !confirm(`¿Cerrar "${p.name}"? Se congelan sus métricas y se pausan sus campañas.`)
+      !(await confirm({
+        title: `¿Cerrar "${p.name}"?`,
+        description: "Se congelan sus métricas y se pausan sus campañas.",
+        confirmLabel: "Cerrar programa",
+        destructive: true,
+      }))
     )
       return;
     setBusy(true);
@@ -186,7 +195,15 @@ export function ProgramsHubPage() {
   }
 
   async function doDelete(p: Program) {
-    if (!confirm(`¿Borrar el programa "${p.name}"? Esta acción no se puede deshacer.`)) return;
+    if (
+      !(await confirm({
+        title: `¿Borrar el programa "${p.name}"?`,
+        description: "Esta acción no se puede deshacer.",
+        confirmLabel: "Borrar",
+        destructive: true,
+      }))
+    )
+      return;
     setBusy(true);
     setMsg(null);
     try {
@@ -277,7 +294,7 @@ export function ProgramsHubPage() {
               style={{ color: "var(--gold)", flex: "0 0 auto", marginTop: 1 }}
             />
             <div>
-              El endpoint <code>managePrograms</code> aún no está configurado. Corré{" "}
+              El endpoint <code>managePrograms</code> aún no está configurado. Corre{" "}
               <code>node scripts/create-programs.mjs</code> y pega la URL en{" "}
               <code>amplify_outputs.json</code>.
             </div>
@@ -353,19 +370,31 @@ export function ProgramsHubPage() {
 
       {/* Grid de tarjetas */}
       {loading ? (
-        <div className="dim" style={{ padding: 40, textAlign: "center" }}>
-          Cargando programas…
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+            gap: 14,
+          }}
+        >
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} lines={2} />
+          ))}
         </div>
       ) : error ? (
-        <Pill tone="red" icon="x">
-          Error: {error}
-        </Pill>
+        <ErrorState description={error} />
       ) : filtered.length === 0 ? (
-        <div className="dim" style={{ padding: 40, textAlign: "center" }}>
-          {programs.length === 0
-            ? "No hay programas todavía."
-            : "Ningún programa coincide con el filtro."}
-        </div>
+        <EmptyState
+          icon={<Icon name="cap" />}
+          title={
+            programs.length === 0
+              ? "No hay programas todavía"
+              : "Ningún programa coincide con el filtro"
+          }
+          description={
+            programs.length === 0 ? "Crea tu primer programa o impórtalos en lote." : undefined
+          }
+        />
       ) : (
         <div
           className="grid"
@@ -656,6 +685,7 @@ export function ProgramsHubPage() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }
@@ -673,7 +703,7 @@ const inp: React.CSSProperties = {
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.5)",
+  background: "var(--scrim, rgba(0, 0, 0, 0.5))",
   zIndex: 200,
   display: "flex",
   alignItems: "center",
