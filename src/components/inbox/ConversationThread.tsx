@@ -1045,85 +1045,61 @@ export function ConversationThread({ conversationId }: { conversationId: string 
       </Modal>
 
       {/* Modal — enviar una plantilla HSM de WhatsApp. */}
-      {tplOpen && (
-        <div
-          className="scrim"
-          style={{ display: "grid", placeItems: "center", zIndex: 300 }}
-          onClick={() => setTplOpen(false)}
-        >
-          <div
-            className="card card--pop"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: 460,
-              maxWidth: "94vw",
-              maxHeight: "80vh",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div className="card__head">
-              <div className="card__title">
-                <span className="card__ico" style={{ ["--_c" as string]: "var(--green)" }}>
-                  <Icon name="wa" size={16} />
-                </span>
-                Enviar plantilla
-              </div>
-              <button type="button" className="ctab__x" onClick={() => setTplOpen(false)}>
-                <Icon name="x" size={15} />
-              </button>
+      <Modal
+        open={tplOpen}
+        onOpenChange={setTplOpen}
+        title="Enviar plantilla"
+        className="max-w-[460px] max-h-[80vh] overflow-y-auto"
+      >
+        <div className="mt-3">
+          {tplLoading ? (
+            <div className="dim" style={{ padding: 20, textAlign: "center", fontSize: 13 }}>
+              Cargando plantillas…
             </div>
-            <div className="card__pad" style={{ overflowY: "auto" }}>
-              {tplLoading ? (
-                <div className="dim" style={{ padding: 20, textAlign: "center", fontSize: 13 }}>
-                  Cargando plantillas…
-                </div>
-              ) : templates.length === 0 ? (
-                <div
-                  className="dim"
-                  style={{ padding: 16, textAlign: "center", fontSize: 12.5, lineHeight: 1.5 }}
+          ) : templates.length === 0 ? (
+            <div
+              className="dim"
+              style={{ padding: 16, textAlign: "center", fontSize: 12.5, lineHeight: 1.5 }}
+            >
+              No hay plantillas aprobadas. Créalas en Configuración → Plantillas de WhatsApp.
+            </div>
+          ) : (
+            <div className="col gap8">
+              {templates.map((t) => (
+                <button
+                  key={t.name + (t.language || "")}
+                  type="button"
+                  onClick={() => sendTpl(t)}
+                  disabled={sendTemplate.isPending}
+                  className="row between"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: "var(--r-md)",
+                    border: "1px solid var(--border-1)",
+                    background: "var(--bg-2)",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
                 >
-                  No hay plantillas aprobadas. Créalas en Configuración → Plantillas de WhatsApp.
-                </div>
-              ) : (
-                <div className="col gap8">
-                  {templates.map((t) => (
-                    <button
-                      key={t.name + (t.language || "")}
-                      type="button"
-                      onClick={() => sendTpl(t)}
-                      disabled={sendTemplate.isPending}
-                      className="row between"
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: "var(--r-md)",
-                        border: "1px solid var(--border-1)",
-                        background: "var(--bg-2)",
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
+                  <span style={{ minWidth: 0 }}>
+                    <b style={{ fontSize: 13 }}>{t.name}</b>
+                    <div
+                      className="dim trunc"
+                      style={{ fontSize: 11.5, marginTop: 2, maxWidth: 320 }}
                     >
-                      <span style={{ minWidth: 0 }}>
-                        <b style={{ fontSize: 13 }}>{t.name}</b>
-                        <div
-                          className="dim trunc"
-                          style={{ fontSize: 11.5, marginTop: 2, maxWidth: 320 }}
-                        >
-                          {t.body || t.bodyText || t.category || "Plantilla HSM"}
-                        </div>
-                      </span>
-                      <span className="row gap6" style={{ flex: "0 0 auto" }}>
-                        {t.language && <Pill tone="outline">{t.language}</Pill>}
-                        <Icon name="send" size={14} style={{ color: "var(--green)" }} />
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
+                      {t.body || t.bodyText || t.category || "Plantilla HSM"}
+                    </div>
+                  </span>
+                  <span className="row gap6" style={{ flex: "0 0 auto" }}>
+                    {t.language && <Pill tone="outline">{t.language}</Pill>}
+                    <Icon name="send" size={14} style={{ color: "var(--green)" }} />
+                  </span>
+                </button>
+              ))}
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </Modal>
 
       {/* Tipificar la conversación — misma taxonomía que el wrap-up de voz. */}
       {typifyOpen && (
@@ -1131,79 +1107,55 @@ export function ConversationThread({ conversationId }: { conversationId: string 
       )}
 
       {/* Traspasar / derivar el chat a otro agente (ownership). */}
-      {transferOpen && (
-        <div
-          className="scrim"
-          style={{ display: "grid", placeItems: "center", zIndex: 320 }}
-          onClick={() => setTransferOpen(false)}
-        >
-          <div
-            className="card card--pop"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: 420,
-              maxWidth: "94vw",
-              maxHeight: "80vh",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div className="card__head">
-              <div className="card__title">
-                <span className="card__ico" style={{ ["--_c" as string]: "var(--cyan)" }}>
-                  <Icon name="userplus" size={16} />
-                </span>
-                Traspasar conversación
-              </div>
-              <button type="button" className="ctab__x" onClick={() => setTransferOpen(false)}>
-                <Icon name="x" size={15} />
-              </button>
-            </div>
-            <div className="card__pad" style={{ overflowY: "auto" }}>
-              <div className="dim" style={{ fontSize: 12, marginBottom: 10, lineHeight: 1.5 }}>
-                Elige a quién derivar el chat. Le aparecerá en su bandeja y saldrá de la tuya.
-              </div>
-              {agentsToShow.length === 0 ? (
-                <div className="dim" style={{ padding: 16, textAlign: "center", fontSize: 12.5 }}>
-                  No hay otros agentes disponibles.
-                </div>
-              ) : (
-                <div className="col gap6">
-                  {agentsToShow.map((u) => (
-                    <button
-                      key={u.email}
-                      type="button"
-                      onClick={() => doTransfer(u)}
-                      disabled={assignTo.isPending}
-                      className="row gap10"
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: "var(--r-md)",
-                        border: "1px solid var(--border-1)",
-                        background: "var(--bg-2)",
-                        cursor: "pointer",
-                        textAlign: "left",
-                        alignItems: "center",
-                      }}
-                    >
-                      <Av name={agentLabel(u)} size={30} radius={9} />
-                      <span style={{ minWidth: 0, flex: 1 }}>
-                        <b className="trunc" style={{ fontSize: 13, display: "block" }}>
-                          {agentLabel(u)}
-                        </b>
-                        <div className="dim trunc" style={{ fontSize: 11 }}>
-                          {u.email}
-                        </div>
-                      </span>
-                      <Icon name="arrowRight" size={14} style={{ color: "var(--cyan)" }} />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+      <Modal
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        title="Traspasar conversación"
+        className="max-w-[420px] max-h-[80vh] overflow-y-auto"
+      >
+        <div className="mt-3">
+          <div className="dim" style={{ fontSize: 12, marginBottom: 10, lineHeight: 1.5 }}>
+            Elige a quién derivar el chat. Le aparecerá en su bandeja y saldrá de la tuya.
           </div>
+          {agentsToShow.length === 0 ? (
+            <div className="dim" style={{ padding: 16, textAlign: "center", fontSize: 12.5 }}>
+              No hay otros agentes disponibles.
+            </div>
+          ) : (
+            <div className="col gap6">
+              {agentsToShow.map((u) => (
+                <button
+                  key={u.email}
+                  type="button"
+                  onClick={() => doTransfer(u)}
+                  disabled={assignTo.isPending}
+                  className="row gap10"
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: "var(--r-md)",
+                    border: "1px solid var(--border-1)",
+                    background: "var(--bg-2)",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    alignItems: "center",
+                  }}
+                >
+                  <Av name={agentLabel(u)} size={30} radius={9} />
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <b className="trunc" style={{ fontSize: 13, display: "block" }}>
+                      {agentLabel(u)}
+                    </b>
+                    <div className="dim trunc" style={{ fontSize: 11 }}>
+                      {u.email}
+                    </div>
+                  </span>
+                  <Icon name="arrowRight" size={14} style={{ color: "var(--cyan)" }} />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </Modal>
     </>
   );
 }
