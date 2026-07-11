@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
 import { SegmentedControl } from "@/components/ui/segmented";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -276,21 +277,14 @@ export function TaxonomyEditor() {
             </SelectContent>
           </Select>
         )}
-        <input
+        <Input
           value={name}
           onChange={(e) => {
             setName(e.target.value);
             setDirty(true);
           }}
           placeholder="Nombre de la taxonomía"
-          style={{
-            ...inputStyle,
-            flex: 1,
-            minWidth: 240,
-            fontWeight: 700,
-            fontSize: 15,
-            padding: "10px 12px",
-          }}
+          style={{ flex: 1, minWidth: 240, fontWeight: 700 }}
         />
         {activeDoc?.isDefault && (
           <span className="chip chip--violet" style={{ height: 32 }}>
@@ -457,21 +451,11 @@ export function TaxonomyEditor() {
                     >
                       {idx + 1}
                     </span>
-                    <input
+                    <Input
                       value={stage.label}
                       onChange={(e) => patchStage(stage._key, { label: e.target.value })}
                       placeholder="Nombre del stage"
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        border: "none",
-                        background: "transparent",
-                        fontSize: 15,
-                        fontWeight: 700,
-                        color: "var(--text-1)",
-                        outline: "none",
-                        padding: "4px 0",
-                      }}
+                      style={{ flex: 1, minWidth: 0, fontWeight: 700 }}
                     />
                     {/* Segmented de valoración (con color) */}
                     <SegmentedControl
@@ -496,30 +480,18 @@ export function TaxonomyEditor() {
 
                   {/* Descripción + mapeo a Salesforce */}
                   <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                    <input
+                    <Input
                       value={stage.description ?? ""}
                       onChange={(e) => patchStage(stage._key, { description: e.target.value })}
                       placeholder="Descripción (opcional)"
-                      style={{
-                        ...inputStyle,
-                        flex: 1,
-                        minWidth: 200,
-                        fontSize: 12.5,
-                        background: "var(--bg-2)",
-                      }}
+                      style={{ flex: 1, minWidth: 200 }}
                     />
-                    <input
+                    <Input
                       value={stage.salesforceValue ?? ""}
                       onChange={(e) => patchStage(stage._key, { salesforceValue: e.target.value })}
                       placeholder="Salesforce →"
                       title="Valor del campo Status de Lead en Salesforce al que mapea este stage"
-                      style={{
-                        ...inputStyle,
-                        width: 150,
-                        flex: "0 0 auto",
-                        fontSize: 12,
-                        background: "var(--bg-2)",
-                      }}
+                      style={{ width: 150, flex: "0 0 auto" }}
                     />
                   </div>
 
@@ -616,16 +588,6 @@ export function TaxonomyEditor() {
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  background: "var(--bg-1)",
-  border: "1px solid var(--border-1)",
-  borderRadius: 6,
-  padding: "6px 9px",
-  color: "var(--text-1)",
-  fontSize: 13,
-  outline: "none",
-};
 
 /** Mini wrap-up en vivo: muestra cómo el AGENTE tipifica un contacto con esta
  *  taxonomía (stage → sub-stage + chip de valoración con su color). Se alimenta

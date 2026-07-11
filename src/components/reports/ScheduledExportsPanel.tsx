@@ -3,6 +3,14 @@ import { toast } from "sonner";
 import { Plus, RefreshCw, Trash2, Play, Clock, Mail } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 /**
  * ScheduledExportsPanel — gestión de los exports programados (#7). Lista los
@@ -30,6 +38,8 @@ const FREQS: { id: ExportJob["frequency"]; label: string }[] = [
   { id: "monthly", label: "Mensual" },
 ];
 
+const DATASETS: { id: string; label: string }[] = [{ id: "leads", label: "Leads" }];
+
 const blankForm = {
   exportId: "",
   name: "",
@@ -38,16 +48,6 @@ const blankForm = {
   hourUtc: 13,
   recipients: "",
   enabled: true,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "7px 9px",
-  borderRadius: 8,
-  border: "1px solid var(--border-2)",
-  background: "var(--bg-2)",
-  color: "var(--text-1)",
-  fontSize: 12.5,
 };
 
 function fmt(iso?: string): string {
@@ -209,50 +209,70 @@ export function ScheduledExportsPanel() {
             marginBottom: 8,
           }}
         >
-          <input
-            style={inputStyle}
+          <Input
             placeholder="Nombre (ej. Leads diarios)"
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
           />
-          <select
-            style={inputStyle}
+          <Select
             value={form.dataset}
-            onChange={(e) => setForm((f) => ({ ...f, dataset: e.target.value }))}
+            onValueChange={(nv) => {
+              if (!nv) return;
+              setForm((f) => ({ ...f, dataset: nv }));
+            }}
           >
-            <option value="leads">Leads</option>
-          </select>
-          <select
-            style={inputStyle}
+            <SelectTrigger className="w-full">
+              <SelectValue>{DATASETS.find((d) => d.id === form.dataset)?.label}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {DATASETS.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
             value={form.frequency}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, frequency: e.target.value as ExportJob["frequency"] }))
-            }
+            onValueChange={(nv) => {
+              if (!nv) return;
+              setForm((f) => ({ ...f, frequency: nv as ExportJob["frequency"] }));
+            }}
           >
-            {FREQS.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full">
+              <SelectValue>{FREQS.find((f) => f.id === form.frequency)?.label}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {FREQS.map((f) => (
+                <SelectItem key={f.id} value={f.id}>
+                  {f.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div
           style={{ display: "grid", gridTemplateColumns: "0.6fr 2fr", gap: 8, marginBottom: 10 }}
         >
-          <select
-            style={inputStyle}
-            value={form.hourUtc}
-            onChange={(e) => setForm((f) => ({ ...f, hourUtc: Number(e.target.value) }))}
-            title="Hora de envío (UTC)"
+          <Select
+            value={String(form.hourUtc)}
+            onValueChange={(nv) => {
+              if (!nv) return;
+              setForm((f) => ({ ...f, hourUtc: Number(nv) }));
+            }}
           >
-            {Array.from({ length: 24 }, (_, h) => (
-              <option key={h} value={h}>
-                {String(h).padStart(2, "0")}:00 UTC
-              </option>
-            ))}
-          </select>
-          <input
-            style={inputStyle}
+            <SelectTrigger className="w-full" title="Hora de envío (UTC)">
+              <SelectValue>{`${String(form.hourUtc).padStart(2, "0")}:00 UTC`}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: 24 }, (_, h) => (
+                <SelectItem key={h} value={String(h)}>
+                  {String(h).padStart(2, "0")}:00 UTC
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
             placeholder="Destinatarios (emails separados por coma)"
             value={form.recipients}
             onChange={(e) => setForm((f) => ({ ...f, recipients: e.target.value }))}

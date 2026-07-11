@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/select";
 import { SegmentedControl } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 /**
  * WhatsAppTemplatesManager — biblioteca central de plantillas (HSM) de WhatsApp
@@ -167,18 +169,6 @@ const countVars = (s: string) =>
 
 // Detecta una variable {{n}} (para URL dinámica).
 const HAS_VAR = /\{\{\s*\d+\s*\}\}/;
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  background: "var(--bg-2)",
-  border: "1px solid var(--border-1)",
-  borderRadius: 8,
-  padding: "8px 10px",
-  color: "var(--text-1)",
-  outline: "none",
-  fontSize: 12.5,
-  fontFamily: "var(--font-ui)",
-};
 
 export function WhatsAppTemplatesManager() {
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
@@ -954,11 +944,7 @@ export function WhatsAppTemplatesManager() {
                     <span className="muted" style={{ fontSize: 10.5 }}>
                       Nombre (snake_case){editingId ? " · fijo" : ""}
                     </span>
-                    <input
-                      style={{
-                        ...inputStyle,
-                        ...(editingId ? { opacity: 0.6, cursor: "not-allowed" } : null),
-                      }}
+                    <Input
                       value={name}
                       disabled={!!editingId}
                       onChange={(e) =>
@@ -1046,11 +1032,11 @@ export function WhatsAppTemplatesManager() {
                       <span className="muted" style={{ fontSize: 10.5 }}>
                         El código expira en (minutos · 0 = sin pie)
                       </span>
-                      <input
+                      <Input
                         type="number"
                         min={0}
                         max={90}
-                        style={{ ...inputStyle, width: 140 }}
+                        style={{ width: 140 }}
                         value={authCodeExp}
                         onChange={(e) =>
                           setAuthCodeExp(Math.max(0, Math.min(90, Number(e.target.value) || 0)))
@@ -1061,8 +1047,7 @@ export function WhatsAppTemplatesManager() {
                       <span className="muted" style={{ fontSize: 10.5 }}>
                         Texto del botón (opcional · por defecto «Copiar código»)
                       </span>
-                      <input
-                        style={inputStyle}
+                      <Input
                         value={authOtpText}
                         maxLength={25}
                         onChange={(e) => setAuthOtpText(e.target.value)}
@@ -1122,8 +1107,8 @@ export function WhatsAppTemplatesManager() {
                             aria-label="Tipo de encabezado"
                           />
                           {headerFormat === "TEXT" ? (
-                            <input
-                              style={{ ...inputStyle, flex: 1 }}
+                            <Input
+                              style={{ flex: 1 }}
                               value={headerText}
                               onChange={(e) => setHeaderText(e.target.value)}
                               placeholder="Ej. Confirmación de tu cita"
@@ -1190,8 +1175,8 @@ export function WhatsAppTemplatesManager() {
                           ? "Texto de la burbuja — el mensaje arriba de las tarjetas"
                           : "Cuerpo — usa {{1}}, {{2}}… para variables"}
                       </span>
-                      <textarea
-                        style={{ ...inputStyle, minHeight: 88, resize: "vertical" }}
+                      <Textarea
+                        style={{ minHeight: 88, resize: "vertical" }}
                         value={bodyText}
                         onChange={(e) => setBodyText(e.target.value)}
                         placeholder={
@@ -1212,8 +1197,7 @@ export function WhatsAppTemplatesManager() {
                               className="mono muted"
                               style={{ fontSize: 11, width: 32 }}
                             >{`{{${i + 1}}}`}</span>
-                            <input
-                              style={inputStyle}
+                            <Input
                               value={varExamples[i] || ""}
                               onChange={(e) =>
                                 setVarExamples((prev) => {
@@ -1233,8 +1217,7 @@ export function WhatsAppTemplatesManager() {
                         <span className="muted" style={{ fontSize: 10.5 }}>
                           Pie (opcional)
                         </span>
-                        <input
-                          style={inputStyle}
+                        <Input
                           value={footerText}
                           onChange={(e) => setFooterText(e.target.value)}
                           placeholder="Ej. Equipo UDEP"
@@ -1318,16 +1301,16 @@ export function WhatsAppTemplatesManager() {
                                   </Select>
                                 </div>
                               ) : b.type === "COPY_CODE" ? (
-                                <input
-                                  style={{ ...inputStyle, flex: 1 }}
+                                <Input
+                                  style={{ flex: 1 }}
                                   value={b.example || ""}
                                   maxLength={15}
                                   onChange={(e) => updateButton(i, { example: e.target.value })}
                                   placeholder="Código de ejemplo (ej. PROMO25)"
                                 />
                               ) : (
-                                <input
-                                  style={{ ...inputStyle, flex: 1 }}
+                                <Input
+                                  style={{ flex: 1 }}
                                   value={b.text}
                                   maxLength={25}
                                   onChange={(e) => updateButton(i, { text: e.target.value })}
@@ -1335,24 +1318,24 @@ export function WhatsAppTemplatesManager() {
                                 />
                               )}
                               {b.type === "URL" && (
-                                <input
-                                  style={{ ...inputStyle, flex: 1.4 }}
+                                <Input
+                                  style={{ flex: 1.4 }}
                                   value={b.url || ""}
                                   onChange={(e) => updateButton(i, { url: e.target.value })}
                                   placeholder="https://ejemplo.com/{{1}}"
                                 />
                               )}
                               {b.type === "PHONE_NUMBER" && (
-                                <input
-                                  style={{ ...inputStyle, flex: 1.4 }}
+                                <Input
+                                  style={{ flex: 1.4 }}
                                   value={b.phoneNumber || ""}
                                   onChange={(e) => updateButton(i, { phoneNumber: e.target.value })}
                                   placeholder="+51999888777"
                                 />
                               )}
                               {b.type === "FLOW" && (
-                                <input
-                                  style={{ ...inputStyle, flex: 1 }}
+                                <Input
+                                  style={{ flex: 1 }}
                                   value={b.text}
                                   maxLength={25}
                                   onChange={(e) => updateButton(i, { text: e.target.value })}
@@ -1369,16 +1352,16 @@ export function WhatsAppTemplatesManager() {
                                 <Icon.Close size={13} />
                               </button>
                               {isUrlDyn && (
-                                <input
-                                  style={{ ...inputStyle, flexBasis: "100%" }}
+                                <Input
+                                  style={{ flexBasis: "100%" }}
                                   value={b.example || ""}
                                   onChange={(e) => updateButton(i, { example: e.target.value })}
                                   placeholder="URL de ejemplo completa (ej. https://ejemplo.com/orden/12345)"
                                 />
                               )}
                               {b.type === "FLOW" && (
-                                <input
-                                  style={{ ...inputStyle, flexBasis: "100%" }}
+                                <Input
+                                  style={{ flexBasis: "100%" }}
                                   value={b.navigateScreen || ""}
                                   onChange={(e) =>
                                     updateButton(i, { navigateScreen: e.target.value })
@@ -1666,8 +1649,8 @@ export function WhatsAppTemplatesManager() {
 
                               {/* Body + variables + valores de botones */}
                               <div className="col" style={{ gap: 6 }}>
-                                <textarea
-                                  style={{ ...inputStyle, minHeight: 52, resize: "vertical" }}
+                                <Textarea
+                                  style={{ minHeight: 52, resize: "vertical" }}
                                   value={c.bodyText}
                                   maxLength={CARD_BODY_MAX}
                                   onChange={(e) => patchCard(ci, { bodyText: e.target.value })}
@@ -1676,9 +1659,8 @@ export function WhatsAppTemplatesManager() {
                                 {cvc > 0 && (
                                   <div className="col" style={{ gap: 4 }}>
                                     {Array.from({ length: cvc }, (_, vi) => (
-                                      <input
+                                      <Input
                                         key={vi}
-                                        style={{ ...inputStyle, fontSize: 12 }}
                                         value={c.bodyExamples[vi] || ""}
                                         onChange={(e) =>
                                           patchCard(ci, {
@@ -1725,8 +1707,8 @@ export function WhatsAppTemplatesManager() {
                                         )}
                                         {CARD_BTN_META[t].label}
                                       </span>
-                                      <input
-                                        style={{ ...inputStyle, flex: 1, fontSize: 12 }}
+                                      <Input
+                                        style={{ flex: 1 }}
                                         value={bv.text || ""}
                                         maxLength={25}
                                         onChange={(e) =>
@@ -1735,8 +1717,8 @@ export function WhatsAppTemplatesManager() {
                                         placeholder="Texto del botón"
                                       />
                                       {t === "URL" && (
-                                        <input
-                                          style={{ ...inputStyle, flex: 1.3, fontSize: 12 }}
+                                        <Input
+                                          style={{ flex: 1.3 }}
                                           value={bv.url || ""}
                                           onChange={(e) =>
                                             setCardBtn(ci, bi, { url: e.target.value })
@@ -1745,8 +1727,8 @@ export function WhatsAppTemplatesManager() {
                                         />
                                       )}
                                       {t === "PHONE_NUMBER" && (
-                                        <input
-                                          style={{ ...inputStyle, flex: 1.3, fontSize: 12 }}
+                                        <Input
+                                          style={{ flex: 1.3 }}
                                           value={bv.phoneNumber || ""}
                                           onChange={(e) =>
                                             setCardBtn(ci, bi, { phoneNumber: e.target.value })
@@ -1755,8 +1737,8 @@ export function WhatsAppTemplatesManager() {
                                         />
                                       )}
                                       {dyn && (
-                                        <input
-                                          style={{ ...inputStyle, flexBasis: "100%", fontSize: 12 }}
+                                        <Input
+                                          style={{ flexBasis: "100%" }}
                                           value={bv.example || ""}
                                           onChange={(e) =>
                                             setCardBtn(ci, bi, { example: e.target.value })
@@ -2268,7 +2250,6 @@ function TemplateNameBuilder({ onApply }: { onApply: (name: string) => void }) {
       </button>
     );
   }
-  const fld: React.CSSProperties = { ...inputStyle, padding: "6px 8px", fontSize: 12 };
   return (
     <div
       style={{
@@ -2297,18 +2278,13 @@ function TemplateNameBuilder({ onApply }: { onApply: (name: string) => void }) {
           <span className="muted" style={{ fontSize: 10 }}>
             Fecha (AAAAMMDD)
           </span>
-          <input style={fld} value={fecha} onChange={(e) => setFecha(e.target.value)} />
+          <Input value={fecha} onChange={(e) => setFecha(e.target.value)} />
         </label>
         <label className="col" style={{ gap: 3 }}>
           <span className="muted" style={{ fontSize: 10 }}>
             Código de programa
           </span>
-          <input
-            style={fld}
-            value={codigo}
-            onChange={(e) => setCodigo(e.target.value)}
-            placeholder="adm"
-          />
+          <Input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="adm" />
         </label>
         <div className="col" style={{ gap: 3 }}>
           <span className="muted" style={{ fontSize: 10 }}>

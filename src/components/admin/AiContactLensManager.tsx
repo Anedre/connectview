@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import * as Icon from "@/components/vox/primitives";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
+import { Input } from "@/components/ui/input";
 import { useFeatureStatus } from "@/hooks/useFeatureStatus";
 import { getApiEndpoints } from "@/lib/api";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
@@ -598,7 +599,7 @@ export function AiContactLensManager() {
 
           {/* Input */}
           <div className="row" style={{ gap: 8, marginTop: 12, alignItems: "stretch" }}>
-            <input
+            <Input
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => {
@@ -608,16 +609,7 @@ export function AiContactLensManager() {
                 }
               }}
               placeholder="Escribe una pregunta para el asistente…"
-              style={{
-                flex: 1,
-                background: "var(--bg-1)",
-                border: "1px solid var(--border-1)",
-                borderRadius: 9,
-                padding: "10px 12px",
-                color: "var(--text-1)",
-                fontSize: 13.5,
-                outline: "none",
-              }}
+              style={{ flex: 1 }}
             />
             <button
               className="btn btn--primary"

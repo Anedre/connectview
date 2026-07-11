@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SegmentedControl } from "@/components/ui/segmented";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
 import { useSegments, type Segment, type FilterRule, type FilterOp } from "@/hooks/useSegments";
 
@@ -58,16 +59,6 @@ function ruleText(r: FilterRule): string {
   const needsValue = r.op !== "exists" && r.op !== "notexists";
   return `${fieldLabel(r.field)} ${opl}${needsValue ? ` ${r.value ?? ""}` : ""}`.trim();
 }
-
-const inp: React.CSSProperties = {
-  background: "var(--bg-2)",
-  border: "1px solid var(--border-1)",
-  borderRadius: 8,
-  padding: "7px 9px",
-  color: "var(--text-1)",
-  fontSize: 12.5,
-  outline: "none",
-};
 
 export function SegmentsManager() {
   const { user } = useAuth();
@@ -159,11 +150,11 @@ export function SegmentsManager() {
         <CardBody>
           <div className="col" style={{ gap: 12 }}>
             <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <input
+              <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Nombre del segmento (ej. Calientes sin contactar)"
-                style={{ ...inp, flex: 1, minWidth: 220 }}
+                style={{ flex: 1, minWidth: 220 }}
               />
               <SegmentedControl<"all" | "any">
                 value={match}
@@ -214,12 +205,12 @@ export function SegmentsManager() {
                     </SelectContent>
                   </Select>
                   {needsValue ? (
-                    <input
+                    <Input
                       type={kind === "num" ? "number" : "text"}
                       value={String(r.value ?? "")}
                       onChange={(e) => setRule(i, { value: e.target.value })}
                       placeholder="valor"
-                      style={{ ...inp, flex: 1 }}
+                      style={{ flex: 1 }}
                     />
                   ) : (
                     <div style={{ flex: 1 }} />

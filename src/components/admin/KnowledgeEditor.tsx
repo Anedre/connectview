@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { useAuth } from "@/hooks/useAuth";
@@ -494,25 +496,14 @@ export function KnowledgeEditor() {
         <div className="col" style={{ gap: 12 }}>
           {/* Nombre + toolbar */}
           <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <input
+            <Input
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
                 setDirty(true);
               }}
               placeholder="Nombre de la base (p. ej. FAQ Admisión 2026)"
-              style={{
-                flex: 1,
-                minWidth: 220,
-                fontWeight: 700,
-                fontSize: 15,
-                padding: "10px 12px",
-                borderRadius: 8,
-                border: "1px solid var(--border-1)",
-                background: "var(--bg-1)",
-                color: "var(--text-1)",
-                outline: "none",
-              }}
+              style={{ flex: 1, minWidth: 220, fontWeight: 700 }}
             />
             <div
               className="row"
@@ -594,56 +585,26 @@ export function KnowledgeEditor() {
                       {idx + 1}
                     </span>
                     <div className="col" style={{ gap: 8, flex: 1, minWidth: 0 }}>
-                      <input
+                      <Input
                         value={e.q}
                         onChange={(ev) => patchEntry(e.id, { q: ev.target.value })}
                         placeholder="Pregunta del cliente (¿…?)"
-                        style={{
-                          width: "100%",
-                          fontWeight: 700,
-                          fontSize: 13.5,
-                          padding: "8px 10px",
-                          borderRadius: 8,
-                          border: "1px solid var(--border-1)",
-                          background: "var(--bg-2)",
-                          color: "var(--text-1)",
-                          outline: "none",
-                        }}
+                        style={{ fontWeight: 700 }}
                       />
-                      <textarea
+                      <Textarea
                         value={e.a}
                         onChange={(ev) => patchEntry(e.id, { a: ev.target.value })}
                         placeholder="Respuesta que dará el agente…"
                         rows={2}
-                        style={{
-                          width: "100%",
-                          fontSize: 13,
-                          padding: "8px 10px",
-                          borderRadius: 8,
-                          border: "1px solid var(--border-1)",
-                          background: "var(--bg-2)",
-                          color: "var(--text-1)",
-                          outline: "none",
-                          resize: "vertical",
-                          lineHeight: 1.5,
-                        }}
+                        style={{ resize: "vertical", lineHeight: 1.5 }}
                       />
                       <div className="row" style={{ gap: 7, alignItems: "center" }}>
                         <Icon.Tag size={12} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
-                        <input
+                        <Input
                           value={e.tagsText}
                           onChange={(ev) => patchEntry(e.id, { tagsText: ev.target.value })}
                           placeholder="Etiquetas (separadas por coma): precio, fechas…"
-                          style={{
-                            flex: 1,
-                            fontSize: 12,
-                            padding: "6px 8px",
-                            borderRadius: 7,
-                            border: "1px solid var(--border-1)",
-                            background: "transparent",
-                            color: "var(--text-2)",
-                            outline: "none",
-                          }}
+                          style={{ flex: 1 }}
                         />
                       </div>
                     </div>

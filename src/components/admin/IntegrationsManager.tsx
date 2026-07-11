@@ -39,6 +39,8 @@ import {
 import { SegmentedControl } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { RadioCards } from "@/components/ui/radio-cards";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import outputs from "../../../amplify_outputs.json";
 
 /**
@@ -208,15 +210,6 @@ function StepLabel({ n, children }: { n: number; children: ReactNode }) {
   );
 }
 
-const inputStyle: CSSProperties = {
-  width: "100%",
-  padding: "8px 10px",
-  fontSize: 13,
-  border: "1px solid var(--border-1)",
-  borderRadius: 6,
-  background: "var(--bg-1)",
-  color: "var(--text-1)",
-};
 const labelStyle: CSSProperties = {
   fontSize: 11,
   color: "var(--text-3)",
@@ -471,8 +464,7 @@ function AmazonConnectCard({
           >
             <label>
               <span style={labelStyle}>URL de la instancia</span>
-              <input
-                style={inputStyle}
+              <Input
                 placeholder="https://tu-empresa.my.connect.aws"
                 value={draft.instanceUrl || ""}
                 onChange={(e) => set({ instanceUrl: e.target.value })}
@@ -499,8 +491,7 @@ function AmazonConnectCard({
           </div>
           <label style={{ display: "block", marginTop: 10 }}>
             <span style={labelStyle}>ARN de la instancia (opcional, recomendado)</span>
-            <input
-              style={inputStyle}
+            <Input
               placeholder="arn:aws:connect:us-east-1:123456789012:instance/…"
               value={draft.instanceArn || ""}
               onChange={(e) => set({ instanceArn: e.target.value })}
@@ -582,8 +573,7 @@ function AmazonConnectCard({
           </details>
           <label style={{ display: "block", marginTop: 10 }}>
             <span style={labelStyle}>ARN del rol creado</span>
-            <input
-              style={inputStyle}
+            <Input
               placeholder="arn:aws:iam::123456789012:role/VoxCrmConnectAccess"
               value={draft.roleArn || ""}
               onChange={(e) => set({ roleArn: e.target.value })}
@@ -598,8 +588,7 @@ function AmazonConnectCard({
             </summary>
             <label style={{ display: "block", marginTop: 8 }}>
               <span style={labelStyle}>Customer Profiles · domain name (opcional)</span>
-              <input
-                style={inputStyle}
+              <Input
                 placeholder="amazon-connect-tu-alias (default derivado de instanceUrl)"
                 value={draft.customerProfilesDomain || ""}
                 onChange={(e) => set({ customerProfilesDomain: e.target.value })}
@@ -1511,8 +1500,7 @@ function WhatsAppCard({
 
             <label>
               <span style={labelStyle}>Etiqueta (opcional)</span>
-              <input
-                style={inputStyle}
+              <Input
                 autoComplete="off"
                 name="wa-label"
                 placeholder="Admisiones, Cobranzas…"
@@ -1558,8 +1546,7 @@ function WhatsAppCard({
                 >
                   <label>
                     <span style={labelStyle}>Phone Number ID</span>
-                    <input
-                      style={inputStyle}
+                    <Input
                       autoComplete="off"
                       name="wa-phone-number-id"
                       placeholder="1029384756…"
@@ -1569,8 +1556,7 @@ function WhatsAppCard({
                   </label>
                   <label>
                     <span style={labelStyle}>WABA ID (opcional)</span>
-                    <input
-                      style={inputStyle}
+                    <Input
                       autoComplete="off"
                       name="wa-waba-id"
                       placeholder="ID de la cuenta de WhatsApp Business"
@@ -1581,8 +1567,7 @@ function WhatsAppCard({
                 </div>
                 <label>
                   <span style={labelStyle}>Token de acceso</span>
-                  <input
-                    style={inputStyle}
+                  <Input
                     type="password"
                     autoComplete="new-password"
                     name="wa-access-token"
@@ -1734,17 +1719,11 @@ function WaFlowsEditor({
       >
         <label>
           <span style={labelStyle}>flow_id</span>
-          <input
-            style={inputStyle}
-            placeholder="1234567890…"
-            value={nId}
-            onChange={(e) => setNId(e.target.value)}
-          />
+          <Input placeholder="1234567890…" value={nId} onChange={(e) => setNId(e.target.value)} />
         </label>
         <label>
           <span style={labelStyle}>Nombre</span>
-          <input
-            style={inputStyle}
+          <Input
             placeholder="Solicitud de info"
             value={nName}
             onChange={(e) => setNName(e.target.value)}
@@ -1752,17 +1731,11 @@ function WaFlowsEditor({
         </label>
         <label>
           <span style={labelStyle}>Botón (opc.)</span>
-          <input
-            style={inputStyle}
-            placeholder="Completar"
-            value={nCta}
-            onChange={(e) => setNCta(e.target.value)}
-          />
+          <Input placeholder="Completar" value={nCta} onChange={(e) => setNCta(e.target.value)} />
         </label>
         <label>
           <span style={labelStyle}>Pantalla (opc.)</span>
-          <input
-            style={inputStyle}
+          <Input
             placeholder="INICIO"
             value={nScreen}
             onChange={(e) => setNScreen(e.target.value)}
@@ -1818,8 +1791,7 @@ function MessagingCard({
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <label>
           <span style={labelStyle}>Nombre de producto (marca)</span>
-          <input
-            style={inputStyle}
+          <Input
             placeholder="ARIA"
             value={productName}
             onChange={(e) => setProductName(e.target.value)}
@@ -1831,14 +1803,8 @@ function MessagingCard({
         </label>
         <label>
           <span style={labelStyle}>Despedida de chat / WhatsApp</span>
-          <textarea
-            style={{
-              ...inputStyle,
-              minHeight: 120,
-              resize: "vertical",
-              fontFamily: "inherit",
-              lineHeight: 1.5,
-            }}
+          <Textarea
+            style={{ minHeight: 120, resize: "vertical" }}
             placeholder="👋 ¡Gracias por escribirnos! Esperamos haberte ayudado…"
             value={farewell}
             onChange={(e) => setFarewell(e.target.value)}
@@ -2022,8 +1988,7 @@ function SsoCard({
           </div>
           <label style={{ display: "block", marginTop: 12 }}>
             <span style={labelStyle}>Nombre del proveedor (interno, ej. UDEP)</span>
-            <input
-              style={inputStyle}
+            <Input
               placeholder="UDEP"
               value={draft.cognitoProviderName || ""}
               onChange={(e) => set({ cognitoProviderName: e.target.value })}
@@ -2037,8 +2002,7 @@ function SsoCard({
           {isSaml ? (
             <label style={{ display: "block" }}>
               <span style={labelStyle}>URL de metadata (SAML)</span>
-              <input
-                style={inputStyle}
+              <Input
                 placeholder="https://login.tu-idp.com/…/federationmetadata.xml"
                 value={draft.metadataUrl || ""}
                 onChange={(e) => set({ metadataUrl: e.target.value })}
@@ -2048,8 +2012,7 @@ function SsoCard({
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <label style={{ display: "block" }}>
                 <span style={labelStyle}>Issuer / Discovery URL</span>
-                <input
-                  style={inputStyle}
+                <Input
                   placeholder="https://login.microsoftonline.com/<tenant>/v2.0"
                   value={draft.issuerUrl || ""}
                   onChange={(e) => set({ issuerUrl: e.target.value })}
@@ -2057,8 +2020,7 @@ function SsoCard({
               </label>
               <label style={{ display: "block" }}>
                 <span style={labelStyle}>Client ID</span>
-                <input
-                  style={inputStyle}
+                <Input
                   placeholder="ID de la aplicación registrada en tu IdP"
                   value={draft.clientId || ""}
                   onChange={(e) => set({ clientId: e.target.value })}
@@ -2082,8 +2044,7 @@ function SsoCard({
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>
             Los usuarios con estos dominios entran por tu IdP. Sepáralos por coma.
           </div>
-          <input
-            style={inputStyle}
+          <Input
             placeholder="udep.edu.pe, udep.pe"
             value={domainsText}
             onChange={(e) => setDomainsText(e.target.value)}
@@ -2332,8 +2293,7 @@ function EmailCard({
           <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
             <label style={{ flex: 1, minWidth: 180 }}>
               <span style={labelStyle}>Remitente (From)</span>
-              <input
-                style={inputStyle}
+              <Input
                 value={fromEmail}
                 onChange={(e) => setFromEmail(e.target.value)}
                 placeholder="ventas@tudominio.com"
@@ -2341,8 +2301,7 @@ function EmailCard({
             </label>
             <label style={{ flex: 1, minWidth: 140 }}>
               <span style={labelStyle}>Nombre visible</span>
-              <input
-                style={inputStyle}
+              <Input
                 value={fromName}
                 onChange={(e) => setFromName(e.target.value)}
                 placeholder="ARIA"
@@ -2355,11 +2314,7 @@ function EmailCard({
           <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <label style={{ width: 160 }}>
               <span style={labelStyle}>Región</span>
-              <input
-                style={inputStyle}
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-              />
+              <Input value={region} onChange={(e) => setRegion(e.target.value)} />
             </label>
             <label className="row" style={{ gap: 8, fontSize: 13, marginTop: 18 }}>
               <Switch
@@ -2377,8 +2332,7 @@ function EmailCard({
             <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
               <label style={{ flex: 2, minWidth: 180 }}>
                 <span style={labelStyle}>Servidor SMTP</span>
-                <input
-                  style={inputStyle}
+                <Input
                   value={host}
                   onChange={(e) => setHost(e.target.value)}
                   placeholder="smtp.gmail.com"
@@ -2386,13 +2340,12 @@ function EmailCard({
               </label>
               <label style={{ width: 90 }}>
                 <span style={labelStyle}>Puerto</span>
-                <input style={inputStyle} value={port} onChange={(e) => setPort(e.target.value)} />
+                <Input value={port} onChange={(e) => setPort(e.target.value)} />
               </label>
             </div>
             <label>
               <span style={labelStyle}>Usuario</span>
-              <input
-                style={inputStyle}
+              <Input
                 value={user}
                 onChange={(e) => setUser(e.target.value)}
                 placeholder="ventas@tudominio.com"
@@ -2402,8 +2355,7 @@ function EmailCard({
               <span style={labelStyle}>
                 Contraseña / app-password{secretSet ? " · ya guardada" : ""}
               </span>
-              <input
-                style={inputStyle}
+              <Input
                 type="password"
                 value={smtpPass}
                 onChange={(e) => setSmtpPass(e.target.value)}
@@ -2416,8 +2368,7 @@ function EmailCard({
         {kind === "sendgrid" && (
           <label>
             <span style={labelStyle}>API key de SendGrid{secretSet ? " · ya guardada" : ""}</span>
-            <input
-              style={inputStyle}
+            <Input
               type="password"
               value={sgKey}
               onChange={(e) => setSgKey(e.target.value)}
@@ -2428,8 +2379,7 @@ function EmailCard({
         {kind === "resend" && (
           <label>
             <span style={labelStyle}>API key de Resend{secretSet ? " · ya guardada" : ""}</span>
-            <input
-              style={inputStyle}
+            <Input
               type="password"
               value={resendKey}
               onChange={(e) => setResendKey(e.target.value)}
@@ -2442,8 +2392,7 @@ function EmailCard({
             <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
               <label style={{ flex: 1, minWidth: 160 }}>
                 <span style={labelStyle}>Dominio</span>
-                <input
-                  style={inputStyle}
+                <Input
                   value={domain}
                   onChange={(e) => setDomain(e.target.value)}
                   placeholder="mg.tudominio.com"
@@ -2466,8 +2415,7 @@ function EmailCard({
             </div>
             <label>
               <span style={labelStyle}>API key de Mailgun{secretSet ? " · ya guardada" : ""}</span>
-              <input
-                style={inputStyle}
+              <Input
                 type="password"
                 value={mgKey}
                 onChange={(e) => setMgKey(e.target.value)}
@@ -2493,21 +2441,18 @@ function EmailCard({
             </div>
             {kind === "gmail" ? (
               <div className="col" style={{ gap: 8 }}>
-                <input
-                  style={inputStyle}
+                <Input
                   value={gId}
                   onChange={(e) => setGId(e.target.value)}
                   placeholder="Client ID"
                 />
-                <input
-                  style={inputStyle}
+                <Input
                   type="password"
                   value={gSecret}
                   onChange={(e) => setGSecret(e.target.value)}
                   placeholder="Client secret"
                 />
-                <input
-                  style={inputStyle}
+                <Input
                   type="password"
                   value={gRefresh}
                   onChange={(e) => setGRefresh(e.target.value)}
@@ -2516,33 +2461,28 @@ function EmailCard({
               </div>
             ) : (
               <div className="col" style={{ gap: 8 }}>
-                <input
-                  style={inputStyle}
+                <Input
                   value={msTenant}
                   onChange={(e) => setMsTenant(e.target.value)}
                   placeholder="Tenant ID (Directory)"
                 />
-                <input
-                  style={inputStyle}
+                <Input
                   value={sender}
                   onChange={(e) => setSender(e.target.value)}
                   placeholder="Buzón remitente (user@dominio)"
                 />
-                <input
-                  style={inputStyle}
+                <Input
                   value={msId}
                   onChange={(e) => setMsId(e.target.value)}
                   placeholder="Client ID"
                 />
-                <input
-                  style={inputStyle}
+                <Input
                   type="password"
                   value={msSecret}
                   onChange={(e) => setMsSecret(e.target.value)}
                   placeholder="Client secret"
                 />
-                <input
-                  style={inputStyle}
+                <Input
                   type="password"
                   value={msRefresh}
                   onChange={(e) => setMsRefresh(e.target.value)}
@@ -2561,8 +2501,8 @@ function EmailCard({
             {saving ? "Guardando…" : "Guardar"}
           </button>
           <div className="row" style={{ gap: 6, marginLeft: "auto" }}>
-            <input
-              style={{ ...inputStyle, width: 200 }}
+            <Input
+              style={{ width: 200 }}
               value={testTo}
               onChange={(e) => setTestTo(e.target.value)}
               placeholder="correo@prueba.com"

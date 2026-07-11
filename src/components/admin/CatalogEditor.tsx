@@ -3,6 +3,8 @@ import { toast } from "sonner";
 import Papa from "papaparse";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { useAuth } from "@/hooks/useAuth";
@@ -268,25 +270,14 @@ export function CatalogEditor() {
           <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.5 }}>
             La <b>primera fila</b> se toma como encabezado. Detecta tabulaciones o comas solo.
           </div>
-          <textarea
+          <Textarea
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
             placeholder={
               "Programa\tModalidad\tPrecio\nIng. de Sistemas\tVirtual\t1200\nAdministración\tPresencial\t980"
             }
             rows={5}
-            style={{
-              width: "100%",
-              fontFamily: "ui-monospace, monospace",
-              fontSize: 12.5,
-              padding: 10,
-              borderRadius: 8,
-              border: "1px solid var(--border-1)",
-              background: "var(--bg-1)",
-              color: "var(--text-1)",
-              resize: "vertical",
-              outline: "none",
-            }}
+            style={{ fontFamily: "ui-monospace, monospace" }}
           />
           <div className="row" style={{ gap: 8, marginTop: 8 }}>
             <button className="btn btn--primary btn--sm" onClick={doImport}>
@@ -500,25 +491,14 @@ export function CatalogEditor() {
         <div className="col" style={{ gap: 12 }}>
           {/* Nombre + toolbar (buscar / exportar) */}
           <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <input
+            <Input
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
                 setDirty(true);
               }}
               placeholder="Nombre del catálogo"
-              style={{
-                flex: 1,
-                minWidth: 220,
-                fontWeight: 700,
-                fontSize: 15,
-                padding: "10px 12px",
-                borderRadius: 8,
-                border: "1px solid var(--border-1)",
-                background: "var(--bg-1)",
-                color: "var(--text-1)",
-                outline: "none",
-              }}
+              style={{ flex: 1, minWidth: 220, fontWeight: 700, fontSize: 15 }}
             />
             <div
               className="row"

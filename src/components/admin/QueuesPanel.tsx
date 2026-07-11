@@ -5,6 +5,7 @@ import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { initials } from "@/lib/initials";
 import * as Icon from "@/components/vox/primitives";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -45,16 +46,6 @@ interface QueueDetail {
 }
 
 /* ── helpers ───────────────────────────────────────────────────────────── */
-const inputStyle: CSSProperties = {
-  width: "100%",
-  marginTop: 6,
-  padding: "10px 12px",
-  fontSize: 13.5,
-  border: "1px solid var(--border-1)",
-  borderRadius: 8,
-  background: "var(--bg-2)",
-  color: "var(--text-1)",
-};
 const labelSpan: CSSProperties = {
   fontSize: 11,
   color: "var(--text-3)",
@@ -606,13 +597,13 @@ function QueueDetailView({
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               <label style={{ display: "block" }}>
                 <span style={labelSpan}>Máx. contactos en cola</span>
-                <input
+                <Input
                   type="number"
                   min={0}
                   value={maxContacts}
                   onChange={(e) => setMaxContacts(e.target.value)}
                   placeholder="Sin límite"
-                  style={inputStyle}
+                  style={{ marginTop: 6 }}
                 />
               </label>
               <label style={{ display: "block" }}>
@@ -805,11 +796,11 @@ function QueueCreateView({
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <label style={{ display: "block" }}>
             <span style={labelSpan}>Nombre</span>
-            <input
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ej. UDEP-Maestrías"
-              style={inputStyle}
+              style={{ marginTop: 6 }}
               autoFocus
             />
           </label>
@@ -836,11 +827,11 @@ function QueueCreateView({
           </label>
           <label style={{ display: "block" }}>
             <span style={labelSpan}>Descripción (opcional)</span>
-            <input
+            <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Para qué es esta cola"
-              style={inputStyle}
+              style={{ marginTop: 6 }}
             />
           </label>
         </div>

@@ -7,6 +7,14 @@ import * as Icon from "@/components/vox/primitives";
 import { Avatar, Card, CardBody, CardHead, Kpi } from "@/components/vox/primitives";
 import { ROLE_LABEL, type UserRole } from "@/types/auth";
 import { Modal } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 /**
  * TeamManager — gestión del EQUIPO de Vox (usuarios de Cognito del tenant), la
@@ -61,15 +69,6 @@ const ROLE_OPTIONS: { value: UserRole; label: string; hint: string }[] = [
   { value: "Admins", label: "Admin", hint: "Acceso total: configuración, integraciones, equipo." },
 ];
 
-const inputStyle: CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  fontSize: 14,
-  border: "1px solid var(--border-1)",
-  borderRadius: 8,
-  background: "var(--bg-1)",
-  color: "var(--text-1)",
-};
 const labelStyle: CSSProperties = {
   fontSize: 11,
   color: "var(--text-3)",
@@ -253,8 +252,7 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
 
       <div style={{ marginTop: 16 }}>
         <label style={labelStyle}>Nombre del trabajador</label>
-        <input
-          style={inputStyle}
+        <Input
           placeholder="Ej. Juan Pérez"
           value={name}
           autoFocus
@@ -264,8 +262,7 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
 
       <div style={{ marginTop: 16 }}>
         <label style={labelStyle}>Email del trabajador</label>
-        <input
-          style={inputStyle}
+        <Input
           type="email"
           placeholder="nombre@tuempresa.com"
           value={email}
@@ -548,33 +545,41 @@ export function TeamManager() {
                       </td>
                       <td>
                         <div className="col" style={{ gap: 5, alignItems: "flex-start" }}>
-                          <select
-                            value={u.assigned || ""}
-                            onChange={(e) => assignLink(u.sub, e.target.value)}
-                            title="Asignar el agente de Amazon Connect. Lo confirma el propio agente entrando a Connect con sus credenciales."
-                            style={{
-                              padding: "5px 8px",
-                              fontSize: 12.5,
-                              borderRadius: 7,
-                              border: `1px solid ${u.assigned ? "var(--accent-cyan)" : "var(--border-1)"}`,
-                              background: "var(--bg-1)",
-                              color: u.assigned ? "var(--text-1)" : "var(--text-3)",
-                              maxWidth: 180,
-                            }}
+                          <Select
+                            value={u.assigned || "__none__"}
+                            onValueChange={(v) =>
+                              assignLink(u.sub, v === "__none__" ? "" : (v ?? ""))
+                            }
                           >
-                            <option value="">Sin asignar</option>
-                            {/* Si el agente asignado ya no está en la lista (p.ej. borrado
-                                en Connect), lo mostramos igual para no perder el valor. */}
-                            {u.assigned &&
-                              !connectAgents.some((a) => a.username === u.assigned) && (
-                                <option value={u.assigned}>{u.assigned} (no listado)</option>
-                              )}
-                            {connectAgents.map((a) => (
-                              <option key={a.userId || a.username} value={a.username}>
-                                {a.username}
-                              </option>
-                            ))}
-                          </select>
+                            <SelectTrigger
+                              title="Asignar el agente de Amazon Connect. Lo confirma el propio agente entrando a Connect con sus credenciales."
+                              style={{ maxWidth: 180 }}
+                            >
+                              <SelectValue>
+                                {u.assigned
+                                  ? connectAgents.some((a) => a.username === u.assigned)
+                                    ? u.assigned
+                                    : `${u.assigned} (no listado)`
+                                  : "Sin asignar"}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">Sin asignar</SelectItem>
+                              {/* Si el agente asignado ya no está en la lista (p.ej. borrado
+                                  en Connect), lo mostramos igual para no perder el valor. */}
+                              {u.assigned &&
+                                !connectAgents.some((a) => a.username === u.assigned) && (
+                                  <SelectItem value={u.assigned}>
+                                    {u.assigned} (no listado)
+                                  </SelectItem>
+                                )}
+                              {connectAgents.map((a) => (
+                                <SelectItem key={a.userId || a.username} value={a.username}>
+                                  {a.username}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           {(() => {
                             const ls = linkStatus(u);
                             return ls ? (

@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import type { ConnectConn } from "@/hooks/useConnections";
 import {
   connectAccessCfnTemplate,
@@ -62,15 +63,6 @@ const STEPS_CREATE = [
 ];
 type WizardPath = "existing" | "create";
 
-const inputStyle: CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  fontSize: 14,
-  border: "1px solid var(--border-1)",
-  borderRadius: 8,
-  background: "var(--bg-1)",
-  color: "var(--text-1)",
-};
 const labelStyle: CSSProperties = {
   fontSize: 11,
   color: "var(--text-3)",
@@ -541,8 +533,7 @@ export function ConnectSetupWizard({
               </p>
               <div style={{ marginTop: 20 }}>
                 <label style={labelStyle}>URL de tu instancia</label>
-                <input
-                  style={inputStyle}
+                <Input
                   placeholder="https://tu-empresa.my.connect.aws"
                   value={draft.instanceUrl || ""}
                   onChange={(e) => set({ instanceUrl: e.target.value })}
@@ -570,8 +561,7 @@ export function ConnectSetupWizard({
               </div>
               <div style={{ marginTop: 16 }}>
                 <label style={labelStyle}>ARN de la instancia (recomendado)</label>
-                <input
-                  style={inputStyle}
+                <Input
                   placeholder="arn:aws:connect:us-east-1:123456789012:instance/…"
                   value={draft.instanceArn || ""}
                   onChange={(e) => set({ instanceArn: e.target.value })}
@@ -634,8 +624,7 @@ export function ConnectSetupWizard({
               </a>
               <div style={{ marginTop: 20 }}>
                 <label style={labelStyle}>ARN del rol de provisión</label>
-                <input
-                  style={inputStyle}
+                <Input
                   placeholder="arn:aws:iam::123456789012:role/VoxCrmConnectProvision"
                   value={provisionRoleArn}
                   onChange={(e) => setProvisionRoleArn(e.target.value)}
@@ -673,8 +662,7 @@ export function ConnectSetupWizard({
               </p>
               <div style={{ marginTop: 18 }}>
                 <label style={labelStyle}>Nombre / subdominio</label>
-                <input
-                  style={inputStyle}
+                <Input
                   placeholder="mi-empresa"
                   value={alias}
                   onChange={(e) => setAlias(e.target.value)}
@@ -843,8 +831,7 @@ export function ConnectSetupWizard({
               </a>
               <div style={{ marginTop: 20 }}>
                 <label style={labelStyle}>ARN del rol creado</label>
-                <input
-                  style={inputStyle}
+                <Input
                   placeholder="arn:aws:iam::123456789012:role/VoxCrmConnectAccess"
                   value={draft.roleArn || ""}
                   onChange={(e) => set({ roleArn: e.target.value, verifiedAt: undefined })}

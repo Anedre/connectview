@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -240,14 +241,13 @@ export function SuppressionManager() {
                     >
                       Número
                     </div>
-                    <input
+                    <Input
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") doAdd();
                       }}
                       placeholder="+51953730189"
-                      style={inp}
                     />
                   </label>
                   <label style={{ flex: "0 0 160px" }}>
@@ -279,14 +279,13 @@ export function SuppressionManager() {
                     >
                       Motivo (opcional)
                     </div>
-                    <input
+                    <Input
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") doAdd();
                       }}
                       placeholder="Pidió no ser contactado"
-                      style={inp}
                     />
                   </label>
                   <button
@@ -462,17 +461,6 @@ export function SuppressionManager() {
   );
 }
 
-const inp: React.CSSProperties = {
-  width: "100%",
-  padding: "9px 11px",
-  borderRadius: 8,
-  border: "1px solid var(--border-1)",
-  background: "var(--bg-1)",
-  color: "var(--text-1)",
-  outline: "none",
-  fontSize: 13.5,
-};
-
 /** Panel de política (reglas). WhatsApp-first en v1. */
 function RulesPanel({
   rules,
@@ -571,7 +559,7 @@ function RulesPanel({
               </div>
             </div>
             <label className="row" style={{ gap: 8, alignItems: "center", flex: "0 0 auto" }}>
-              <input
+              <Input
                 type="number"
                 min={0}
                 max={365}
@@ -581,7 +569,7 @@ function RulesPanel({
                   setDedupDays(Number(e.target.value));
                   mark();
                 }}
-                style={{ ...inp, width: 72, textAlign: "center" }}
+                style={{ width: 72, textAlign: "center" }}
               />
               <span className="muted" style={{ fontSize: 13 }}>
                 días
@@ -631,7 +619,7 @@ function RulesPanel({
               <span className="muted" style={{ fontSize: 13 }}>
                 máx
               </span>
-              <input
+              <Input
                 type="number"
                 min={1}
                 max={99}
@@ -641,12 +629,12 @@ function RulesPanel({
                   setFreqMax(Number(e.target.value));
                   mark();
                 }}
-                style={{ ...inp, width: 64, textAlign: "center" }}
+                style={{ width: 64, textAlign: "center" }}
               />
               <span className="muted" style={{ fontSize: 13 }}>
                 cada
               </span>
-              <input
+              <Input
                 type="number"
                 min={1}
                 max={90}
@@ -656,7 +644,7 @@ function RulesPanel({
                   setFreqWindow(Number(e.target.value));
                   mark();
                 }}
-                style={{ ...inp, width: 64, textAlign: "center" }}
+                style={{ width: 64, textAlign: "center" }}
               />
               <span className="muted" style={{ fontSize: 13 }}>
                 días
@@ -711,7 +699,7 @@ function RulesPanel({
               <span className="muted" style={{ fontSize: 13 }}>
                 de
               </span>
-              <input
+              <Input
                 type="number"
                 min={0}
                 max={23}
@@ -721,12 +709,12 @@ function RulesPanel({
                   setQuietStart(Number(e.target.value));
                   mark();
                 }}
-                style={{ ...inp, width: 60, textAlign: "center" }}
+                style={{ width: 60, textAlign: "center" }}
               />
               <span className="muted" style={{ fontSize: 13 }}>
                 a
               </span>
-              <input
+              <Input
                 type="number"
                 min={0}
                 max={23}
@@ -736,7 +724,7 @@ function RulesPanel({
                   setQuietEnd(Number(e.target.value));
                   mark();
                 }}
-                style={{ ...inp, width: 60, textAlign: "center" }}
+                style={{ width: 60, textAlign: "center" }}
               />
               <span className="muted" style={{ fontSize: 13 }}>
                 h

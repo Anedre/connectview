@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Phone, MessageCircle, Globe, Mail, Copy, Check } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
 import { useConnections } from "@/hooks/useConnections";
 import { WhatsAppHealthPanel } from "@/components/admin/WhatsAppHealthPanel";
@@ -17,18 +18,6 @@ import { WhatsAppHealthPanel } from "@/components/admin/WhatsAppHealthPanel";
  * - Snippet del widget de chat web para pegar en el sitio.
  */
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  background: "var(--bg-1)",
-  border: "1px solid var(--border-1)",
-  borderRadius: 9,
-  padding: "9px 11px",
-  color: "var(--text-1)",
-  fontSize: 13.5,
-  outline: "none",
-  resize: "vertical",
-  lineHeight: 1.5,
-};
 const labelStyle: React.CSSProperties = {
   fontSize: 10.5,
   fontWeight: 800,
@@ -394,7 +383,7 @@ export function ChannelsManager() {
           <div className="col" style={{ gap: 14 }}>
             <div>
               <label style={labelStyle}>Saludo de bienvenida</label>
-              <textarea
+              <Textarea
                 rows={2}
                 value={welcome}
                 onChange={(e) => {
@@ -402,12 +391,11 @@ export function ChannelsManager() {
                   setDirty(true);
                 }}
                 placeholder="¡Hola! 👋 Gracias por escribirnos. ¿En qué te podemos ayudar?"
-                style={inputStyle}
               />
             </div>
             <div>
               <label style={labelStyle}>Fuera de horario / sin agentes</label>
-              <textarea
+              <Textarea
                 rows={2}
                 value={away}
                 onChange={(e) => {
@@ -415,12 +403,11 @@ export function ChannelsManager() {
                   setDirty(true);
                 }}
                 placeholder="Por ahora no hay agentes disponibles. Déjanos tu consulta y te respondemos apenas volvamos."
-                style={inputStyle}
               />
             </div>
             <div>
               <label style={labelStyle}>Despedida (al cerrar)</label>
-              <textarea
+              <Textarea
                 rows={2}
                 value={farewell}
                 onChange={(e) => {
@@ -428,7 +415,6 @@ export function ChannelsManager() {
                   setDirty(true);
                 }}
                 placeholder="¡Gracias por contactarnos! Que tengas un buen día. 🙌"
-                style={inputStyle}
               />
             </div>
           </div>
@@ -491,7 +477,7 @@ export function ChannelsManager() {
               </button>
             </div>
           </div>
-          <textarea
+          <Textarea
             rows={7}
             value={snippet}
             onChange={(e) => {
@@ -500,10 +486,8 @@ export function ChannelsManager() {
             }}
             placeholder="Pega aquí el snippet <script> de tu widget de Amazon Connect…"
             style={{
-              ...inputStyle,
               marginTop: 12,
               fontFamily: "ui-monospace, monospace",
-              fontSize: 12,
               whiteSpace: "pre",
             }}
           />

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import * as Icon from "@/components/vox/primitives";
 import { Avatar, Card, CardBody, Kpi } from "@/components/vox/primitives";
 import { SegmentedControl } from "@/components/ui/segmented";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -126,16 +127,6 @@ function targetToString(t: AdminAuditEntry["target"]): string {
     .map(([k, v]) => `${k}=${String(v)}`)
     .join(" · ");
 }
-
-const filterStyle: React.CSSProperties = {
-  background: "var(--bg-1)",
-  border: "1px solid var(--border-1)",
-  borderRadius: 8,
-  padding: "8px 11px",
-  color: "var(--text-1)",
-  fontSize: 12.5,
-  outline: "none",
-};
 
 export function SecurityManager() {
   const { user } = useAuth();
@@ -484,11 +475,11 @@ export function SecurityManager() {
                   color: "var(--text-3)",
                 }}
               />
-              <input
+              <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Buscar acción, admin, target…"
-                style={{ ...filterStyle, width: "100%", paddingLeft: 31 }}
+                style={{ paddingLeft: 31 }}
               />
             </div>
             <Select
