@@ -30,7 +30,14 @@ export type NodeKind =
   | "ai_agent"
   | "webhook"
   | "jump"
-  | "stop";
+  | "stop"
+  | "start_journey"
+  | "send_email"
+  | "carousel"
+  | "flow"
+  | "location"
+  | "http_request"
+  | "notify_agent";
 
 export interface BotNode {
   id: string;
@@ -920,6 +927,197 @@ export const NODE_KINDS: Record<NodeKind, NodeKindDef> = {
     outlets: () => [{ id: "out" }],
     defaultData: () => ({ tag: "", action: "Agregar" }),
     summary: (d) => `${str(d.action, "Agregar")}: ${str(d.tag, "etiqueta")}`,
+  },
+
+  start_journey: {
+    kind: "start_journey",
+    label: "Iniciar Journey",
+    group: "Acciones",
+    accent: "#25B873",
+    icon: "route",
+    blurb: "Enrola al contacto en un journey (nurturing en el tiempo)",
+    fields: [
+      {
+        key: "journeyName",
+        label: "Journey",
+        type: "text",
+        placeholder: "Nombre del journey a iniciar",
+        help: "El contacto entra a este journey y sigue su secuencia en paralelo al bot.",
+      },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ journeyName: "" }),
+    summary: (d) => (str(d.journeyName) ? `Inicia «${str(d.journeyName)}»` : "Elige un journey"),
+  },
+
+  send_email: {
+    kind: "send_email",
+    label: "Enviar email",
+    group: "Acciones",
+    accent: "#B07D2B",
+    icon: "mail",
+    blurb: "Manda un correo (brochure, confirmación, seguimiento)",
+    fields: [
+      { key: "to", label: "Para", type: "text", placeholder: "{{email}}", variable: "insert" },
+      { key: "subject", label: "Asunto", type: "text", variable: "insert" },
+      {
+        key: "body",
+        label: "Mensaje",
+        type: "textarea",
+        variable: "insert",
+        counter: 5000,
+        placeholder: "Escribe el cuerpo del correo…",
+      },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ to: "{{email}}", subject: "", body: "" }),
+    summary: (d) => (str(d.subject) ? `Email: ${str(d.subject)}` : "Envía un email"),
+  },
+
+  carousel: {
+    kind: "carousel",
+    label: "Carrusel",
+    group: "Mensajes",
+    accent: "#22B8D9",
+    icon: "carousel",
+    blurb: "Tarjetas deslizables (producto/programa con título y detalle)",
+    fields: [
+      {
+        key: "text",
+        label: "Mensaje",
+        type: "textarea",
+        variable: "insert",
+        placeholder: "Texto antes del carrusel (opcional)",
+      },
+      {
+        key: "cards",
+        label: "Tarjetas",
+        type: "listrows",
+        help: "Cada tarjeta: título + descripción. (Imagen y botones por tarjeta: próximamente.)",
+      },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ text: "", cards: [] }),
+    summary: (d) => {
+      const n = Array.isArray(d.cards) ? d.cards.length : 0;
+      return n ? `Carrusel · ${n} tarjeta${n === 1 ? "" : "s"}` : "Carrusel de tarjetas";
+    },
+  },
+
+  flow: {
+    kind: "flow",
+    label: "WhatsApp Flow",
+    group: "Mensajes",
+    accent: "#25B873",
+    icon: "form",
+    blurb: "Formulario interactivo de Meta dentro del chat",
+    fields: [
+      {
+        key: "body",
+        label: "Mensaje",
+        type: "textarea",
+        variable: "insert",
+        placeholder: "Texto que acompaña al formulario",
+      },
+      {
+        key: "flowId",
+        label: "Flow ID (Meta)",
+        type: "text",
+        placeholder: "ID del Flow publicado en Meta",
+        help: "Requiere un WhatsApp Flow creado y publicado en tu WABA de Meta.",
+      },
+      { key: "cta", label: "Texto del botón", type: "text", placeholder: "Ej. Completar" },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ body: "", flowId: "", cta: "Abrir" }),
+    summary: (d) =>
+      str(d.flowId) ? `WhatsApp Flow · ${str(d.cta, "Abrir")}` : "Configura un WhatsApp Flow",
+  },
+
+  location: {
+    kind: "location",
+    label: "Pedir ubicación",
+    group: "Mensajes",
+    accent: "#EF4444",
+    icon: "location",
+    blurb: "Pide al cliente que comparta su ubicación y la guarda",
+    fields: [
+      {
+        key: "prompt",
+        label: "Mensaje",
+        type: "textarea",
+        variable: "insert",
+        placeholder: "Ej. Compárteme tu ubicación para encontrar la sede más cercana.",
+      },
+      {
+        key: "saveAs",
+        label: "Guardar en",
+        type: "var",
+        variable: "define",
+        help: "Guarda la ubicación recibida en esta variable.",
+      },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ prompt: "", saveAs: "ubicacion" }),
+    summary: () => "Pide la ubicación del cliente",
+  },
+
+  http_request: {
+    kind: "http_request",
+    label: "Llamar API",
+    group: "Acciones",
+    accent: "#64748B",
+    icon: "api",
+    blurb: "Llama a una API externa y guarda la respuesta en una variable",
+    fields: [
+      { key: "url", label: "URL", type: "text", placeholder: "https://api.tuservicio.com/…" },
+      { key: "method", label: "Método", type: "select", options: ["GET", "POST", "PUT", "DELETE"] },
+      {
+        key: "body",
+        label: "Body (JSON)",
+        type: "textarea",
+        json: true,
+        variable: "insert",
+        placeholder: '{ "phone": "{{phone}}" }',
+      },
+      {
+        key: "saveAs",
+        label: "Guardar respuesta en",
+        type: "var",
+        variable: "define",
+        help: "Guarda la respuesta en esta variable para usarla luego.",
+      },
+    ],
+    outlets: () => [
+      { id: "ok", label: "OK" },
+      { id: "error", label: "Error" },
+    ],
+    defaultData: () => ({ url: "", method: "GET", body: "", saveAs: "respuesta" }),
+    summary: (d) =>
+      str(d.url) ? `${str(d.method, "GET")} ${str(d.url).slice(0, 22)}…` : "Llama a una API",
+  },
+
+  notify_agent: {
+    kind: "notify_agent",
+    label: "Avisar a un agente",
+    group: "Acciones",
+    accent: "#F97316",
+    icon: "bell",
+    blurb: "Notifica a un agente sin transferir la conversación",
+    fields: [
+      {
+        key: "message",
+        label: "Aviso",
+        type: "textarea",
+        variable: "insert",
+        placeholder: "Ej. Lead caliente pidió una cotización",
+      },
+      { key: "queue", label: "Cola / equipo (opcional)", type: "text" },
+    ],
+    outlets: () => [{ id: "out" }],
+    defaultData: () => ({ message: "", queue: "" }),
+    summary: (d) =>
+      str(d.message) ? `Avisa: ${str(d.message).slice(0, 22)}…` : "Avisa a un agente",
   },
 };
 

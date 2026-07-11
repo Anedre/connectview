@@ -23,6 +23,13 @@ import {
   CalendarCheck,
   CreditCard,
   Split,
+  Route,
+  Mail,
+  GalleryHorizontalEnd,
+  ClipboardList,
+  MapPin,
+  Globe,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 
@@ -57,6 +64,13 @@ export const FLOW_ICONS: Record<string, LucideIcon> = {
   appointment: CalendarCheck,
   card: CreditCard,
   split: Split,
+  route: Route,
+  mail: Mail,
+  carousel: GalleryHorizontalEnd,
+  form: ClipboardList,
+  location: MapPin,
+  api: Globe,
+  bell: Bell,
 };
 
 export function flowIcon(key: string): LucideIcon {
