@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useJourneys, type Journey, type JourneyNodeKind } from "@/hooks/useJourneys";
-import { JourneyBuilder } from "@/components/journeys/JourneyBuilder";
+import { JourneyFlowBuilder } from "@/components/journeys/JourneyFlowBuilder";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Icon, Btn, Card, Stat, Pill, HeroBand, Num } from "@/components/aria";
 import type { IconName } from "@/components/aria";
@@ -275,7 +275,7 @@ export function JourneysPage() {
   if (current) {
     return (
       <div style={{ height: "100%", minHeight: 0 }}>
-        <JourneyBuilder
+        <JourneyFlowBuilder
           initial={current}
           onSave={persist}
           saving={saving}

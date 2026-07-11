@@ -132,7 +132,12 @@ export function PlusEdge({
     borderRadius: 12,
   });
 
-  const label = branchLabel(getNode(source), sourceHandleId);
+  // La etiqueta de rama puede venir explícita por `data.branchLabel` (así otros
+  // builders —p. ej. Journeys— reutilizan este edge sin depender de NODE_KINDS de
+  // Bots). Si no, se deriva del outlet del nodo origen (comportamiento de Bots).
+  const label =
+    (data as { branchLabel?: string } | undefined)?.branchLabel ??
+    branchLabel(getNode(source), sourceHandleId);
   const onInsert = (data as PlusEdgeData | undefined)?.onInsert;
   const onDelete = (data as PlusEdgeData | undefined)?.onDelete;
 
