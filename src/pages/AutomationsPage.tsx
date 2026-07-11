@@ -1,8 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { getApiEndpoints } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FeatureCompare, FeatureCompareButton } from "@/components/aria/FeatureCompare";
@@ -66,6 +73,43 @@ interface PickersCtx {
   journeys: Array<{ journeyId: string; name: string; status: string }>;
 }
 
+const WF_NONE = "__wfnone__";
+/** Select del kit para los campos del builder (reemplaza los `<select className="wf-input">`
+ *  nativos). Mapea la opción vacía ("") a un sentinel porque base-ui trata "" como
+ *  placeholder; el label del valor actual va como hijo de SelectValue (no se auto-renderiza). */
+function WfSelect({
+  value,
+  onChange,
+  options,
+  className,
+  style,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const current = options.find((o) => o.value === value);
+  return (
+    <Select
+      value={value === "" ? WF_NONE : value}
+      onValueChange={(nv) => onChange(!nv || nv === WF_NONE ? "" : nv)}
+    >
+      <SelectTrigger className={className} style={style}>
+        <SelectValue>{current?.label ?? "—"}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o.value || WF_NONE} value={o.value === "" ? WF_NONE : o.value}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 /** Renderiza un campo (FieldDef) según su tipo — fuente única para trigger y acciones. */
 function FieldInput({
   field,
@@ -81,27 +125,31 @@ function FieldInput({
   const v = value ?? field.defaultValue ?? "";
   if (field.type === "stage") {
     return (
-      <select className="wf-input" value={String(v)} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— cualquiera —</option>
-        {ctx.stages.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.label}
-          </option>
-        ))}
-      </select>
+      <WfSelect
+        value={String(v)}
+        onChange={onChange}
+        className="w-full"
+        options={[
+          { value: "", label: "— cualquiera —" },
+          ...ctx.stages.map((s) => ({ value: s.id, label: s.label })),
+        ]}
+      />
     );
   }
   if (field.type === "template") {
     return (
-      <select className="wf-input" value={String(v)} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— elige una plantilla —</option>
-        {ctx.templates.map((t) => (
-          <option key={t.name} value={t.name}>
-            {t.name}
-            {t.variableCount ? ` · ${t.variableCount} var` : ""}
-          </option>
-        ))}
-      </select>
+      <WfSelect
+        value={String(v)}
+        onChange={onChange}
+        className="w-full"
+        options={[
+          { value: "", label: "— elige una plantilla —" },
+          ...ctx.templates.map((t) => ({
+            value: t.name,
+            label: `${t.name}${t.variableCount ? ` · ${t.variableCount} var` : ""}`,
+          })),
+        ]}
+      />
     );
   }
   if (field.type === "agent") {
@@ -109,14 +157,15 @@ function FieldInput({
     // para no romper el default y permitir configurar sin la lista disponible.
     if (ctx.agents.length > 0) {
       return (
-        <select className="wf-input" value={String(v)} onChange={(e) => onChange(e.target.value)}>
-          <option value="">— sin asignar —</option>
-          {ctx.agents.map((a) => (
-            <option key={a.userId} value={a.userId}>
-              {a.username}
-            </option>
-          ))}
-        </select>
+        <WfSelect
+          value={String(v)}
+          onChange={onChange}
+          className="w-full"
+          options={[
+            { value: "", label: "— sin asignar —" },
+            ...ctx.agents.map((a) => ({ value: a.userId, label: a.username })),
+          ]}
+        />
       );
     }
     return (
@@ -130,26 +179,28 @@ function FieldInput({
   }
   if (field.type === "journey") {
     return (
-      <select className="wf-input" value={String(v)} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— elige un journey —</option>
-        {ctx.journeys.map((j) => (
-          <option key={j.journeyId} value={j.journeyId}>
-            {j.name || "(sin nombre)"}
-            {j.status !== "active" ? ` · ${j.status}` : ""}
-          </option>
-        ))}
-      </select>
+      <WfSelect
+        value={String(v)}
+        onChange={onChange}
+        className="w-full"
+        options={[
+          { value: "", label: "— elige un journey —" },
+          ...ctx.journeys.map((j) => ({
+            value: j.journeyId,
+            label: `${j.name || "(sin nombre)"}${j.status !== "active" ? ` · ${j.status}` : ""}`,
+          })),
+        ]}
+      />
     );
   }
   if (field.type === "select") {
     return (
-      <select className="wf-input" value={String(v)} onChange={(e) => onChange(e.target.value)}>
-        {(field.options || []).map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <WfSelect
+        value={String(v)}
+        onChange={onChange}
+        className="w-full"
+        options={(field.options || []).map((o) => ({ value: o.value, label: o.label }))}
+      />
     );
   }
   if (field.type === "textarea") {
@@ -578,21 +629,16 @@ export function AutomationsPage() {
               <div className="wf-conds">
                 {conds.map((c, i) => (
                   <div key={i} className="wf-cond">
-                    <select
-                      className="wf-input"
+                    <WfSelect
                       value={c.field}
-                      onChange={(e) => {
+                      onChange={(nf) => {
                         const conditions = [...conds];
-                        conditions[i] = { ...c, field: e.target.value as RuleCondition["field"] };
+                        conditions[i] = { ...c, field: nf as RuleCondition["field"] };
                         setEditing({ ...editing, conditions });
                       }}
-                    >
-                      {CONDITION_FIELDS.map((f) => (
-                        <option key={f.value} value={f.value}>
-                          {f.label}
-                        </option>
-                      ))}
-                    </select>
+                      options={CONDITION_FIELDS.map((f) => ({ value: f.value, label: f.label }))}
+                      style={{ flex: "0 0 190px" }}
+                    />
                     <SegmentedControl
                       value={c.op}
                       onValueChange={(op) => {
@@ -607,23 +653,19 @@ export function AutomationsPage() {
                       size="sm"
                     />
                     {c.field === "stageId" ? (
-                      <select
-                        className="wf-input"
-                        style={{ flex: 1 }}
+                      <WfSelect
                         value={c.value}
-                        onChange={(e) => {
+                        onChange={(nv) => {
                           const conditions = [...conds];
-                          conditions[i] = { ...c, value: e.target.value };
+                          conditions[i] = { ...c, value: nv };
                           setEditing({ ...editing, conditions });
                         }}
-                      >
-                        <option value="">— elige —</option>
-                        {ctx.stages.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: "", label: "— elige —" },
+                          ...ctx.stages.map((s) => ({ value: s.id, label: s.label })),
+                        ]}
+                        style={{ flex: 1 }}
+                      />
                     ) : (
                       <input
                         className="wf-input"
@@ -706,11 +748,10 @@ export function AutomationsPage() {
                         <span className="wf-action__ico">
                           <Icn size={15} />
                         </span>
-                        <select
-                          className="wf-input wf-action__type"
+                        <WfSelect
                           value={a.type}
-                          onChange={(e) => {
-                            const nextType = e.target.value as ActionType;
+                          onChange={(nv) => {
+                            const nextType = nv as ActionType;
                             const params: Record<string, unknown> = {};
                             for (const f of ACTION_DEFS[nextType].fields)
                               if (f.defaultValue !== undefined) params[f.key] = f.defaultValue;
@@ -718,13 +759,12 @@ export function AutomationsPage() {
                             actions[i] = { type: nextType, params };
                             setEditing({ ...editing, actions });
                           }}
-                        >
-                          {ACTION_ORDER.map((t) => (
-                            <option key={t} value={t}>
-                              {ACTION_DEFS[t].label}
-                            </option>
-                          ))}
-                        </select>
+                          options={ACTION_ORDER.map((t) => ({
+                            value: t,
+                            label: ACTION_DEFS[t].label,
+                          }))}
+                          style={{ flex: 1, fontWeight: 650 }}
+                        />
                         <div className="wf-action__moves">
                           <button
                             type="button"
