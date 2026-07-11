@@ -1036,6 +1036,7 @@ export function AutomationsPage() {
         </div>
       ) : (
         <div
+          className="aria-stagger"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",

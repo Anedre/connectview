@@ -445,7 +445,7 @@ export function ReportsPage() {
         </div>
       ) : (
         <div
-          className="grid"
+          className="grid aria-stagger"
           style={{
             gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
             gap: 16,

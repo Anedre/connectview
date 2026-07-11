@@ -548,7 +548,7 @@ export function JourneysPage() {
             </Card>
           ) : (
             <div
-              className="grid"
+              className="grid aria-stagger"
               style={{ gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 16 }}
             >
               {kept.map((j, i) => {
