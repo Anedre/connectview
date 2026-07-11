@@ -1439,6 +1439,9 @@ function Palette({ onAdd }: { onAdd: (kind: NodeKind) => void }) {
                     lbl.textContent = def.label;
                     ghost.appendChild(lbl);
                     document.body.appendChild(ghost);
+                    // Fuerza el layout ANTES de capturar: si el ghost no está
+                    // pintado, el navegador cae al drag-image por defecto (la fila).
+                    void ghost.offsetWidth;
                     e.dataTransfer.setDragImage(ghost, 26, 22);
                     setTimeout(() => ghost.remove(), 0);
                   }}
