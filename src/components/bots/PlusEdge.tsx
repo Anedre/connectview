@@ -107,7 +107,9 @@ export function PlusEdge({
   // DESTINO (+ el marcador acorta el path). Extendemos cada extremo HACIA su nodo
   // para que la línea SALGA y LLEGUE pegada. En coords de flujo (constante al zoom).
   const SRC_NUB = 18;
-  const TGT_NUB = 8;
+  // TGT chico: la punta debe quedar JUSTO en el borde (no adentro, o el nodo la
+  // recorta y se ve "partida"). ~5 deja la flecha completa y tocando.
+  const TGT_NUB = 5;
   const adjSourceX =
     sourcePosition === Position.Right
       ? sourceX - SRC_NUB
