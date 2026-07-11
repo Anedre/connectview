@@ -109,7 +109,10 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
             height: 10,
             background: "var(--bg-1)",
             border: "2px solid var(--border-2)",
-            left: -5,
+            // left:0 → con el translate(-50%) de React Flow el CENTRO del handle
+            // queda sobre el borde izquierdo del nodo, así el edge/flecha llega
+            // PEGADO (antes left:-5 lo dejaba ~7px afuera → gap visible).
+            left: 0,
             top: "50%",
           }}
         />

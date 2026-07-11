@@ -1426,14 +1426,20 @@ function Palette({ onAdd }: { onAdd: (kind: NodeKind) => void }) {
                   onDragStart={(e) => {
                     e.dataTransfer.setData("application/aria-node", def.kind);
                     e.dataTransfer.effectAllowed = "move";
-                    // Ghost REAL con forma de bloque (clon del propio ítem), no la
-                    // etiqueta de texto suelta que hacía sentir que "importabas un archivo".
-                    const el = e.currentTarget;
-                    const ghost = el.cloneNode(true) as HTMLElement;
-                    ghost.classList.add("fb-drag-ghost");
-                    ghost.style.width = `${el.offsetWidth}px`;
+                    // Ghost con forma de BLOQUE (tarjeta de nodo), NO la fila del
+                    // palette: riel de acento + chip de ícono + label. Así se siente
+                    // que arrastras el bloque, no una etiqueta/archivo.
+                    const ghost = document.createElement("div");
+                    ghost.className = "fb-drag-ghost";
+                    ghost.style.setProperty("--_c", def.accent);
+                    const iconEl = e.currentTarget.querySelector(".fb-pal__icon");
+                    if (iconEl) ghost.appendChild(iconEl.cloneNode(true));
+                    const lbl = document.createElement("span");
+                    lbl.className = "fb-drag-ghost__lbl";
+                    lbl.textContent = def.label;
+                    ghost.appendChild(lbl);
                     document.body.appendChild(ghost);
-                    e.dataTransfer.setDragImage(ghost, 24, 18);
+                    e.dataTransfer.setDragImage(ghost, 26, 22);
                     setTimeout(() => ghost.remove(), 0);
                   }}
                   onClick={() => onAdd(def.kind)}
