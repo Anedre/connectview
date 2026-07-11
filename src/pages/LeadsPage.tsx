@@ -23,6 +23,7 @@ import { SourceHealthBar } from "@/components/leads/SourceHealthBar";
 import { PipelineSummary } from "@/components/leads/PipelineSummary";
 import { WhatsAppQuickSendModal } from "@/components/workspace/WhatsAppQuickSendModal";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { Modal } from "@/components/ui/modal";
 
 /**
  * LeadsPage — unified lead funnel / embudo (roadmap #4, Kommo/Pipedrive-style).
@@ -1455,31 +1456,13 @@ function LeadDetailModal({
   );
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 60,
-        background: "rgba(0,0,0,0.5)",
-        display: "grid",
-        placeItems: "center",
-        padding: 20,
-        backdropFilter: "blur(2px)",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(520px, 100%)",
-          maxHeight: "90vh",
-          overflowY: "auto",
-          background: "var(--bg-1)",
-          border: "1px solid var(--border-2)",
-          borderRadius: 16,
-          boxShadow: "var(--shadow-pop)",
-          padding: 22,
+    <>
+      <Modal
+        open
+        onOpenChange={(o) => {
+          if (!o) onClose();
         }}
+        className="max-w-[520px] max-h-[90vh] overflow-y-auto"
       >
         {/* Hero: avatar + name + quick actions */}
         <div className="row" style={{ gap: 12, marginBottom: 18 }}>
@@ -1660,9 +1643,9 @@ function LeadDetailModal({
             </button>
           </div>
         )}
-      </div>
+      </Modal>
       {confirmDialog}
-    </div>
+    </>
   );
 }
 

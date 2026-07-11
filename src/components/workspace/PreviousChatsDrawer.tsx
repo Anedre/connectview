@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { WhatsAppThreadView } from "@/components/recordings/WhatsAppThreadView";
 import * as Icon from "@/components/vox/primitives";
 
@@ -31,7 +32,9 @@ export function PreviousChatsDrawer({ open, onClose, phone, customerName }: Prop
 
   if (!open) return null;
 
-  return (
+  // Portaleado a body: un drawer es position:fixed y debe anclarse al viewport,
+  // no a un ancestro con containing-block (topbar / transform). Mismo criterio que ui/Modal.
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -108,6 +111,7 @@ export function PreviousChatsDrawer({ open, onClose, phone, customerName }: Prop
           to { transform: translateX(0); }
         }
       `}</style>
-    </>
+    </>,
+    document.body,
   );
 }
