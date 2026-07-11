@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Icon, Pill } from "@/components/aria";
+import { Modal } from "@/components/ui/modal";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useLeadOverview } from "@/hooks/useLeadOverview";
 import { VALORACION_META, type DispositionStage } from "@/lib/dispositions";
@@ -94,229 +95,22 @@ export function ConversationTypifyModal({
   };
 
   return (
-    <div
-      className="scrim"
-      style={{ display: "grid", placeItems: "center", zIndex: 320 }}
-      onClick={onClose}
-    >
-      <div
-        className="card card--pop"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 500,
-          maxWidth: "94vw",
-          maxHeight: "88vh",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div className="card__head">
-          <div className="card__title">
-            <span className="card__ico" style={{ ["--_c" as string]: "var(--gold)" }}>
-              <Icon name="tag" size={16} />
-            </span>
-            Tipificar conversación
-          </div>
-          <button type="button" className="ctab__x" onClick={onClose}>
-            <Icon name="x" size={15} />
-          </button>
-        </div>
-
-        <div
-          className="card__pad"
-          style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}
-        >
-          {/* Cómo queda el lead — se actualiza en vivo al elegir la etapa. */}
-          {selectedStage && (
-            <div
-              className="col gap8"
-              style={{
-                padding: "11px 12px",
-                borderRadius: "var(--r-md)",
-                border: "1px solid var(--border-1)",
-                background: "var(--bg-2)",
-                fontSize: 12.5,
-              }}
-            >
-              <div className="row between" style={{ alignItems: "center" }}>
-                <span className="dim">Etapa</span>
-                <span className="row gap6" style={{ alignItems: "center" }}>
-                  {currentStageLabel && currentStageLabel !== selectedStage.label && (
-                    <>
-                      <span className="pill pill--outline" style={{ opacity: 0.7 }}>
-                        {currentStageLabel}
-                      </span>
-                      <Icon name="arrowRight" size={13} style={{ color: "var(--text-3)" }} />
-                    </>
-                  )}
-                  <Pill tone={valTone}>{selectedStage.label}</Pill>
-                </span>
-              </div>
-              {selectedSubStage && (
-                <div className="row between" style={{ alignItems: "center" }}>
-                  <span className="dim">Resultado</span>
-                  <b>{selectedSubStage.label}</b>
-                </div>
-              )}
-              <div className="row between" style={{ alignItems: "center" }}>
-                <span className="dim">Toques en el lead</span>
-                <span className="mono">
-                  {leadTouches} → <b style={{ color: "var(--green)" }}>{leadTouches + 1}</b>
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Stage picker */}
-          <div className="col gap6">
-            <div className="row between" style={{ alignItems: "center" }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)" }}>Etapa</span>
-              {selectedStage && (
-                <span className={`chip ${VALORACION_META[selectedStage.valoracion].chip}`}>
-                  <span className="dot" />
-                  {VALORACION_META[selectedStage.valoracion].label}
-                </span>
-              )}
-            </div>
-            <div className="col gap6" style={{ maxHeight: 220, overflowY: "auto" }}>
-              {tree.map((stage) => {
-                const isSel = stage.id === stageId;
-                return (
-                  <label
-                    key={stage.id}
-                    className="row gap10"
-                    style={{
-                      alignItems: "center",
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      background: isSel ? "var(--bg-active)" : "transparent",
-                      cursor: "pointer",
-                      border: "1px solid var(--border-1)",
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      checked={isSel}
-                      onChange={() => {
-                        setStageId(stage.id);
-                        setSubStageId(null);
-                      }}
-                      style={{ accentColor: "var(--gold)" }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{stage.label}</div>
-                      {stage.description && (
-                        <div className="dim trunc" style={{ fontSize: 11, marginTop: 1 }}>
-                          {stage.description}
-                        </div>
-                      )}
-                    </div>
-                    <span
-                      className={`chip ${VALORACION_META[stage.valoracion].chip}`}
-                      style={{ height: 18, fontSize: 10 }}
-                    >
-                      {stage.valoracion}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Sub Stage — aparece tras elegir etapa. */}
-          {selectedStage && (
-            <div className="col gap6">
-              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)" }}>
-                Resultado · {selectedStage.label}
-              </span>
-              <div className="col gap6">
-                {selectedStage.subStages.map((sub) => {
-                  const isSel = sub.id === subStageId;
-                  return (
-                    <label
-                      key={sub.id}
-                      className="row gap10"
-                      style={{
-                        alignItems: "center",
-                        padding: "7px 10px",
-                        borderRadius: 8,
-                        background: isSel ? "var(--bg-active)" : "transparent",
-                        cursor: "pointer",
-                        border: "1px solid var(--border-1)",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        checked={isSel}
-                        onChange={() => setSubStageId(sub.id)}
-                        style={{ accentColor: "var(--gold)" }}
-                      />
-                      <span style={{ flex: 1, fontSize: 13 }}>{sub.label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Tags */}
-          <div className="col gap6">
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)" }}>Tags</span>
-            <div className="row wrap gap6">
-              {tags.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  className="chip chip--cyan"
-                  onClick={() => removeTag(t)}
-                  title="Quitar tag"
-                >
-                  {t}
-                  <Icon name="x" size={11} style={{ opacity: 0.6, marginLeft: 3 }} />
-                </button>
-              ))}
-              {CHAT_TAGS.filter((t) => !tags.includes(t)).map((t) => (
-                <button key={t} type="button" className="chip" onClick={() => addTag(t)}>
-                  <Icon name="plus" size={10} /> {t}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Notas */}
-          <div className="col gap6">
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)" }}>Notas</span>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Notas internas sobre la conversación…"
-              rows={3}
-              style={{
-                width: "100%",
-                background: "var(--bg-2)",
-                border: "1px solid var(--border-1)",
-                borderRadius: "var(--r-md)",
-                padding: 10,
-                color: "var(--text-1)",
-                resize: "vertical",
-                outline: "none",
-                fontFamily: "inherit",
-                fontSize: 13,
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div
-          className="row between"
-          style={{
-            alignItems: "center",
-            gap: 10,
-            padding: "12px 16px",
-            borderTop: "1px solid var(--border-1)",
-          }}
-        >
+    <Modal
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title={
+        <span className="row gap10" style={{ alignItems: "center" }}>
+          <span className="card__ico" style={{ ["--_c" as string]: "var(--gold)" }}>
+            <Icon name="tag" size={16} />
+          </span>
+          Tipificar conversación
+        </span>
+      }
+      className="max-w-lg"
+      footer={
+        <div className="row between" style={{ width: "100%", alignItems: "center", gap: 10 }}>
           <label
             className="row gap8"
             style={{ alignItems: "center", cursor: "pointer", fontSize: 12.5 }}
@@ -347,7 +141,198 @@ export function ConversationTypifyModal({
             </button>
           </div>
         </div>
+      }
+    >
+      <div
+        style={{
+          marginTop: 16,
+          maxHeight: "60vh",
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        {/* Cómo queda el lead — se actualiza en vivo al elegir la etapa. */}
+        {selectedStage && (
+          <div
+            className="col gap8"
+            style={{
+              padding: "11px 12px",
+              borderRadius: "var(--r-md)",
+              border: "1px solid var(--border-1)",
+              background: "var(--bg-2)",
+              fontSize: 12.5,
+            }}
+          >
+            <div className="row between" style={{ alignItems: "center" }}>
+              <span className="dim">Etapa</span>
+              <span className="row gap6" style={{ alignItems: "center" }}>
+                {currentStageLabel && currentStageLabel !== selectedStage.label && (
+                  <>
+                    <span className="pill pill--outline" style={{ opacity: 0.7 }}>
+                      {currentStageLabel}
+                    </span>
+                    <Icon name="arrowRight" size={13} style={{ color: "var(--text-3)" }} />
+                  </>
+                )}
+                <Pill tone={valTone}>{selectedStage.label}</Pill>
+              </span>
+            </div>
+            {selectedSubStage && (
+              <div className="row between" style={{ alignItems: "center" }}>
+                <span className="dim">Resultado</span>
+                <b>{selectedSubStage.label}</b>
+              </div>
+            )}
+            <div className="row between" style={{ alignItems: "center" }}>
+              <span className="dim">Toques en el lead</span>
+              <span className="mono">
+                {leadTouches} → <b style={{ color: "var(--green)" }}>{leadTouches + 1}</b>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Stage picker */}
+        <div className="col gap6">
+          <div className="row between" style={{ alignItems: "center" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)" }}>Etapa</span>
+            {selectedStage && (
+              <span className={`chip ${VALORACION_META[selectedStage.valoracion].chip}`}>
+                <span className="dot" />
+                {VALORACION_META[selectedStage.valoracion].label}
+              </span>
+            )}
+          </div>
+          <div className="col gap6" style={{ maxHeight: 220, overflowY: "auto" }}>
+            {tree.map((stage) => {
+              const isSel = stage.id === stageId;
+              return (
+                <label
+                  key={stage.id}
+                  className="row gap10"
+                  style={{
+                    alignItems: "center",
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    background: isSel ? "var(--bg-active)" : "transparent",
+                    cursor: "pointer",
+                    border: "1px solid var(--border-1)",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    checked={isSel}
+                    onChange={() => {
+                      setStageId(stage.id);
+                      setSubStageId(null);
+                    }}
+                    style={{ accentColor: "var(--gold)" }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{stage.label}</div>
+                    {stage.description && (
+                      <div className="dim trunc" style={{ fontSize: 11, marginTop: 1 }}>
+                        {stage.description}
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`chip ${VALORACION_META[stage.valoracion].chip}`}
+                    style={{ height: 18, fontSize: 10 }}
+                  >
+                    {stage.valoracion}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Sub Stage — aparece tras elegir etapa. */}
+        {selectedStage && (
+          <div className="col gap6">
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)" }}>
+              Resultado · {selectedStage.label}
+            </span>
+            <div className="col gap6">
+              {selectedStage.subStages.map((sub) => {
+                const isSel = sub.id === subStageId;
+                return (
+                  <label
+                    key={sub.id}
+                    className="row gap10"
+                    style={{
+                      alignItems: "center",
+                      padding: "7px 10px",
+                      borderRadius: 8,
+                      background: isSel ? "var(--bg-active)" : "transparent",
+                      cursor: "pointer",
+                      border: "1px solid var(--border-1)",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      checked={isSel}
+                      onChange={() => setSubStageId(sub.id)}
+                      style={{ accentColor: "var(--gold)" }}
+                    />
+                    <span style={{ flex: 1, fontSize: 13 }}>{sub.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tags */}
+        <div className="col gap6">
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)" }}>Tags</span>
+          <div className="row wrap gap6">
+            {tags.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className="chip chip--cyan"
+                onClick={() => removeTag(t)}
+                title="Quitar tag"
+              >
+                {t}
+                <Icon name="x" size={11} style={{ opacity: 0.6, marginLeft: 3 }} />
+              </button>
+            ))}
+            {CHAT_TAGS.filter((t) => !tags.includes(t)).map((t) => (
+              <button key={t} type="button" className="chip" onClick={() => addTag(t)}>
+                <Icon name="plus" size={10} /> {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Notas */}
+        <div className="col gap6">
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)" }}>Notas</span>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Notas internas sobre la conversación…"
+            rows={3}
+            style={{
+              width: "100%",
+              background: "var(--bg-2)",
+              border: "1px solid var(--border-1)",
+              borderRadius: "var(--r-md)",
+              padding: 10,
+              color: "var(--text-1)",
+              resize: "vertical",
+              outline: "none",
+              fontFamily: "inherit",
+              fontSize: 13,
+            }}
+          />
+        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

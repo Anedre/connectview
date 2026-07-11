@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
+import { Modal } from "@/components/ui/modal";
 import * as Icon from "@/components/vox/primitives";
 
 interface LiveSummaryModalProps {
@@ -16,13 +17,10 @@ interface LiveSummaryModalProps {
  *
  * Stays mounted across multiple presses so the agent can refresh the
  * summary while the conversation evolves — useful during long calls
- * where the agent wants a TL;DR before transferring.
+ * where the agent wants a TL;DR before transferring. El overlay,
+ * focus-trap y Esc los aporta el primitivo `Modal`.
  */
-export function LiveSummaryModal({
-  open,
-  onClose,
-  contactId,
-}: LiveSummaryModalProps) {
+export function LiveSummaryModal({ open, onClose, contactId }: LiveSummaryModalProps) {
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,16 +33,6 @@ export function LiveSummaryModal({
     fetchSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, contactId]);
-
-  // ESC to close
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
 
   const fetchSummary = async () => {
     if (!contactId) return;
@@ -65,9 +53,7 @@ export function LiveSummaryModal({
       const data = await r.json();
       const result = data.result || data.summary || "";
       if (!result) {
-        setError(
-          "Aún no hay suficiente transcripción para generar un resumen."
-        );
+        setError("Aún no hay suficiente transcripción para generar un resumen.");
         setSummary(null);
       } else {
         setSummary(result);
@@ -90,152 +76,24 @@ export function LiveSummaryModal({
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Resumen de la conversación"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(8, 10, 16, 0.55)",
-        backdropFilter: "blur(6px)",
-        WebkitBackdropFilter: "blur(6px)",
-        zIndex: 250,
-        display: "grid",
-        placeItems: "center",
+    <Modal
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
       }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 520,
-          maxHeight: "82vh",
-          display: "flex",
-          flexDirection: "column",
-          background: "var(--bg-1)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 14,
-          boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            padding: "14px 16px",
-            borderBottom: "1px solid var(--border-1)",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <Icon.Sparkles
-            size={16}
-            style={{ color: "var(--accent-violet)" }}
-          />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>
-              Resumen de la conversación
-            </div>
-            <div className="muted" style={{ fontSize: 11 }}>
-              Generado por Amazon Bedrock con la transcripción de Contact Lens
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm btn--icon"
-            onClick={onClose}
-            aria-label="Cerrar"
-          >
-            <Icon.Close size={14} />
-          </button>
-        </div>
-
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            padding: 18,
-          }}
-        >
-          {loading && (
-            <div
-              style={{
-                display: "grid",
-                placeItems: "center",
-                minHeight: 160,
-                color: "var(--text-3)",
-                fontSize: 12.5,
-              }}
-            >
-              <div>
-                <Icon.Sparkles size={26} style={{ opacity: 0.45 }} />
-                <div style={{ marginTop: 10 }}>Generando resumen…</div>
-              </div>
-            </div>
-          )}
-
-          {error && !loading && (
-            <div
-              style={{
-                padding: 14,
-                background: "var(--accent-red-soft)",
-                color: "var(--accent-red)",
-                borderRadius: 8,
-                fontSize: 12.5,
-                lineHeight: 1.5,
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          {!loading && !error && summary && (
-            <div
-              style={{
-                whiteSpace: "pre-wrap",
-                fontSize: 13,
-                lineHeight: 1.6,
-                color: "var(--text-1)",
-              }}
-            >
-              {summary}
-            </div>
-          )}
-
-          {!loading && !error && !summary && (
-            <div
-              className="muted"
-              style={{
-                textAlign: "center",
-                padding: 24,
-                fontSize: 12.5,
-              }}
-            >
-              Pulsa "Generar" para crear un resumen de la conversación.
-            </div>
-          )}
-        </div>
-
-        <div
-          style={{
-            padding: "10px 14px",
-            borderTop: "1px solid var(--border-1)",
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-          }}
-        >
+      title={
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Icon.Sparkles size={16} style={{ color: "var(--accent-violet)" }} />
+          Resumen de la conversación
+        </span>
+      }
+      description="Generado por Amazon Bedrock con la transcripción de Contact Lens"
+      className="max-w-lg"
+      footer={
+        <>
           {summary && !loading && (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={copySummary}
-            >
+            <button type="button" className="btn btn--ghost" onClick={copySummary}>
               <Icon.Copy size={13} /> Copiar
             </button>
           )}
@@ -245,14 +103,73 @@ export function LiveSummaryModal({
             onClick={fetchSummary}
             disabled={loading || !contactId}
           >
-            <Icon.Refresh size={13} />{" "}
-            {loading ? "Generando…" : summary ? "Regenerar" : "Generar"}
+            <Icon.Refresh size={13} /> {loading ? "Generando…" : summary ? "Regenerar" : "Generar"}
           </button>
           <button type="button" className="btn btn--ghost" onClick={onClose}>
             Cerrar
           </button>
-        </div>
+        </>
+      }
+    >
+      <div style={{ maxHeight: "60vh", overflowY: "auto", marginTop: 14 }}>
+        {loading && (
+          <div
+            style={{
+              display: "grid",
+              placeItems: "center",
+              minHeight: 160,
+              color: "var(--text-3)",
+              fontSize: 12.5,
+            }}
+          >
+            <div>
+              <Icon.Sparkles size={26} style={{ opacity: 0.45 }} />
+              <div style={{ marginTop: 10 }}>Generando resumen…</div>
+            </div>
+          </div>
+        )}
+
+        {error && !loading && (
+          <div
+            style={{
+              padding: 14,
+              background: "var(--accent-red-soft)",
+              color: "var(--accent-red)",
+              borderRadius: 8,
+              fontSize: 12.5,
+              lineHeight: 1.5,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && summary && (
+          <div
+            style={{
+              whiteSpace: "pre-wrap",
+              fontSize: 13,
+              lineHeight: 1.6,
+              color: "var(--text-1)",
+            }}
+          >
+            {summary}
+          </div>
+        )}
+
+        {!loading && !error && !summary && (
+          <div
+            className="muted"
+            style={{
+              textAlign: "center",
+              padding: 24,
+              fontSize: 12.5,
+            }}
+          >
+            Pulsa "Generar" para crear un resumen de la conversación.
+          </div>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }

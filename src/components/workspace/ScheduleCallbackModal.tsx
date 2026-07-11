@@ -4,6 +4,7 @@ import { Phone, Mail, MessageCircle, ListTodo } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { initials } from "@/lib/initials";
+import { Modal } from "@/components/ui/modal";
 import * as Icon from "@/components/vox/primitives";
 
 type Channel = "voice" | "email" | "whatsapp" | "task";
@@ -111,6 +112,7 @@ const CHANNELS: {
  *
  * The previously-named "ScheduleCallbackModal" still works (backward
  * compat alias at the bottom) — the modal is just multi-channel now.
+ * El overlay, focus-trap y Esc los aporta el primitivo `Modal`.
  */
 export function ScheduleFollowupModal({
   open,
@@ -216,16 +218,6 @@ export function ScheduleFollowupModal({
       return next;
     });
   }, [waTemplateName, waTemplates]);
-
-  // Esc closes
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !submitting) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose, submitting]);
 
   const setFromPreset = (minutes: number) => {
     const d = new Date(Date.now() + minutes * 60 * 1000);
@@ -335,486 +327,24 @@ export function ScheduleFollowupModal({
     }
   };
 
-  if (!open) return null;
-
-  // Dynamic width — whatsapp + email need more space for the long
-  // fields (subject, body, template preview).
-  const modalWidth = channel === "voice" || channel === "task" ? 380 : 480;
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Agendar follow-up"
-      onClick={() => !submitting && onClose()}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(8, 10, 16, 0.55)",
-        backdropFilter: "blur(6px)",
-        WebkitBackdropFilter: "blur(6px)",
-        zIndex: 250,
-        display: "grid",
-        placeItems: "center",
+    <Modal
+      open={open}
+      onOpenChange={(o) => {
+        if (!o && !submitting) onClose();
       }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: modalWidth,
-          maxHeight: "90vh",
-          overflowY: "auto",
-          background: "var(--bg-1)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 16,
-          boxShadow: "0 24px 60px rgba(0,0,0,0.55)",
-          overflow: "hidden",
-          fontFamily: "var(--font-ui)",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: "14px 16px",
-            borderBottom: "1px solid var(--border-1)",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            flexShrink: 0,
-          }}
-        >
-          <span
-            style={{
-              display: "grid",
-              placeItems: "center",
-              width: 32,
-              height: 32,
-              borderRadius: 9,
-              background: channelMeta.colorSoft,
-              color: channelMeta.color,
-              fontSize: 16,
-            }}
-          >
-            <Icon.Calendar size={15} />
-          </span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600 }}>
-              {channel === "task" ? "Nueva tarea" : "Agendar follow-up"}
-            </div>
-            <div className="muted" style={{ fontSize: 11 }}>
-              {channelMeta.help}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm btn--icon"
-            onClick={onClose}
-            disabled={submitting}
-            aria-label="Cerrar"
-          >
-            <Icon.Close size={14} />
-          </button>
-        </div>
-
-        <div style={{ padding: 16, overflowY: "auto", flex: 1, minHeight: 0 }}>
-          {/* Recipient chip — avatar + name + phone */}
-          {phone && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 12px",
-                background: "var(--bg-2)",
-                border: "1px solid var(--border-1)",
-                borderRadius: 10,
-                marginBottom: 12,
-              }}
-            >
-              <span
-                style={{
-                  display: "grid",
-                  placeItems: "center",
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  background: channelMeta.color,
-                  color: "white",
-                  fontSize: 12,
-                  fontWeight: 700,
-                }}
-              >
-                {initials(customerName || "C")}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>
-                  {customerName || "Cliente"}
-                </div>
-                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-                  {phone}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Channel picker — 3 colored cards */}
-          <div
-            style={{
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: "0.07em",
-              color: "var(--text-3)",
-              fontWeight: 600,
-              marginBottom: 6,
-            }}
-          >
-            Canal
-          </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 8,
-              marginBottom: 14,
-            }}
-          >
-            {CHANNELS.map((c) => {
-              const active = channel === c.id;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setChannel(c.id)}
-                  disabled={submitting}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 5,
-                    padding: "12px 6px",
-                    borderRadius: 10,
-                    border: "1px solid",
-                    borderColor: active ? c.color : "var(--border-1)",
-                    background: active ? c.colorSoft : "var(--bg-2)",
-                    color: active ? c.color : "var(--text-2)",
-                    cursor: submitting ? "not-allowed" : "pointer",
-                    fontSize: 12,
-                    fontWeight: active ? 600 : 500,
-                    transition: "background .15s, border-color .15s, color .15s",
-                  }}
-                >
-                  <c.icon size={22} />
-                  <span>{c.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Cuándo */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
-            <span className="muted" style={{ fontSize: 10.5 }}>
-              Cuándo
-            </span>
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {presetMinutes.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setFromPreset(m)}
-                  style={{
-                    fontSize: 11,
-                    padding: "4px 8px",
-                    borderRadius: 999,
-                    border: "1px solid var(--border-1)",
-                    background: "var(--bg-2)",
-                    color: "var(--text-1)",
-                    cursor: "pointer",
-                  }}
-                >
-                  +{presetLabel(m)}
-                </button>
-              ))}
-            </div>
-            <input
-              type="datetime-local"
-              value={scheduledLocal}
-              onChange={(e) => setScheduledLocal(e.target.value)}
-              style={{
-                width: "100%",
-                background: "var(--bg-2)",
-                border: "1px solid var(--border-1)",
-                borderRadius: 6,
-                padding: "8px 10px",
-                color: "var(--text-1)",
-                outline: "none",
-                fontSize: 12.5,
-                fontFamily: "var(--font-ui)",
-              }}
-            />
-          </div>
-
-          {/* Channel-specific fields */}
-          {channel === "email" && (
-            <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-                <span className="muted" style={{ fontSize: 10.5 }}>
-                  De (From)
-                </span>
-                <select
-                  value={emailFromId}
-                  onChange={(e) => setEmailFromId(e.target.value)}
-                  style={{
-                    width: "100%",
-                    background: "var(--bg-2)",
-                    border: "1px solid var(--border-1)",
-                    borderRadius: 6,
-                    padding: "8px 10px",
-                    color: "var(--text-1)",
-                    outline: "none",
-                    fontSize: 12.5,
-                    fontFamily: "var(--font-ui)",
-                  }}
-                >
-                  {emailAddresses.length === 0 ? (
-                    <option value="">Cargando…</option>
-                  ) : (
-                    emailAddresses.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.displayName ? `${e.displayName} · ` : ""}
-                        {e.address}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-                <span className="muted" style={{ fontSize: 10.5 }}>
-                  Para (To)
-                </span>
-                <input
-                  type="email"
-                  value={emailTo}
-                  onChange={(e) => setEmailTo(e.target.value)}
-                  placeholder="andre@example.com"
-                  style={{
-                    width: "100%",
-                    background: "var(--bg-2)",
-                    border: "1px solid var(--border-1)",
-                    borderRadius: 6,
-                    padding: "8px 10px",
-                    color: "var(--text-1)",
-                    outline: "none",
-                    fontSize: 12.5,
-                    fontFamily: "var(--font-ui)",
-                  }}
-                />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-                <span className="muted" style={{ fontSize: 10.5 }}>
-                  Asunto
-                </span>
-                <input
-                  type="text"
-                  value={emailSubject}
-                  onChange={(e) => setEmailSubject(e.target.value)}
-                  placeholder="Ej. Información de admisión UDEP"
-                  style={{
-                    width: "100%",
-                    background: "var(--bg-2)",
-                    border: "1px solid var(--border-1)",
-                    borderRadius: 6,
-                    padding: "8px 10px",
-                    color: "var(--text-1)",
-                    outline: "none",
-                    fontSize: 12.5,
-                    fontFamily: "var(--font-ui)",
-                  }}
-                />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-                <span className="muted" style={{ fontSize: 10.5 }}>
-                  Cuerpo
-                </span>
-                <textarea
-                  value={emailBody}
-                  onChange={(e) => setEmailBody(e.target.value)}
-                  placeholder="Hola Andre, te comparto la información que pediste..."
-                  rows={4}
-                  style={{
-                    width: "100%",
-                    background: "var(--bg-2)",
-                    border: "1px solid var(--border-1)",
-                    borderRadius: 6,
-                    padding: "8px 10px",
-                    color: "var(--text-1)",
-                    outline: "none",
-                    fontSize: 12.5,
-                    resize: "vertical",
-                    minHeight: 80,
-                    fontFamily: "var(--font-ui)",
-                  }}
-                />
-              </div>
-            </>
-          )}
-
-          {channel === "whatsapp" && (
-            <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-                <span className="muted" style={{ fontSize: 10.5 }}>
-                  Plantilla aprobada
-                </span>
-                {waTemplatesLoading ? (
-                  <div className="muted" style={{ fontSize: 11.5 }}>
-                    Cargando templates…
-                  </div>
-                ) : (
-                  <select
-                    value={waTemplateName}
-                    onChange={(e) => setWaTemplateName(e.target.value)}
-                    style={{
-                      width: "100%",
-                      background: "var(--bg-2)",
-                      border: "1px solid var(--border-1)",
-                      borderRadius: 6,
-                      padding: "8px 10px",
-                      color: "var(--text-1)",
-                      outline: "none",
-                      fontSize: 12.5,
-                      fontFamily: "var(--font-ui)",
-                    }}
-                  >
-                    {waTemplates.length === 0 ? (
-                      <option value="">No hay templates aprobadas</option>
-                    ) : (
-                      waTemplates.map((t) => (
-                        <option key={`${t.name}|${t.language}`} value={t.name}>
-                          {t.name} · {t.language}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                )}
-              </div>
-              {pickedTemplate?.body && (
-                <div
-                  style={{
-                    padding: "8px 10px",
-                    background: "var(--accent-green-soft)",
-                    border: "1px solid var(--accent-green)",
-                    borderRadius: 6,
-                    fontSize: 11.5,
-                    lineHeight: 1.45,
-                    color: "var(--text-1)",
-                    marginBottom: 10,
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {pickedTemplate.body}
-                </div>
-              )}
-              {waVars.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-                  <span className="muted" style={{ fontSize: 10.5 }}>
-                    Variables del template
-                  </span>
-                  {waVars.map((v, i) => (
-                    <input
-                      key={i}
-                      type="text"
-                      value={v}
-                      onChange={(e) =>
-                        setWaVars((prev) => {
-                          const next = [...prev];
-                          next[i] = e.target.value;
-                          return next;
-                        })
-                      }
-                      placeholder={`{{${i + 1}}}`}
-                      style={{
-                        width: "100%",
-                        background: "var(--bg-2)",
-                        border: "1px solid var(--border-1)",
-                        borderRadius: 6,
-                        padding: "6px 10px",
-                        color: "var(--text-1)",
-                        outline: "none",
-                        fontSize: 12.5,
-                        fontFamily: "var(--font-ui)",
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Notas (siempre) */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
-            <span className="muted" style={{ fontSize: 10.5 }}>
-              Notas (opcional)
-            </span>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={
-                channel === "voice"
-                  ? "Ej. Llamarlo después de su clase 📚"
-                  : channel === "email"
-                    ? "Recordatorio interno para ti"
-                    : "Recordatorio interno para ti"
-              }
-              rows={2}
-              style={{
-                width: "100%",
-                background: "var(--bg-2)",
-                border: "1px solid var(--border-1)",
-                borderRadius: 6,
-                padding: "8px 10px",
-                color: "var(--text-1)",
-                outline: "none",
-                fontSize: 12.5,
-                resize: "vertical",
-                minHeight: 50,
-                fontFamily: "var(--font-ui)",
-              }}
-            />
-          </div>
-
-          <div
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              background: channelMeta.colorSoft,
-              color: channelMeta.color,
-              fontSize: 11.5,
-              lineHeight: 1.5,
-              marginBottom: 4,
-            }}
-          >
-            {channel === "voice"
-              ? "Te lo asignamos a ti automáticamente — el sistema te llamará al cliente y a ti a la hora pactada."
-              : channel === "task"
-                ? "A la hora pactada aparecerá en tu lista de Tareas como pendiente para que la atiendas."
-                : "A la hora pactada aparecerá en tu lista de Tareas para que envíes el " +
-                  (channel === "email" ? "correo" : "WhatsApp") +
-                  " manualmente."}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div
-          style={{
-            padding: "12px 16px",
-            borderTop: "1px solid var(--border-1)",
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-            flexShrink: 0,
-          }}
-        >
+      // Dynamic width — whatsapp + email need more space for the long
+      // fields (subject, body, template preview).
+      className={channel === "voice" || channel === "task" ? "max-w-sm" : "max-w-lg"}
+      title={
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Icon.Calendar size={15} style={{ color: channelMeta.color }} />
+          {channel === "task" ? "Nueva tarea" : "Agendar follow-up"}
+        </span>
+      }
+      description={channelMeta.help}
+      footer={
+        <>
           <button type="button" className="btn btn--ghost" onClick={onClose} disabled={submitting}>
             Cancelar
           </button>
@@ -833,9 +363,401 @@ export function ScheduleFollowupModal({
             <Icon.Calendar size={12} />
             {submitting ? "Agendando…" : channel === "task" ? "Crear tarea" : "Agendar follow-up"}
           </button>
+        </>
+      }
+    >
+      <div
+        style={{
+          marginTop: 14,
+          maxHeight: "62vh",
+          overflowY: "auto",
+          fontFamily: "var(--font-ui)",
+        }}
+      >
+        {/* Recipient chip — avatar + name + phone */}
+        {phone && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 12px",
+              background: "var(--bg-2)",
+              border: "1px solid var(--border-1)",
+              borderRadius: 10,
+              marginBottom: 12,
+            }}
+          >
+            <span
+              style={{
+                display: "grid",
+                placeItems: "center",
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: channelMeta.color,
+                color: "white",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              {initials(customerName || "C")}
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>
+                {customerName || "Cliente"}
+              </div>
+              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                {phone}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Channel picker — 3 colored cards */}
+        <div
+          style={{
+            fontSize: 11,
+            textTransform: "uppercase",
+            letterSpacing: "0.07em",
+            color: "var(--text-3)",
+            fontWeight: 600,
+            marginBottom: 6,
+          }}
+        >
+          Canal
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 8,
+            marginBottom: 14,
+          }}
+        >
+          {CHANNELS.map((c) => {
+            const active = channel === c.id;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setChannel(c.id)}
+                disabled={submitting}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "12px 6px",
+                  borderRadius: 10,
+                  border: "1px solid",
+                  borderColor: active ? c.color : "var(--border-1)",
+                  background: active ? c.colorSoft : "var(--bg-2)",
+                  color: active ? c.color : "var(--text-2)",
+                  cursor: submitting ? "not-allowed" : "pointer",
+                  fontSize: 12,
+                  fontWeight: active ? 600 : 500,
+                  transition: "background .15s, border-color .15s, color .15s",
+                }}
+              >
+                <c.icon size={22} />
+                <span>{c.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Cuándo */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+          <span className="muted" style={{ fontSize: 10.5 }}>
+            Cuándo
+          </span>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {presetMinutes.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setFromPreset(m)}
+                style={{
+                  fontSize: 11,
+                  padding: "4px 8px",
+                  borderRadius: 999,
+                  border: "1px solid var(--border-1)",
+                  background: "var(--bg-2)",
+                  color: "var(--text-1)",
+                  cursor: "pointer",
+                }}
+              >
+                +{presetLabel(m)}
+              </button>
+            ))}
+          </div>
+          <input
+            type="datetime-local"
+            value={scheduledLocal}
+            onChange={(e) => setScheduledLocal(e.target.value)}
+            style={{
+              width: "100%",
+              background: "var(--bg-2)",
+              border: "1px solid var(--border-1)",
+              borderRadius: 6,
+              padding: "8px 10px",
+              color: "var(--text-1)",
+              outline: "none",
+              fontSize: 12.5,
+              fontFamily: "var(--font-ui)",
+            }}
+          />
+        </div>
+
+        {/* Channel-specific fields */}
+        {channel === "email" && (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+              <span className="muted" style={{ fontSize: 10.5 }}>
+                De (From)
+              </span>
+              <select
+                value={emailFromId}
+                onChange={(e) => setEmailFromId(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--border-1)",
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                  color: "var(--text-1)",
+                  outline: "none",
+                  fontSize: 12.5,
+                  fontFamily: "var(--font-ui)",
+                }}
+              >
+                {emailAddresses.length === 0 ? (
+                  <option value="">Cargando…</option>
+                ) : (
+                  emailAddresses.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.displayName ? `${e.displayName} · ` : ""}
+                      {e.address}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+              <span className="muted" style={{ fontSize: 10.5 }}>
+                Para (To)
+              </span>
+              <input
+                type="email"
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                placeholder="andre@example.com"
+                style={{
+                  width: "100%",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--border-1)",
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                  color: "var(--text-1)",
+                  outline: "none",
+                  fontSize: 12.5,
+                  fontFamily: "var(--font-ui)",
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+              <span className="muted" style={{ fontSize: 10.5 }}>
+                Asunto
+              </span>
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                placeholder="Ej. Información de admisión UDEP"
+                style={{
+                  width: "100%",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--border-1)",
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                  color: "var(--text-1)",
+                  outline: "none",
+                  fontSize: 12.5,
+                  fontFamily: "var(--font-ui)",
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+              <span className="muted" style={{ fontSize: 10.5 }}>
+                Cuerpo
+              </span>
+              <textarea
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+                placeholder="Hola Andre, te comparto la información que pediste..."
+                rows={4}
+                style={{
+                  width: "100%",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--border-1)",
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                  color: "var(--text-1)",
+                  outline: "none",
+                  fontSize: 12.5,
+                  resize: "vertical",
+                  minHeight: 80,
+                  fontFamily: "var(--font-ui)",
+                }}
+              />
+            </div>
+          </>
+        )}
+
+        {channel === "whatsapp" && (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+              <span className="muted" style={{ fontSize: 10.5 }}>
+                Plantilla aprobada
+              </span>
+              {waTemplatesLoading ? (
+                <div className="muted" style={{ fontSize: 11.5 }}>
+                  Cargando templates…
+                </div>
+              ) : (
+                <select
+                  value={waTemplateName}
+                  onChange={(e) => setWaTemplateName(e.target.value)}
+                  style={{
+                    width: "100%",
+                    background: "var(--bg-2)",
+                    border: "1px solid var(--border-1)",
+                    borderRadius: 6,
+                    padding: "8px 10px",
+                    color: "var(--text-1)",
+                    outline: "none",
+                    fontSize: 12.5,
+                    fontFamily: "var(--font-ui)",
+                  }}
+                >
+                  {waTemplates.length === 0 ? (
+                    <option value="">No hay templates aprobadas</option>
+                  ) : (
+                    waTemplates.map((t) => (
+                      <option key={`${t.name}|${t.language}`} value={t.name}>
+                        {t.name} · {t.language}
+                      </option>
+                    ))
+                  )}
+                </select>
+              )}
+            </div>
+            {pickedTemplate?.body && (
+              <div
+                style={{
+                  padding: "8px 10px",
+                  background: "var(--accent-green-soft)",
+                  border: "1px solid var(--accent-green)",
+                  borderRadius: 6,
+                  fontSize: 11.5,
+                  lineHeight: 1.45,
+                  color: "var(--text-1)",
+                  marginBottom: 10,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {pickedTemplate.body}
+              </div>
+            )}
+            {waVars.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+                <span className="muted" style={{ fontSize: 10.5 }}>
+                  Variables del template
+                </span>
+                {waVars.map((v, i) => (
+                  <input
+                    key={i}
+                    type="text"
+                    value={v}
+                    onChange={(e) =>
+                      setWaVars((prev) => {
+                        const next = [...prev];
+                        next[i] = e.target.value;
+                        return next;
+                      })
+                    }
+                    placeholder={`{{${i + 1}}}`}
+                    style={{
+                      width: "100%",
+                      background: "var(--bg-2)",
+                      border: "1px solid var(--border-1)",
+                      borderRadius: 6,
+                      padding: "6px 10px",
+                      color: "var(--text-1)",
+                      outline: "none",
+                      fontSize: 12.5,
+                      fontFamily: "var(--font-ui)",
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Notas (siempre) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
+          <span className="muted" style={{ fontSize: 10.5 }}>
+            Notas (opcional)
+          </span>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder={
+              channel === "voice"
+                ? "Ej. Llamarlo después de su clase 📚"
+                : channel === "email"
+                  ? "Recordatorio interno para ti"
+                  : "Recordatorio interno para ti"
+            }
+            rows={2}
+            style={{
+              width: "100%",
+              background: "var(--bg-2)",
+              border: "1px solid var(--border-1)",
+              borderRadius: 6,
+              padding: "8px 10px",
+              color: "var(--text-1)",
+              outline: "none",
+              fontSize: 12.5,
+              resize: "vertical",
+              minHeight: 50,
+              fontFamily: "var(--font-ui)",
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: channelMeta.colorSoft,
+            color: channelMeta.color,
+            fontSize: 11.5,
+            lineHeight: 1.5,
+          }}
+        >
+          {channel === "voice"
+            ? "Te lo asignamos a ti automáticamente — el sistema te llamará al cliente y a ti a la hora pactada."
+            : channel === "task"
+              ? "A la hora pactada aparecerá en tu lista de Tareas como pendiente para que la atiendas."
+              : "A la hora pactada aparecerá en tu lista de Tareas para que envíes el " +
+                (channel === "email" ? "correo" : "WhatsApp") +
+                " manualmente."}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

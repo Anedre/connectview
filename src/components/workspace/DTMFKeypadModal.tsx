@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useCCP } from "@/hooks/useCCP";
 import { Icon } from "@/components/aria";
+import { Modal } from "@/components/ui/modal";
 
 interface DTMFKeypadModalProps {
   open: boolean;
@@ -21,7 +22,6 @@ interface DTMFKeypadModalProps {
 export function DTMFKeypadModal({ open, onClose }: DTMFKeypadModalProps) {
   const { sendDigits } = useCCP();
   const [history, setHistory] = useState("");
-  const closeBtnRef = useRef<HTMLButtonElement>(null);
 
   const press = (k: string) => {
     setHistory((h) => (h + k).slice(-32));
@@ -32,21 +32,17 @@ export function DTMFKeypadModal({ open, onClose }: DTMFKeypadModalProps) {
     }
   };
 
-  // ESC to close + auto-focus on open so keyboard input works immediately
+  // Keyboard input (0-9, *, #) sends tones live while the modal is open.
+  // Esc / focus-trap / restore-focus are handled by the Modal primitive.
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
       if (/^[0-9*#]$/.test(e.key)) {
         e.preventDefault();
         press(e.key);
       }
     };
     window.addEventListener("keydown", handler);
-    closeBtnRef.current?.focus();
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -56,98 +52,63 @@ export function DTMFKeypadModal({ open, onClose }: DTMFKeypadModalProps) {
     if (!open) setHistory("");
   }, [open]);
 
-  if (!open) return null;
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Teclado DTMF"
-      onClick={onClose}
-      className="scrim"
-      style={{ zIndex: 250, display: "grid", placeItems: "center" }}
-    >
-      <div
-        className="card card--pop"
-        onClick={(e) => e.stopPropagation()}
-        style={{ width: 340, maxWidth: "92vw", overflow: "hidden" }}
-      >
-        <div
-          className="row gap10"
-          style={{
-            padding: "14px 16px",
-            borderBottom: "1px solid var(--border-1)",
-            alignItems: "center",
-          }}
-        >
-          <div
+    <Modal
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title={
+        <span className="row gap10" style={{ alignItems: "center" }}>
+          <span
             className="tl__ico"
             style={{ ["--_c" as string]: "var(--accent)", width: 30, height: 30, flex: "0 0 auto" }}
           >
             <Icon name="grid" size={15} />
-          </div>
-          <div className="grow">
-            <div style={{ fontSize: 13.5, fontWeight: 700 }}>Teclado DTMF</div>
-            <div className="dim" style={{ fontSize: 11 }}>
-              Los tonos llegan en vivo al cliente
-            </div>
-          </div>
-          <button
-            ref={closeBtnRef}
-            type="button"
-            className="ctab__x"
-            onClick={onClose}
-            aria-label="Cerrar"
-          >
-            <Icon name="x" size={14} />
-          </button>
+          </span>
+          Teclado DTMF
+        </span>
+      }
+      description="Los tonos llegan en vivo al cliente"
+      className="max-w-sm"
+    >
+      <div className="col gap14" style={{ marginTop: 16 }}>
+        {/* Tone history display */}
+        <div
+          className="mono"
+          style={{
+            background: "var(--bg-2)",
+            border: "1px solid var(--border-1)",
+            borderRadius: "var(--r-md)",
+            padding: "12px 14px",
+            fontSize: 22,
+            fontWeight: 700,
+            minHeight: 50,
+            letterSpacing: 6,
+            textAlign: "right",
+            color: history ? "var(--text-1)" : "var(--text-3)",
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+            direction: "rtl",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {history || "—"}
         </div>
 
-        <div className="card__pad">
-          <div className="col gap14">
-            {/* Tone history display */}
-            <div
-              className="mono"
-              style={{
-                background: "var(--bg-2)",
-                border: "1px solid var(--border-1)",
-                borderRadius: "var(--r-md)",
-                padding: "12px 14px",
-                fontSize: 22,
-                fontWeight: 700,
-                minHeight: 50,
-                letterSpacing: 6,
-                textAlign: "right",
-                color: history ? "var(--text-1)" : "var(--text-3)",
-                overflow: "hidden",
-                whiteSpace: "nowrap",
-                direction: "rtl",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {history || "—"}
-            </div>
+        {/* Teclado numérico — estilo demo (.dialpad) */}
+        <div className="dialpad">
+          {["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map((k) => (
+            <button key={k} type="button" onClick={() => press(k)}>
+              {k}
+            </button>
+          ))}
+        </div>
 
-            {/* Teclado numérico — estilo demo (.dialpad) */}
-            <div className="dialpad">
-              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"].map(
-                (k) => (
-                  <button key={k} type="button" onClick={() => press(k)}>
-                    {k}
-                  </button>
-                )
-              )}
-            </div>
-
-            <div
-              className="dim"
-              style={{ fontSize: 10.5, textAlign: "center", lineHeight: 1.5 }}
-            >
-              Usa el teclado físico (0-9, *, #) si prefieres
-            </div>
-          </div>
+        <div className="dim" style={{ fontSize: 10.5, textAlign: "center", lineHeight: 1.5 }}>
+          Usa el teclado físico (0-9, *, #) si prefieres
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

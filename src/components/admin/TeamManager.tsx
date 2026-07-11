@@ -6,6 +6,7 @@ import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 import * as Icon from "@/components/vox/primitives";
 import { Avatar, Card, CardBody, CardHead, Kpi } from "@/components/vox/primitives";
 import { ROLE_LABEL, type UserRole } from "@/types/auth";
+import { Modal } from "@/components/ui/modal";
 
 /**
  * TeamManager — gestión del EQUIPO de Vox (usuarios de Cognito del tenant), la
@@ -108,57 +109,14 @@ function ConfirmDeleteModal({
   onConfirm: () => void;
 }) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        background: "rgba(0,0,0,0.45)",
-        display: "grid",
-        placeItems: "center",
-        padding: 20,
+    <Modal
+      open
+      onOpenChange={(o) => {
+        if (!o) onCancel();
       }}
-      onClick={onCancel}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: 420,
-          background: "var(--bg-1)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 14,
-          padding: 24,
-          boxShadow: "var(--shadow-pop)",
-        }}
-      >
-        <div className="row" style={{ gap: 12, alignItems: "flex-start" }}>
-          <span
-            aria-hidden
-            style={{
-              flex: "0 0 auto",
-              display: "grid",
-              placeItems: "center",
-              width: 38,
-              height: 38,
-              borderRadius: 10,
-              background: "var(--accent-red-soft)",
-              color: "var(--accent-red)",
-            }}
-          >
-            <Icon.Trash size={18} />
-          </span>
-          <div style={{ minWidth: 0 }}>
-            <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Eliminar del equipo</h2>
-            <p style={{ fontSize: 13, color: "var(--text-2)", marginTop: 6, lineHeight: 1.5 }}>
-              Vas a eliminar a <b>{member.name || member.email}</b>
-              {member.name ? ` (${member.email})` : ""}. Perderá el acceso a ARIA y esta acción{" "}
-              <b>no se puede deshacer</b>. Si solo quieres cortarle el acceso de forma temporal, usa{" "}
-              <b>Desactivar</b> en su lugar.
-            </p>
-          </div>
-        </div>
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 22 }}>
+      className="max-w-md"
+      footer={
+        <>
           <button className="btn" onClick={onCancel} disabled={busy}>
             Cancelar
           </button>
@@ -180,9 +138,36 @@ function ConfirmDeleteModal({
               </>
             )}
           </button>
+        </>
+      }
+    >
+      <div className="row" style={{ gap: 12, alignItems: "flex-start" }}>
+        <span
+          aria-hidden
+          style={{
+            flex: "0 0 auto",
+            display: "grid",
+            placeItems: "center",
+            width: 38,
+            height: 38,
+            borderRadius: 10,
+            background: "var(--accent-red-soft)",
+            color: "var(--accent-red)",
+          }}
+        >
+          <Icon.Trash size={18} />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Eliminar del equipo</h2>
+          <p style={{ fontSize: 13, color: "var(--text-2)", marginTop: 6, lineHeight: 1.5 }}>
+            Vas a eliminar a <b>{member.name || member.email}</b>
+            {member.name ? ` (${member.email})` : ""}. Perderá el acceso a ARIA y esta acción{" "}
+            <b>no se puede deshacer</b>. Si solo quieres cortarle el acceso de forma temporal, usa{" "}
+            <b>Desactivar</b> en su lugar.
+          </p>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -237,115 +222,15 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
   };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        background: "rgba(0,0,0,0.45)",
-        display: "grid",
-        placeItems: "center",
-        padding: 20,
+    <Modal
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
       }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: 440,
-          background: "var(--bg-1)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 14,
-          padding: 24,
-          boxShadow: "var(--shadow-pop)",
-        }}
-      >
-        <div
-          className="row"
-          style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}
-        >
-          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Invitar a tu equipo</h2>
-          <button className="btn btn--sm btn--ghost" onClick={onClose}>
-            <Icon.Close size={13} />
-          </button>
-        </div>
-        <p style={{ fontSize: 13, color: "var(--text-2)", marginTop: 6, lineHeight: 1.5 }}>
-          Le mandamos un email con una contraseña temporal. Al entrar, queda en
-          <b> tu organización</b> con el rol que elijas.
-        </p>
-
-        <div style={{ marginTop: 16 }}>
-          <label style={labelStyle}>Nombre del trabajador</label>
-          <input
-            style={inputStyle}
-            placeholder="Ej. Juan Pérez"
-            value={name}
-            autoFocus
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <label style={labelStyle}>Email del trabajador</label>
-          <input
-            style={inputStyle}
-            type="email"
-            placeholder="nombre@tuempresa.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submit();
-            }}
-          />
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <label style={labelStyle}>Rol</label>
-          <div className="col" style={{ gap: 8 }}>
-            {ROLE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setRole(opt.value)}
-                style={{
-                  textAlign: "left",
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  border: `1px solid ${role === opt.value ? "var(--accent-amber)" : "var(--border-1)"}`,
-                  background: role === opt.value ? "var(--accent-amber-soft)" : "var(--bg-2)",
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 10,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    flex: "0 0 auto",
-                    width: 16,
-                    height: 16,
-                    borderRadius: "50%",
-                    marginTop: 1,
-                    border: `5px solid ${role === opt.value ? "var(--accent-amber)" : "var(--border-2)"}`,
-                    background: "var(--bg-1)",
-                  }}
-                />
-                <span>
-                  <span style={{ fontWeight: 600, fontSize: 13.5 }}>{opt.label}</span>
-                  <span
-                    style={{ display: "block", fontSize: 12, color: "var(--text-3)", marginTop: 1 }}
-                  >
-                    {opt.hint}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 22 }}>
+      title="Invitar a tu equipo"
+      className="max-w-md"
+      footer={
+        <>
           <button className="btn" onClick={onClose} disabled={sending}>
             Cancelar
           </button>
@@ -358,9 +243,84 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
               </>
             )}
           </button>
+        </>
+      }
+    >
+      <p style={{ fontSize: 13, color: "var(--text-2)", marginTop: 6, lineHeight: 1.5 }}>
+        Le mandamos un email con una contraseña temporal. Al entrar, queda en
+        <b> tu organización</b> con el rol que elijas.
+      </p>
+
+      <div style={{ marginTop: 16 }}>
+        <label style={labelStyle}>Nombre del trabajador</label>
+        <input
+          style={inputStyle}
+          placeholder="Ej. Juan Pérez"
+          value={name}
+          autoFocus
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <label style={labelStyle}>Email del trabajador</label>
+        <input
+          style={inputStyle}
+          type="email"
+          placeholder="nombre@tuempresa.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+        />
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <label style={labelStyle}>Rol</label>
+        <div className="col" style={{ gap: 8 }}>
+          {ROLE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setRole(opt.value)}
+              style={{
+                textAlign: "left",
+                padding: "10px 12px",
+                borderRadius: 10,
+                cursor: "pointer",
+                border: `1px solid ${role === opt.value ? "var(--accent-amber)" : "var(--border-1)"}`,
+                background: role === opt.value ? "var(--accent-amber-soft)" : "var(--bg-2)",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  flex: "0 0 auto",
+                  width: 16,
+                  height: 16,
+                  borderRadius: "50%",
+                  marginTop: 1,
+                  border: `5px solid ${role === opt.value ? "var(--accent-amber)" : "var(--border-2)"}`,
+                  background: "var(--bg-1)",
+                }}
+              />
+              <span>
+                <span style={{ fontWeight: 600, fontSize: 13.5 }}>{opt.label}</span>
+                <span
+                  style={{ display: "block", fontSize: 12, color: "var(--text-3)", marginTop: 1 }}
+                >
+                  {opt.hint}
+                </span>
+              </span>
+            </button>
+          ))}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

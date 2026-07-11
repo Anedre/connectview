@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
+import { Modal } from "@/components/ui/modal";
 import * as Icon from "@/components/vox/primitives";
 
 interface QuickNoteModalProps {
@@ -32,14 +33,10 @@ type NoteForm = z.infer<typeof noteSchema>;
  * `saveAgentNotes` so nothing the agent typed before is overwritten.
  *
  * Formulario manejado con react-hook-form + zodResolver: validación tipada,
- * estado de envío (isSubmitting) y errores sin useState a mano.
+ * estado de envío (isSubmitting) y errores sin useState a mano. El "chrome"
+ * (overlay, focus-trap, Esc, restore-focus) lo aporta el primitivo `Modal`.
  */
-export function QuickNoteModal({
-  open,
-  onClose,
-  contactId,
-  agentUsername,
-}: QuickNoteModalProps) {
+export function QuickNoteModal({ open, onClose, contactId, agentUsername }: QuickNoteModalProps) {
   const {
     register,
     handleSubmit,
@@ -61,16 +58,6 @@ export function QuickNoteModal({
     return () => clearTimeout(t);
   }, [open, reset, setFocus]);
 
-  // Esc cierra (salvo mientras se guarda).
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isSubmitting) onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose, isSubmitting]);
-
   const onSubmit = async ({ text }: NoteForm) => {
     if (!contactId) {
       toast.error("Sin contacto activo");
@@ -85,7 +72,7 @@ export function QuickNoteModal({
       // Pull current notes first so we don't clobber anything the agent
       // already typed in the Cliente 360° panel.
       const r = await fetch(
-        `${endpoints.saveAgentNotes}?contactId=${encodeURIComponent(contactId)}`
+        `${endpoints.saveAgentNotes}?contactId=${encodeURIComponent(contactId)}`,
       );
       const current = r.ok ? await r.json() : { notes: "" };
       const ts = new Date().toLocaleTimeString("es-PE", {
@@ -93,9 +80,7 @@ export function QuickNoteModal({
         minute: "2-digit",
       });
       const stamp = `[${ts} · ${agentUsername || "agente"}]`;
-      const merged = current.notes
-        ? `${current.notes}\n${stamp} ${text}`
-        : `${stamp} ${text}`;
+      const merged = current.notes ? `${current.notes}\n${stamp} ${text}` : `${stamp} ${text}`;
       const put = await fetch(endpoints.saveAgentNotes, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -109,60 +94,41 @@ export function QuickNoteModal({
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Nota rápida"
-      onClick={() => !isSubmitting && onClose()}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(8, 10, 16, 0.55)",
-        backdropFilter: "blur(6px)",
-        WebkitBackdropFilter: "blur(6px)",
-        zIndex: 250,
-        display: "grid",
-        placeItems: "center",
+    <Modal
+      open={open}
+      onOpenChange={(o) => {
+        if (!o && !isSubmitting) onClose();
       }}
-    >
-      <form
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={handleSubmit(onSubmit)}
-        style={{
-          width: 380,
-          background: "var(--bg-1)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 14,
-          boxShadow: "0 24px 60px rgba(0,0,0,0.45)",
-          padding: 16,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 10,
-          }}
-        >
+      title={
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           <Icon.Note size={14} style={{ color: "var(--accent-amber)" }} />
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
-            Nota rápida
-          </div>
+          Nota rápida
+        </span>
+      }
+      className="max-w-sm"
+      footer={
+        <>
           <button
             type="button"
-            className="btn btn--ghost btn--sm btn--icon"
+            className="btn btn--ghost"
             onClick={onClose}
             disabled={isSubmitting}
-            aria-label="Cerrar"
           >
-            <Icon.Close size={14} />
+            Cancelar
           </button>
-        </div>
-
+          <button
+            type="submit"
+            form="quick-note-form"
+            className="btn btn--success"
+            disabled={isSubmitting || !contactId}
+          >
+            {isSubmitting ? "Guardando…" : "Guardar"}
+          </button>
+        </>
+      }
+    >
+      <form id="quick-note-form" onSubmit={handleSubmit(onSubmit)} style={{ marginTop: 12 }}>
         <textarea
           {...register("text")}
           onKeyDown={(e) => {
@@ -189,47 +155,15 @@ export function QuickNoteModal({
         />
 
         {errors.text ? (
-          <div
-            role="alert"
-            style={{ fontSize: 11.5, color: "var(--accent-red)", marginTop: 6 }}
-          >
+          <div role="alert" style={{ fontSize: 11.5, color: "var(--accent-red)", marginTop: 6 }}>
             {errors.text.message}
           </div>
         ) : (
-          <div
-            className="muted"
-            style={{ fontSize: 11, marginTop: 6, marginBottom: 10 }}
-          >
-            Se añade al panel de notas con tu nombre y la hora. ⌘+Enter para
-            guardar.
+          <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+            Se añade al panel de notas con tu nombre y la hora. ⌘+Enter para guardar.
           </div>
         )}
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-            marginTop: 10,
-          }}
-        >
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={onClose}
-            disabled={isSubmitting}
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            className="btn btn--success"
-            disabled={isSubmitting || !contactId}
-          >
-            {isSubmitting ? "Guardando…" : "Guardar"}
-          </button>
-        </div>
       </form>
-    </div>
+    </Modal>
   );
 }

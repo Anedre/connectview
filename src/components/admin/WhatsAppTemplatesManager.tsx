@@ -4,6 +4,7 @@ import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import * as Icon from "@/components/vox/primitives";
 import { Card, CardBody, CardHead } from "@/components/vox/primitives";
+import { Modal } from "@/components/ui/modal";
 
 /**
  * WhatsAppTemplatesManager — biblioteca central de plantillas (HSM) de WhatsApp
@@ -2177,66 +2178,40 @@ export function WhatsAppTemplatesManager() {
       </Card>
 
       {/* Confirmación de borrado (acción destructiva) */}
-      {deleteTarget && (
-        <div
-          onClick={() => !deleting && setDeleteTarget(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "var(--bg-1)",
-              border: "1px solid var(--border-1)",
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 380,
-              width: "90%",
-              boxShadow: "0 10px 40px rgba(0,0,0,0.3)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 10,
-                color: "#e5484d",
-              }}
+      <Modal
+        open={!!deleteTarget}
+        onOpenChange={(o) => {
+          if (!o && !deleting) setDeleteTarget(null);
+        }}
+        title={
+          <span style={{ display: "flex", alignItems: "center", gap: 8, color: "#e5484d" }}>
+            <Icon.Trash size={16} />
+            Borrar plantilla
+          </span>
+        }
+        className="max-w-sm"
+        footer={
+          <>
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
             >
-              <Icon.Trash size={16} />
-              <span style={{ fontSize: 14, fontWeight: 600 }}>Borrar plantilla</span>
-            </div>
-            <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 16 }}>
-              ¿Seguro que quieres borrar <b>{deleteTarget.name}</b>? Esta acción no se puede
-              deshacer y la plantilla dejará de estar disponible en Campañas, Bots y seguimientos.
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button
-                className="btn btn--ghost btn--sm"
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleting}
-              >
-                Cancelar
-              </button>
-              <button
-                className="btn btn--danger btn--sm"
-                onClick={confirmDelete}
-                disabled={deleting}
-              >
-                {deleting ? "Borrando…" : "Sí, borrar"}
-              </button>
-            </div>
+              Cancelar
+            </button>
+            <button className="btn btn--danger btn--sm" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? "Borrando…" : "Sí, borrar"}
+            </button>
+          </>
+        }
+      >
+        {deleteTarget && (
+          <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+            ¿Seguro que quieres borrar <b>{deleteTarget.name}</b>? Esta acción no se puede deshacer
+            y la plantilla dejará de estar disponible en Campañas, Bots y seguimientos.
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }

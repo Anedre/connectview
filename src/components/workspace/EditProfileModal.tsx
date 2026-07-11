@@ -4,6 +4,7 @@ import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { leadSavedToast } from "@/lib/salesforce";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { Modal } from "@/components/ui/modal";
 import * as Icon from "@/components/vox/primitives";
 import { Avatar, colorFromName } from "@/components/vox/primitives";
 import { displayCustomerName } from "@/lib/customerName";
@@ -137,15 +138,6 @@ export function EditProfileModal({
     initialValues.GenderString,
     initialValues.BirthDate,
   ]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !submitting) onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose, submitting]);
 
   const set = (key: keyof ProfileFields, v: string) => setValues((curr) => ({ ...curr, [key]: v }));
   const setAddr = (key: string, v: string) => setAddress((a) => ({ ...a, [key]: v }));
@@ -300,405 +292,33 @@ export function EditProfileModal({
     }
   };
 
-  if (!open) return null;
-
   return (
     <>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Editar perfil"
-        onClick={() => !submitting && onClose()}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(8, 10, 16, 0.55)",
-          backdropFilter: "blur(6px)",
-          WebkitBackdropFilter: "blur(6px)",
-          zIndex: 250,
-          display: "grid",
-          placeItems: "center",
+      <Modal
+        open={open}
+        onOpenChange={(o) => {
+          if (!o && !submitting) onClose();
         }}
-      >
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            width: 480,
-            maxHeight: "88vh",
-            display: "flex",
-            flexDirection: "column",
-            background: "var(--bg-1)",
-            border: "1px solid var(--border-1)",
-            borderRadius: 16,
-            boxShadow: "0 24px 60px rgba(0,0,0,0.55)",
-            overflow: "hidden",
-          }}
-        >
-          {/* Header */}
+        className="max-w-lg"
+        title={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <Icon.Pencil size={14} style={{ color: "var(--accent-cyan)" }} />
+            Editar perfil
+          </span>
+        }
+        description={
+          <span className="mono" style={{ fontSize: 10.5 }}>
+            {profileId.slice(0, 16)}…
+          </span>
+        }
+        footer={
           <div
             style={{
-              padding: "14px 16px",
-              borderBottom: "1px solid var(--border-1)",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              flexShrink: 0,
-            }}
-          >
-            <span
-              style={{
-                display: "grid",
-                placeItems: "center",
-                width: 32,
-                height: 32,
-                borderRadius: 9,
-                background: "var(--accent-cyan-soft)",
-                color: "var(--accent-cyan)",
-              }}
-            >
-              <Icon.Pencil size={14} />
-            </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600 }}>Editar perfil</div>
-              <div className="muted mono" style={{ fontSize: 10.5 }}>
-                {profileId.slice(0, 16)}…
-              </div>
-            </div>
-            {anyChanged && (
-              <span
-                className="chip chip--cyan"
-                style={{ fontSize: 10, padding: "1px 8px", height: 20 }}
-                title="Hay cambios sin guardar"
-              >
-                ● Sin guardar
-              </span>
-            )}
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm btn--icon"
-              onClick={onClose}
-              disabled={submitting}
-              aria-label="Cerrar"
-            >
-              <Icon.Close size={14} />
-            </button>
-          </div>
-
-          {/* Live preview strip */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "12px 16px",
-              background: "linear-gradient(135deg, var(--accent-cyan-soft) 0%, transparent 70%)",
-              borderBottom: "1px solid var(--border-1)",
-              flexShrink: 0,
-            }}
-          >
-            <Avatar name={displayName} size="lg" color={colorFromName(displayName)} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: 15,
-                  fontWeight: 700,
-                  color: "var(--text-1)",
-                  letterSpacing: "-0.01em",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {displayName}
-              </div>
-              <div
-                className="mono"
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-3)",
-                  marginTop: 2,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {values.PhoneNumber || values.EmailAddress || "Sin contacto"}
-              </div>
-            </div>
-          </div>
-
-          {/* Body — grouped sections */}
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflowY: "auto",
-              padding: "14px 16px 0",
-              display: "flex",
-              flexDirection: "column",
-              gap: 18,
-            }}
-          >
-            {/* SECTION — Identidad */}
-            <Section
-              icon={<Icon.User size={12} />}
-              title="Identidad"
-              color="var(--accent-violet)"
-              colorSoft="var(--accent-violet-soft)"
-            >
-              <Row label="Nombre" changed={changedKeys.has("FirstName")}>
-                <Input
-                  value={values.FirstName ?? ""}
-                  onChange={(v) => set("FirstName", v)}
-                  placeholder="Ej. María"
-                />
-              </Row>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <Row label="Segundo nombre" changed={changedKeys.has("MiddleName")}>
-                  <Input
-                    value={values.MiddleName ?? ""}
-                    onChange={(v) => set("MiddleName", v)}
-                    placeholder="Opcional"
-                  />
-                </Row>
-                <Row label="Apellidos" changed={changedKeys.has("LastName")}>
-                  <Input
-                    value={values.LastName ?? ""}
-                    onChange={(v) => set("LastName", v)}
-                    placeholder="Ej. González"
-                  />
-                </Row>
-              </div>
-              <Row label="Empresa" changed={changedKeys.has("BusinessName")}>
-                <Input
-                  value={values.BusinessName ?? ""}
-                  onChange={(v) => set("BusinessName", v)}
-                  placeholder="Para clientes corporativos"
-                />
-              </Row>
-            </Section>
-
-            {/* SECTION — Contacto */}
-            <Section
-              icon={<Icon.Phone size={12} />}
-              title="Contacto"
-              color="var(--accent-green)"
-              colorSoft="var(--accent-green-soft)"
-            >
-              <Row
-                label="Teléfono"
-                changed={changedKeys.has("PhoneNumber")}
-                hint="Formato E.164 con + y código de país (ej. +51953730189)"
-                invalid={!phoneValid}
-              >
-                <Input
-                  value={values.PhoneNumber ?? ""}
-                  onChange={(v) => set("PhoneNumber", v)}
-                  inputMode="tel"
-                  placeholder="+51..."
-                  invalid={!phoneValid}
-                  icon={<Icon.Phone size={12} style={{ color: "var(--text-3)" }} />}
-                />
-              </Row>
-              <Row label="Email" changed={changedKeys.has("EmailAddress")} invalid={!emailValid}>
-                <Input
-                  value={values.EmailAddress ?? ""}
-                  onChange={(v) => set("EmailAddress", v)}
-                  type="email"
-                  placeholder="cliente@empresa.com"
-                  invalid={!emailValid}
-                  icon={<Icon.Mail size={12} style={{ color: "var(--text-3)" }} />}
-                />
-              </Row>
-            </Section>
-
-            {/* SECTION — Cuenta */}
-            <Section
-              icon={<Icon.Tag size={12} />}
-              title="Cuenta"
-              color="var(--accent-amber)"
-              colorSoft="var(--accent-amber-soft)"
-            >
-              <Row
-                label="Número de cuenta"
-                changed={changedKeys.has("AccountNumber")}
-                hint="ID interno del cliente en tu sistema (CRM, ERP, etc.)"
-              >
-                <Input
-                  value={values.AccountNumber ?? ""}
-                  onChange={(v) => set("AccountNumber", v)}
-                  placeholder="Opcional"
-                  mono
-                />
-              </Row>
-            </Section>
-
-            {/* SECTION — Dirección */}
-            <Section
-              icon={<Icon.Tag size={12} />}
-              title="Dirección"
-              color="var(--accent-cyan)"
-              colorSoft="var(--accent-cyan-soft)"
-            >
-              {ADDRESS_FIELDS.map((f) => (
-                <Row key={f.key} label={f.label}>
-                  <Input
-                    value={address[f.key] ?? ""}
-                    onChange={(v) => setAddr(f.key, v)}
-                    placeholder="Opcional"
-                  />
-                </Row>
-              ))}
-            </Section>
-
-            {/* SECTION — Más datos */}
-            <Section
-              icon={<Icon.User size={12} />}
-              title="Más datos"
-              color="var(--accent-violet)"
-              colorSoft="var(--accent-violet-soft)"
-            >
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <Row label="Género" changed={changedKeys.has("GenderString")}>
-                  <Input
-                    value={values.GenderString ?? ""}
-                    onChange={(v) => set("GenderString", v)}
-                    placeholder="Opcional"
-                  />
-                </Row>
-                <Row label="Fecha de nacimiento" changed={changedKeys.has("BirthDate")}>
-                  <Input
-                    value={values.BirthDate ?? ""}
-                    onChange={(v) => set("BirthDate", v)}
-                    placeholder="AAAA-MM-DD"
-                  />
-                </Row>
-              </div>
-            </Section>
-
-            {/* SECTION — Atributos personalizados */}
-            <Section
-              icon={<Icon.Tag size={12} />}
-              title="Atributos personalizados"
-              color="var(--accent-amber)"
-              colorSoft="var(--accent-amber-soft)"
-            >
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {attrs.length === 0 && (
-                  <span style={{ fontSize: 11, color: "var(--text-3)" }}>
-                    Sin atributos. Agrega campos propios (ej. DNI, programa, código).
-                  </span>
-                )}
-                {attrs.map((pair, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr auto",
-                      gap: 8,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Input
-                      value={pair.key}
-                      onChange={(v) => updateAttr(i, { key: v })}
-                      placeholder="Clave"
-                    />
-                    <Input
-                      value={pair.value}
-                      onChange={(v) => updateAttr(i, { value: v })}
-                      placeholder="Valor"
-                    />
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm btn--icon"
-                      onClick={() => removeAttr(i)}
-                      aria-label="Quitar atributo"
-                    >
-                      <Icon.Close size={12} />
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="btn btn--sm"
-                  onClick={addAttr}
-                  style={{ alignSelf: "flex-start" }}
-                >
-                  + Agregar atributo
-                </button>
-              </div>
-            </Section>
-
-            {/* SECTION — Lead (sincroniza a Salesforce) */}
-            {leadId && (
-              <Section
-                icon={<Icon.Check size={12} />}
-                title="Lead"
-                color="var(--accent-green)"
-                colorSoft="var(--accent-green-soft)"
-              >
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <Row label="Monto estimado">
-                    <Input
-                      value={leadMonto}
-                      onChange={setLeadMonto}
-                      inputMode="numeric"
-                      placeholder="0"
-                    />
-                  </Row>
-                  <Row label="Origen">
-                    <Input
-                      value={leadSource}
-                      onChange={setLeadSource}
-                      placeholder="Ej. Web, Referido"
-                    />
-                  </Row>
-                </div>
-                <span
-                  style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 4, display: "block" }}
-                >
-                  Estos campos actualizan el lead y se sincronizan con Salesforce.
-                </span>
-              </Section>
-            )}
-
-            <div
-              style={{
-                padding: "8px 10px",
-                background: "var(--bg-2)",
-                borderRadius: 8,
-                fontSize: 10.5,
-                color: "var(--text-3)",
-                lineHeight: 1.5,
-                marginBottom: 14,
-                display: "flex",
-                gap: 8,
-                alignItems: "flex-start",
-              }}
-            >
-              <Icon.Shield
-                size={12}
-                style={{ color: "var(--text-3)", flexShrink: 0, marginTop: 1 }}
-              />
-              <span>
-                Solo se envían los campos modificados. Dejar un campo vacío limpia el valor
-                existente en el perfil. La actualización queda auditada con tu usuario.
-              </span>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div
-            style={{
-              padding: "12px 16px",
-              borderTop: "1px solid var(--border-1)",
               display: "flex",
               justifyContent: "space-between",
               gap: 8,
               alignItems: "center",
-              flexShrink: 0,
-              background: "var(--bg-2)",
+              width: "100%",
             }}
           >
             <span style={{ fontSize: 11, color: "var(--text-3)" }}>
@@ -731,8 +351,322 @@ export function EditProfileModal({
               </button>
             </div>
           </div>
+        }
+      >
+        {/* Live preview strip */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "12px 14px",
+            marginTop: 12,
+            background: "linear-gradient(135deg, var(--accent-cyan-soft) 0%, transparent 70%)",
+            border: "1px solid var(--border-1)",
+            borderRadius: 12,
+            flexShrink: 0,
+          }}
+        >
+          <Avatar name={displayName} size="lg" color={colorFromName(displayName)} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 700,
+                color: "var(--text-1)",
+                letterSpacing: "-0.01em",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {displayName}
+            </div>
+            <div
+              className="mono"
+              style={{
+                fontSize: 11,
+                color: "var(--text-3)",
+                marginTop: 2,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {values.PhoneNumber || values.EmailAddress || "Sin contacto"}
+            </div>
+          </div>
+          {anyChanged && (
+            <span
+              className="chip chip--cyan"
+              style={{ fontSize: 10, padding: "1px 8px", height: 20, flexShrink: 0 }}
+              title="Hay cambios sin guardar"
+            >
+              ● Sin guardar
+            </span>
+          )}
         </div>
-      </div>
+
+        {/* Body — grouped sections */}
+        <div
+          style={{
+            maxHeight: "56vh",
+            overflowY: "auto",
+            marginTop: 14,
+            display: "flex",
+            flexDirection: "column",
+            gap: 18,
+          }}
+        >
+          {/* SECTION — Identidad */}
+          <Section
+            icon={<Icon.User size={12} />}
+            title="Identidad"
+            color="var(--accent-violet)"
+            colorSoft="var(--accent-violet-soft)"
+          >
+            <Row label="Nombre" changed={changedKeys.has("FirstName")}>
+              <Input
+                value={values.FirstName ?? ""}
+                onChange={(v) => set("FirstName", v)}
+                placeholder="Ej. María"
+              />
+            </Row>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Row label="Segundo nombre" changed={changedKeys.has("MiddleName")}>
+                <Input
+                  value={values.MiddleName ?? ""}
+                  onChange={(v) => set("MiddleName", v)}
+                  placeholder="Opcional"
+                />
+              </Row>
+              <Row label="Apellidos" changed={changedKeys.has("LastName")}>
+                <Input
+                  value={values.LastName ?? ""}
+                  onChange={(v) => set("LastName", v)}
+                  placeholder="Ej. González"
+                />
+              </Row>
+            </div>
+            <Row label="Empresa" changed={changedKeys.has("BusinessName")}>
+              <Input
+                value={values.BusinessName ?? ""}
+                onChange={(v) => set("BusinessName", v)}
+                placeholder="Para clientes corporativos"
+              />
+            </Row>
+          </Section>
+
+          {/* SECTION — Contacto */}
+          <Section
+            icon={<Icon.Phone size={12} />}
+            title="Contacto"
+            color="var(--accent-green)"
+            colorSoft="var(--accent-green-soft)"
+          >
+            <Row
+              label="Teléfono"
+              changed={changedKeys.has("PhoneNumber")}
+              hint="Formato E.164 con + y código de país (ej. +51953730189)"
+              invalid={!phoneValid}
+            >
+              <Input
+                value={values.PhoneNumber ?? ""}
+                onChange={(v) => set("PhoneNumber", v)}
+                inputMode="tel"
+                placeholder="+51..."
+                invalid={!phoneValid}
+                icon={<Icon.Phone size={12} style={{ color: "var(--text-3)" }} />}
+              />
+            </Row>
+            <Row label="Email" changed={changedKeys.has("EmailAddress")} invalid={!emailValid}>
+              <Input
+                value={values.EmailAddress ?? ""}
+                onChange={(v) => set("EmailAddress", v)}
+                type="email"
+                placeholder="cliente@empresa.com"
+                invalid={!emailValid}
+                icon={<Icon.Mail size={12} style={{ color: "var(--text-3)" }} />}
+              />
+            </Row>
+          </Section>
+
+          {/* SECTION — Cuenta */}
+          <Section
+            icon={<Icon.Tag size={12} />}
+            title="Cuenta"
+            color="var(--accent-amber)"
+            colorSoft="var(--accent-amber-soft)"
+          >
+            <Row
+              label="Número de cuenta"
+              changed={changedKeys.has("AccountNumber")}
+              hint="ID interno del cliente en tu sistema (CRM, ERP, etc.)"
+            >
+              <Input
+                value={values.AccountNumber ?? ""}
+                onChange={(v) => set("AccountNumber", v)}
+                placeholder="Opcional"
+                mono
+              />
+            </Row>
+          </Section>
+
+          {/* SECTION — Dirección */}
+          <Section
+            icon={<Icon.Tag size={12} />}
+            title="Dirección"
+            color="var(--accent-cyan)"
+            colorSoft="var(--accent-cyan-soft)"
+          >
+            {ADDRESS_FIELDS.map((f) => (
+              <Row key={f.key} label={f.label}>
+                <Input
+                  value={address[f.key] ?? ""}
+                  onChange={(v) => setAddr(f.key, v)}
+                  placeholder="Opcional"
+                />
+              </Row>
+            ))}
+          </Section>
+
+          {/* SECTION — Más datos */}
+          <Section
+            icon={<Icon.User size={12} />}
+            title="Más datos"
+            color="var(--accent-violet)"
+            colorSoft="var(--accent-violet-soft)"
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Row label="Género" changed={changedKeys.has("GenderString")}>
+                <Input
+                  value={values.GenderString ?? ""}
+                  onChange={(v) => set("GenderString", v)}
+                  placeholder="Opcional"
+                />
+              </Row>
+              <Row label="Fecha de nacimiento" changed={changedKeys.has("BirthDate")}>
+                <Input
+                  value={values.BirthDate ?? ""}
+                  onChange={(v) => set("BirthDate", v)}
+                  placeholder="AAAA-MM-DD"
+                />
+              </Row>
+            </div>
+          </Section>
+
+          {/* SECTION — Atributos personalizados */}
+          <Section
+            icon={<Icon.Tag size={12} />}
+            title="Atributos personalizados"
+            color="var(--accent-amber)"
+            colorSoft="var(--accent-amber-soft)"
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {attrs.length === 0 && (
+                <span style={{ fontSize: 11, color: "var(--text-3)" }}>
+                  Sin atributos. Agrega campos propios (ej. DNI, programa, código).
+                </span>
+              )}
+              {attrs.map((pair, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr auto",
+                    gap: 8,
+                    alignItems: "center",
+                  }}
+                >
+                  <Input
+                    value={pair.key}
+                    onChange={(v) => updateAttr(i, { key: v })}
+                    placeholder="Clave"
+                  />
+                  <Input
+                    value={pair.value}
+                    onChange={(v) => updateAttr(i, { value: v })}
+                    placeholder="Valor"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm btn--icon"
+                    onClick={() => removeAttr(i)}
+                    aria-label="Quitar atributo"
+                  >
+                    <Icon.Close size={12} />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={addAttr}
+                style={{ alignSelf: "flex-start" }}
+              >
+                + Agregar atributo
+              </button>
+            </div>
+          </Section>
+
+          {/* SECTION — Lead (sincroniza a Salesforce) */}
+          {leadId && (
+            <Section
+              icon={<Icon.Check size={12} />}
+              title="Lead"
+              color="var(--accent-green)"
+              colorSoft="var(--accent-green-soft)"
+            >
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <Row label="Monto estimado">
+                  <Input
+                    value={leadMonto}
+                    onChange={setLeadMonto}
+                    inputMode="numeric"
+                    placeholder="0"
+                  />
+                </Row>
+                <Row label="Origen">
+                  <Input
+                    value={leadSource}
+                    onChange={setLeadSource}
+                    placeholder="Ej. Web, Referido"
+                  />
+                </Row>
+              </div>
+              <span
+                style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 4, display: "block" }}
+              >
+                Estos campos actualizan el lead y se sincronizan con Salesforce.
+              </span>
+            </Section>
+          )}
+
+          <div
+            style={{
+              padding: "8px 10px",
+              background: "var(--bg-2)",
+              borderRadius: 8,
+              fontSize: 10.5,
+              color: "var(--text-3)",
+              lineHeight: 1.5,
+              marginBottom: 14,
+              display: "flex",
+              gap: 8,
+              alignItems: "flex-start",
+            }}
+          >
+            <Icon.Shield
+              size={12}
+              style={{ color: "var(--text-3)", flexShrink: 0, marginTop: 1 }}
+            />
+            <span>
+              Solo se envían los campos modificados. Dejar un campo vacío limpia el valor existente
+              en el perfil. La actualización queda auditada con tu usuario.
+            </span>
+          </div>
+        </div>
+      </Modal>
       {confirmDialog}
     </>
   );
