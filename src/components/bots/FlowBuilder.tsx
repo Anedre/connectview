@@ -1258,19 +1258,50 @@ function FlowBuilderInner({
 
         {showIssues && issues.length > 0 && (
           <div className="fb-issues">
-            {issues.map((i, idx) => (
+            <div className="fb-issues__head">
+              <AlertTriangle size={13} strokeWidth={2.4} />
+              {issues.length} {issues.length === 1 ? "cosa por revisar" : "cosas por revisar"}
               <button
-                key={idx}
-                className="fb-issue"
-                onClick={() => goToIssue(i.nodeId)}
-                disabled={!i.nodeId}
-                title={i.nodeId ? "Ir al paso" : undefined}
+                type="button"
+                className="fb-issues__close"
+                onClick={() => setShowIssues(false)}
+                title="Ocultar avisos"
+                aria-label="Ocultar avisos"
               >
-                <AlertTriangle size={12} />
-                <span className="fb-issue__msg">{i.message}</span>
-                {i.nodeId && <span className="fb-issue__go">Ver paso →</span>}
+                ×
               </button>
-            ))}
+            </div>
+            <div className="fb-issues__list">
+              {issues.map((i, idx) => {
+                const node = i.nodeId ? nodes.find((n) => n.id === i.nodeId) : null;
+                const def = node ? NODE_KINDS[(node.data as { kind: NodeKind }).kind] : null;
+                const Icn = def ? FLOW_ICONS[def.icon] || FLOW_ICONS.message : null;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    className="fb-issue"
+                    onClick={() => goToIssue(i.nodeId)}
+                    disabled={!i.nodeId}
+                    title={i.nodeId ? "Ir al paso" : undefined}
+                  >
+                    <span className="fb-issue__ico">
+                      <AlertTriangle size={13} strokeWidth={2.4} />
+                    </span>
+                    <span className="fb-issue__body">
+                      <span className="fb-issue__msg">{i.message}</span>
+                      {def && (
+                        <span className="fb-issue__step" style={{ ["--_c" as string]: def.accent }}>
+                          {Icn && <Icn size={11} strokeWidth={2.2} />}
+                          {def.label}
+                        </span>
+                      )}
+                    </span>
+                    {i.nodeId && <span className="fb-issue__go">Ver paso →</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
