@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon, Btn } from "@/components/aria";
 import type { IconName } from "@/components/aria";
+import { Modal } from "@/components/ui/modal";
 
 export type FeatureKey = "automations" | "journeys" | "bots" | "agente";
 
@@ -216,44 +217,16 @@ export function FeatureCompareButton({ current }: { current?: FeatureKey }) {
       <Btn variant="ghost" size="sm" icon="help" onClick={() => setOpen(true)}>
         ¿Cuál necesito?
       </Btn>
-      {open && (
-        <div
-          onClick={() => setOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1000,
-            background: "rgba(0,0,0,0.45)",
-            display: "grid",
-            placeItems: "center",
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "100%",
-              maxWidth: 980,
-              background: "var(--bg-1)",
-              border: "1px solid var(--border-1)",
-              borderRadius: 16,
-              padding: 22,
-              boxShadow: "var(--shadow-pop)",
-            }}
-          >
-            <div
-              className="row"
-              style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}
-            >
-              <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>
-                ¿Automatización, Journey, Bot o Agente IA?
-              </h2>
-              <Btn variant="ghost" size="sm" icon="x" onClick={() => setOpen(false)} />
-            </div>
-            <FeatureCompare current={current} hideHeading />
-          </div>
+      <Modal
+        open={open}
+        onOpenChange={setOpen}
+        title="¿Automatización, Journey, Bot o Agente IA?"
+        className="max-w-[980px]"
+      >
+        <div style={{ marginTop: 14 }}>
+          <FeatureCompare current={current} hideHeading />
         </div>
-      )}
+      </Modal>
     </>
   );
 }
