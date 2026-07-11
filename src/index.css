@@ -13984,6 +13984,254 @@ select.wf-input {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Journeys — canvas VERTICAL estilo AWS Step Functions Workflow Studio (.sfn-*).
+   A propósito DISTINTO de Bots (.fb-*, horizontal con riel de acento): el flujo
+   BAJA (arriba→abajo), estados = tarjetas compactas (grip + tile + tipo/nombre),
+   Inicio/Fin = pastillas crema, panel Formulario/Definición. Reusa React Flow.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.sfn-node {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 236px;
+  max-width: 300px;
+  padding: 9px 13px 9px 5px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 6px 16px -12px rgba(0, 0, 0, 0.28);
+  position: relative;
+  cursor: grab;
+  transition:
+    border-color 0.14s,
+    box-shadow 0.14s,
+    transform 0.12s;
+}
+.sfn-node:hover {
+  border-color: color-mix(in srgb, var(--_c) 42%, var(--border-2));
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.06),
+    0 12px 26px -14px rgba(0, 0, 0, 0.35);
+}
+.sfn-node--sel {
+  border-color: var(--_c);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--_c) 32%, transparent),
+    0 12px 26px -14px rgba(0, 0, 0, 0.4);
+}
+.sfn-node--issue:not(.sfn-node--sel) {
+  border-color: color-mix(in srgb, #f59e0b 60%, var(--border-2));
+}
+.sfn-node__grip {
+  flex: 0 0 auto;
+  display: flex;
+  color: var(--text-3);
+  opacity: 0.5;
+  margin-right: -3px;
+}
+.sfn-node__icon {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+}
+.sfn-node__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sfn-node__type {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.01em;
+}
+.sfn-node__warn {
+  display: inline-flex;
+  color: #e0a72e;
+}
+.sfn-node__name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-1);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sfn-node__count {
+  position: absolute;
+  top: -9px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: color-mix(in srgb, #22b87a 16%, var(--bg-1));
+  color: #1a9d63;
+}
+.sfn-node__no {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--_c);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Pastillas Inicio / Fin (crema, como el Start/End de Step Functions) */
+.sfn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 22px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #eab308 15%, var(--bg-1));
+  border: 1px solid color-mix(in srgb, #eab308 42%, var(--border-2));
+  font-size: 12.5px;
+  font-weight: 750;
+  color: var(--text-1);
+  position: relative;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition:
+    box-shadow 0.14s,
+    transform 0.12s;
+}
+.sfn-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -10px rgba(0, 0, 0, 0.4);
+}
+.sfn-pill--sel {
+  box-shadow: 0 0 0 2px color-mix(in srgb, #eab308 48%, transparent);
+}
+.sfn-pill__count {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: color-mix(in srgb, #22b87a 20%, var(--bg-1));
+  color: #1a9d63;
+}
+
+/* Handles: entrada ARRIBA (invisible) · salidas ABAJO (punto conectable) */
+.react-flow__handle.sfn-h {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  min-width: 0;
+  min-height: 0;
+}
+.react-flow__handle.sfn-h--top {
+  background: transparent;
+  border: none;
+  top: -2px;
+}
+.react-flow__handle.sfn-h--bot {
+  bottom: -5px;
+  background: var(--bg-1);
+  border: 2px solid #94a3b8;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    transform 0.12s;
+}
+.react-flow__handle.sfn-h--bot:hover {
+  border-color: var(--_c, #64748b);
+  transform: translate(-50%, 0) scale(1.35);
+}
+.react-flow__handle.sfn-h--branch {
+  border-color: var(--_c);
+}
+
+/* Panel derecho: toggle Formulario / Definición + la Definición (solo lectura) */
+.sfn-right {
+  width: 340px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border-1);
+  background: var(--bg-1);
+}
+.sfn-right__tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-1);
+}
+.sfn-right__tab {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.sfn-right__tab--on {
+  background: var(--bg-2);
+  color: var(--text-1);
+  border-color: var(--border-1);
+}
+.sfn-right__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.sfn-def {
+  margin: 0;
+  padding: 14px 16px;
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+  white-space: pre;
+  tab-size: 2;
+}
+.sfn-hint {
+  padding: 22px 18px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-3);
+}
+/* El inspector portado (.jb-inspect) vive dentro del panel .sfn-right: que no
+   imponga su propio ancho/borde/scroll (los da el rail). */
+.sfn-right .jb-inspect {
+  width: 100%;
+  border-left: none;
+  height: auto;
+  overflow: visible;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    Journeys — "línea de vida" vertical (identidad propia, verde). A propósito
    distinta del canvas horizontal de Bots (.fb-*) y de la receta de
    Automatizaciones (.wf-*): el tiempo BAJA, las esperas son tramos del riel.

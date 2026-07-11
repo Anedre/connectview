@@ -72,14 +72,15 @@ const edgeDefaults = {
   markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLOR, width: 18, height: 18 },
 };
 
-const COL_GAP = 400;
-const GAP_Y = 64;
-const NODE_H_APPROX = 92;
-const NODE_W_APPROX = 246;
+const ROW_GAP = 120; // pitch VERTICAL (tarjeta-estado ~58 alto + aire)
+const GAP_X = 56; // aire horizontal entre estados de la misma fila (ramas)
+const NODE_W_APPROX = 240;
+const NODE_H_APPROX = 60;
 
-// ── Auto-layout L→R (BFS por columnas + baricentro anti-cruce + apilado por
-//    altura medida). Portado del FlowBuilder de Bots; usa "entry" como raíz. ──
-function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
+// ── Auto-layout ARRIBA→ABAJO (identidad Step Functions): BFS por FILAS desde la
+//    Entrada + baricentro anti-cruce + repartido por ancho medido. Transpuesta
+//    del layoutLR de Bots (x↔y, H↔W) para que el tiempo BAJE. ──
+function layoutTB(nodes: Node[], edges: Edge[]): Node[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const outgoing = new Map<string, string[]>();
   const incoming = new Map<string, string[]>();
@@ -94,6 +95,7 @@ function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
     }
   });
 
+  // (1) Profundidad = FILA. BFS desde la Entrada; raíces sueltas también en 0.
   const depth = new Map<string, number>();
   const queue: string[] = [];
   const start = nodes.find((n) => (n.data as { kind?: string }).kind === "entry");
@@ -122,23 +124,24 @@ function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
   nodes.forEach((n) => {
     if (!depth.has(n.id)) depth.set(n.id, maxD + 1);
   });
-  const cols = new Map<number, string[]>();
+  const rows = new Map<number, string[]>();
   nodes.forEach((n) => {
     const d = depth.get(n.id)!;
-    if (!cols.has(d)) cols.set(d, []);
-    cols.get(d)!.push(n.id);
+    if (!rows.has(d)) rows.set(d, []);
+    rows.get(d)!.push(n.id);
   });
-  const colKeys = [...cols.keys()].sort((a, b) => a - b);
+  const rowKeys = [...rows.keys()].sort((a, b) => a - b);
 
+  // (2) Orden dentro de la fila por baricentro (reduce cruces de conectores).
   const idxIn = new Map<string, number>();
-  const reindex = () => colKeys.forEach((d) => cols.get(d)!.forEach((id, i) => idxIn.set(id, i)));
+  const reindex = () => rowKeys.forEach((d) => rows.get(d)!.forEach((id, i) => idxIn.set(id, i)));
   reindex();
   for (let pass = 0; pass < 4; pass++) {
-    const ltr = pass % 2 === 0;
-    const sweep = ltr ? colKeys : [...colKeys].reverse();
+    const ttb = pass % 2 === 0;
+    const sweep = ttb ? rowKeys : [...rowKeys].reverse();
     for (const d of sweep) {
-      const neigh = ltr ? incoming : outgoing;
-      const arr = cols.get(d)!;
+      const neigh = ttb ? incoming : outgoing;
+      const arr = rows.get(d)!;
       const bary = new Map<string, number>();
       arr.forEach((id) => {
         const ns = (neigh.get(id) || [])
@@ -151,42 +154,44 @@ function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
     }
   }
 
-  const H = (id: string) => byId.get(id)?.measured?.height ?? NODE_H_APPROX;
-  const yc = new Map<string, number>();
-  colKeys.forEach((d) => {
-    const arr = cols.get(d)!;
-    const total = arr.reduce((s, id) => s + H(id), 0) + GAP_Y * Math.max(0, arr.length - 1);
+  // (3) X por ancho medido: reparte la fila y alinea cada estado a sus padres.
+  const W = (id: string) => byId.get(id)?.measured?.width ?? NODE_W_APPROX;
+  const xc = new Map<string, number>();
+  rowKeys.forEach((d) => {
+    const arr = rows.get(d)!;
+    const total = arr.reduce((s, id) => s + W(id), 0) + GAP_X * Math.max(0, arr.length - 1);
     let cur = -total / 2;
     arr.forEach((id) => {
-      yc.set(id, cur + H(id) / 2);
-      cur += H(id) + GAP_Y;
+      xc.set(id, cur + W(id) / 2);
+      cur += W(id) + GAP_X;
     });
   });
   for (let pass = 0; pass < 3; pass++) {
-    for (const d of colKeys) {
-      const arr = cols.get(d)!;
+    for (const d of rowKeys) {
+      const arr = rows.get(d)!;
       const want = arr.map((id) => {
         const ps = (incoming.get(id) || [])
-          .map((p) => yc.get(p))
+          .map((p) => xc.get(p))
           .filter((v): v is number => v != null);
-        return ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : yc.get(id)!;
+        return ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : xc.get(id)!;
       });
-      arr.forEach((id, i) => yc.set(id, want[i]));
+      arr.forEach((id, i) => xc.set(id, want[i]));
       for (let i = 1; i < arr.length; i++) {
         const prev = arr[i - 1];
         const curId = arr[i];
-        const minY = yc.get(prev)! + H(prev) / 2 + GAP_Y + H(curId) / 2;
-        if (yc.get(curId)! < minY) yc.set(curId, minY);
+        const minX = xc.get(prev)! + W(prev) / 2 + GAP_X + W(curId) / 2;
+        if (xc.get(curId)! < minX) xc.set(curId, minX);
       }
     }
   }
 
-  const ys = [...yc.values()];
-  const mid = ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 0;
+  // Recentrar horizontalmente (que no quede cargado a un lado).
+  const xs = [...xc.values()];
+  const mid = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0;
   return nodes.map((n) => {
     const d = depth.get(n.id)!;
-    const cy = (yc.get(n.id) ?? 0) - mid;
-    return { ...n, position: { x: d * COL_GAP, y: cy - H(n.id) / 2 } };
+    const cx = (xc.get(n.id) ?? 0) - mid;
+    return { ...n, position: { x: cx - W(n.id) / 2, y: d * ROW_GAP } };
   });
 }
 
@@ -199,17 +204,17 @@ function needsLayout(nodes: Node[], edges: Edge[]): boolean {
     seen.add(key);
   }
   const pos = new Map(nodes.map((n) => [n.id, n.position]));
-  let ltr = 0;
+  let ttb = 0;
   let total = 0;
   for (const e of edges) {
     const s = pos.get(e.source);
     const t = pos.get(e.target);
     if (!s || !t) continue;
     total++;
-    if (t.x > s.x + 40) ltr++;
+    if (t.y > s.y + 40) ttb++; // el destino queda ABAJO del origen (flujo vertical)
   }
   if (total === 0) return false;
-  return ltr / total < 0.6;
+  return ttb / total < 0.6;
 }
 
 /** Conectar-al-soltar: si el drop cae cerca de una salida libre de otro nodo. */
@@ -229,11 +234,12 @@ function findDropConnection(
       (o) => !edges.some((e) => e.source === n.id && (e.sourceHandle || "out") === o.id),
     );
     if (!free) continue;
+    // Vertical: la salida cuelga por ABAJO del nodo → buscamos el drop debajo.
     const w = n.measured?.width ?? NODE_W_APPROX;
-    const h = n.measured?.height ?? 90;
-    const dx = p.x - (n.position.x + w);
-    const dy = p.y - (n.position.y + h / 2);
-    if (dx < -60 || dx > 320 || Math.abs(dy) > 170) continue;
+    const h = n.measured?.height ?? NODE_H_APPROX;
+    const dx = p.x - (n.position.x + w / 2);
+    const dy = p.y - (n.position.y + h);
+    if (dy < -40 || dy > 260 || Math.abs(dx) > 190) continue;
     const dist = Math.hypot(dx, dy);
     if (dist < bestDist) {
       bestDist = dist;
@@ -269,7 +275,7 @@ function toRFEdges(j: Journey): Edge[] {
 function initialRFNodes(j: Journey): Node[] {
   const n = toRFNodes(j);
   const e = toRFEdges(j);
-  return needsLayout(n, e) ? layoutLR(n, e) : n;
+  return needsLayout(n, e) ? layoutTB(n, e) : n;
 }
 function makeRFNode(kind: JourneyNodeKind, pos: { x: number; y: number }): Node {
   return {
@@ -337,6 +343,7 @@ function JourneyFlowInner({
   const [reenroll, setReenroll] = useState(!!initial.reenroll);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showIssues, setShowIssues] = useState(false);
+  const [rightTab, setRightTab] = useState<"form" | "def">("form");
   const [stats, setStats] = useState<JourneyStats | null>(null);
   const [picker, setPicker] = useState<{
     at: { x: number; y: number };
@@ -511,7 +518,7 @@ function JourneyFlowInner({
       if (onNode) {
         const src = nodesRef.current.find((n) => n.id === from.nodeId);
         const base = src?.position ?? { x: 120, y: 120 };
-        flowPos = { x: base.x + 280, y: base.y };
+        flowPos = { x: base.x, y: base.y + ROW_GAP };
       } else {
         const f = screenToFlowPosition(point);
         flowPos = { x: f.x - 117, y: f.y - 20 };
@@ -529,14 +536,14 @@ function JourneyFlowInner({
     (nodeId: string, handleId: string, screenX: number, screenY: number) => {
       const src = nodesRef.current.find((n) => n.id === nodeId);
       const base = src?.position ?? { x: 120, y: 120 };
-      const w = src?.measured?.width ?? 250;
+      const h = src?.measured?.height ?? 60;
       setPicker({
         at: { x: screenX, y: screenY },
         mode: "connect",
         connect: {
           source: nodeId,
           sourceHandle: handleId,
-          flowPos: { x: base.x + w + 50, y: base.y },
+          flowPos: { x: base.x, y: base.y + h + 44 },
         },
       });
     },
@@ -570,7 +577,7 @@ function JourneyFlowInner({
           : (nodes[nodes.length - 1] ?? null);
       let pos: { x: number; y: number };
       if (dropPos) pos = dropPos;
-      else if (sel) pos = { x: sel.position.x + COL_GAP, y: sel.position.y };
+      else if (sel) pos = { x: sel.position.x, y: sel.position.y + ROW_GAP };
       else {
         const rect = wrapperRef.current?.getBoundingClientRect();
         pos = rect
@@ -678,7 +685,7 @@ function JourneyFlowInner({
   );
 
   const arrange = useCallback(() => {
-    setNodes((nds) => layoutLR(nds, edges));
+    setNodes((nds) => layoutTB(nds, edges));
     window.setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 60);
   }, [setNodes, edges, fitView]);
 
@@ -970,7 +977,10 @@ function JourneyFlowInner({
                 onConnectEnd={onConnectEnd}
                 onReconnect={onReconnect}
                 connectOnClick={false}
-                onNodeClick={(_, n) => setSelectedId(n.id)}
+                onNodeClick={(_, n) => {
+                  setSelectedId(n.id);
+                  setRightTab("form");
+                }}
                 onPaneClick={() => setSelectedId(null)}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
@@ -1014,7 +1024,7 @@ function JourneyFlowInner({
                     <div className="fb-coach__h">Arma tu recorrido</div>
                     <div className="fb-coach__p">
                       Arrastra un paso desde la izquierda (o haz clic en uno). Para seguir el flujo,
-                      <strong> haz clic en el conector</strong> del borde derecho y elige el
+                      <strong> haz clic en el conector de abajo</strong> del estado y elige el
                       siguiente paso — o arrástralo hasta otro para enlazarlos.
                     </div>
                   </div>
@@ -1023,20 +1033,47 @@ function JourneyFlowInner({
             )}
           </div>
 
-          {selectedNode && (
-            <JourneyInspector
-              key={selectedNode.id}
-              node={rfToJourneyNode(selectedNode)}
-              entry={entry}
-              reenroll={reenroll}
-              stats={stats}
-              onEntry={setEntry}
-              onReenroll={setReenroll}
-              onParams={updateParams}
-              onDelete={deleteNode}
-              onClose={() => setSelectedId(null)}
-            />
-          )}
+          <div className="sfn-right">
+            <div className="sfn-right__tabs">
+              <button
+                type="button"
+                className={`sfn-right__tab ${rightTab === "form" ? "sfn-right__tab--on" : ""}`}
+                onClick={() => setRightTab("form")}
+              >
+                Formulario
+              </button>
+              <button
+                type="button"
+                className={`sfn-right__tab ${rightTab === "def" ? "sfn-right__tab--on" : ""}`}
+                onClick={() => setRightTab("def")}
+              >
+                Definición
+              </button>
+            </div>
+            <div className="sfn-right__body">
+              {rightTab === "def" ? (
+                <pre className="sfn-def">{JSON.stringify(currentJourney, null, 2)}</pre>
+              ) : selectedNode ? (
+                <JourneyInspector
+                  key={selectedNode.id}
+                  node={rfToJourneyNode(selectedNode)}
+                  entry={entry}
+                  reenroll={reenroll}
+                  stats={stats}
+                  onEntry={setEntry}
+                  onReenroll={setReenroll}
+                  onParams={updateParams}
+                  onDelete={deleteNode}
+                  onClose={() => setSelectedId(null)}
+                />
+              ) : (
+                <div className="sfn-hint">
+                  Toca un paso del recorrido para editarlo. Empieza por <strong>Inicio</strong> —
+                  define cómo entran los leads.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
