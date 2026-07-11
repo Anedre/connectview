@@ -159,7 +159,8 @@ function btnStyle(kind: "nav" | "exec"): CSSProperties {
     fontWeight: 700,
     cursor: "pointer",
     border: kind === "nav" ? "none" : "1px solid var(--border-2)",
-    background: kind === "nav" ? "linear-gradient(160deg, #9B6DFF, #6E54E0)" : "var(--bg-1)",
+    background:
+      kind === "nav" ? "linear-gradient(160deg, var(--iris), var(--iris-2))" : "var(--bg-1)",
     color: kind === "nav" ? "#fff" : "var(--text-1)",
   };
 }

@@ -203,7 +203,7 @@ function CopilotPanelInner() {
           padding: "12px 7px",
           border: "none",
           borderRadius: "12px 0 0 12px",
-          background: "linear-gradient(160deg, #9B6DFF, #6E54E0)",
+          background: "linear-gradient(160deg, var(--iris), var(--iris-2))",
           color: "#fff",
           cursor: "pointer",
           boxShadow: "-4px 0 16px -4px rgba(110,84,224,0.6)",
@@ -258,7 +258,7 @@ function CopilotPanelInner() {
             width: 26,
             height: 26,
             borderRadius: 8,
-            background: "linear-gradient(150deg, #9B6DFF, #6E54E0)",
+            background: "linear-gradient(150deg, var(--iris), var(--iris-2))",
             color: "#fff",
           }}
         >
@@ -375,7 +375,7 @@ function CopilotPanelInner() {
                   fontSize: 12.5,
                   lineHeight: 1.5,
                   whiteSpace: m.role === "user" ? "pre-wrap" : "normal",
-                  background: m.role === "user" ? "#6E54E0" : "var(--bg-2)",
+                  background: m.role === "user" ? "var(--iris)" : "var(--bg-2)",
                   color: m.role === "user" ? "#fff" : "var(--text-1)",
                   border: m.role === "user" ? "none" : "1px solid var(--border-1)",
                 }}
@@ -415,7 +415,7 @@ function CopilotPanelInner() {
               disabled={loading || !text.trim()}
               style={{
                 border: "none",
-                background: "#6E54E0",
+                background: "var(--iris)",
                 color: "#fff",
                 borderRadius: 9,
                 padding: "0 12px",

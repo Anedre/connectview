@@ -72,6 +72,14 @@ import {
   WaTemplateConfigurator,
   type WaTemplate,
 } from "@/components/whatsapp/WaTemplateConfigurator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 /**
  * FlowBuilder — the visual chat-flow editor (roadmap #16). A react-flow canvas
@@ -1541,6 +1549,13 @@ function Field({
 }) {
   const v = value;
   const labelMap = SELECT_LABELS[field.key];
+  // Un `select` de 2 opciones "Sí"/"No" se migra a un Switch del KIT (más claro
+  // que un desplegable). yes/no salen de las propias `options` para emitir el
+  // valor EXACTO que el field espera (p. ej. "Sí (recomendado)" / "No").
+  const selOpts = field.options ?? [];
+  const yesOpt = selOpts.find((o) => /^s[íi]/i.test(o.trim()));
+  const noOpt = selOpts.find((o) => /^no$/i.test(o.trim()));
+  const isYesNo = selOpts.length === 2 && !!yesOpt && !!noOpt;
   const fieldRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
 
@@ -1681,39 +1696,61 @@ function Field({
         />
       )}
 
-      {field.type === "select" && (
-        <select
-          value={String(v ?? "")}
-          onChange={(e) => onChange(e.target.value)}
-          style={inputStyle}
-        >
-          {field.options?.map((o) => (
-            <option key={o} value={o}>
-              {labelMap?.[o] || o}
-            </option>
-          ))}
-        </select>
+      {field.type === "select" && isYesNo && (
+        <div style={{ display: "flex", alignItems: "center", gap: 9, paddingTop: 2 }}>
+          <Switch
+            checked={String(v ?? "") === yesOpt}
+            onCheckedChange={(on) => onChange(on ? yesOpt : noOpt)}
+            aria-label={field.label}
+          />
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)" }}>
+            {String(v ?? "") === yesOpt ? yesOpt : noOpt}
+          </span>
+        </div>
+      )}
+      {field.type === "select" && !isYesNo && (
+        <Select value={String(v ?? "")} onValueChange={(nv) => nv && onChange(nv)}>
+          <SelectTrigger className="w-full">
+            <SelectValue>{labelMap?.[String(v ?? "")] || String(v ?? "")}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {field.options?.map((o) => (
+              <SelectItem key={o} value={o}>
+                {labelMap?.[o] || o}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       )}
 
       {field.type === "node-ref" && (
-        <select
-          value={String(v ?? "")}
-          onChange={(e) => onChange(e.target.value)}
-          style={inputStyle}
-        >
-          <option value="">— elegir paso —</option>
-          {allNodes
-            .filter((n) => n.id !== selfId)
-            .map((n) => {
-              const k = (n.data as { kind: NodeKind }).kind;
-              return (
-                <option key={n.id} value={n.id}>
-                  {NODE_KINDS[k].label}:{" "}
-                  {NODE_KINDS[k].summary(n.data as Record<string, unknown>).slice(0, 28)}
-                </option>
-              );
-            })}
-        </select>
+        <Select value={String(v ?? "")} onValueChange={(nv) => nv && onChange(nv)}>
+          <SelectTrigger className="w-full">
+            <SelectValue>
+              {(() => {
+                const sel = allNodes.find((n) => n.id === String(v ?? ""));
+                if (!sel) return "— elegir paso —";
+                const k = (sel.data as { kind: NodeKind }).kind;
+                return `${NODE_KINDS[k].label}: ${NODE_KINDS[k]
+                  .summary(sel.data as Record<string, unknown>)
+                  .slice(0, 28)}`;
+              })()}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {allNodes
+              .filter((n) => n.id !== selfId)
+              .map((n) => {
+                const k = (n.data as { kind: NodeKind }).kind;
+                return (
+                  <SelectItem key={n.id} value={n.id}>
+                    {NODE_KINDS[k].label}:{" "}
+                    {NODE_KINDS[k].summary(n.data as Record<string, unknown>).slice(0, 28)}
+                  </SelectItem>
+                );
+              })}
+          </SelectContent>
+        </Select>
       )}
 
       {field.type === "buttons" && (
