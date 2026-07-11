@@ -30,6 +30,8 @@ import {
   Bot as BotIcon,
   Search,
   Network,
+  Download,
+  Upload,
   Braces,
   HelpCircle,
   GripVertical,
@@ -37,6 +39,7 @@ import {
   Redo2,
   Copy,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   NODE_KINDS,
   PALETTE_GROUPS,
@@ -971,6 +974,48 @@ function FlowBuilderInner({
     window.setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 60);
   }, [setNodes, edges, fitView, commit]);
 
+  // ── Importar / exportar el flujo como JSON ──────────────────────────────
+  // El flujo YA es un objeto Bot serializable, así que exportar es descargarlo e
+  // importar es parsearlo + reconstruir los nodos/edges de react-flow.
+  const importRef = useRef<HTMLInputElement>(null);
+  const exportFlow = useCallback(() => {
+    const blob = new Blob([JSON.stringify(currentBot, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(name || "bot").replace(/[^\w-]+/g, "_")}.bot.json`;
+    document.body.appendChild(a);
+    a.click();
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+      a.remove();
+    }, 1500);
+    toast.success("Flujo exportado a JSON");
+  }, [currentBot, name]);
+  const importFlow = useCallback(
+    (file: File) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const bot = JSON.parse(String(reader.result)) as Bot;
+          if (!Array.isArray(bot.nodes) || !Array.isArray(bot.edges))
+            throw new Error("el archivo no es un flujo de bot (faltan nodes/edges)");
+          commit();
+          if (typeof bot.name === "string" && bot.name.trim()) setName(bot.name.trim());
+          setNodes(initialRFNodes(bot));
+          setEdges(toRFEdges(bot));
+          setSelectedId(null);
+          window.setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 80);
+          toast.success(`Flujo importado — ${bot.nodes.length} pasos`);
+        } catch (e) {
+          toast.error("No se pudo importar: " + (e instanceof Error ? e.message : "JSON inválido"));
+        }
+      };
+      reader.readAsText(file);
+    },
+    [commit, setNodes, setEdges, fitView],
+  );
+
   // ── Arrastrar pasos desde la paleta al lienzo (HTML5 drag-and-drop) ──
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -1159,6 +1204,31 @@ function FlowBuilderInner({
                 ? `${issues.length} aviso${issues.length > 1 ? "s" : ""}`
                 : "Sin avisos"}
             </button>
+            <button
+              onClick={exportFlow}
+              title="Exportar el flujo a un archivo JSON"
+              className="btn btn--sm"
+            >
+              <Download size={13} /> Exportar
+            </button>
+            <button
+              onClick={() => importRef.current?.click()}
+              title="Importar un flujo desde un archivo JSON"
+              className="btn btn--sm"
+            >
+              <Upload size={13} /> Importar
+            </button>
+            <input
+              ref={importRef}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) importFlow(f);
+                e.target.value = "";
+              }}
+            />
             <button
               onClick={arrange}
               title="Ordenar el flujo automáticamente (izquierda → derecha)"
@@ -1818,10 +1888,10 @@ function Field({
         </div>
       )}
       {isInsert && flowVars.length > 0 && <VarInsert vars={flowVars} onInsert={insertVar} />}
-      {isInsert && flowVars.length === 0 && field.type === "textarea" && (
+      {isInsert && flowVars.length === 0 && (
         <div className="fb-varhint">
-          <Braces size={11} /> Guarda datos con un paso «Preguntar y guardar» y aparecerán aquí para
-          insertarlos.
+          <Braces size={11} /> Este flujo aún no guarda variables. Agrega un paso «Preguntar y
+          guardar» (o «Asignar campo») y aparecerán aquí para insertarlas con un clic.
         </div>
       )}
 
