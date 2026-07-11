@@ -1231,6 +1231,116 @@ export const BOT_TEMPLATES: BotTemplate[] = [
     }),
   },
   {
+    id: "admision_concierge",
+    name: "Concierge de admisión (completo)",
+    description:
+      "Flujo ramificado: menú con 3 caminos — Pregrado (califica + guarda variables + info), Posgrado (info + deriva a cola) y Hablar con asesor (handoff prioritario). Ejemplo completo de un bot real.",
+    icon: "bot",
+    accent: "#8B7EE8",
+    category: "comercial",
+    channels: ["whatsapp", "instagram"],
+    preview: {
+      bubble: "¡Hola! 👋 ¿Buscas Pregrado, Posgrado o hablar con un asesor?",
+      reply: "Pregrado",
+      emoji: "🎓",
+    },
+    build: () => ({
+      botId: "",
+      name: "Concierge de admisión",
+      status: "draft",
+      trigger: "Mensaje entrante (WhatsApp)",
+      nodes: [
+        blankStart(),
+        {
+          id: "msg1",
+          kind: "message",
+          position: { x: 200, y: 140 },
+          data: {
+            text: "¡Hola! 👋 Soy el asistente de Admisión. ¿Qué te interesa hoy?",
+            buttons: [
+              { id: "pre", label: "Pregrado" },
+              { id: "pos", label: "Posgrado" },
+              { id: "ase", label: "Hablar con asesor" },
+            ],
+          },
+        },
+        // ── Rama Pregrado: califica → guarda etapa → manda info ──
+        {
+          id: "q_pre",
+          kind: "question",
+          position: { x: -180, y: 360 },
+          data: {
+            prompt: "¡Genial! ¿Qué carrera de pregrado te interesa?",
+            saveAs: "carrera",
+            validate: "ninguna",
+          },
+        },
+        {
+          id: "set_pre",
+          kind: "set_field",
+          position: { x: -180, y: 540 },
+          data: { field: "etapa", value: "Interesado" },
+        },
+        {
+          id: "tpl_pre",
+          kind: "template",
+          position: { x: -180, y: 680 },
+          data: { templateName: "udep_info_pregrado", language: "es", variables: ["carrera"] },
+        },
+        { id: "stop_pre", kind: "stop", position: { x: -180, y: 860 }, data: {} },
+        // ── Rama Posgrado: info → deriva a cola de Posgrado ──
+        {
+          id: "q_pos",
+          kind: "question",
+          position: { x: 240, y: 360 },
+          data: {
+            prompt: "¿Qué maestría o diplomado te interesa?",
+            saveAs: "programa",
+            validate: "ninguna",
+          },
+        },
+        {
+          id: "tpl_pos",
+          kind: "template",
+          position: { x: 240, y: 540 },
+          data: { templateName: "udep_info_posgrado", language: "es", variables: ["programa"] },
+        },
+        {
+          id: "hand_pos",
+          kind: "handoff",
+          position: { x: 240, y: 680 },
+          data: { queue: "Posgrado", note: "Lead de posgrado interesado en: {{programa}}" },
+        },
+        { id: "stop_pos", kind: "stop", position: { x: 240, y: 860 }, data: {} },
+        // ── Rama Asesor: handoff prioritario ──
+        {
+          id: "hand_ase",
+          kind: "handoff",
+          position: { x: 640, y: 360 },
+          data: {
+            queue: "Admisión",
+            priority: "alta",
+            note: "El lead pidió hablar con un asesor desde el bot.",
+          },
+        },
+        { id: "stop_ase", kind: "stop", position: { x: 640, y: 540 }, data: {} },
+      ],
+      edges: [
+        { id: "e0", source: "start", sourceHandle: "out", target: "msg1" },
+        { id: "e_pre", source: "msg1", sourceHandle: "b:pre", target: "q_pre" },
+        { id: "e_pos", source: "msg1", sourceHandle: "b:pos", target: "q_pos" },
+        { id: "e_ase", source: "msg1", sourceHandle: "b:ase", target: "hand_ase" },
+        { id: "e1", source: "q_pre", sourceHandle: "out", target: "set_pre" },
+        { id: "e2", source: "set_pre", sourceHandle: "out", target: "tpl_pre" },
+        { id: "e3", source: "tpl_pre", sourceHandle: "out", target: "stop_pre" },
+        { id: "e4", source: "q_pos", sourceHandle: "out", target: "tpl_pos" },
+        { id: "e5", source: "tpl_pos", sourceHandle: "out", target: "hand_pos" },
+        { id: "e6", source: "hand_pos", sourceHandle: "out", target: "stop_pos" },
+        { id: "e7", source: "hand_ase", sourceHandle: "out", target: "stop_ase" },
+      ],
+    }),
+  },
+  {
     id: "faq",
     name: "Preguntas frecuentes",
     description: "Menú tipo lista de WhatsApp con respuestas automáticas.",
