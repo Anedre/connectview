@@ -7,7 +7,7 @@ import {
   type EdgeProps,
   type Node,
 } from "@xyflow/react";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { NODE_KINDS, type NodeKind } from "@/lib/botFlow";
 
 // Constantes/util de color co-ubicadas con el edge (comparten dominio con él).
@@ -61,6 +61,8 @@ export function branchColor(handleId: string | null | undefined): string {
 export interface PlusEdgeData {
   /** Opens the picker anchored at (screenX,screenY) to insert on this edge. */
   onInsert?: (edgeId: string, screenX: number, screenY: number) => void;
+  /** Removes this edge (× button, revealed on hover). */
+  onDelete?: (edgeId: string) => void;
   [key: string]: unknown;
 }
 
@@ -111,6 +113,7 @@ export function PlusEdge({
 
   const label = branchLabel(getNode(source), sourceHandleId);
   const onInsert = (data as PlusEdgeData | undefined)?.onInsert;
+  const onDelete = (data as PlusEdgeData | undefined)?.onDelete;
 
   // Color por rama: tiñe el trazo y la etiqueta. La flecha (markerEnd) ya llega
   // pintada del color correcto porque FlowBuilder inyecta el marker por-edge en
@@ -157,11 +160,13 @@ export function PlusEdge({
             {label}
           </div>
         )}
-        {/* The "+" insert button — visible on hover of the edge or the button itself. */}
+        {/* Al pasar el mouse por la conexión: insertar un paso (+) o borrarla (×). */}
         <button
           type="button"
           className={`fb-edge-plus ${hover ? "fb-edge-plus--on" : ""}`}
-          style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+          style={{
+            transform: `translate(-50%, -50%) translate(${labelX - (onDelete ? 13 : 0)}px, ${labelY}px)`,
+          }}
           title="Insertar un paso aquí"
           onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
@@ -172,6 +177,22 @@ export function PlusEdge({
         >
           <Plus size={13} strokeWidth={2.6} />
         </button>
+        {onDelete && (
+          <button
+            type="button"
+            className={`fb-edge-del ${hover ? "fb-edge-del--on" : ""}`}
+            style={{ transform: `translate(-50%, -50%) translate(${labelX + 13}px, ${labelY}px)` }}
+            title="Borrar esta conexión"
+            onMouseEnter={() => setHover(true)}
+            onMouseLeave={() => setHover(false)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(id);
+            }}
+          >
+            <X size={12} strokeWidth={2.8} />
+          </button>
+        )}
       </EdgeLabelRenderer>
     </>
   );

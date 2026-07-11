@@ -9817,6 +9817,49 @@ textarea.vox-field {
   background: var(--accent-cyan);
   color: #fff;
 }
+/* Botón "borrar conexión" (×) — gemelo del "+" pero coral. Aparece al hover del edge. */
+.fb-edge-del {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-red);
+  background: var(--bg-1);
+  color: var(--accent-red);
+  cursor: pointer;
+  pointer-events: all;
+  opacity: 0;
+  transform-origin: center;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease,
+    color 0.12s ease;
+  box-shadow: var(--sh-2);
+  z-index: 2;
+}
+.fb-edge-del--on {
+  opacity: 1;
+}
+.fb-edge-del:hover {
+  background: var(--accent-red);
+  color: #fff;
+}
+/* Ghost de arrastre de un paso desde el palette: clon del ítem con forma de
+   tarjeta flotante, para que se sienta que arrastras un BLOQUE (no un archivo).
+   Vive fuera de pantalla mientras el navegador lo usa como drag image. */
+.fb-drag-ghost {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  pointer-events: none;
+  background: var(--bg-1);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 14px 30px -8px rgba(0, 0, 0, 0.38);
+  opacity: 0.97;
+}
 
 /* ── NodePicker: popover flotante para elegir un paso (quick-connect / "+") ── */
 .fb-picker {

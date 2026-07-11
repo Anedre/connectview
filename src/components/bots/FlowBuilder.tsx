@@ -7,6 +7,7 @@ import {
   Controls,
   MiniMap,
   addEdge,
+  reconnectEdge,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -16,6 +17,7 @@ import {
   type Connection,
   type OnConnectStart,
   type OnConnectEnd,
+  type OnReconnect,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -108,8 +110,8 @@ const edgeDefaults = {
  *     paso al promedio de sus padres (los hijos quedan "en línea" con su origen).
  * Sin dependencias (dagre/elk).
  */
-const COL_GAP = 360; // pitch horizontal (tarjeta 250 + ~110 de aire)
-const GAP_Y = 44; // aire vertical mínimo entre tarjetas apiladas
+const COL_GAP = 400; // pitch horizontal (tarjeta 250 + ~150 de aire) — más respiro
+const GAP_Y = 64; // aire vertical entre tarjetas apiladas (ramas) — menos apretado
 const NODE_H_APPROX = 92;
 function layoutLR(nodes: Node[], edges: Edge[]): Node[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -750,6 +752,24 @@ function FlowBuilderInner({
     setPicker({ at: { x: screenX, y: screenY }, mode: "insert", insertEdgeId: edgeId });
   }, []);
 
+  // ── Borrar una conexión (× al pasar el mouse por el edge) ──
+  const deleteEdge = useCallback(
+    (edgeId: string) => {
+      commit();
+      setEdges((eds) => eds.filter((e) => e.id !== edgeId));
+    },
+    [setEdges, commit],
+  );
+
+  // ── Reconectar: arrastrar el extremo de una conexión a otro nodo/salida ──
+  const onReconnect = useCallback<OnReconnect>(
+    (oldEdge, newConnection) => {
+      commit();
+      setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds));
+    },
+    [setEdges, commit],
+  );
+
   const insertNodeOnEdge = useCallback(
     (edgeId: string, kind: NodeKind) => {
       // Todo se calcula FUERA de los updaters (updaters puros → seguro en
@@ -1051,7 +1071,11 @@ function FlowBuilderInner({
       ...e,
       style: { ...baseStyle, stroke: color },
       markerEnd: { ...edgeDefaults.markerEnd, color },
-      data: { ...(e.data as Record<string, unknown> | undefined), onInsert: openInsertOnEdge },
+      data: {
+        ...(e.data as Record<string, unknown> | undefined),
+        onInsert: openInsertOnEdge,
+        onDelete: deleteEdge,
+      },
     };
   });
 
@@ -1205,6 +1229,7 @@ function FlowBuilderInner({
                 onConnect={onConnect}
                 onConnectStart={onConnectStart}
                 onConnectEnd={onConnectEnd}
+                onReconnect={onReconnect}
                 connectOnClick={false}
                 onNodeDragStart={onNodeDragStart}
                 onNodeDragStop={onNodeDragStop}
@@ -1324,6 +1349,15 @@ function Palette({ onAdd }: { onAdd: (kind: NodeKind) => void }) {
                   onDragStart={(e) => {
                     e.dataTransfer.setData("application/aria-node", def.kind);
                     e.dataTransfer.effectAllowed = "move";
+                    // Ghost REAL con forma de bloque (clon del propio ítem), no la
+                    // etiqueta de texto suelta que hacía sentir que "importabas un archivo".
+                    const el = e.currentTarget;
+                    const ghost = el.cloneNode(true) as HTMLElement;
+                    ghost.classList.add("fb-drag-ghost");
+                    ghost.style.width = `${el.offsetWidth}px`;
+                    document.body.appendChild(ghost);
+                    e.dataTransfer.setDragImage(ghost, 24, 18);
+                    setTimeout(() => ghost.remove(), 0);
                   }}
                   onClick={() => onAdd(def.kind)}
                   title={`${def.blurb} — clic para agregar o arrastra al lienzo`}

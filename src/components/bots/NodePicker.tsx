@@ -89,16 +89,19 @@ export function NodePicker({
     el.style.top = `${Math.max(margin, top)}px`;
   }, [screenX, screenY, q]);
 
-  // Click-outside closes.
+  // Click-outside closes. Usa `pointerdown` en CAPTURA: el pane de React Flow
+  // frena la propagación del `mousedown` (para su paneo), así que un listener en
+  // BURBUJA nunca se enteraba del click en el lienzo → el picker no cerraba. La
+  // fase de captura corre antes que React Flow. (Mismo patrón que useClickOutside.)
   useEffect(() => {
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as HTMLElement)) onClose();
     };
-    // Defer so the opening click (mouseup from the edge drag) doesn't self-close.
-    const t = window.setTimeout(() => document.addEventListener("mousedown", onDown), 0);
+    // Defer para que el click que ABRIÓ el picker no lo autocierre.
+    const t = window.setTimeout(() => document.addEventListener("pointerdown", onDown, true), 0);
     return () => {
       window.clearTimeout(t);
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("pointerdown", onDown, true);
     };
   }, [onClose]);
 
