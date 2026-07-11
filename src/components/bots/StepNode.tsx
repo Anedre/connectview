@@ -105,13 +105,13 @@ function StepNodeImpl({ id, data, selected }: NodeProps) {
           type="target"
           position={Position.Left}
           style={{
-            width: 10,
-            height: 10,
-            background: "var(--bg-1)",
-            border: "2px solid var(--border-2)",
-            // left:0 → con el translate(-50%) de React Flow el CENTRO del handle
-            // queda sobre el borde izquierdo del nodo, así el edge/flecha llega
-            // PEGADO (antes left:-5 lo dejaba ~7px afuera → gap visible).
+            // Handle de destino INVISIBLE: el ○ con borde se veía como un elemento
+            // separado entre la flecha y el bloque. Sin él, la flecha apunta
+            // directo al nodo (se lee pegada). Sigue siendo target de conexión.
+            width: 12,
+            height: 12,
+            background: "transparent",
+            border: "none",
             left: 0,
             top: "50%",
           }}

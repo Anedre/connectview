@@ -13,8 +13,8 @@ import { NODE_KINDS, type NodeKind } from "@/lib/botFlow";
 // Constantes/util de color co-ubicadas con el edge (comparten dominio con él).
 // El export no-componente es intencional aquí — mismo patrón que nodeTypes en StepNode.
 /* eslint-disable react-refresh/only-export-components */
-/** Cyan por defecto (coincide con edgeDefaults en FlowBuilder). */
-export const EDGE_COLOR = "#22B8D9";
+/** Pizarra/slate por defecto (coincide con edgeDefaults en FlowBuilder). */
+export const EDGE_COLOR = "#64748B";
 
 /**
  * Color de la conexión según la RAMA de la que sale (su sourceHandle/outlet):

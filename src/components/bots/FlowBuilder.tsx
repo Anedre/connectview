@@ -96,7 +96,7 @@ import { Switch } from "@/components/ui/switch";
 const nodeTypes = { step: StepNode };
 const edgeTypes = { plus: PlusEdge };
 
-const EDGE_COLOR = "#22B8D9";
+const EDGE_COLOR = "#64748B";
 const edgeDefaults = {
   type: "plus",
   animated: false,
