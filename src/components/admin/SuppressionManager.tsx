@@ -2,6 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
 import { useCan } from "@/hooks/usePermissions";
 import {
@@ -35,6 +43,13 @@ const CHANNEL_LABEL: Record<string, string> = {
   voice: "Voz",
   email: "Email",
 };
+/** Opciones del selector de canal en el alta manual (labels largos). */
+const CHANNEL_OPTS: { value: string; label: string }[] = [
+  { value: "all", label: "Todos los canales" },
+  { value: "whatsapp", label: "Solo WhatsApp" },
+  { value: "voice", label: "Solo Voz" },
+  { value: "email", label: "Solo Email" },
+];
 
 function channelsText(channels: string[]): string {
   if (!channels?.length) return "—";
@@ -242,16 +257,20 @@ export function SuppressionManager() {
                     >
                       Canales
                     </div>
-                    <select
-                      value={channel}
-                      onChange={(e) => setChannel(e.target.value)}
-                      style={inp}
-                    >
-                      <option value="all">Todos los canales</option>
-                      <option value="whatsapp">Solo WhatsApp</option>
-                      <option value="voice">Solo Voz</option>
-                      <option value="email">Solo Email</option>
-                    </select>
+                    <Select value={channel} onValueChange={(v) => v && setChannel(v)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue>
+                          {CHANNEL_OPTS.find((o) => o.value === channel)?.label || channel}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CHANNEL_OPTS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </label>
                   <label style={{ flex: "2 1 220px", minWidth: 180 }}>
                     <div
@@ -585,21 +604,18 @@ function RulesPanel({
             }}
           >
             <div style={{ minWidth: 0 }}>
-              <label
-                className="row"
-                style={{ gap: 8, alignItems: "center", cursor: canManage ? "pointer" : "default" }}
-              >
-                <input
-                  type="checkbox"
+              <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                <Switch
                   checked={freqOn}
                   disabled={!canManage}
-                  onChange={(e) => {
-                    setFreqOn(e.target.checked);
+                  onCheckedChange={(v) => {
+                    setFreqOn(v);
                     mark();
                   }}
+                  aria-label="Tope de frecuencia (WhatsApp)"
                 />
                 <span style={{ fontWeight: 700, fontSize: 14 }}>Tope de frecuencia (WhatsApp)</span>
-              </label>
+              </div>
               <div
                 className="muted"
                 style={{ fontSize: 12, marginTop: 3, maxWidth: 560, lineHeight: 1.5 }}
@@ -663,21 +679,18 @@ function RulesPanel({
             }}
           >
             <div style={{ minWidth: 0 }}>
-              <label
-                className="row"
-                style={{ gap: 8, alignItems: "center", cursor: canManage ? "pointer" : "default" }}
-              >
-                <input
-                  type="checkbox"
+              <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                <Switch
                   checked={quietOn}
                   disabled={!canManage}
-                  onChange={(e) => {
-                    setQuietOn(e.target.checked);
+                  onCheckedChange={(v) => {
+                    setQuietOn(v);
                     mark();
                   }}
+                  aria-label="Horario permitido (WhatsApp)"
                 />
                 <span style={{ fontWeight: 700, fontSize: 14 }}>Horario permitido (WhatsApp)</span>
-              </label>
+              </div>
               <div
                 className="muted"
                 style={{ fontSize: 12, marginTop: 3, maxWidth: 560, lineHeight: 1.5 }}

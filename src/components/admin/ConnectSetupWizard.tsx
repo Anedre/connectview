@@ -3,6 +3,14 @@ import { toast } from "sonner";
 import * as Icon from "@/components/vox/primitives";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import type { ConnectConn } from "@/hooks/useConnections";
 import {
   connectAccessCfnTemplate,
@@ -543,17 +551,21 @@ export function ConnectSetupWizard({
               <div className="row" style={{ gap: 14, marginTop: 16 }}>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Región</label>
-                  <select
-                    style={inputStyle}
+                  <Select
                     value={draft.region || "us-east-1"}
-                    onChange={(e) => set({ region: e.target.value })}
+                    onValueChange={(v) => set({ region: v ?? "us-east-1" })}
                   >
-                    {CONNECT_REGIONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Elige una región" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONNECT_REGIONS.map((r) => (
+                        <SelectItem key={r} value={r}>
+                          {r}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div style={{ marginTop: 16 }}>
@@ -585,17 +597,21 @@ export function ConnectSetupWizard({
               <div className="row" style={{ gap: 14, marginTop: 16 }}>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Región de tu instancia nueva</label>
-                  <select
-                    style={inputStyle}
+                  <Select
                     value={draft.region || "us-east-1"}
-                    onChange={(e) => set({ region: e.target.value })}
+                    onValueChange={(v) => set({ region: v ?? "us-east-1" })}
                   >
-                    {CONNECT_REGIONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Elige una región" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONNECT_REGIONS.map((r) => (
+                        <SelectItem key={r} value={r}>
+                          {r}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <a
@@ -674,10 +690,10 @@ export function ConnectSetupWizard({
                   className="row"
                   style={{ gap: 8, fontSize: 13.5, cursor: "pointer", alignItems: "center" }}
                 >
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={inbound}
-                    onChange={(e) => setInbound(e.target.checked)}
+                    onCheckedChange={setInbound}
+                    aria-label="Llamadas entrantes"
                   />{" "}
                   Llamadas entrantes
                 </label>
@@ -685,10 +701,10 @@ export function ConnectSetupWizard({
                   className="row"
                   style={{ gap: 8, fontSize: 13.5, cursor: "pointer", alignItems: "center" }}
                 >
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={outbound}
-                    onChange={(e) => setOutbound(e.target.checked)}
+                    onCheckedChange={setOutbound}
+                    aria-label="Llamadas salientes"
                   />{" "}
                   Llamadas salientes
                 </label>

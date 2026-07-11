@@ -2,6 +2,14 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardBody, Kpi } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import { SegmentedControl } from "@/components/ui/segmented";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { useAuth } from "@/hooks/useAuth";
@@ -254,18 +262,19 @@ export function TaxonomyEditor() {
       {/* Selector + nombre + default */}
       <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         {docs.length > 1 && (
-          <select
-            value={activeId ?? ""}
-            onChange={(e) => setActiveId(e.target.value)}
-            style={selectStyle}
-          >
-            {docs.map((d) => (
-              <option key={d.taxonomyId} value={d.taxonomyId}>
-                {d.name}
-                {d.isDefault ? " (default)" : ""}
-              </option>
-            ))}
-          </select>
+          <Select value={activeId ?? ""} onValueChange={(v) => setActiveId(v ?? null)}>
+            <SelectTrigger className="w-56">
+              <SelectValue placeholder="Elige una taxonomía…" />
+            </SelectTrigger>
+            <SelectContent>
+              {docs.map((d) => (
+                <SelectItem key={d.taxonomyId} value={d.taxonomyId}>
+                  {d.name}
+                  {d.isDefault ? " (default)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
         <input
           value={name}
@@ -465,41 +474,17 @@ export function TaxonomyEditor() {
                       }}
                     />
                     {/* Segmented de valoración (con color) */}
-                    <div
-                      className="row"
-                      style={{
-                        gap: 3,
-                        background: "var(--bg-2)",
-                        padding: 3,
-                        borderRadius: 9,
-                        flex: "0 0 auto",
-                      }}
-                    >
-                      {VALORACIONES.map((vv) => {
-                        const on = stage.valoracion === vv;
-                        const c = VAL_COLOR[vv];
-                        return (
-                          <button
-                            key={vv}
-                            onClick={() => patchStage(stage._key, { valoracion: vv })}
-                            title={c.short}
-                            style={{
-                              border: "none",
-                              cursor: "pointer",
-                              fontSize: 11.5,
-                              fontWeight: 700,
-                              padding: "5px 11px",
-                              borderRadius: 6,
-                              transition: "all .12s",
-                              background: on ? c.color : "transparent",
-                              color: on ? "#fff" : "var(--text-3)",
-                            }}
-                          >
-                            {c.short}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <SegmentedControl
+                      value={stage.valoracion}
+                      onValueChange={(vv) => patchStage(stage._key, { valoracion: vv })}
+                      options={VALORACIONES.map((vv) => ({
+                        value: vv,
+                        label: VAL_COLOR[vv].short,
+                        color: VAL_COLOR[vv].color,
+                      }))}
+                      size="sm"
+                      aria-label="Valoración del stage"
+                    />
                     <button
                       className="btn btn--sm btn--ghost"
                       onClick={() => removeStage(stage._key)}
@@ -642,16 +627,6 @@ const inputStyle: React.CSSProperties = {
   outline: "none",
 };
 
-const selectStyle: React.CSSProperties = {
-  background: "var(--bg-1)",
-  border: "1px solid var(--border-1)",
-  borderRadius: 6,
-  padding: "8px 10px",
-  color: "var(--text-1)",
-  fontSize: 13,
-  outline: "none",
-};
-
 /** Mini wrap-up en vivo: muestra cómo el AGENTE tipifica un contacto con esta
  *  taxonomía (stage → sub-stage + chip de valoración con su color). Se alimenta
  *  del state de edición, así que refleja los cambios al instante. */
@@ -663,17 +638,6 @@ function WrapUpPreview({ stages }: { stages: EditStage[] }) {
   const stage = stages[sIdx];
   const v = VAL_COLOR[stage.valoracion];
   const subs = stage.subStages;
-  const pvSelect: React.CSSProperties = {
-    width: "100%",
-    marginTop: 5,
-    background: "var(--bg-1)",
-    border: "1px solid var(--border-1)",
-    borderRadius: 8,
-    padding: "9px 11px",
-    color: "var(--text-1)",
-    fontSize: 13.5,
-    outline: "none",
-  };
   const pvLabel: React.CSSProperties = {
     fontSize: 10.5,
     fontWeight: 800,
@@ -729,39 +693,47 @@ function WrapUpPreview({ stages }: { stages: EditStage[] }) {
       <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 200 }}>
           <span style={pvLabel}>Tipificación</span>
-          <select
-            value={sIdx}
-            onChange={(e) => {
-              setSi(Number(e.target.value));
-              setSsi(0);
-            }}
-            style={pvSelect}
-          >
-            {stages.map((s, i) => (
-              <option key={s._key} value={i}>
-                {s.label || "(sin nombre)"}
-              </option>
-            ))}
-          </select>
+          <div style={{ marginTop: 5 }}>
+            <Select
+              value={String(sIdx)}
+              onValueChange={(v) => {
+                setSi(Number(v));
+                setSsi(0);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {stages.map((s, i) => (
+                  <SelectItem key={s._key} value={String(i)}>
+                    {s.label || "(sin nombre)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
           <span style={pvLabel}>Sub-tipificación</span>
-          <select
-            value={Math.min(ssi, Math.max(0, subs.length - 1))}
-            onChange={(e) => setSsi(Number(e.target.value))}
-            style={pvSelect}
-            disabled={subs.length === 0}
-          >
-            {subs.length === 0 ? (
-              <option>— sin sub-tipificaciones —</option>
-            ) : (
-              subs.map((ss, i) => (
-                <option key={i} value={i}>
-                  {ss.label || "(sin nombre)"}
-                </option>
-              ))
-            )}
-          </select>
+          <div style={{ marginTop: 5 }}>
+            <Select
+              value={String(Math.min(ssi, Math.max(0, subs.length - 1)))}
+              onValueChange={(v) => setSsi(Number(v))}
+              disabled={subs.length === 0}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="— sin sub-tipificaciones —" />
+              </SelectTrigger>
+              <SelectContent>
+                {subs.map((ss, i) => (
+                  <SelectItem key={i} value={String(i)}>
+                    {ss.label || "(sin nombre)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
     </div>

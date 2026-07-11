@@ -2,6 +2,14 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SegmentedControl } from "@/components/ui/segmented";
 import { useAuth } from "@/hooks/useAuth";
 import { useSegments, type Segment, type FilterRule, type FilterOp } from "@/hooks/useSegments";
 
@@ -157,14 +165,15 @@ export function SegmentsManager() {
                 placeholder="Nombre del segmento (ej. Calientes sin contactar)"
                 style={{ ...inp, flex: 1, minWidth: 220 }}
               />
-              <select
+              <SegmentedControl<"all" | "any">
                 value={match}
-                onChange={(e) => setMatch(e.target.value as "all" | "any")}
-                style={inp}
-              >
-                <option value="all">Cumple TODAS</option>
-                <option value="any">Cumple ALGUNA</option>
-              </select>
+                onValueChange={(v) => setMatch(v)}
+                options={[
+                  { value: "all", label: "Cumple TODAS" },
+                  { value: "any", label: "Cumple ALGUNA" },
+                ]}
+                size="sm"
+              />
             </div>
 
             {rules.map((r, i) => {
@@ -173,32 +182,37 @@ export function SegmentsManager() {
               const needsValue = r.op !== "exists" && r.op !== "notexists";
               return (
                 <div key={i} className="row" style={{ gap: 8, alignItems: "center" }}>
-                  <select
+                  <Select
                     value={r.field}
-                    onChange={(e) => {
-                      const nf = e.target.value;
+                    onValueChange={(nf) => {
+                      if (!nf) return;
                       const nk = fieldKind(nf);
                       setRule(i, { field: nf, op: (OPS_BY_KIND[nk] || [])[0]?.value || "eq" });
                     }}
-                    style={{ ...inp, flex: "0 0 190px" }}
                   >
-                    {FIELDS.map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={r.op}
-                    onChange={(e) => setRule(i, { op: e.target.value as FilterOp })}
-                    style={{ ...inp, flex: "0 0 110px" }}
-                  >
-                    {ops.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="w-[190px] shrink-0">
+                      <SelectValue>{fieldLabel(r.field)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FIELDS.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>
+                          {f.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={r.op} onValueChange={(v) => setRule(i, { op: v as FilterOp })}>
+                    <SelectTrigger className="w-[110px] shrink-0">
+                      <SelectValue>{ops.find((o) => o.value === r.op)?.label || r.op}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ops.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {needsValue ? (
                     <input
                       type={kind === "num" ? "number" : "text"}

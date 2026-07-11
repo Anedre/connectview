@@ -2,6 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import * as Icon from "@/components/vox/primitives";
 import { Avatar, Card, CardBody, Kpi } from "@/components/vox/primitives";
+import { SegmentedControl } from "@/components/ui/segmented";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { useAuth } from "@/hooks/useAuth";
@@ -403,41 +411,17 @@ export function SecurityManager() {
                         </div>
                       )}
                     </div>
-                    <div
-                      style={{
-                        display: "inline-flex",
-                        background: "var(--bg-2)",
-                        border: "1px solid var(--border-1)",
-                        borderRadius: 9,
-                        padding: 2,
-                        gap: 2,
-                        flex: "0 0 auto",
-                      }}
-                    >
-                      {ROLE_SEQ.map((r) => {
-                        const active = matrix[cap] === r;
-                        const rm = ROLE_META[r];
-                        return (
-                          <button
-                            key={r}
-                            onClick={() => setRole(cap, r)}
-                            style={{
-                              border: "none",
-                              cursor: "pointer",
-                              borderRadius: 7,
-                              padding: "5px 11px",
-                              fontSize: 11.5,
-                              fontWeight: 700,
-                              transition: "all .12s",
-                              background: active ? rm.soft : "transparent",
-                              color: active ? rm.tone : "var(--text-3)",
-                            }}
-                          >
-                            {rm.label}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <SegmentedControl
+                      value={matrix[cap] as (typeof ROLE_SEQ)[number]}
+                      onValueChange={(r) => setRole(cap, r)}
+                      options={ROLE_SEQ.map((r) => ({
+                        value: r,
+                        label: ROLE_META[r].label,
+                        color: ROLE_META[r].tone,
+                      }))}
+                      size="sm"
+                      aria-label={`Rol mínimo: ${meta?.label || cap}`}
+                    />
                   </div>
                 );
               })
@@ -507,19 +491,33 @@ export function SecurityManager() {
                 style={{ ...filterStyle, width: "100%", paddingLeft: 31 }}
               />
             </div>
-            <select value={action} onChange={(e) => setAction(e.target.value)} style={filterStyle}>
-              <option value="">Todas las acciones</option>
-              {actions.map((a) => (
-                <option key={a} value={a}>
-                  {prettyAction(a)}
-                </option>
-              ))}
-            </select>
-            <select value={result} onChange={(e) => setResult(e.target.value)} style={filterStyle}>
-              <option value="">Todos</option>
-              <option value="success">OK</option>
-              <option value="error">Error</option>
-            </select>
+            <Select
+              value={action || "all"}
+              onValueChange={(v) => setAction(v === "all" ? "" : (v ?? ""))}
+            >
+              <SelectTrigger className="min-w-[168px]">
+                <SelectValue placeholder="Todas las acciones" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las acciones</SelectItem>
+                {actions.map((a) => (
+                  <SelectItem key={a} value={a}>
+                    {prettyAction(a)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <SegmentedControl
+              value={result}
+              onValueChange={(v) => setResult(v)}
+              options={[
+                { value: "", label: "Todos" },
+                { value: "success", label: "OK", color: "var(--accent-green)" },
+                { value: "error", label: "Error", color: "var(--accent-red)" },
+              ]}
+              size="sm"
+              aria-label="Filtrar por resultado"
+            />
           </div>
 
           <div

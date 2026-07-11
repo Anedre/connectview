@@ -5,6 +5,14 @@ import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { initials } from "@/lib/initials";
 import * as Icon from "@/components/vox/primitives";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 /**
  * QueuesPanel — "Configuración → Colas". Gestor de colas del Amazon Connect del
@@ -65,52 +73,6 @@ async function queuesPost(ep: string, body: any) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
   return j;
-}
-
-function Switch({
-  on,
-  onClick,
-  disabled,
-}: {
-  on: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={on}
-      style={{
-        width: 42,
-        height: 24,
-        borderRadius: 999,
-        border: "none",
-        padding: 0,
-        cursor: disabled ? "default" : "pointer",
-        background: on ? "var(--accent-green)" : "var(--border-2)",
-        position: "relative",
-        transition: "background .2s",
-        opacity: disabled ? 0.6 : 1,
-        flex: "0 0 auto",
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          top: 3,
-          left: on ? 21 : 3,
-          width: 18,
-          height: 18,
-          borderRadius: "50%",
-          background: "#fff",
-          transition: "left .2s",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-        }}
-      />
-    </button>
-  );
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -447,7 +409,13 @@ export function QueuesPanel() {
                     style={{ flex: "0 0 auto" }}
                     title={on ? "Deshabilitar cola" : "Habilitar cola"}
                   >
-                    <Switch on={on} onClick={() => toggleStatus(q)} disabled={toggling === q.id} />
+                    <Switch
+                      checked={on}
+                      onCheckedChange={() => toggleStatus(q)}
+                      disabled={toggling === q.id}
+                      accent="var(--accent-green)"
+                      aria-label={on ? "Deshabilitar cola" : "Habilitar cola"}
+                    />
                   </span>
                 )}
                 <Icon.ChevRight size={16} style={{ color: "var(--text-3)", flex: "0 0 auto" }} />
@@ -617,7 +585,13 @@ function QueueDetailView({
             >
               {enabled ? "Habilitada" : "Deshabilitada"}
             </span>
-            <Switch on={!!enabled} onClick={toggleStatus} disabled={saving} />
+            <Switch
+              checked={!!enabled}
+              onCheckedChange={toggleStatus}
+              disabled={saving}
+              accent="var(--accent-green)"
+              aria-label={enabled ? "Deshabilitar cola" : "Habilitar cola"}
+            />
           </div>
         )}
       </div>
@@ -643,17 +617,20 @@ function QueueDetailView({
               </label>
               <label style={{ display: "block" }}>
                 <span style={labelSpan}>Horario de atención</span>
-                <select
-                  value={hoursId}
-                  onChange={(e) => setHoursId(e.target.value)}
-                  style={inputStyle}
-                >
-                  {hours.map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.name}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ marginTop: 6 }}>
+                  <Select value={hoursId} onValueChange={(v) => setHoursId(v ?? "")}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Elige un horario…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {hours.map((h) => (
+                        <SelectItem key={h.id} value={h.id}>
+                          {h.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </label>
             </div>
             <div className="row" style={{ justifyContent: "flex-end", marginTop: 16 }}>
@@ -746,18 +723,20 @@ function QueueDetailView({
                   borderTop: "1px solid var(--border-1)",
                 }}
               >
-                <select
-                  value={addUserId}
-                  onChange={(e) => setAddUserId(e.target.value)}
-                  style={{ ...inputStyle, marginTop: 0, flex: 1, maxWidth: 320 }}
-                >
-                  <option value="">Agregar un agente…</option>
-                  {available.map((a) => (
-                    <option key={a.userId} value={a.userId}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ flex: 1, maxWidth: 320 }}>
+                  <Select value={addUserId} onValueChange={(v) => setAddUserId(v ?? "")}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Agregar un agente…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {available.map((a) => (
+                        <SelectItem key={a.userId} value={a.userId}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <button
                   className="btn btn--primary btn--sm"
                   onClick={addAgent}
@@ -836,14 +815,24 @@ function QueueCreateView({
           </label>
           <label style={{ display: "block" }}>
             <span style={labelSpan}>Horario de atención</span>
-            <select value={hoursId} onChange={(e) => setHoursId(e.target.value)} style={inputStyle}>
-              {hours.length === 0 && <option value="">(sin horarios)</option>}
-              {hours.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.name}
-                </option>
-              ))}
-            </select>
+            <div style={{ marginTop: 6 }}>
+              <Select
+                value={hoursId}
+                onValueChange={(v) => setHoursId(v ?? "")}
+                disabled={hours.length === 0}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="(sin horarios)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {hours.map((h) => (
+                    <SelectItem key={h.id} value={h.id}>
+                      {h.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </label>
           <label style={{ display: "block" }}>
             <span style={labelSpan}>Descripción (opcional)</span>
