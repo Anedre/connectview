@@ -102,19 +102,26 @@ export function PlusEdge({
   const { getNode } = useReactFlow();
   const [hover, setHover] = useState(false);
 
-  // React Flow deja ~8px de aire entre el punto de conexión del handle y el borde
-  // VISIBLE del nodo (+ el marcador acorta el path), así que la flecha llegaba
-  // "separada". Extendemos el punto de destino ese aire HACIA el nodo para que la
-  // punta llegue PEGADA. En coords de flujo (constante en cualquier zoom).
-  const NUB = 8;
+  // React Flow deja aire entre el punto de conexión y el borde VISIBLE del nodo:
+  // ~18px del lado ORIGEN (el conector .fb-out florece AFUERA del nodo) y ~8px del
+  // DESTINO (+ el marcador acorta el path). Extendemos cada extremo HACIA su nodo
+  // para que la línea SALGA y LLEGUE pegada. En coords de flujo (constante al zoom).
+  const SRC_NUB = 18;
+  const TGT_NUB = 8;
+  const adjSourceX =
+    sourcePosition === Position.Right
+      ? sourceX - SRC_NUB
+      : sourcePosition === Position.Left
+        ? sourceX + SRC_NUB
+        : sourceX;
   const adjTargetX =
     targetPosition === Position.Left
-      ? targetX + NUB
+      ? targetX + TGT_NUB
       : targetPosition === Position.Right
-        ? targetX - NUB
+        ? targetX - TGT_NUB
         : targetX;
   const [path, labelX, labelY] = getSmoothStepPath({
-    sourceX,
+    sourceX: adjSourceX,
     sourceY,
     sourcePosition,
     targetX: adjTargetX,
