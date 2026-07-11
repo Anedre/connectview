@@ -921,7 +921,14 @@ function FlowBuilderInner({
       commit();
       // Soltar (arrastrar desde la paleta) = posición exacta del cursor. Click =
       // a la derecha del nodo seleccionado. En ambos casos puede autoconectar.
-      const sel = !dropPos && selectedId ? nodes.find((n) => n.id === selectedId) : null;
+      // Click-add (sin drop): conecta al nodo SELECCIONADO; si no hay selección,
+      // al ÚLTIMO nodo del flujo — así "siempre se conecta al último bloque" como
+      // se espera, y el primer paso nunca queda huérfano de Inicio.
+      const sel = dropPos
+        ? null
+        : selectedId
+          ? (nodes.find((n) => n.id === selectedId) ?? null)
+          : (nodes[nodes.length - 1] ?? null);
       let pos: { x: number; y: number };
       if (dropPos) {
         pos = dropPos;
