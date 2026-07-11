@@ -27,6 +27,18 @@ import {
   type MetaAccountRef,
 } from "@/hooks/useConnections";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SegmentedControl } from "@/components/ui/segmented";
+import { Switch } from "@/components/ui/switch";
+import { RadioCards } from "@/components/ui/radio-cards";
 import outputs from "../../../amplify_outputs.json";
 
 /**
@@ -468,17 +480,21 @@ function AmazonConnectCard({
             </label>
             <label>
               <span style={labelStyle}>Región</span>
-              <select
-                style={inputStyle}
+              <Select
                 value={draft.region || "us-east-1"}
-                onChange={(e) => set({ region: e.target.value })}
+                onValueChange={(nv) => nv && set({ region: nv })}
               >
-                {CONNECT_REGIONS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue>{draft.region || "us-east-1"}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {CONNECT_REGIONS.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
           </div>
           <label style={{ display: "block", marginTop: 10 }}>
@@ -650,14 +666,16 @@ function AmazonConnectCard({
               alignItems: "flex-start",
             }}
           >
-            <input
-              type="checkbox"
-              checked={!!draft.dataPlaneEnabled}
-              onChange={(e) =>
-                set({ dataPlaneEnabled: e.target.checked, dataPlaneVerifiedAt: undefined })
-              }
-              style={{ marginTop: 2 }}
-            />
+            <span style={{ marginTop: 2, display: "inline-flex" }}>
+              <Switch
+                checked={!!draft.dataPlaneEnabled}
+                onCheckedChange={(checked) =>
+                  set({ dataPlaneEnabled: checked, dataPlaneVerifiedAt: undefined })
+                }
+                accent="var(--accent-green)"
+                aria-label="Activar BYO Data Plane"
+              />
+            </span>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 13 }}>Activar BYO Data Plane</div>
               <div className="muted" style={{ fontSize: 12, marginTop: 2, lineHeight: 1.5 }}>
@@ -863,44 +881,51 @@ function SfFieldMapper({
               </div>
             </div>
             <span style={{ color: "var(--text-3)" }}>→</span>
-            <select
+            <Select
               value={mapping[f.key] ?? ""}
-              onChange={(e) => setMapping((m) => ({ ...m, [f.key]: e.target.value }))}
+              onValueChange={(nv) => setMapping((m) => ({ ...m, [f.key]: nv ?? "" }))}
               disabled={!discovered}
-              style={{
-                flex: 1,
-                minWidth: 180,
-                padding: "7px 9px",
-                borderRadius: 7,
-                border: "1px solid var(--border-1)",
-                background: "var(--bg-1)",
-                color: "var(--text-1)",
-                fontSize: 12.5,
-              }}
             >
-              <option value="">— No escribir —</option>
-              {!discovered && mapping[f.key] && (
-                <option value={mapping[f.key]}>{mapping[f.key]} (actual)</option>
-              )}
-              {standard.length > 0 && (
-                <optgroup label="Estándar">
-                  {standard.map((sfF) => (
-                    <option key={sfF.name} value={sfF.name}>
-                      {sfF.label} · {sfF.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {custom.length > 0 && (
-                <optgroup label="Personalizados">
-                  {custom.map((sfF) => (
-                    <option key={sfF.name} value={sfF.name}>
-                      ✦ {sfF.label} · {sfF.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+              <SelectTrigger style={{ flex: 1, minWidth: 180 }}>
+                <SelectValue>
+                  {(() => {
+                    const cur = mapping[f.key] ?? "";
+                    if (!cur) return "— No escribir —";
+                    const cf = [...standard, ...custom].find((sfF) => sfF.name === cur);
+                    return cf
+                      ? `${cf.custom ? "✦ " : ""}${cf.label} · ${cf.name}`
+                      : `${cur} (actual)`;
+                  })()}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">— No escribir —</SelectItem>
+                {mapping[f.key] &&
+                  ![...standard, ...custom].some((sfF) => sfF.name === mapping[f.key]) && (
+                    <SelectItem value={mapping[f.key]}>{mapping[f.key]} (actual)</SelectItem>
+                  )}
+                {standard.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Estándar</SelectLabel>
+                    {standard.map((sfF) => (
+                      <SelectItem key={sfF.name} value={sfF.name}>
+                        {sfF.label} · {sfF.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+                {custom.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Personalizados</SelectLabel>
+                    {custom.map((sfF) => (
+                      <SelectItem key={sfF.name} value={sfF.name}>
+                        ✦ {sfF.label} · {sfF.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+              </SelectContent>
+            </Select>
           </div>
         ))}
       </div>
@@ -1499,43 +1524,21 @@ function WhatsAppCard({
             {mode === "aws" ? (
               awsNumbers.length > 0 ? (
                 <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {awsNumbers.map((n) => {
-                      const sel = selectedAws === n.metaPhoneNumberId;
-                      return (
-                        <label
-                          key={n.metaPhoneNumberId || n.phoneNumberArn}
-                          className="row"
-                          style={{
-                            gap: 10,
-                            padding: "10px 12px",
-                            borderRadius: 8,
-                            cursor: "pointer",
-                            alignItems: "center",
-                            background: sel ? "var(--accent-green-soft)" : "var(--bg-2)",
-                            border: `1px solid ${sel ? "var(--accent-green)" : "var(--border-1)"}`,
-                          }}
-                        >
-                          <input
-                            type="radio"
-                            name="wa-aws-number"
-                            checked={sel}
-                            onChange={() => setSelectedAws(n.metaPhoneNumberId || "")}
-                          />
-                          <Icon.WhatsApp size={16} style={{ color: "#25D366" }} />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 600, fontSize: 13 }}>
-                              {n.displayPhoneNumber} · {n.displayName}
-                            </div>
-                            <div className="muted" style={{ fontSize: 11 }}>
-                              WABA {n.wabaName || n.wabaId}
-                              {n.qualityRating ? ` · calidad ${n.qualityRating}` : ""}
-                            </div>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  <RadioCards
+                    aria-label="Número de WhatsApp de tu Amazon Connect"
+                    columns={1}
+                    value={selectedAws}
+                    onValueChange={setSelectedAws}
+                    options={awsNumbers.map((n) => ({
+                      value: n.metaPhoneNumberId || "",
+                      label: `${n.displayPhoneNumber || ""} · ${n.displayName || ""}`,
+                      description: `WABA ${n.wabaName || n.wabaId || ""}${
+                        n.qualityRating ? ` · calidad ${n.qualityRating}` : ""
+                      }`,
+                      icon: <Icon.WhatsApp size={16} style={{ color: "#25D366" }} />,
+                      color: "var(--accent-green)",
+                    }))}
+                  />
                 </>
               ) : (
                 <div
@@ -2304,13 +2307,20 @@ function EmailCard({
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <label>
           <span style={labelStyle}>Proveedor</span>
-          <select style={inputStyle} value={kind} onChange={(e) => setKind(e.target.value)}>
-            {EMAIL_PROVIDERS.map((p) => (
-              <option key={p.kind} value={p.kind}>
-                {p.label}
-              </option>
-            ))}
-          </select>
+          <Select value={kind} onValueChange={(nv) => nv && setKind(nv)}>
+            <SelectTrigger className="w-full">
+              <SelectValue>
+                {EMAIL_PROVIDERS.find((p) => p.kind === kind)?.label || kind}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {EMAIL_PROVIDERS.map((p) => (
+                <SelectItem key={p.kind} value={p.kind}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
 
         {kind === "novasys" ? (
@@ -2352,10 +2362,10 @@ function EmailCard({
               />
             </label>
             <label className="row" style={{ gap: 8, fontSize: 13, marginTop: 18 }}>
-              <input
-                type="checkbox"
+              <Switch
                 checked={useTenantRole}
-                onChange={(e) => setUseTenantRole(e.target.checked)}
+                onCheckedChange={setUseTenantRole}
+                aria-label="SES de mi cuenta (assume-role)"
               />{" "}
               SES de mi cuenta (assume-role)
             </label>
@@ -2439,17 +2449,20 @@ function EmailCard({
                   placeholder="mg.tudominio.com"
                 />
               </label>
-              <label style={{ width: 90 }}>
+              <div style={{ width: 90 }}>
                 <span style={labelStyle}>Región</span>
-                <select
-                  style={inputStyle}
+                <SegmentedControl
+                  block
+                  size="sm"
+                  aria-label="Región de Mailgun"
                   value={mgRegion}
-                  onChange={(e) => setMgRegion(e.target.value)}
-                >
-                  <option value="us">US</option>
-                  <option value="eu">EU</option>
-                </select>
-              </label>
+                  onValueChange={setMgRegion}
+                  options={[
+                    { value: "us", label: "US" },
+                    { value: "eu", label: "EU" },
+                  ]}
+                />
+              </div>
             </div>
             <label>
               <span style={labelStyle}>API key de Mailgun{secretSet ? " · ya guardada" : ""}</span>
@@ -2663,17 +2676,23 @@ function MercadoLibreCard({
             </div>
             <div>
               <StepLabel n={1}>Elige tu país de Mercado Libre</StepLabel>
-              <select
-                style={{ ...inputStyle, maxWidth: 220 }}
-                value={siteId}
-                onChange={(e) => setSiteId(e.target.value)}
-              >
-                {ML_SITES.map((s) => (
-                  <option key={s.v} value={s.v}>
-                    {s.l} · {s.v}
-                  </option>
-                ))}
-              </select>
+              <Select value={siteId} onValueChange={(nv) => nv && setSiteId(nv)}>
+                <SelectTrigger className="w-full" style={{ maxWidth: 220 }}>
+                  <SelectValue>
+                    {(() => {
+                      const s = ML_SITES.find((x) => x.v === siteId);
+                      return s ? `${s.l} · ${s.v}` : siteId;
+                    })()}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {ML_SITES.map((s) => (
+                    <SelectItem key={s.v} value={s.v}>
+                      {s.l} · {s.v}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <StepLabel n={2}>Autoriza a ARIA</StepLabel>
@@ -3032,10 +3051,13 @@ function InstagramMessengerCard({
                       border: `1px solid ${on ? "var(--accent-green)" : "var(--border-1)"}`,
                     }}
                   >
-                    <input
-                      type="checkbox"
+                    <Switch
                       checked={on}
-                      onChange={(e) => setSelected((s) => ({ ...s, [p.pageId]: e.target.checked }))}
+                      onCheckedChange={(checked) =>
+                        setSelected((s) => ({ ...s, [p.pageId]: checked }))
+                      }
+                      accent="var(--accent-green)"
+                      aria-label={`Traer ${p.pageName || p.pageId}`}
                     />
                     <IgIcon size={16} style={{ color: "#E4405F", flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>

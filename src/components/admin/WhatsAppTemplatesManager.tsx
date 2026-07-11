@@ -5,6 +5,15 @@ import { authedFetch } from "@/lib/authedFetch";
 import * as Icon from "@/components/vox/primitives";
 import { Card, CardBody, CardHead } from "@/components/vox/primitives";
 import { Modal } from "@/components/ui/modal";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SegmentedControl } from "@/components/ui/segmented";
+import { Switch } from "@/components/ui/switch";
 
 /**
  * WhatsAppTemplatesManager — biblioteca central de plantillas (HSM) de WhatsApp
@@ -958,43 +967,49 @@ export function WhatsAppTemplatesManager() {
                       placeholder="confirmacion_cita"
                     />
                   </label>
-                  <label className="col" style={{ gap: 4 }}>
+                  <div className="col" style={{ gap: 4 }}>
                     <span className="muted" style={{ fontSize: 10.5 }}>
                       Idioma{editingId ? " · fijo" : ""}
                     </span>
-                    <select
-                      style={{
-                        ...inputStyle,
-                        ...(editingId ? { opacity: 0.6, cursor: "not-allowed" } : null),
-                      }}
+                    <Select
                       value={language}
+                      onValueChange={(v) => v && setLanguage(v)}
                       disabled={!!editingId}
-                      onChange={(e) => setLanguage(e.target.value)}
                     >
-                      {LANGS.map((l) => (
-                        <option key={l.v} value={l.v}>
-                          {l.l}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                      <SelectTrigger className="w-full">
+                        <SelectValue>
+                          {LANGS.find((l) => l.v === language)?.l || language}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LANGS.map((l) => (
+                          <SelectItem key={l.v} value={l.v}>
+                            {l.l}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <label className="col" style={{ gap: 4 }}>
+                <div className="col" style={{ gap: 4 }}>
                   <span className="muted" style={{ fontSize: 10.5 }}>
                     Categoría
                   </span>
-                  <select
-                    style={inputStyle}
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                  >
-                    {CATEGORIES.map((c) => (
-                      <option key={c.v} value={c.v}>
-                        {c.l}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  <Select value={category} onValueChange={(v) => v && setCategory(v)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue>
+                        {CATEGORIES.find((c) => c.v === category)?.l || category}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map((c) => (
+                        <SelectItem key={c.v} value={c.v}>
+                          {c.l}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 {/* AUTHENTICATION: Meta autogenera el cuerpo; solo configuramos el OTP */}
                 {isAuth && (
@@ -1012,22 +1027,21 @@ export function WhatsAppTemplatesManager() {
                       <i>«&lt;código&gt; es tu código de verificación.»</i> Solo configuras el
                       resto.
                     </div>
-                    <label
+                    <div
                       style={{
                         display: "flex",
                         alignItems: "center",
                         gap: 8,
                         fontSize: 12,
-                        cursor: "pointer",
                       }}
                     >
-                      <input
-                        type="checkbox"
+                      <Switch
                         checked={authSecurityRec}
-                        onChange={(e) => setAuthSecurityRec(e.target.checked)}
+                        onCheckedChange={setAuthSecurityRec}
+                        aria-label="Agregar recomendación de seguridad"
                       />
-                      Agregar recomendación de seguridad («no compartas este código»)
-                    </label>
+                      <span>Agregar recomendación de seguridad («no compartas este código»)</span>
+                    </div>
                     <label className="col" style={{ gap: 4 }}>
                       <span className="muted" style={{ fontSize: 10.5 }}>
                         El código expira en (minutos · 0 = sin pie)
@@ -1064,30 +1078,29 @@ export function WhatsAppTemplatesManager() {
                         MARKETING/UTILITY. No editable en modo edición (la
                         estructura de una plantilla es inmutable en Meta). */}
                     {carouselAllowed && !editingId && (
-                      <label
+                      <div
                         style={{
                           display: "flex",
                           alignItems: "center",
                           gap: 8,
                           fontSize: 12,
-                          cursor: "pointer",
                           padding: "8px 10px",
                           border: "1px solid var(--border-1)",
                           borderRadius: 8,
                           background: useCarousel ? "var(--bg-1)" : "transparent",
                         }}
                       >
-                        <input
-                          type="checkbox"
+                        <Switch
                           checked={isCarousel}
-                          onChange={(e) => setIsCarousel(e.target.checked)}
+                          onCheckedChange={setIsCarousel}
+                          aria-label="Activar carrusel"
                         />
                         <Icon.Copy size={14} />
                         <span>
                           <b>Carrusel</b> — 2-10 tarjetas deslizables, cada una con imagen, texto y
                           botones (ideal para catálogo de programas)
                         </span>
-                      </label>
+                      </div>
                     )}
 
                     {!useCarousel && (
@@ -1096,22 +1109,18 @@ export function WhatsAppTemplatesManager() {
                           Encabezado (opcional)
                         </span>
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <select
-                            style={{ ...inputStyle, width: 120, flexShrink: 0 }}
+                          <SegmentedControl
                             value={headerFormat}
-                            onChange={(e) => {
-                              setHeaderFormat(e.target.value);
+                            onValueChange={(v) => {
+                              setHeaderFormat(v);
                               setHeaderHandle("");
                               setHeaderMediaName("");
                               setHeaderMediaPreview("");
                             }}
-                          >
-                            {HEADER_FORMATS.map((h) => (
-                              <option key={h.v} value={h.v}>
-                                {h.l}
-                              </option>
-                            ))}
-                          </select>
+                            options={HEADER_FORMATS.map((h) => ({ value: h.v, label: h.l }))}
+                            size="sm"
+                            aria-label="Tipo de encabezado"
+                          />
                           {headerFormat === "TEXT" ? (
                             <input
                               style={{ ...inputStyle, flex: 1 }}
@@ -1278,20 +1287,36 @@ export function WhatsAppTemplatesManager() {
                                 {BTN_META[b.type].label}
                               </span>
                               {b.type === "FLOW" ? (
-                                <select
-                                  style={{ ...inputStyle, flex: 1.2 }}
-                                  value={b.flowId || ""}
-                                  onChange={(e) => updateButton(i, { flowId: e.target.value })}
-                                >
-                                  {flows.map((f) => (
-                                    <option key={f.id} value={f.id}>
-                                      {(f.name || f.id) +
-                                        (f.status && f.status !== "PUBLISHED"
-                                          ? ` (${f.status})`
-                                          : "")}
-                                    </option>
-                                  ))}
-                                </select>
+                                <div style={{ flex: 1.2, minWidth: 0 }}>
+                                  <Select
+                                    value={b.flowId || ""}
+                                    onValueChange={(v) => v && updateButton(i, { flowId: v })}
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue>
+                                        {(() => {
+                                          const f = flows.find((x) => x.id === (b.flowId || ""));
+                                          return f
+                                            ? (f.name || f.id) +
+                                                (f.status && f.status !== "PUBLISHED"
+                                                  ? ` (${f.status})`
+                                                  : "")
+                                            : "Elegir formulario";
+                                        })()}
+                                      </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {flows.map((f) => (
+                                        <SelectItem key={f.id} value={f.id}>
+                                          {(f.name || f.id) +
+                                            (f.status && f.status !== "PUBLISHED"
+                                              ? ` (${f.status})`
+                                              : "")}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                               ) : b.type === "COPY_CODE" ? (
                                 <input
                                   style={{ ...inputStyle, flex: 1 }}
@@ -1448,24 +1473,21 @@ export function WhatsAppTemplatesManager() {
                             alignItems: "center",
                           }}
                         >
-                          <label className="col" style={{ gap: 4 }}>
+                          <div className="col" style={{ gap: 4 }}>
                             <span className="muted" style={{ fontSize: 10.5 }}>
                               Media de las tarjetas
                             </span>
-                            <select
-                              style={{ ...inputStyle, width: 130 }}
+                            <SegmentedControl<"IMAGE" | "VIDEO">
                               value={cardMediaFormat}
-                              onChange={(e) =>
-                                setCardMediaFormat(e.target.value as "IMAGE" | "VIDEO")
-                              }
-                            >
-                              {CARD_MEDIA_FORMATS.map((f) => (
-                                <option key={f.v} value={f.v}>
-                                  {f.l}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
+                              onValueChange={(v) => setCardMediaFormat(v)}
+                              options={CARD_MEDIA_FORMATS.map((f) => ({
+                                value: f.v as "IMAGE" | "VIDEO",
+                                label: f.l,
+                              }))}
+                              size="sm"
+                              aria-label="Media de las tarjetas"
+                            />
+                          </div>
                           <div className="col" style={{ gap: 4, flex: 1, minWidth: 220 }}>
                             <span className="muted" style={{ fontSize: 10.5 }}>
                               Botones (iguales en todas las tarjetas · hasta 2)
@@ -2288,16 +2310,22 @@ function TemplateNameBuilder({ onApply }: { onApply: (name: string) => void }) {
             placeholder="adm"
           />
         </label>
-        <label className="col" style={{ gap: 3 }}>
+        <div className="col" style={{ gap: 3 }}>
           <span className="muted" style={{ fontSize: 10 }}>
             Base
           </span>
-          <select style={fld} value={base} onChange={(e) => setBase(e.target.value)}>
-            <option value="datos">datos</option>
-            <option value="actual">actual</option>
-            <option value="">(ninguna)</option>
-          </select>
-        </label>
+          <SegmentedControl
+            value={base}
+            onValueChange={(v) => setBase(v)}
+            options={[
+              { value: "datos", label: "datos" },
+              { value: "actual", label: "actual" },
+              { value: "", label: "(ninguna)" },
+            ]}
+            size="sm"
+            aria-label="Base del nombre"
+          />
+        </div>
       </div>
       <div
         className="row"
