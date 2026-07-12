@@ -262,7 +262,7 @@ export function TaxonomyEditor() {
 
       {/* Selector + nombre + default */}
       <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        {docs.length > 1 && (
+        {docs.length > 0 && (
           <Select value={activeId ?? ""} onValueChange={(v) => setActiveId(v ?? null)}>
             <SelectTrigger className="w-56">
               <SelectValue placeholder="Elige una taxonomía…" />

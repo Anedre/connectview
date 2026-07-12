@@ -695,7 +695,10 @@ export const handler: Handler = async (event: any) => {
             String(body.stageId),
           );
         }
-        const stageLabel = await stageIdToLabel(String(body.stageId));
+        const stageLabel = await stageIdToLabel(
+          String(body.stageId),
+          body.programId ? String(body.programId) : undefined,
+        );
         const prop = await propagateById(String(body.leadId), {
           taskSubject: `ARIA · Etapa: ${stageLabel || String(body.stageId)}`.slice(0, 255),
           taskDescription: `El lead pasó a la etapa "${stageLabel || String(body.stageId)}" desde ARIA.`,

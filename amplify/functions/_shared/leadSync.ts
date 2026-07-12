@@ -252,7 +252,11 @@ interface TaxStage {
   salesforceValue?: string;
   subStages?: TaxStage[];
 }
-let taxCache: { stages: TaxStage[]; at: number } | null = null;
+// Cache de stages keyeado por taxonomía ("__default__" = la marcada isDefault; o
+// el taxonomyId para las taxonomías por-programa). Un solo scan las cachea todas.
+const taxCacheByKey = new Map<string, { stages: TaxStage[]; at: number }>();
+// Cache programa→taxonomyId (evita re-GetItem el programa en cada mapeo).
+const programTaxCache = new Map<string, { taxonomyId?: string; at: number }>();
 const TAX_TTL_MS = 5 * 60 * 1000;
 
 // ¿Existe el campo External Id (`VoxLeadId__c`) en la org de SF de este tenant?
@@ -286,7 +290,8 @@ const PROGRAM_CODE_KEYS = [
  *  el cache NO está keyeado por tenant y serviría stages/salesforceValue de
  *  otro cliente. */
 export function resetTaxonomyCache(): void {
-  taxCache = null;
+  taxCacheByKey.clear();
+  programTaxCache.clear();
   // El schema de SF también es per-tenant → invalidar junto con la taxonomía
   // (mismos call-sites en el loop multi-tenant del automation-engine).
   voxExtId = null;
@@ -294,15 +299,21 @@ export function resetTaxonomyCache(): void {
 }
 
 async function loadDefaultStages(): Promise<TaxStage[]> {
-  if (taxCache && Date.now() - taxCache.at < TAX_TTL_MS) return taxCache.stages;
+  const c = taxCacheByKey.get("__default__");
+  if (c && Date.now() - c.at < TAX_TTL_MS) return c.stages;
   try {
     const res = await dynamo.send(new ScanCommand({ TableName: TAXONOMIES_TABLE }));
     const taxos = (res.Items || []).map(
-      (it) => unmarshall(it) as { isDefault?: boolean; stages?: TaxStage[] },
+      (it) => unmarshall(it) as { taxonomyId?: string; isDefault?: boolean; stages?: TaxStage[] },
     );
     const def = taxos.find((t) => t.isDefault) || taxos[0];
+    const now = Date.now();
+    // Un solo scan cachea TODAS las taxonomías (default + las por-programa).
+    for (const t of taxos) {
+      if (t.taxonomyId) taxCacheByKey.set(t.taxonomyId, { stages: t.stages || [], at: now });
+    }
     const stages = def?.stages || [];
-    taxCache = { stages, at: Date.now() };
+    taxCacheByKey.set("__default__", { stages, at: now });
     return stages;
   } catch {
     // Sin taxonomía no podemos mapear Status; el lead igual sincroniza sin tocar Status.
@@ -310,18 +321,56 @@ async function loadDefaultStages(): Promise<TaxStage[]> {
   }
 }
 
-/** stageId del embudo → SF Lead Status (salesforceValue), si está configurado. */
-export async function stageToSfStatus(stageId?: string): Promise<string | undefined> {
+/** Stages de una taxonomía específica (por-programa). Reusa el scan que las cachea todas. */
+async function loadTaxonomyStages(taxonomyId: string): Promise<TaxStage[]> {
+  const c = taxCacheByKey.get(taxonomyId);
+  if (c && Date.now() - c.at < TAX_TTL_MS) return c.stages;
+  await loadDefaultStages(); // el scan cachea todas las taxonomías del tenant
+  return taxCacheByKey.get(taxonomyId)?.stages ?? [];
+}
+
+/** Stages de la taxonomía del PROGRAMA (o la default si el programa no define una).
+ *  Retrocompat: sin programId, o programa sin taxonomyId ⇒ default global. */
+export async function loadStagesForProgram(programId?: string): Promise<TaxStage[]> {
+  if (!programId) return loadDefaultStages();
+  let entry = programTaxCache.get(programId);
+  if (!entry || Date.now() - entry.at >= PROGRAMS_TTL_MS) {
+    let taxonomyId: string | undefined;
+    try {
+      const res = await dynamo.send(
+        new GetItemCommand({ TableName: PROGRAMS_TABLE, Key: { programId: { S: programId } } }),
+      );
+      if (res.Item)
+        taxonomyId = (unmarshall(res.Item) as { taxonomyId?: string }).taxonomyId || undefined;
+    } catch {
+      /* programa ilegible → cae a default */
+    }
+    entry = { taxonomyId, at: Date.now() };
+    programTaxCache.set(programId, entry);
+  }
+  return entry.taxonomyId ? loadTaxonomyStages(entry.taxonomyId) : loadDefaultStages();
+}
+
+/** stageId del embudo → SF Lead Status (salesforceValue), si está configurado.
+ *  `programId` resuelve la taxonomía correcta (cae a la default si no viene). */
+export async function stageToSfStatus(
+  stageId?: string,
+  programId?: string,
+): Promise<string | undefined> {
   if (!stageId) return undefined;
-  const stages = await loadDefaultStages();
+  const stages = await loadStagesForProgram(programId);
   const s = stages.find((x) => x.id === stageId);
   return s?.salesforceValue || undefined;
 }
 
-/** SF Lead Status → stageId del embudo (mapeo inverso, para SF → Vox). */
-export async function sfStatusToStage(status?: string): Promise<string | undefined> {
+/** SF Lead Status → stageId del embudo (mapeo inverso, para SF → Vox).
+ *  `programId` opcional → mapea contra la taxonomía de ese programa. */
+export async function sfStatusToStage(
+  status?: string,
+  programId?: string,
+): Promise<string | undefined> {
   if (!status) return undefined;
-  const stages = await loadDefaultStages();
+  const stages = await loadStagesForProgram(programId);
   const norm = status.trim().toLowerCase();
   const hit = stages.find((x) => (x.salesforceValue || "").trim().toLowerCase() === norm);
   return hit?.id;
@@ -618,7 +667,7 @@ export async function pushLeadToSalesforce(
   if (!lead.sfLeadId && !phone && !email && !voxLeadId) return null;
 
   let status = lead.leadStatus;
-  if (!status && lead.stageId) status = await stageToSfStatus(lead.stageId);
+  if (!status && lead.stageId) status = await stageToSfStatus(lead.stageId, lead.programId);
 
   const extIdOk = !!voxLeadId && (await leadExtIdAvailable());
 
@@ -680,7 +729,7 @@ export async function pushLeadToSalesforce(
   // F5.1 — rollup de golpes (R4). Solo si el lead trae history (señal de que hay
   // ledger que resumir); los campos que la org no tenga se descartan en sfWriteLead.
   if (Array.isArray(lead.history)) {
-    const roll = await summarizeGolpes(lead.history, lead.stageId);
+    const roll = await summarizeGolpes(lead.history, lead.stageId, lead.programId);
     const putRoll = (field: string, val: unknown) => {
       if (val != null && val !== "" && !voxRollupMissing.has(field)) fields[field] = val;
     };
@@ -1143,6 +1192,12 @@ export async function propagateLead(
   const pushToSf = opts.pushToSf ?? origin !== "salesforce";
   const result: PropagateResult = {};
 
+  // Programa del lead (explícito o resuelto por atributos utm/columna "programa").
+  // Se reutiliza para la membership Y para que el push a SF mapee la etapa con la
+  // taxonomía del programa (no la default global).
+  const resolvedProgramId =
+    lead.programId || (await resolveProgramIdFromAttributes(lead.attributes));
+
   // 1. Tabla de Leads (embudo).
   let stored: Lead | null = null;
   if ((lead.phone || "").trim()) {
@@ -1150,13 +1205,11 @@ export async function propagateLead(
     stored = r.lead;
     result.leadId = r.lead.leadId;
     result.voxAction = r.isNew ? "created" : r.changed ? "updated" : "unchanged";
-    // 1b. Membership de programa (Pilar 1): auto-tag por programId explícito o
-    // resuelto desde utm_campaign / columna "programa" del origen (R26).
-    const programId = lead.programId || (await resolveProgramIdFromAttributes(lead.attributes));
-    if (programId) {
+    // 1b. Membership de programa (Pilar 1): auto-tag por el programa resuelto (R26).
+    if (resolvedProgramId) {
       await upsertLeadProgramMembership(
         r.lead.leadId,
-        programId,
+        resolvedProgramId,
         lead.stageId ?? r.lead.stageId,
         lead.source,
       );
@@ -1173,6 +1226,7 @@ export async function propagateLead(
       const sf = await pushLeadToSalesforce(
         {
           ...lead,
+          programId: resolvedProgramId, // taxonomía correcta para el mapeo de Status
           sfLeadId: lead.sfLeadId ?? stored?.sfLeadId,
           // Rollup R4 (F5.1): usar el history persistido (trae el golpe recién sumado).
           history: lead.history ?? stored?.history,
@@ -1361,9 +1415,12 @@ export async function getLeadHistoryByPhone(phone: string): Promise<LeadHistoryE
 }
 
 /** stageId del embudo → label legible (para describir el evento de cambio). */
-export async function stageIdToLabel(stageId?: string): Promise<string | undefined> {
+export async function stageIdToLabel(
+  stageId?: string,
+  programId?: string,
+): Promise<string | undefined> {
   if (!stageId) return undefined;
-  const stages = await loadDefaultStages();
+  const stages = await loadStagesForProgram(programId);
   return stages.find((x) => x.id === stageId)?.label || undefined;
 }
 
@@ -1401,6 +1458,7 @@ export interface GolpesSummary {
 export async function summarizeGolpes(
   history: LeadHistoryEvent[] | undefined,
   currentStageId?: string,
+  programId?: string,
 ): Promise<GolpesSummary> {
   const all = Array.isArray(history) ? history : [];
   const golpes = all.filter(isGolpe);
@@ -1414,8 +1472,8 @@ export async function summarizeGolpes(
     if (e.ts && (!lastTouchAt || e.ts > lastTouchAt)) lastTouchAt = e.ts;
   }
 
-  // Conversión = llegó a una etapa con valoracion "cierre".
-  const stages = await loadDefaultStages();
+  // Conversión = llegó a una etapa con valoracion "cierre" (taxonomía del programa).
+  const stages = await loadStagesForProgram(programId);
   const cierreIds = new Set(stages.filter((s) => s.valoracion === "cierre").map((s) => s.id));
   let closeAt: string | undefined;
   for (const h of all) {

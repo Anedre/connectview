@@ -84,6 +84,8 @@ interface Program {
   defaultQueueId?: string;
   defaultContactFlowId?: string;
   defaultStageId?: string;
+  /** Taxonomía de etapas propia del programa. Vacío ⇒ usa la default global (retrocompat). */
+  taxonomyId?: string;
   kpiTargets?: { contactRate?: number; conversion?: number; leadsGoal?: number };
   metricsSnapshot?: ProgramMetrics;
   createdAt?: string;
@@ -129,6 +131,7 @@ function sanitize(body: Record<string, unknown>): Program {
     defaultQueueId: str(body.defaultQueueId),
     defaultContactFlowId: str(body.defaultContactFlowId),
     defaultStageId: str(body.defaultStageId),
+    taxonomyId: str(body.taxonomyId),
     kpiTargets: kpi,
   };
 }

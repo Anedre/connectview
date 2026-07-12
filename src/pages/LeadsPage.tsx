@@ -1651,7 +1651,9 @@ function LeadDetailModal({
 
 export function LeadsPage() {
   const navigate = useNavigate();
-  const { tree } = useTaxonomy();
+  const { activeProgramId, programs, activeProgram } = useProgram();
+  // El board usa la taxonomía del programa activo (o la default si no define una).
+  const { tree } = useTaxonomy(activeProgram?.taxonomyId);
   const canManage = useCan("manage_leads");
   const { placeCall, agentState } = useCCP();
   const { config } = useConnections();
@@ -1743,7 +1745,6 @@ export function LeadsPage() {
   }, []);
 
   // Programa activo (Pilar 1): scopea el board a SUS leads (etapa por-programa).
-  const { activeProgramId, programs } = useProgram();
   const scoped = !!activeProgramId && activeProgramId !== "all" && activeProgramId !== "none";
 
   const load = async () => {

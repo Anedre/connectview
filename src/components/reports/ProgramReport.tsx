@@ -122,7 +122,7 @@ function Kpi({
 
 export function ProgramReport() {
   const { activeProgramId, activeProgram } = useProgram();
-  const { tree } = useTaxonomy();
+  const { tree } = useTaxonomy(activeProgram?.taxonomyId);
   const [data, setData] = useState<Attribution | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

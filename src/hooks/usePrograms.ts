@@ -29,6 +29,8 @@ export interface Program {
   defaultQueueId?: string;
   defaultContactFlowId?: string;
   defaultStageId?: string;
+  /** Taxonomía de etapas propia del programa (vacío = usa la default global). */
+  taxonomyId?: string;
   kpiTargets?: { contactRate?: number; conversion?: number; leadsGoal?: number };
   metricsSnapshot?: ProgramMetrics;
   /** Conteo de leads (membership) que devuelve el GET de lista. */

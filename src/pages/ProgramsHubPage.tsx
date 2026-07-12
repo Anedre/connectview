@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePrograms, type Program, type ProgramStatus } from "@/hooks/usePrograms";
 import { useCatalogs } from "@/hooks/useCatalogs";
+import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useProgram } from "@/context/ProgramContext";
 import { useRoles } from "@/hooks/useRoles";
 import { getApiEndpoints } from "@/lib/api";
@@ -128,6 +129,7 @@ export function ProgramsHubPage() {
     importPrograms,
   } = usePrograms({ includeArchived: showArchived });
   const { catalogs } = useCatalogs();
+  const { docs: taxDocs } = useTaxonomy(); // para el selector de taxonomía del programa
 
   const [q, setQ] = useState("");
   const [facultyFilter, setFacultyFilter] = useState("all");
@@ -915,6 +917,24 @@ export function ProgramsHubPage() {
                 onChange={(e) => setEditing({ ...editing, color: e.target.value })}
                 style={{ ...inp, height: 38, padding: 4 }}
               />
+            </Field>
+            {/* Cada programa puede usar su propia taxonomía de etapas (embudo). */}
+            <Field label="Taxonomía de etapas (embudo)" full>
+              <select
+                value={editing.taxonomyId || ""}
+                onChange={(e) =>
+                  setEditing({ ...editing, taxonomyId: e.target.value || undefined })
+                }
+                style={inp}
+              >
+                <option value="">Usar la default (global)</option>
+                {taxDocs.map((t) => (
+                  <option key={t.taxonomyId} value={t.taxonomyId}>
+                    {t.name}
+                    {t.isDefault ? " · default" : ""}
+                  </option>
+                ))}
+              </select>
             </Field>
           </div>
         )}

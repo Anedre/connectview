@@ -477,7 +477,7 @@ async function actMoveStage(ctx: Ctx, params: Record<string, unknown>): Promise<
       ConditionExpression: "attribute_exists(leadId)",
     }),
   );
-  const stageLabel = await stageIdToLabel(stageId);
+  const stageLabel = await stageIdToLabel(stageId, ctx.programId);
   await appendLeadHistory(leadId, {
     ts: now,
     type: "stage_change",
@@ -493,6 +493,7 @@ async function actMoveStage(ctx: Ctx, params: Record<string, unknown>): Promise<
         {
           phone: l.phone,
           name: l.name,
+          programId: ctx.programId,
           stageId: l.stageId,
           source: l.source || "Vox Leads",
           attributes: l.attributes,
