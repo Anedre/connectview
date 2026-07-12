@@ -15,7 +15,19 @@ export type JourneyNodeKind =
   | "branch"
   | "split"
   | "action"
-  | "exit";
+  | "exit"
+  // Fase 2 — bloques nuevos (send/action quedan como back-compat, notInPalette)
+  | "send_whatsapp"
+  | "send_email"
+  | "move_stage"
+  | "tag"
+  | "set_field"
+  | "notify_agent"
+  | "enqueue_dialer"
+  | "webhook"
+  | "start_journey"
+  | "leave"
+  | "goal";
 export interface JourneyNode {
   id: string;
   kind: JourneyNodeKind;

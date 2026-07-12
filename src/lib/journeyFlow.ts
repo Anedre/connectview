@@ -17,6 +17,7 @@ import {
   DoorOpen,
   MessageCircle,
   Mail,
+  ArrowRightLeft,
   type LucideIcon,
 } from "lucide-react";
 import type { JourneyNode, JourneyNodeKind, JourneyEdge } from "@/hooks/useJourneys";
@@ -86,6 +87,7 @@ export const JOURNEY_ICONS: Record<string, LucideIcon> = {
   journey: Route,
   goal: Target,
   leave: DoorOpen,
+  stage: ArrowRightLeft,
 };
 
 export function journeyIcon(key: string): LucideIcon {
@@ -118,6 +120,7 @@ export const JOURNEY_KINDS: Record<JourneyNodeKind, JourneyKindDef> = {
     blurb: "WhatsApp o email al lead",
     icon: "send",
     accent: "#22B8D9",
+    notInPalette: true, // back-compat: la palette usa send_whatsapp / send_email
     outlets: () => single,
     defaultParams: () => ({ channel: "whatsapp" }),
     summary: (p) => {
@@ -187,6 +190,7 @@ export const JOURNEY_KINDS: Record<JourneyNodeKind, JourneyKindDef> = {
     blurb: "Mover de etapa, webhook o encolar al dialer",
     icon: "action",
     accent: "#F2734B",
+    notInPalette: true, // back-compat: la palette usa los bloques de acción específicos
     outlets: () => single,
     defaultParams: () => ({ type: "moveStage" }),
     summary: (p) => {
@@ -206,6 +210,134 @@ export const JOURNEY_KINDS: Record<JourneyNodeKind, JourneyKindDef> = {
     accent: "#64748B",
     outlets: () => [],
     summary: () => "El lead sale del recorrido",
+    terminal: true,
+  },
+
+  // ── Fase 2: bloques nuevos (canales separados + acciones CRM + lógica) ──────
+  send_whatsapp: {
+    kind: "send_whatsapp",
+    group: "Mensajes",
+    label: "Enviar WhatsApp",
+    blurb: "Manda una plantilla de WhatsApp",
+    icon: "whatsapp",
+    accent: "#22B87A",
+    outlets: () => single,
+    defaultParams: () => ({}),
+    summary: (p) => `WhatsApp · ${str(p.templateName) || "(sin plantilla)"}`,
+  },
+  send_email: {
+    kind: "send_email",
+    group: "Mensajes",
+    label: "Enviar email",
+    blurb: "Manda un correo al lead",
+    icon: "email",
+    accent: "#3B82F6",
+    outlets: () => single,
+    defaultParams: () => ({}),
+    summary: (p) => `Email · ${str(p.subject) || "(sin asunto)"}`,
+  },
+  move_stage: {
+    kind: "move_stage",
+    group: "Acciones",
+    label: "Mover de etapa",
+    blurb: "Cambia la etapa del lead en el pipeline",
+    icon: "stage",
+    accent: "#F2734B",
+    outlets: () => single,
+    defaultParams: () => ({ stageId: "" }),
+    summary: (p) => `Mover a "${str(p.stageId) || "?"}"`,
+  },
+  tag: {
+    kind: "tag",
+    group: "Acciones",
+    label: "Etiqueta",
+    blurb: "Agrega o quita una etiqueta al lead",
+    icon: "tag",
+    accent: "#8B5CF6",
+    outlets: () => single,
+    defaultParams: () => ({ op: "add", tag: "" }),
+    summary: (p) => `${p.op === "remove" ? "Quitar" : "Agregar"} etiqueta "${str(p.tag) || "?"}"`,
+  },
+  set_field: {
+    kind: "set_field",
+    group: "Acciones",
+    label: "Actualizar campo",
+    blurb: "Escribe un valor en un campo del lead",
+    icon: "field",
+    accent: "#0EA5E9",
+    outlets: () => single,
+    defaultParams: () => ({ field: "", value: "" }),
+    summary: (p) => `${str(p.field) || "campo"} = ${str(p.value) || "?"}`,
+  },
+  notify_agent: {
+    kind: "notify_agent",
+    group: "Acciones",
+    label: "Avisar a un agente",
+    blurb: "Crea una tarea/aviso para el equipo",
+    icon: "notify",
+    accent: "#F59E0B",
+    outlets: () => single,
+    defaultParams: () => ({ message: "" }),
+    summary: (p) => (str(p.message) ? `Avisar: ${str(p.message)}` : "Avisar a un agente"),
+  },
+  enqueue_dialer: {
+    kind: "enqueue_dialer",
+    group: "Acciones",
+    label: "Llamar (dialer)",
+    blurb: "Encola una llamada saliente automática",
+    icon: "dialer",
+    accent: "#10B981",
+    outlets: () => single,
+    defaultParams: () => ({}),
+    summary: (p) => (str(p.campaignId) ? `Llamar · camp. ${str(p.campaignId)}` : "Llamar (dialer)"),
+  },
+  webhook: {
+    kind: "webhook",
+    group: "Acciones",
+    label: "Llamar webhook",
+    blurb: "Hace un POST a una URL externa",
+    icon: "webhook",
+    accent: "#64748B",
+    outlets: () => single,
+    defaultParams: () => ({ url: "" }),
+    summary: (p) => `POST ${str(p.url) || "(sin URL)"}`,
+  },
+  start_journey: {
+    kind: "start_journey",
+    group: "Acciones",
+    label: "Iniciar journey",
+    blurb: "Inscribe al lead en otro recorrido",
+    icon: "journey",
+    accent: "#6366F1",
+    outlets: () => single,
+    defaultParams: () => ({ journeyId: "" }),
+    summary: (p) => `Iniciar journey ${str(p.journeyName) || str(p.journeyId) || "?"}`,
+  },
+  leave: {
+    kind: "leave",
+    group: "Lógica",
+    label: "Salir si…",
+    blurb: "Saca al lead del recorrido si cumple una condición",
+    icon: "leave",
+    accent: "#EF4444",
+    outlets: () => single,
+    defaultParams: () => ({ rules: [] as FilterRule[], match: "all" }),
+    summary: (p) => {
+      const n = Array.isArray(p.rules) ? p.rules.length : 0;
+      return n
+        ? `Salir si ${n} ${n === 1 ? "condición" : "condiciones"}`
+        : "Salir si… (sin condición)";
+    },
+  },
+  goal: {
+    kind: "goal",
+    group: "Fin",
+    label: "Objetivo",
+    blurb: "Marca conversión y termina el recorrido",
+    icon: "goal",
+    accent: "#16A34A",
+    outlets: () => [],
+    summary: () => "Objetivo alcanzado (convierte)",
     terminal: true,
   },
 };
@@ -259,10 +391,28 @@ export function validateJourney(nodes: JourneyNode[], edges: JourneyEdge[]): Jou
       if (!outs.includes("a") || !outs.includes("b"))
         out.push({ message: "El test A/B necesita salida A y B.", nodeId: n.id });
     }
-    if (n.kind === "send" && !p.templateName && !p.subject)
-      out.push({ message: "Un paso Enviar no tiene plantilla/asunto.", nodeId: n.id });
-    if (n.kind === "wait" && !Number(p.days) && !(Array.isArray(p.untilRule) && p.untilRule.length))
+    if ((n.kind === "send" || n.kind === "send_whatsapp") && !p.templateName && !p.subject)
+      out.push({ message: "Un envío de WhatsApp no tiene plantilla.", nodeId: n.id });
+    if (n.kind === "send_email" && !p.subject)
+      out.push({ message: "Un envío de email no tiene asunto.", nodeId: n.id });
+    if (
+      n.kind === "wait" &&
+      !Number(p.days) &&
+      !(Array.isArray(p.untilRule) && p.untilRule.length) &&
+      !p.untilDate
+    )
       out.push({ message: "Una Espera no tiene tiempo definido.", nodeId: n.id });
+    if (n.kind === "move_stage" && !p.stageId)
+      out.push({ message: "Falta la etapa destino.", nodeId: n.id });
+    if (n.kind === "tag" && !p.tag) out.push({ message: "La etiqueta está vacía.", nodeId: n.id });
+    if (n.kind === "set_field" && !p.field)
+      out.push({ message: "Falta el campo a actualizar.", nodeId: n.id });
+    if (n.kind === "webhook" && !p.url)
+      out.push({ message: "El webhook no tiene URL.", nodeId: n.id });
+    if (n.kind === "start_journey" && !p.journeyId)
+      out.push({ message: "No elegiste el journey a iniciar.", nodeId: n.id });
+    if (n.kind === "leave" && !(Array.isArray(p.rules) && p.rules.length))
+      out.push({ message: "«Salir si…» no tiene condición (saldría siempre).", nodeId: n.id });
     // Suelto: sin edge entrante y no es Entrada (con una Entrada existente).
     if (
       n.kind !== "entry" &&

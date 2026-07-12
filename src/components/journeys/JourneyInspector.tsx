@@ -307,21 +307,38 @@ export function JourneyInspector({
           <>
             <Field label="Tipo de espera">
               <select
-                value={Array.isArray(p.untilRule) ? "until" : "days"}
-                onChange={(e) =>
-                  set(
-                    e.target.value === "until"
-                      ? { untilRule: [{ field: "grade", op: "eq", value: "A" }], days: undefined }
-                      : { days: 1, untilRule: undefined },
-                  )
+                value={
+                  p.untilDate !== undefined ? "date" : Array.isArray(p.untilRule) ? "until" : "days"
                 }
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "until")
+                    set({
+                      untilRule: [{ field: "grade", op: "eq", value: "A" }],
+                      days: undefined,
+                      untilDate: undefined,
+                    });
+                  else if (v === "date")
+                    set({ untilDate: "", days: undefined, untilRule: undefined });
+                  else set({ days: 1, untilRule: undefined, untilDate: undefined });
+                }}
                 style={jbInput()}
               >
                 <option value="days">Días fijos</option>
                 <option value="until">Hasta que se cumpla una condición</option>
+                <option value="date">Hasta una fecha/hora</option>
               </select>
             </Field>
-            {Array.isArray(p.untilRule) ? (
+            {p.untilDate !== undefined ? (
+              <Field label="Esperar hasta">
+                <input
+                  type="datetime-local"
+                  value={String(p.untilDate || "")}
+                  onChange={(e) => set({ untilDate: e.target.value })}
+                  style={jbInput()}
+                />
+              </Field>
+            ) : Array.isArray(p.untilRule) ? (
               <Field label="Esperar hasta que (todas)">
                 <RuleRows
                   rules={p.untilRule as FilterRule[]}
@@ -429,6 +446,207 @@ export function JourneyInspector({
               </Field>
             )}
           </>
+        )}
+
+        {node.kind === "send_whatsapp" && (
+          <>
+            <Field label="Plantilla de WhatsApp">
+              <input
+                list="jb-templates"
+                value={String(p.templateName || "")}
+                onChange={(e) => set({ templateName: e.target.value })}
+                placeholder="nombre_de_la_plantilla"
+                style={jbInput()}
+              />
+              <datalist id="jb-templates">
+                {templates.map((t) => (
+                  <option key={t.name} value={t.name} />
+                ))}
+              </datalist>
+            </Field>
+            <div className="jb-note">
+              El envío pasa por el gate de supresión (no le manda a un DNC).
+            </div>
+          </>
+        )}
+
+        {node.kind === "send_email" && (
+          <>
+            <Field label="Asunto">
+              <input
+                value={String(p.subject || "")}
+                onChange={(e) => set({ subject: e.target.value })}
+                placeholder="Asunto del correo"
+                style={jbInput()}
+              />
+            </Field>
+            <Field label="Cuerpo">
+              <textarea
+                value={String(p.body || "")}
+                onChange={(e) => set({ body: e.target.value })}
+                rows={4}
+                placeholder="Texto del correo…"
+                style={{ ...jbInput(), resize: "vertical", fontFamily: "inherit" }}
+              />
+            </Field>
+          </>
+        )}
+
+        {node.kind === "move_stage" && (
+          <Field label="Etapa destino (stageId)">
+            <input
+              value={String(p.stageId || "")}
+              onChange={(e) => set({ stageId: e.target.value })}
+              placeholder='p.ej. "won"'
+              style={jbInput()}
+            />
+          </Field>
+        )}
+
+        {node.kind === "tag" && (
+          <>
+            <Field label="Operación">
+              <select
+                value={String(p.op || "add")}
+                onChange={(e) => set({ op: e.target.value })}
+                style={jbInput()}
+              >
+                <option value="add">Agregar etiqueta</option>
+                <option value="remove">Quitar etiqueta</option>
+              </select>
+            </Field>
+            <Field label="Etiqueta">
+              <input
+                value={String(p.tag || "")}
+                onChange={(e) => set({ tag: e.target.value })}
+                placeholder="p.ej. vip"
+                style={jbInput()}
+              />
+            </Field>
+          </>
+        )}
+
+        {node.kind === "set_field" && (
+          <>
+            <Field label="Campo">
+              <input
+                list="jb-fields"
+                value={String(p.field || "")}
+                onChange={(e) => set({ field: e.target.value })}
+                placeholder="p.ej. score"
+                style={jbInput()}
+              />
+              <datalist id="jb-fields">
+                {LEAD_FIELDS.map((f) => (
+                  <option key={f} value={f} />
+                ))}
+              </datalist>
+            </Field>
+            <Field label="Valor">
+              <input
+                value={String(p.value ?? "")}
+                onChange={(e) => set({ value: e.target.value })}
+                placeholder="nuevo valor"
+                style={jbInput()}
+              />
+            </Field>
+          </>
+        )}
+
+        {node.kind === "notify_agent" && (
+          <>
+            <Field label="Mensaje del aviso">
+              <textarea
+                value={String(p.message || "")}
+                onChange={(e) => set({ message: e.target.value })}
+                rows={3}
+                placeholder="Qué debe hacer el agente…"
+                style={{ ...jbInput(), resize: "vertical", fontFamily: "inherit" }}
+              />
+            </Field>
+            <Field label="Cola / equipo (opcional)">
+              <input
+                value={String(p.queue || "")}
+                onChange={(e) => set({ queue: e.target.value })}
+                placeholder="id de cola"
+                style={jbInput()}
+              />
+            </Field>
+          </>
+        )}
+
+        {node.kind === "enqueue_dialer" && (
+          <>
+            <Field label="Campaña (id, opcional)">
+              <input
+                value={String(p.campaignId || "")}
+                onChange={(e) => set({ campaignId: e.target.value })}
+                placeholder="id de campaña"
+                style={jbInput()}
+              />
+            </Field>
+            <div className="jb-note">
+              Encola una llamada saliente; la campaña/flow de Connect rutea al agente.
+            </div>
+          </>
+        )}
+
+        {node.kind === "webhook" && (
+          <Field label="URL del webhook">
+            <input
+              value={String(p.url || "")}
+              onChange={(e) => set({ url: e.target.value })}
+              placeholder="https://…"
+              style={jbInput()}
+            />
+          </Field>
+        )}
+
+        {node.kind === "start_journey" && (
+          <>
+            <Field label="Journey a iniciar (id)">
+              <input
+                value={String(p.journeyId || "")}
+                onChange={(e) => set({ journeyId: e.target.value })}
+                placeholder="journeyId"
+                style={jbInput()}
+              />
+            </Field>
+            <div className="jb-note">
+              Inscribe al lead en otro recorrido (composición de journeys).
+            </div>
+          </>
+        )}
+
+        {node.kind === "leave" && (
+          <>
+            <Field label="Coincidir">
+              <select
+                value={String(p.match || "all")}
+                onChange={(e) => set({ match: e.target.value })}
+                style={jbInput()}
+              >
+                <option value="all">Todas las condiciones (Y)</option>
+                <option value="any">Cualquier condición (O)</option>
+              </select>
+            </Field>
+            <Field label="Salir si el lead cumple">
+              <RuleRows
+                rules={(p.rules as FilterRule[]) || []}
+                onChange={(r) => set({ rules: r })}
+              />
+            </Field>
+            <div className="jb-note">
+              Si el lead cumple, sale del recorrido; si no, continúa al siguiente paso.
+            </div>
+          </>
+        )}
+
+        {node.kind === "goal" && (
+          <div className="jb-note" style={{ fontSize: 12.5 }}>
+            Marca el recorrido como <strong>convertido</strong> para este lead y lo saca del
+            journey. Úsalo para medir la conversión del embudo.
+          </div>
         )}
 
         {node.kind === "exit" && (

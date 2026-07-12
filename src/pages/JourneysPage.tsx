@@ -44,6 +44,18 @@ const NODE_META: Record<JourneyNodeKind, { icon: IconName; label: string }> = {
   split: { icon: "sliders", label: "A/B" },
   action: { icon: "zap", label: "Acción" },
   exit: { icon: "target", label: "Fin" },
+  // Fase 2
+  send_whatsapp: { icon: "send", label: "WhatsApp" },
+  send_email: { icon: "send", label: "Email" },
+  move_stage: { icon: "zap", label: "Etapa" },
+  tag: { icon: "zap", label: "Etiqueta" },
+  set_field: { icon: "zap", label: "Campo" },
+  notify_agent: { icon: "zap", label: "Avisar" },
+  enqueue_dialer: { icon: "zap", label: "Llamar" },
+  webhook: { icon: "zap", label: "Webhook" },
+  start_journey: { icon: "flow", label: "Journey" },
+  leave: { icon: "target", label: "Salir" },
+  goal: { icon: "target", label: "Objetivo" },
 };
 const rid = () => Math.random().toString(36).slice(2, 9);
 type N = Journey["nodes"][number];
