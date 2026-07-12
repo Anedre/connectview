@@ -13984,6 +13984,546 @@ select.wf-input {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Automatizaciones — builder HUB RADIAL (.arb-*). A propósito DISTINTO de Bots
+   (canvas horizontal) y Journeys (vertical Step Functions): el disparador es un
+   NÚCLEO gold al centro y las acciones ORBITAN como satélites unidos por rayos.
+   Lienzo custom (SVG spokes + nodos absolutos), no React Flow. Material premium:
+   glow, degradados, anillos concéntricos guía.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.arb {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 16px;
+  align-items: stretch;
+}
+.arb-stage {
+  position: relative;
+  min-height: clamp(520px, 62vh, 760px);
+  border-radius: var(--r-lg, 18px);
+  border: 1px solid var(--border-2);
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      color-mix(in srgb, var(--gold) 12%, transparent),
+      transparent 46%
+    ),
+    var(--bg-2);
+  cursor: default;
+}
+.arb-wires {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.arb-spoke {
+  animation: arb-flow 1.1s linear infinite;
+  stroke-dasharray: 5 9;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--gold) 40%, transparent));
+}
+.arb-spoke--add {
+  animation: none;
+  filter: none;
+}
+@keyframes arb-flow {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+
+/* ── Núcleo (disparador) ── */
+.arb-hub {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 138px;
+  height: 138px;
+  border-radius: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  background:
+    radial-gradient(
+      circle at 50% 34%,
+      color-mix(in srgb, var(--gold) 88%, #fff) 0%,
+      var(--gold) 55%
+    ),
+    var(--gold);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--gold) 60%, transparent),
+    0 10px 34px -8px color-mix(in srgb, var(--gold) 70%, transparent),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4);
+  transition:
+    transform 0.16s var(--ease),
+    box-shadow 0.16s var(--ease);
+}
+.arb-hub:hover {
+  transform: translate(-50%, -50%) scale(1.03);
+}
+.arb-hub--on {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--gold) 55%, transparent),
+    0 14px 40px -6px color-mix(in srgb, var(--gold) 80%, transparent),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+.arb-hub__ring {
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--gold) 45%, transparent);
+  animation: arb-pulse 2.6s ease-in-out infinite;
+}
+@keyframes arb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.15;
+  }
+}
+.arb-hub__ico {
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+}
+.arb-hub__kicker {
+  margin-top: 3px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+.arb-hub__label {
+  font-size: 12.5px;
+  font-weight: 750;
+  line-height: 1.1;
+  max-width: 108px;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+
+/* ── Collar de filtro (condiciones) ── */
+.arb-filter {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--iris);
+  background: color-mix(in srgb, var(--iris) 12%, var(--bg-1));
+  border: 1px solid color-mix(in srgb, var(--iris) 40%, transparent);
+  transition:
+    box-shadow 0.15s var(--ease),
+    transform 0.15s var(--ease);
+}
+.arb-filter:hover {
+  transform: translate(-50%, -50%) translateY(-1px);
+}
+.arb-filter--on {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--iris) 22%, transparent);
+}
+
+/* ── Satélites (acciones) ── */
+.arb-sat {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 74px;
+  height: 74px;
+  z-index: 2;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+.arb-sat__disc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--arb-c, var(--gold));
+  background: radial-gradient(
+    circle at 50% 32%,
+    color-mix(in srgb, var(--arb-c, var(--gold)) 22%, var(--bg-1)),
+    var(--bg-1)
+  );
+  border: 2px solid color-mix(in srgb, var(--arb-c, var(--gold)) 70%, transparent);
+  box-shadow:
+    0 6px 18px -8px color-mix(in srgb, var(--arb-c, var(--gold)) 65%, transparent),
+    inset 0 1px 1px rgba(255, 255, 255, 0.14);
+  transition:
+    transform 0.16s var(--ease),
+    box-shadow 0.16s var(--ease);
+}
+.arb-sat:hover .arb-sat__disc {
+  transform: scale(1.07);
+}
+.arb-sat--on .arb-sat__disc {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--arb-c, var(--gold)) 35%, transparent),
+    0 8px 22px -6px color-mix(in srgb, var(--arb-c, var(--gold)) 70%, transparent);
+}
+.arb-sat__num {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  z-index: 1;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--arb-c, var(--gold));
+  border: 2px solid var(--bg-2);
+}
+.arb-sat__label {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 116px;
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text-1);
+  text-shadow: 0 1px 3px var(--bg-2);
+}
+
+/* ── Nodo "+ agregar" ── */
+.arb-add {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--text-3);
+  background: color-mix(in srgb, var(--bg-1) 70%, transparent);
+  border: 1.5px dashed var(--border-strong);
+  transition:
+    color 0.15s var(--ease),
+    border-color 0.15s var(--ease),
+    transform 0.15s var(--ease);
+}
+.arb-add:hover,
+.arb-add--on {
+  color: var(--gold);
+  border-color: var(--gold);
+  transform: translate(-50%, -50%) scale(1.05);
+}
+.arb-add__label {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-3);
+}
+
+/* ── Menú de acciones (popover del nodo +) ── */
+.arb-menu {
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 12;
+  width: 216px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: var(--r-md, 12px);
+  background: var(--bg-1);
+  border: 1px solid var(--border-2);
+  box-shadow: var(--shadow-pop);
+}
+.arb-menu__title {
+  padding: 4px 8px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.arb-menu__item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border-radius: var(--r-sm, 8px);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-1);
+  text-align: left;
+  transition: background 0.12s var(--ease);
+}
+.arb-menu__item:hover {
+  background: color-mix(in srgb, var(--arb-c, var(--gold)) 12%, transparent);
+}
+.arb-menu__ico {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  color: var(--arb-c, var(--gold));
+  background: color-mix(in srgb, var(--arb-c, var(--gold)) 15%, transparent);
+}
+
+/* ── Inspector ── */
+.arb-inspect {
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-lg, 18px);
+  background: var(--bg-1);
+  padding: 16px;
+  overflow-y: auto;
+  max-height: clamp(520px, 62vh, 760px);
+}
+.arb-ins__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.arb-ins__ico {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  flex: none;
+  color: var(--arb-c, var(--gold));
+  background: color-mix(in srgb, var(--arb-c, var(--gold)) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--arb-c, var(--gold)) 35%, transparent);
+}
+.arb-ins__kicker {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.arb-ins__title {
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--text-1);
+}
+.arb-ins__tools {
+  margin-left: auto;
+  display: flex;
+  gap: 3px;
+}
+.arb-ins__desc {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.arb-ins__section {
+  margin: 16px 0 8px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.arb-tool {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--border-2);
+  background: var(--bg-1);
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background 0.12s var(--ease),
+    color 0.12s var(--ease),
+    border-color 0.12s var(--ease);
+}
+.arb-tool:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-1);
+}
+.arb-tool:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.arb-tool--danger:hover:not(:disabled) {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 45%, transparent);
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+}
+
+/* Picker de disparador (lista compacta en el inspector). */
+.arb-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.arb-pick {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm, 9px);
+  border: 1px solid var(--border-2);
+  background: var(--bg-1);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.13s var(--ease),
+    background 0.13s var(--ease);
+}
+.arb-pick:hover {
+  border-color: color-mix(in srgb, var(--arb-c, var(--gold)) 50%, var(--border-2));
+}
+.arb-pick--on {
+  border-color: var(--arb-c, var(--gold));
+  background: color-mix(in srgb, var(--arb-c, var(--gold)) 9%, transparent);
+}
+.arb-pick__ico {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  flex: none;
+  color: var(--arb-c, var(--gold));
+  background: color-mix(in srgb, var(--arb-c, var(--gold)) 14%, transparent);
+}
+.arb-pick__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.arb-pick__label {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-1);
+}
+.arb-pick__desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-3);
+}
+
+/* Editor de condiciones dentro del inspector. */
+.arb-conds {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.arb-cond {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--r-sm, 9px);
+  border: 1px solid var(--border-2);
+  background: color-mix(in srgb, var(--iris) 5%, var(--bg-1));
+}
+.arb-cond__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.arb-cond-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 7px 12px;
+  border-radius: var(--r-sm, 9px);
+  border: 1px dashed var(--border-strong);
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.13s var(--ease),
+    border-color 0.13s var(--ease);
+}
+.arb-cond-add:hover {
+  color: var(--iris);
+  border-color: var(--iris);
+}
+
+/* Estado vacío del inspector. */
+.arb-ins--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: var(--text-3);
+}
+.arb-empty__ico {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+}
+.arb-empty__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.arb-empty__desc {
+  font-size: 12px;
+  line-height: 1.55;
+  max-width: 230px;
+}
+
+@media (max-width: 980px) {
+  .arb {
+    grid-template-columns: 1fr;
+  }
+  .arb-inspect {
+    max-height: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arb-spoke,
+  .arb-hub__ring {
+    animation: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    Journeys — canvas VERTICAL estilo AWS Step Functions Workflow Studio (.sfn-*).
    A propósito DISTINTO de Bots (.fb-*, horizontal con riel de acento): el flujo
    BAJA (arriba→abajo), estados = tarjetas compactas (grip + tile + tipo/nombre),
