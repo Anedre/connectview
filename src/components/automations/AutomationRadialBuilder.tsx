@@ -235,7 +235,14 @@ export function AutomationRadialBuilder({
                   key={i}
                   type="button"
                   className={"arb-sat" + (on ? " arb-sat--on" : "")}
-                  style={{ left: p.x, top: p.y, ["--arb-c" as string]: c }}
+                  style={{
+                    left: p.x,
+                    top: p.y,
+                    ["--arb-c" as string]: c,
+                    ["--i" as string]: i,
+                    ["--dx" as string]: `${geo.cx - p.x}px`,
+                    ["--dy" as string]: `${geo.cy - p.y}px`,
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
                     setSel({ kind: "action", index: i });
@@ -255,7 +262,13 @@ export function AutomationRadialBuilder({
             <button
               type="button"
               className={"arb-add" + (adding ? " arb-add--on" : "")}
-              style={{ left: addPt.x, top: addPt.y }}
+              style={{
+                left: addPt.x,
+                top: addPt.y,
+                ["--i" as string]: actions.length,
+                ["--dx" as string]: `${geo.cx - addPt.x}px`,
+                ["--dy" as string]: `${geo.cy - addPt.y}px`,
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 setAdding((v) => !v);

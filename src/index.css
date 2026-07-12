@@ -14508,6 +14508,66 @@ select.wf-input {
   max-width: 230px;
 }
 
+/* ── Entrada premium: el núcleo aparece y los satélites VUELAN desde él a su
+   órbita (escalonados por --i); un anillo exterior gira lento. Los rayos
+   entran con un fade. --dx/--dy = vector satélite→núcleo (inline por nodo). ── */
+.arb-wires {
+  animation: arb-fade 0.6s var(--ease) backwards;
+}
+.arb-hub {
+  animation: arb-hub-in 0.5s var(--ease) backwards;
+}
+.arb-hub::after {
+  content: "";
+  position: absolute;
+  inset: -15px;
+  border-radius: 50%;
+  border: 1px dashed color-mix(in srgb, var(--gold) 30%, transparent);
+  animation: arb-spin 22s linear infinite;
+  pointer-events: none;
+}
+.arb-filter {
+  animation: arb-fade 0.5s var(--ease) 0.22s backwards;
+}
+.arb-sat,
+.arb-add {
+  animation: arb-deploy 0.44s var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 55ms + 0.12s);
+}
+@keyframes arb-deploy {
+  from {
+    transform: translate(-50%, -50%) translate(var(--dx, 0), var(--dy, 0)) scale(0.35);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, -50%);
+    opacity: 1;
+  }
+}
+@keyframes arb-hub-in {
+  from {
+    transform: translate(-50%, -50%) scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, -50%);
+    opacity: 1;
+  }
+}
+@keyframes arb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes arb-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @media (max-width: 980px) {
   .arb {
     grid-template-columns: 1fr;
@@ -14518,7 +14578,13 @@ select.wf-input {
 }
 @media (prefers-reduced-motion: reduce) {
   .arb-spoke,
-  .arb-hub__ring {
+  .arb-hub__ring,
+  .arb-hub::after,
+  .arb-wires,
+  .arb-hub,
+  .arb-filter,
+  .arb-sat,
+  .arb-add {
     animation: none;
   }
 }
