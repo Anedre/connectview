@@ -48,6 +48,7 @@ import { JourneyNodePicker } from "@/components/journeys/JourneyNodePicker";
 import { JourneyBuilderCtx } from "@/components/journeys/journeyBuilderCtx";
 import { JourneyInspector } from "@/components/journeys/JourneyInspector";
 import { JourneyTester } from "@/components/journeys/JourneyTester";
+import { JourneyActivity, type ActivityStep } from "@/components/journeys/JourneyActivity";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 
@@ -349,9 +350,11 @@ function JourneyFlowInner({
   const [reenroll, setReenroll] = useState(!!initial.reenroll);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showIssues, setShowIssues] = useState(false);
-  const [rightTab, setRightTab] = useState<"form" | "def">("form");
+  const [rightTab, setRightTab] = useState<"form" | "def" | "activity">("form");
   const [testing, setTesting] = useState(false);
   const [stats, setStats] = useState<JourneyStats | null>(null);
+  const [lastStatsAt, setLastStatsAt] = useState<number | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [picker, setPicker] = useState<{
     at: { x: number; y: number };
     mode: "connect" | "insert";
@@ -385,17 +388,33 @@ function JourneyFlowInner({
   }, [initial.journeyId]);
 
   // Observabilidad: embudo por nodo (leads en cada estación).
-  useEffect(() => {
+  const refreshStats = useCallback(() => {
     const url = getApiEndpoints()?.manageLeads;
     if (!url || !initial.journeyId) {
       setStats(null);
       return;
     }
+    setStatsLoading(true);
     authedFetch(`${url}?journeyStats=${encodeURIComponent(initial.journeyId)}`)
       .then((r) => r.json())
-      .then((j) => setStats((j?.stats as JourneyStats) || null))
-      .catch(() => setStats(null));
+      .then((j) => {
+        setStats((j?.stats as JourneyStats) || null);
+        setLastStatsAt(Date.now());
+      })
+      .catch(() => setStats(null))
+      .finally(() => setStatsLoading(false));
   }, [initial.journeyId]);
+
+  useEffect(() => {
+    refreshStats();
+  }, [refreshStats]);
+
+  // "En vivo": mientras el tab Actividad esté abierto, re-consulta cada 6s.
+  useEffect(() => {
+    if (rightTab !== "activity" || !initial.journeyId) return;
+    const t = window.setInterval(refreshStats, 6000);
+    return () => window.clearInterval(t);
+  }, [rightTab, initial.journeyId, refreshStats]);
 
   const dirty = serializeJourney(nodes, edges, name, status) !== baseline.current;
 
@@ -430,6 +449,25 @@ function JourneyFlowInner({
   }, [issues]);
 
   const byNode = useMemo(() => stats?.byNode || {}, [stats]);
+  // Pasos ordenados (para el embudo del tab Actividad).
+  const activitySteps = useMemo<ActivityStep[]>(
+    () =>
+      nodes
+        .map((n) => {
+          const kind = (n.data as { kind: JourneyNodeKind }).kind;
+          const def = JOURNEY_KINDS[kind];
+          return {
+            id: n.id,
+            label: def?.label ?? kind,
+            icon: def?.icon ?? "action",
+            accent: def?.accent ?? "#64748B",
+            order: numberMap.get(n.id) ?? (kind === "entry" ? 0 : 999),
+          };
+        })
+        .sort((a, b) => a.order - b.order)
+        .map(({ id, label, icon, accent }) => ({ id, label, icon, accent })),
+    [nodes, numberMap],
+  );
   const selectedNode = nodes.find((n) => n.id === selectedId) || null;
 
   // ── Mutaciones ──
@@ -1066,9 +1104,26 @@ function JourneyFlowInner({
               >
                 Definición
               </button>
+              <button
+                type="button"
+                className={`sfn-right__tab ${rightTab === "activity" ? "sfn-right__tab--on" : ""}`}
+                onClick={() => setRightTab("activity")}
+              >
+                Actividad
+              </button>
             </div>
             <div className="sfn-right__body">
-              {rightTab === "def" ? (
+              {rightTab === "activity" ? (
+                <JourneyActivity
+                  saved={!!initial.journeyId}
+                  stats={stats}
+                  steps={activitySteps}
+                  live={!!initial.journeyId}
+                  lastUpdated={lastStatsAt}
+                  loading={statsLoading}
+                  onRefresh={refreshStats}
+                />
+              ) : rightTab === "def" ? (
                 <pre className="sfn-def">{JSON.stringify(currentJourney, null, 2)}</pre>
               ) : selectedNode ? (
                 <JourneyInspector
