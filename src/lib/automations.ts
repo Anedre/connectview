@@ -1,11 +1,15 @@
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowRightLeft,
+  Ban,
   BellRing,
   CalendarCheck,
   CalendarClock,
   ClipboardList,
+  Eraser,
+  Gauge,
   Globe,
+  GraduationCap,
   Inbox,
   Mail,
   MessageCircle,
@@ -42,15 +46,33 @@ export type ActionType =
   | "webhook"
   | "send_email"
   | "apply_tag"
+  | "remove_tag"
   | "apply_attribute"
+  | "apply_score"
+  | "set_program"
+  | "unsubscribe"
   | "notify_agent"
   | "start_journey";
 
 export interface RuleCondition {
   field: "source" | "stageId" | "valoracion" | "channel" | "flowName";
-  op: "eq" | "neq";
+  /** eq/neq comparan igualdad; contains = subcadena; exists/notexists = campo con/sin valor. */
+  op: "eq" | "neq" | "contains" | "exists" | "notexists";
   value: string;
 }
+
+/** Operadores de condición — etiqueta + si necesitan un valor a la derecha. */
+export const CONDITION_OPS: Array<{
+  value: RuleCondition["op"];
+  label: string;
+  needsValue: boolean;
+}> = [
+  { value: "eq", label: "es igual a", needsValue: true },
+  { value: "neq", label: "es distinto de", needsValue: true },
+  { value: "contains", label: "contiene", needsValue: true },
+  { value: "exists", label: "tiene algún valor", needsValue: false },
+  { value: "notexists", label: "está vacío", needsValue: false },
+];
 
 export interface AutomationRule {
   ruleId?: string;
@@ -111,6 +133,7 @@ export interface FieldDef {
     | "template"
     | "agent"
     | "journey"
+    | "program"
     | "url"
     | "variables";
   placeholder?: string;
@@ -355,6 +378,22 @@ export const ACTION_DEFS: Record<
       },
     ],
   },
+  remove_tag: {
+    label: "Quitar etiqueta",
+    description: "Saca una etiqueta del lead (p. ej. limpiar 'nuevo' o 'sin-contactar').",
+    icon: Eraser,
+    accent: "var(--accent-amber)",
+    fields: [
+      {
+        key: "tag",
+        label: "Etiqueta a quitar",
+        type: "text",
+        required: true,
+        placeholder: "nuevo, sin-contactar…",
+        hint: "Si el lead no la tiene, no pasa nada.",
+      },
+    ],
+  },
   apply_attribute: {
     label: "Setear atributo",
     description: "Guarda un dato personalizado en el lead (attributes[campo] = valor).",
@@ -375,6 +414,59 @@ export const ACTION_DEFS: Record<
         required: true,
         placeholder: "alta",
         hint: "Tokens: {{name}}, {{phone}}, {{stage}} disponibles.",
+      },
+    ],
+  },
+  apply_score: {
+    label: "Puntuar lead",
+    description: "Suma o resta puntos al score del lead (para priorizar y calificar).",
+    icon: Gauge,
+    accent: "var(--accent-violet)",
+    fields: [
+      {
+        key: "delta",
+        label: "Puntos (+/−)",
+        type: "number",
+        required: true,
+        defaultValue: 10,
+        hint: "Positivo suma, negativo resta. Ej.: +10 abrió WhatsApp, −5 rebotó.",
+      },
+    ],
+  },
+  set_program: {
+    label: "Asignar programa",
+    description: "Vincula el lead a un programa/unidad (segmenta reportes y ruteo).",
+    icon: GraduationCap,
+    accent: "var(--accent-cyan)",
+    fields: [
+      {
+        key: "programId",
+        label: "Programa",
+        type: "program",
+        required: true,
+        hint: "El lead queda asociado a esta unidad comercial.",
+      },
+    ],
+  },
+  unsubscribe: {
+    label: "Dar de baja",
+    description:
+      "Marca al lead como 'no contactar' por un canal (supresión real, respeta opt-out).",
+    icon: Ban,
+    accent: "var(--accent-pink)",
+    fields: [
+      {
+        key: "channel",
+        label: "Canal",
+        type: "select",
+        required: true,
+        options: [
+          { value: "all", label: "Todos (WhatsApp + Email)" },
+          { value: "whatsapp", label: "Solo WhatsApp" },
+          { value: "email", label: "Solo Email" },
+        ],
+        defaultValue: "all",
+        hint: "Deja de enviarle por ese canal hasta que vuelva a suscribirse.",
       },
     ],
   },
@@ -496,6 +588,38 @@ export const RULE_TEMPLATES: Array<{
       ],
     }),
   },
+  {
+    id: "score-engagement",
+    name: "Scoring · sube por engagement",
+    description: "El lead escribe por WhatsApp → +10 al score y etiqueta 'interesado' (prioriza).",
+    build: () => ({
+      name: "Scoring por engagement",
+      enabled: false,
+      trigger: { type: "message_inbound", params: { channel: "whatsapp" } },
+      conditions: [],
+      actions: [
+        { type: "apply_score", params: { delta: 10 } },
+        { type: "apply_tag", params: { tag: "interesado" } },
+      ],
+    }),
+  },
+  {
+    id: "closed-cleanup",
+    name: "Cierre → no molestar + limpiar",
+    description:
+      "El lead llega a una etapa de cierre → se da de baja del marketing y se etiqueta 'cliente'.",
+    build: () => ({
+      name: "Cierre: dar de baja y etiquetar",
+      enabled: false,
+      trigger: { type: "lead_stage_changed", params: {} },
+      conditions: [],
+      actions: [
+        { type: "unsubscribe", params: { channel: "all" } },
+        { type: "remove_tag", params: { tag: "interesado" } },
+        { type: "apply_tag", params: { tag: "cliente" } },
+      ],
+    }),
+  },
 ];
 
 export const TRIGGER_ORDER: TriggerType[] = [
@@ -510,12 +634,16 @@ export const TRIGGER_ORDER: TriggerType[] = [
 ];
 export const ACTION_ORDER: ActionType[] = [
   "send_whatsapp_template",
+  "send_email",
   "move_stage",
   "schedule_callback",
-  "webhook",
-  "send_email",
   "apply_tag",
+  "remove_tag",
   "apply_attribute",
+  "apply_score",
+  "set_program",
+  "unsubscribe",
   "notify_agent",
   "start_journey",
+  "webhook",
 ];

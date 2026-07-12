@@ -2,7 +2,6 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { SegmentedControl } from "@/components/ui/segmented";
 import {
   Select,
   SelectContent,
@@ -18,10 +17,12 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useUsers } from "@/hooks/useUsers";
 import { useJourneys } from "@/hooks/useJourneys";
+import { usePrograms } from "@/hooks/usePrograms";
 import {
   ACTION_DEFS,
   ACTION_ORDER,
   CONDITION_FIELDS,
+  CONDITION_OPS,
   RULE_TEMPLATES,
   TRIGGER_DEFS,
   TRIGGER_ORDER,
@@ -56,7 +57,11 @@ import { Icon, Btn, Stat, Pill, HeroBand, Num } from "@/components/aria";
 const ACTION_COLOR: Record<ActionType, string> = {
   send_email: "var(--gold)",
   apply_tag: "var(--cyan)",
+  remove_tag: "var(--gold)",
   apply_attribute: "var(--iris)",
+  apply_score: "var(--iris)",
+  set_program: "var(--cyan)",
+  unsubscribe: "var(--coral)",
   notify_agent: "var(--coral)",
   send_whatsapp_template: "var(--green)",
   move_stage: "var(--accent)",
@@ -71,6 +76,7 @@ interface PickersCtx {
   templates: WaTemplate[];
   agents: Array<{ userId: string; username: string }>;
   journeys: Array<{ journeyId: string; name: string; status: string }>;
+  programs: Array<{ id: string; name: string }>;
 }
 
 const WF_NONE = "__wfnone__";
@@ -190,6 +196,31 @@ function FieldInput({
             label: `${j.name || "(sin nombre)"}${j.status !== "active" ? ` · ${j.status}` : ""}`,
           })),
         ]}
+      />
+    );
+  }
+  if (field.type === "program") {
+    // Program-picker si hay programas; si no, cae a input de texto (programId)
+    // para poder configurar la regla aunque la lista aún no cargue.
+    if (ctx.programs.length > 0) {
+      return (
+        <WfSelect
+          value={String(v)}
+          onChange={onChange}
+          className="w-full"
+          options={[
+            { value: "", label: "— elige un programa —" },
+            ...ctx.programs.map((pr) => ({ value: pr.id, label: pr.name || pr.id })),
+          ]}
+        />
+      );
+    }
+    return (
+      <input
+        className="wf-input"
+        value={String(v)}
+        placeholder={field.placeholder || "ID del programa"}
+        onChange={(e) => onChange(e.target.value)}
       />
     );
   }
@@ -341,6 +372,7 @@ export function AutomationsPage() {
   const { tree } = useTaxonomy();
   const { users } = useUsers();
   const { journeys } = useJourneys();
+  const { programs } = usePrograms();
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [picking, setPicking] = useState(false);
@@ -365,6 +397,7 @@ export function AutomationsPage() {
       .filter((u) => u.userId)
       .map((u) => ({ userId: u.userId as string, username: u.username })),
     journeys: journeys.map((j) => ({ journeyId: j.journeyId, name: j.name, status: j.status })),
+    programs: programs.map((pr) => ({ id: pr.programId, name: pr.name })),
   };
 
   const load = async () => {
@@ -639,48 +672,47 @@ export function AutomationsPage() {
                       options={CONDITION_FIELDS.map((f) => ({ value: f.value, label: f.label }))}
                       style={{ flex: "0 0 190px" }}
                     />
-                    <SegmentedControl
+                    <WfSelect
                       value={c.op}
-                      onValueChange={(op) => {
+                      onChange={(op) => {
                         const conditions = [...conds];
                         conditions[i] = { ...c, op: op as RuleCondition["op"] };
                         setEditing({ ...editing, conditions });
                       }}
-                      options={[
-                        { value: "eq", label: "es" },
-                        { value: "neq", label: "no es" },
-                      ]}
-                      size="sm"
+                      options={CONDITION_OPS.map((o) => ({ value: o.value, label: o.label }))}
+                      style={{ flex: "0 0 158px" }}
                     />
-                    {c.field === "stageId" ? (
-                      <WfSelect
-                        value={c.value}
-                        onChange={(nv) => {
-                          const conditions = [...conds];
-                          conditions[i] = { ...c, value: nv };
-                          setEditing({ ...editing, conditions });
-                        }}
-                        options={[
-                          { value: "", label: "— elige —" },
-                          ...ctx.stages.map((s) => ({ value: s.id, label: s.label })),
-                        ]}
-                        style={{ flex: 1 }}
-                      />
-                    ) : (
-                      <input
-                        className="wf-input"
-                        style={{ flex: 1 }}
-                        value={c.value}
-                        placeholder={
-                          c.field === "valoracion" ? "positiva / negativa / neutra" : "valor"
-                        }
-                        onChange={(e) => {
-                          const conditions = [...conds];
-                          conditions[i] = { ...c, value: e.target.value };
-                          setEditing({ ...editing, conditions });
-                        }}
-                      />
-                    )}
+                    {/* El valor sólo aplica a eq/neq/contains; exists/notexists no lo usan. */}
+                    {(CONDITION_OPS.find((o) => o.value === c.op)?.needsValue ?? true) &&
+                      (c.field === "stageId" ? (
+                        <WfSelect
+                          value={c.value}
+                          onChange={(nv) => {
+                            const conditions = [...conds];
+                            conditions[i] = { ...c, value: nv };
+                            setEditing({ ...editing, conditions });
+                          }}
+                          options={[
+                            { value: "", label: "— elige —" },
+                            ...ctx.stages.map((s) => ({ value: s.id, label: s.label })),
+                          ]}
+                          style={{ flex: 1 }}
+                        />
+                      ) : (
+                        <input
+                          className="wf-input"
+                          style={{ flex: 1 }}
+                          value={c.value}
+                          placeholder={
+                            c.field === "valoracion" ? "positiva / negativa / neutra" : "valor"
+                          }
+                          onChange={(e) => {
+                            const conditions = [...conds];
+                            conditions[i] = { ...c, value: e.target.value };
+                            setEditing({ ...editing, conditions });
+                          }}
+                        />
+                      ))}
                     <button
                       type="button"
                       className="wf-icon-btn"
@@ -1357,7 +1389,15 @@ function TestModal({
                     >
                       <span className="wf-test__mark">{c.pass ? "✓" : "✗"}</span>
                       <span className="wf-test__cond-txt">
-                        <b>{c.field}</b> {c.op === "neq" ? "no es" : "es"} “{c.value}”
+                        {(() => {
+                          const od = CONDITION_OPS.find((o) => o.value === c.op);
+                          return (
+                            <>
+                              <b>{c.field}</b> {od?.label ?? c.op}
+                              {(od?.needsValue ?? true) ? ` “${c.value}”` : ""}
+                            </>
+                          );
+                        })()}
                       </span>
                       <span className="wf-test__actual">actual: {c.actual || "—"}</span>
                     </div>

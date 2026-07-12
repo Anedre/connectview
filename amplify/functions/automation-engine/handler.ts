@@ -23,7 +23,7 @@ import {
   stageIdToLabel,
 } from "../_shared/leadSync";
 import { setActiveTenant } from "../_shared/salesforceClient";
-import { evaluateSend } from "../_shared/suppression";
+import { evaluateSend, recordSuppression } from "../_shared/suppression";
 import { entryNodeId, type JourneyDef } from "../_shared/journeys";
 
 /**
@@ -110,7 +110,11 @@ type ActionType =
   | "webhook"
   | "send_email"
   | "apply_tag"
+  | "remove_tag"
   | "apply_attribute"
+  | "apply_score"
+  | "set_program"
+  | "unsubscribe"
   | "notify_agent"
   | "start_journey";
 
@@ -176,6 +180,10 @@ interface LeadItem {
   email?: string;
   stageId?: string;
   source?: string;
+  /** Score numérico del lead (calificación) — lo mueve apply_score / journey adjustScore. */
+  score?: number;
+  /** Programa/unidad asignada (Pilar 1) — lo setea set_program. */
+  programId?: string;
   attributes?: Record<string, string>;
   updatedAt?: string;
   createdAt?: string;
@@ -271,6 +279,25 @@ function matchesConditions(rule: Rule, ctx: Ctx): boolean {
   return firstFailedCondition(rule, ctx) === null;
 }
 
+/** Evalúa UNA condición (todo en minúsculas). eq/neq/contains comparan contra
+ *  `expected`; exists/notexists sólo miran si `actual` tiene valor. Réplica
+ *  espejo en manage-automations (dry-run) — mantener ambas en sync. */
+function conditionHolds(actual: string, op: string, expected: string): boolean {
+  switch (op) {
+    case "neq":
+      return actual !== expected;
+    case "contains":
+      return expected === "" || actual.includes(expected);
+    case "exists":
+      return actual.trim() !== "";
+    case "notexists":
+      return actual.trim() === "";
+    case "eq":
+    default:
+      return actual === expected;
+  }
+}
+
 /** Igual que matchesConditions pero devuelve la PRIMERA condición que falla (o
  *  null si todas pasan) — para el detalle de debug del run "skipped". */
 function firstFailedCondition(
@@ -280,9 +307,7 @@ function firstFailedCondition(
   for (const c of rule.conditions || []) {
     const actual = String((ctx as unknown as Record<string, unknown>)[c.field] ?? "").toLowerCase();
     const expected = String(c.value ?? "").toLowerCase();
-    if (c.op === "eq" && actual !== expected)
-      return { field: c.field, op: c.op, value: c.value, actual };
-    if (c.op === "neq" && actual === expected)
+    if (!conditionHolds(actual, c.op, expected))
       return { field: c.field, op: c.op, value: c.value, actual };
   }
   return null;
@@ -724,6 +749,111 @@ async function actApplyAttribute(
 }
 
 /**
+ * Quita una etiqueta del lead (inverso de actApplyTag). Lee el CSV
+ * `attributes.tags`, filtra la etiqueta (case-insensitive) y reescribe. Si el
+ * lead no la tenía → no-op. Escritura DIRECTA a DDB (anti-loop).
+ */
+async function actRemoveTag(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
+  const tag = fillTokens(String(params.tag || ""), ctx).trim();
+  if (!tag) return "tag requerido";
+  const lead = await resolveLead(ctx);
+  if (!lead) return "lead no encontrado";
+  const current = String(lead.attributes?.tags || "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const next = current.filter((t) => t.toLowerCase() !== tag.toLowerCase());
+  if (next.length === current.length) return null; // no la tenía (incluye lista vacía)
+  // Sólo llegamos aquí si tenía tags → attributes.tags existe → el SET del path es seguro.
+  await leadsDynamo.send(
+    new UpdateItemCommand({
+      TableName: LEADS_TABLE,
+      Key: { leadId: { S: lead.leadId } },
+      UpdateExpression: "SET attributes.#k = :v, updatedAt = :t",
+      ExpressionAttributeNames: { "#k": "tags" },
+      ExpressionAttributeValues: {
+        ":v": { S: next.join(", ").slice(0, 1024) },
+        ":t": { S: new Date().toISOString() },
+      },
+    }),
+  );
+  return null;
+}
+
+/**
+ * Suma/resta puntos al `score` del lead (calificación). Espejo de
+ * journey-runner adjustScore. Escritura DIRECTA a DDB (anti-loop).
+ */
+async function actScore(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
+  const d = Number(params.delta || 0);
+  if (!d) return "puntos requeridos (≠ 0)";
+  const lead = await resolveLead(ctx);
+  if (!lead) return "lead no encontrado";
+  const next = (Number(lead.score ?? 0) || 0) + d;
+  await leadsDynamo.send(
+    new UpdateItemCommand({
+      TableName: LEADS_TABLE,
+      Key: { leadId: { S: lead.leadId } },
+      UpdateExpression: "SET #s = :v, updatedAt = :t",
+      ExpressionAttributeNames: { "#s": "score" },
+      ExpressionAttributeValues: {
+        ":v": { N: String(next) },
+        ":t": { S: new Date().toISOString() },
+      },
+    }),
+  );
+  return null;
+}
+
+/**
+ * Asigna el lead a un programa/unidad (Pilar 1). Espejo de journey-runner
+ * setProgram. Escritura DIRECTA a DDB (anti-loop).
+ */
+async function actSetProgram(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
+  const programId = String(params.programId || "").trim();
+  if (!programId) return "programa requerido";
+  const lead = await resolveLead(ctx);
+  if (!lead) return "lead no encontrado";
+  await leadsDynamo.send(
+    new UpdateItemCommand({
+      TableName: LEADS_TABLE,
+      Key: { leadId: { S: lead.leadId } },
+      UpdateExpression: "SET programId = :p, updatedAt = :t",
+      ExpressionAttributeValues: {
+        ":p": { S: programId },
+        ":t": { S: new Date().toISOString() },
+      },
+    }),
+  );
+  return null;
+}
+
+/**
+ * Da de baja al lead: supresión REAL (opted_out) por canal, respetando el mismo
+ * store que el gate de envío (evaluateSend). Espejo del branch unsubscribe de
+ * journey-runner setSubscription. Requiere teléfono (clave de supresión).
+ */
+async function actUnsubscribe(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
+  const channel = String(params.channel || "all");
+  const channels = channel === "all" ? ["whatsapp", "email"] : [channel];
+  const lead = await resolveLead(ctx);
+  const phone = (ctx.phone || lead?.phone || "").trim();
+  if (!phone) return "lead sin teléfono";
+  // La tabla de supresión es de PLATAFORMA (cuenta Novasys): escribir con el
+  // cliente base (legacyDynamo), NO con leadsDynamo (rol del tenant en BYO →
+  // cuenta equivocada). Mismo criterio que journey-runner (usa su cliente base).
+  await recordSuppression(legacyDynamo, phone, {
+    status: "opted_out",
+    channels,
+    reason: "Automatización: baja de suscripción",
+    source: "manual",
+    tenantId: ctx.tenantId || undefined,
+    leadId: lead?.leadId,
+  });
+  return null;
+}
+
+/**
  * Crea una notificación in-app para un agente. Best-effort: reusa
  * `connectview-callbacks` con canal "notification" (no hay tabla dedicada limpia
  * hoy; el bubble de "Tareas" ya lee de esta tabla). El dispatcher IGNORA este
@@ -832,8 +962,16 @@ function actionDetail(action: string, params: Record<string, unknown>): string |
       return `email: ${String(params.subject || "").slice(0, 60)}`;
     case "apply_tag":
       return `tag ${String(params.tag || "?")}`;
+    case "remove_tag":
+      return `quita tag ${String(params.tag || "?")}`;
     case "apply_attribute":
       return `${String(params.field || "?")}=${String(params.value ?? "").slice(0, 40)}`;
+    case "apply_score":
+      return `score ${Number(params.delta) >= 0 ? "+" : ""}${Number(params.delta || 0)}`;
+    case "set_program":
+      return `→ programa ${String(params.programId || "?")}`;
+    case "unsubscribe":
+      return `baja ${String(params.channel || "all")}`;
     case "notify_agent":
       return `aviso a ${String(params.agent || "equipo")}`;
     case "start_journey":
@@ -918,8 +1056,16 @@ async function dispatchAction(
       return actSendEmail(ctx, p);
     case "apply_tag":
       return actApplyTag(ctx, p);
+    case "remove_tag":
+      return actRemoveTag(ctx, p);
     case "apply_attribute":
       return actApplyAttribute(ctx, p);
+    case "apply_score":
+      return actScore(ctx, p);
+    case "set_program":
+      return actSetProgram(ctx, p);
+    case "unsubscribe":
+      return actUnsubscribe(ctx, p);
     case "notify_agent":
       return actNotifyAgent(ctx, p);
     case "start_journey":

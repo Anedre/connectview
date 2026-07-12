@@ -60,7 +60,11 @@ export type ActionType =
   | "webhook"
   | "send_email"
   | "apply_tag"
+  | "remove_tag"
   | "apply_attribute"
+  | "apply_score"
+  | "set_program"
+  | "unsubscribe"
   | "notify_agent"
   | "start_journey";
 
@@ -69,7 +73,7 @@ export interface AutomationRule {
   name: string;
   enabled: boolean;
   trigger: { type: TriggerType; params?: Record<string, unknown> };
-  conditions?: Array<{ field: string; op: "eq" | "neq"; value: string }>;
+  conditions?: Array<{ field: string; op: string; value: string }>;
   actions: Array<{ type: ActionType; params?: Record<string, unknown> }>;
   firedCount?: number;
   lastFiredAt?: string;
@@ -94,7 +98,11 @@ const ACTION_TYPES: ActionType[] = [
   "webhook",
   "send_email",
   "apply_tag",
+  "remove_tag",
   "apply_attribute",
+  "apply_score",
+  "set_program",
+  "unsubscribe",
   "notify_agent",
   "start_journey",
 ];
@@ -144,10 +152,29 @@ function fillTokens(s: string, ctx: DryCtx): string {
     .replace(/\{\{\s*email\s*\}\}/gi, ctx.email || "");
 }
 
-/** Evalúa cada condición contra el lead; devuelve el desglose (mismo operador
- *  eq/neq case-insensitive que el engine). */
+/** Evalúa UNA condición (todo en minúsculas). Espejo EXACTO de conditionHolds
+ *  del engine (automation-engine): eq/neq/contains comparan contra `expected`;
+ *  exists/notexists sólo miran si `actual` tiene valor. Mantener ambas en sync. */
+function conditionHolds(actual: string, op: string, expected: string): boolean {
+  switch (op) {
+    case "neq":
+      return actual !== expected;
+    case "contains":
+      return expected === "" || actual.includes(expected);
+    case "exists":
+      return actual.trim() !== "";
+    case "notexists":
+      return actual.trim() === "";
+    case "eq":
+    default:
+      return actual === expected;
+  }
+}
+
+/** Evalúa cada condición contra el lead; devuelve el desglose (mismos operadores
+ *  case-insensitive que el engine). */
 function evalConditions(
-  conditions: Array<{ field: string; op: "eq" | "neq"; value: string }>,
+  conditions: Array<{ field: string; op: string; value: string }>,
   ctx: DryCtx,
 ): {
   pass: boolean;
@@ -156,7 +183,7 @@ function evalConditions(
   const detail = (conditions || []).map((c) => {
     const actual = String((ctx as unknown as Record<string, unknown>)[c.field] ?? "").toLowerCase();
     const expected = String(c.value ?? "").toLowerCase();
-    const pass = c.op === "neq" ? actual !== expected : actual === expected;
+    const pass = conditionHolds(actual, c.op, expected);
     return { field: c.field, op: c.op, value: c.value, actual, pass };
   });
   return { pass: detail.every((d) => d.pass), detail };
@@ -192,11 +219,26 @@ function previewAction(
         : `NO enviaría email: el lead no tiene correo`;
     case "apply_tag":
       return `Aplicaría la etiqueta "${fillTokens(String(p.tag || "(vacía)"), ctx)}" al lead`;
+    case "remove_tag":
+      return `Quitaría la etiqueta "${fillTokens(String(p.tag || "(vacía)"), ctx)}" del lead`;
     case "apply_attribute":
       return `Setearía attributes["${String(p.field || "(campo)")}"] = "${fillTokens(
         String(p.value ?? ""),
         ctx,
       )}"`;
+    case "apply_score": {
+      const d = Number(p.delta || 0);
+      return `${d >= 0 ? "Sumaría" : "Restaría"} ${Math.abs(d)} punto(s) al score de ${who}`;
+    }
+    case "set_program":
+      return `Asignaría a ${who} al programa "${String(p.programName || p.programId || "(sin elegir)")}"`;
+    case "unsubscribe": {
+      const ch = String(p.channel || "all");
+      const label = ch === "all" ? "WhatsApp y Email" : ch === "email" ? "Email" : "WhatsApp";
+      return ctx.phone
+        ? `Daría de baja a ${who} de ${label} (no contactar)`
+        : `NO podría dar de baja: el lead no tiene teléfono`;
+    }
     case "notify_agent":
       return `Crearía una notificación${p.agent ? ` para ${String(p.agent)}` : " para el equipo"}: "${fillTokens(
         String(p.message || ""),
