@@ -6,17 +6,20 @@ import {
   CalendarCheck,
   CalendarClock,
   ClipboardList,
+  CloudUpload,
   Eraser,
   Gauge,
   Globe,
   GraduationCap,
   Inbox,
+  LogOut,
   Mail,
   MessageCircle,
   MoveRight,
   Route,
   PenLine,
   SlidersHorizontal,
+  StickyNote,
   Tag,
   Timer,
   UserPlus,
@@ -51,6 +54,9 @@ export type ActionType =
   | "apply_score"
   | "set_program"
   | "unsubscribe"
+  | "add_note"
+  | "mark_salesforce_sync"
+  | "unenroll_journey"
   | "notify_agent"
   | "start_journey";
 
@@ -507,6 +513,44 @@ export const ACTION_DEFS: Record<
       },
     ],
   },
+  add_note: {
+    label: "Dejar nota",
+    description: "Escribe una nota interna en el historial del lead (queda para el equipo).",
+    icon: StickyNote,
+    accent: "var(--accent-amber)",
+    fields: [
+      {
+        key: "text",
+        label: "Nota",
+        type: "textarea",
+        required: true,
+        placeholder: "Contexto para el agente…",
+        hint: "Tokens: {{name}}, {{phone}}, {{stage}} disponibles.",
+      },
+    ],
+  },
+  mark_salesforce_sync: {
+    label: "Enviar a Salesforce",
+    description: "Marca el lead para sincronizarlo a Salesforce en la próxima pasada del sync.",
+    icon: CloudUpload,
+    accent: "var(--accent-cyan)",
+    fields: [],
+  },
+  unenroll_journey: {
+    label: "Salir de un Journey",
+    description: "Saca al lead de un recorrido en curso (deja de recibir sus pasos).",
+    icon: LogOut,
+    accent: "var(--accent-pink)",
+    fields: [
+      {
+        key: "journeyId",
+        label: "Journey",
+        type: "journey",
+        required: true,
+        hint: "Si el lead no estaba inscrito, no pasa nada.",
+      },
+    ],
+  },
 };
 
 /** Plantillas predefinidas — onboarding del builder (patrón BOT_TEMPLATES). */
@@ -679,6 +723,9 @@ export const ACTION_ORDER: ActionType[] = [
   "set_program",
   "unsubscribe",
   "notify_agent",
+  "add_note",
   "start_journey",
+  "unenroll_journey",
   "webhook",
+  "mark_salesforce_sync",
 ];

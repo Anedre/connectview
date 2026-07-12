@@ -65,6 +65,9 @@ export type ActionType =
   | "apply_score"
   | "set_program"
   | "unsubscribe"
+  | "add_note"
+  | "mark_salesforce_sync"
+  | "unenroll_journey"
   | "notify_agent"
   | "start_journey";
 
@@ -103,6 +106,9 @@ const ACTION_TYPES: ActionType[] = [
   "apply_score",
   "set_program",
   "unsubscribe",
+  "add_note",
+  "mark_salesforce_sync",
+  "unenroll_journey",
   "notify_agent",
   "start_journey",
 ];
@@ -244,6 +250,12 @@ function previewAction(
         String(p.message || ""),
         ctx,
       )}"`;
+    case "add_note":
+      return `Dejaría una nota en el lead: "${fillTokens(String(p.text || ""), ctx).slice(0, 80)}"`;
+    case "mark_salesforce_sync":
+      return `Marcaría a ${who} para sincronizar a Salesforce`;
+    case "unenroll_journey":
+      return `Sacaría a ${who} del journey "${String(p.journeyName || p.journeyId || "(sin elegir)")}"`;
     case "start_journey":
       return `Inscribiría a ${who} en el journey "${String(p.journeyName || p.journeyId || "(sin elegir)")}"`;
     default:

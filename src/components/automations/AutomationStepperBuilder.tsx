@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import { Trash2, Plus, Copy, X, ChevronUp, ChevronDown, Filter } from "lucide-react";
+import { Trash2, Plus, Copy, X, ChevronUp, ChevronDown, Filter, AlertTriangle } from "lucide-react";
 import {
   ACTION_DEFS,
   ACTION_ORDER,
@@ -64,7 +64,12 @@ function summarize(
       return `${String(p.channel || "voice")} · +${Number(p.offsetHours ?? 24)}h`;
     case "notify_agent":
       return String(p.message || "").slice(0, 46);
-    case "start_journey": {
+    case "add_note":
+      return String(p.text || "").slice(0, 46);
+    case "mark_salesforce_sync":
+      return "Salesforce";
+    case "start_journey":
+    case "unenroll_journey": {
       const id = String(p.journeyId || "");
       return ctx.journeys.find((j) => j.journeyId === id)?.name || id;
     }
@@ -73,6 +78,19 @@ function summarize(
     default:
       return "";
   }
+}
+
+/** ¿Un valor de campo está vacío? (para el badge de "falta configurar"). */
+const isBlank = (v: unknown): boolean =>
+  v == null || v === "" || (Array.isArray(v) && v.length === 0);
+
+/** ¿A un trigger/acción le falta algún campo REQUERIDO? */
+function isIncomplete(
+  fields: { key: string; required?: boolean }[],
+  params: Record<string, unknown> | undefined,
+): boolean {
+  const p = params || {};
+  return fields.some((f) => f.required && isBlank(p[f.key]));
 }
 
 export function AutomationStepperBuilder({
@@ -148,6 +166,7 @@ export function AutomationStepperBuilder({
           <button
             type="button"
             className={"ast-trigger" + (sel?.kind === "hub" ? " ast-on" : "")}
+            style={{ ["--i" as string]: 0 }}
             onClick={() => {
               setSel({ kind: "hub" });
               setAdding(false);
@@ -160,6 +179,11 @@ export function AutomationStepperBuilder({
               <span className="ast-kicker">Cuándo pasa esto</span>
               <span className="ast-trigger__label">{trig.label}</span>
             </span>
+            {isIncomplete(trig.fields, rule.trigger.params) && (
+              <span className="ast-warn" title="Falta configurar">
+                <AlertTriangle size={14} strokeWidth={2.2} />
+              </span>
+            )}
           </button>
 
           <span className="ast-spine" />
@@ -168,6 +192,7 @@ export function AutomationStepperBuilder({
           <button
             type="button"
             className={"ast-filter" + (sel?.kind === "conditions" ? " ast-on" : "")}
+            style={{ ["--i" as string]: 1 }}
             onClick={() => {
               setSel({ kind: "conditions" });
               setAdding(false);
@@ -199,11 +224,12 @@ export function AutomationStepperBuilder({
             const on = sel?.kind === "action" && sel.index === i;
             const sum = summarize(a, ctx);
             const last = i === actions.length - 1;
+            const incomplete = isIncomplete(def.fields, a.params);
             return (
               <Fragment key={i}>
                 <div
                   className={"ast-card" + (on ? " ast-on" : "")}
-                  style={{ ["--arb-c" as string]: c }}
+                  style={{ ["--arb-c" as string]: c, ["--i" as string]: i + 2 }}
                   role="button"
                   tabIndex={0}
                   onClick={() => {
@@ -225,6 +251,11 @@ export function AutomationStepperBuilder({
                     <span className="ast-card__label">{def.label}</span>
                     {sum && <span className="ast-card__sum">{sum}</span>}
                   </span>
+                  {incomplete && (
+                    <span className="ast-warn" title="Falta configurar">
+                      <AlertTriangle size={14} strokeWidth={2.2} />
+                    </span>
+                  )}
                   <span className="ast-card__tools" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
@@ -260,7 +291,7 @@ export function AutomationStepperBuilder({
           })}
 
           {/* Agregar acción */}
-          <div className="ast-addwrap">
+          <div className="ast-addwrap" style={{ ["--i" as string]: actions.length + 2 }}>
             <button
               type="button"
               className={"ast-add" + (adding ? " ast-on" : "")}

@@ -14311,12 +14311,19 @@ select.wf-input {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  animation: ast-fade 0.4s var(--ease);
 }
-@keyframes ast-fade {
+/* Entrada en CASCADA de los nodos (escalonada por --i, inline por nodo). */
+.ast-trigger,
+.ast-filter,
+.ast-card,
+.ast-addwrap {
+  animation: ast-node-in 0.42s var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 42ms);
+}
+@keyframes ast-node-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(9px);
   }
   to {
     opacity: 1;
@@ -14525,6 +14532,21 @@ select.wf-input {
 .ast-card.ast-on .ast-card__tools {
   opacity: 1;
 }
+/* Badge "falta configurar" (campo requerido vacío). */
+.ast-warn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 16%, transparent);
+}
+.ast-trigger .ast-warn {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.22);
+}
 .ast-empty-hint {
   text-align: center;
   font-size: 12.5px;
@@ -14627,7 +14649,10 @@ select.wf-input {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ast-flow {
+  .ast-trigger,
+  .ast-filter,
+  .ast-card,
+  .ast-addwrap {
     animation: none;
   }
 }

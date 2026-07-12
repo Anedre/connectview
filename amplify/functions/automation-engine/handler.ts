@@ -115,6 +115,9 @@ type ActionType =
   | "apply_score"
   | "set_program"
   | "unsubscribe"
+  | "add_note"
+  | "mark_salesforce_sync"
+  | "unenroll_journey"
   | "notify_agent"
   | "start_journey";
 
@@ -945,6 +948,72 @@ async function actStartJourney(ctx: Ctx, params: Record<string, unknown>): Promi
   return null;
 }
 
+/** Deja una nota interna en el historial del lead. Espejo de journey-runner addNote. */
+async function actAddNote(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
+  const text = fillTokens(String(params.text || ""), ctx).trim();
+  if (!text) return "texto requerido";
+  const lead = await resolveLead(ctx);
+  const leadId = ctx.leadId || lead?.leadId;
+  if (!leadId) return "lead no encontrado";
+  await appendLeadHistory(leadId, {
+    ts: new Date().toISOString(),
+    type: "note",
+    notes: `Automatización: ${text}`,
+  });
+  return null;
+}
+
+/** Marca el lead para sincronizar a Salesforce (lo levanta el sync de SF).
+ *  Espejo de journey-runner markSalesforceSync. Escritura DIRECTA a DDB (anti-loop). */
+async function actMarkSalesforceSync(ctx: Ctx): Promise<string | null> {
+  const lead = await resolveLead(ctx);
+  const leadId = ctx.leadId || lead?.leadId;
+  if (!leadId) return "lead no encontrado";
+  const now = new Date().toISOString();
+  await leadsDynamo.send(
+    new UpdateItemCommand({
+      TableName: LEADS_TABLE,
+      Key: { leadId: { S: leadId } },
+      UpdateExpression: "SET sfSyncPending = :t, updatedAt = :u",
+      ExpressionAttributeValues: { ":t": { S: now }, ":u": { S: now } },
+    }),
+  );
+  return null;
+}
+
+/** Saca al lead de un journey (enrollment status=exited). Espejo de journey-runner
+ *  unenrollFrom. Enrollments = tabla de PLATAFORMA (legacyDynamo); gate a tenants
+ *  legacy, igual que start_journey. */
+async function actUnenrollJourney(
+  ctx: Ctx,
+  params: Record<string, unknown>,
+): Promise<string | null> {
+  if (!isLegacyTenant(ctx.tenantId)) return "unenroll_journey aún no soportado para tenants BYO";
+  const journeyId = String(params.journeyId || "").trim();
+  if (!journeyId) return "journeyId requerido";
+  const lead = await resolveLead(ctx);
+  const leadId = ctx.leadId || lead?.leadId;
+  if (!leadId) return "lead no encontrado";
+  try {
+    await legacyDynamo.send(
+      new UpdateItemCommand({
+        TableName: JOURNEY_ENROLLMENTS_TABLE,
+        Key: { journeyId: { S: journeyId }, leadId: { S: leadId } },
+        UpdateExpression: "SET #st = :s, updatedAt = :u",
+        ExpressionAttributeNames: { "#st": "status" },
+        ExpressionAttributeValues: {
+          ":s": { S: "exited" },
+          ":u": { S: new Date().toISOString() },
+        },
+        ConditionExpression: "attribute_exists(journeyId)",
+      }),
+    );
+  } catch {
+    // No estaba inscrito → no-op silencioso.
+  }
+  return null;
+}
+
 // ───────────────────────── ejecución + log ─────────────────────────
 
 /** Resumen corto y SIN PII de los params de una acción (para depurar el run). */
@@ -972,6 +1041,12 @@ function actionDetail(action: string, params: Record<string, unknown>): string |
       return `→ programa ${String(params.programId || "?")}`;
     case "unsubscribe":
       return `baja ${String(params.channel || "all")}`;
+    case "add_note":
+      return "nota interna";
+    case "mark_salesforce_sync":
+      return "→ Salesforce";
+    case "unenroll_journey":
+      return `salir journey ${String(params.journeyId || "?")}`;
     case "notify_agent":
       return `aviso a ${String(params.agent || "equipo")}`;
     case "start_journey":
@@ -1066,6 +1141,12 @@ async function dispatchAction(
       return actSetProgram(ctx, p);
     case "unsubscribe":
       return actUnsubscribe(ctx, p);
+    case "add_note":
+      return actAddNote(ctx, p);
+    case "mark_salesforce_sync":
+      return actMarkSalesforceSync(ctx);
+    case "unenroll_journey":
+      return actUnenrollJourney(ctx, p);
     case "notify_agent":
       return actNotifyAgent(ctx, p);
     case "start_journey":
