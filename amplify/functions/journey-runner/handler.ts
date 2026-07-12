@@ -40,6 +40,7 @@ const INTERNAL_SECRET = process.env.VOX_INTERNAL_SECRET || "";
 const FROM_EMAIL = process.env.FROM_EMAIL || "ARIA <notificaciones@novasys.com.pe>";
 const EMAIL_TRACKING_URL = process.env.EMAIL_TRACKING_URL || ""; // Function URL de email-tracking (F4.4)
 const CALLBACKS_TABLE = process.env.CALLBACKS_TABLE || "connectview-callbacks";
+const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const MAX_ENROLL_PER_JOURNEY = 200;
 
 // Horario de silencio (hora local Perú UTC-5 por default): no enviar sends fuera de ventana.
@@ -446,18 +447,40 @@ async function enqueueDialer(
 ): Promise<string> {
   const phone = String(lead.phone || "");
   if (!phone) return "enqueueDialer:sin-telefono";
+  const campaignId = String(params.campaignId || "");
+  // Con campaña: usa SU flow de Connect + su número saliente → la llamada entra a
+  // la COLA de esa campaña y la atienden SUS agentes. Sin campaña (o si falla la
+  // lectura), el dispatcher cae a su flow por defecto. Best-effort (fail-open).
+  let contactFlowId = "";
+  let sourcePhoneNumber = "";
+  if (campaignId) {
+    try {
+      const c = await dynamo.send(
+        new GetItemCommand({ TableName: CAMPAIGNS_TABLE, Key: { campaignId: { S: campaignId } } }),
+      );
+      if (c.Item) {
+        const camp = unmarshall(c.Item) as { contactFlowId?: string; sourcePhoneNumber?: string };
+        contactFlowId = String(camp.contactFlowId || "");
+        sourcePhoneNumber = String(camp.sourcePhoneNumber || "");
+      }
+    } catch {
+      /* cae al flow por defecto del dispatcher */
+    }
+  }
   const nowIso = new Date().toISOString();
   const item = {
     callbackId: randomUUID(),
     phone,
     customerName: String(lead.name || lead.fullName || ""),
     scheduledAt: nowIso, // el dispatcher lo toma en su próximo tick
-    assignedAgentUserId: "", // campaña/flow rutea; sin agente fijo
+    assignedAgentUserId: "", // sin agente fijo: la cola de la campaña/flow rutea
     notes: "Journey: llamada automática",
     channel: "voice",
     actionType: "auto-dispatch",
-    campaignId: String(params.campaignId || ""),
-    customAttributes: JSON.stringify({ source: "journey", leadId }),
+    campaignId,
+    contactFlowId, // ← el dispatcher enruta por este flow (cola de la campaña)
+    sourcePhoneNumber, // ← número saliente de la campaña (o default)
+    customAttributes: JSON.stringify({ source: "journey", leadId, campaignId }),
     status: "SCHEDULED",
     attempts: 0,
     createdAt: nowIso,
@@ -470,7 +493,7 @@ async function enqueueDialer(
         Item: marshall(item, { removeUndefinedValues: true }),
       }),
     );
-    return "enqueueDialer:queued";
+    return contactFlowId ? "enqueueDialer:queued:campaign" : "enqueueDialer:queued";
   } catch (e) {
     return `enqueueDialer:err:${e instanceof Error ? e.message : e}`;
   }

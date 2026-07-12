@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Trash2, X, Plus } from "lucide-react";
 import type { Journey, JourneyNode, JourneyStats } from "@/hooks/useJourneys";
 import { useSegments, type FilterRule, type FilterOp } from "@/hooks/useSegments";
+import { useCampaigns } from "@/hooks/useCampaigns";
 import { getApiEndpoints } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented";
@@ -150,6 +151,9 @@ export function JourneyInspector({
   onClose: () => void;
 }) {
   const { segments } = useSegments();
+  // Campañas de VOZ → poblar el selector del bloque "Llamar (dialer)" (sin polling).
+  const { campaigns } = useCampaigns(0);
+  const voiceCampaigns = campaigns.filter((c) => c.campaignType !== "whatsapp");
   const [templates, setTemplates] = useState<Array<{ name: string }>>([]);
   useEffect(() => {
     const ep = getApiEndpoints();
@@ -501,14 +505,20 @@ export function JourneyInspector({
         )}
 
         {node.kind === "move_stage" && (
-          <Field label="Etapa destino (stageId)">
-            <input
-              value={String(p.stageId || "")}
-              onChange={(e) => set({ stageId: e.target.value })}
-              placeholder='p.ej. "won"'
-              style={jbInput()}
-            />
-          </Field>
+          <>
+            <Field label="Etapa destino (stageId)">
+              <input
+                value={String(p.stageId || "")}
+                onChange={(e) => set({ stageId: e.target.value })}
+                placeholder='p.ej. "won"'
+                style={jbInput()}
+              />
+            </Field>
+            <div className="jb-note">
+              Mueve el lead a esta etapa del pipeline de Leads y lo registra en su historial
+              (golpe).
+            </div>
+          </>
         )}
 
         {node.kind === "tag" && (
@@ -531,6 +541,10 @@ export function JourneyInspector({
                 style={jbInput()}
               />
             </Field>
+            <div className="jb-note">
+              La etiqueta se guarda en el lead: sirve para segmentar, filtrar y disparar
+              automatizaciones más adelante.
+            </div>
           </>
         )}
 
@@ -558,6 +572,10 @@ export function JourneyInspector({
                 style={jbInput()}
               />
             </Field>
+            <div className="jb-note">
+              Escribe el valor en ese campo del lead (p. ej. score, o un campo propio). No toca
+              campos de sistema (teléfono, ids).
+            </div>
           </>
         )}
 
@@ -580,34 +598,77 @@ export function JourneyInspector({
                 style={jbInput()}
               />
             </Field>
+            <div className="jb-note">
+              Crea una <strong>tarea</strong> para el equipo (aparece en la bandeja de Tareas del
+              agente). Solo avisa — no llama ni le envía nada al lead.
+            </div>
           </>
         )}
 
         {node.kind === "enqueue_dialer" && (
           <>
-            <Field label="Campaña (id, opcional)">
-              <input
-                value={String(p.campaignId || "")}
-                onChange={(e) => set({ campaignId: e.target.value })}
-                placeholder="id de campaña"
-                style={jbInput()}
-              />
+            <Field label="Campaña (define la cola y los agentes)">
+              {voiceCampaigns.length === 0 ? (
+                <div className="jb-note" style={{ margin: 0 }}>
+                  No hay campañas de voz. La llamada saldrá por la cola por defecto.
+                </div>
+              ) : (
+                <select
+                  value={String(p.campaignId || "")}
+                  onChange={(e) => {
+                    const c = voiceCampaigns.find((x) => x.campaignId === e.target.value);
+                    set({
+                      campaignId: e.target.value,
+                      campaignName: c?.name || "",
+                      queueName: c?.campaignQueueName || "",
+                    });
+                  }}
+                  style={jbInput()}
+                >
+                  <option value="">— Cola por defecto (sin campaña) —</option>
+                  {voiceCampaigns.map((c) => (
+                    <option key={c.campaignId} value={c.campaignId}>
+                      {c.name}
+                      {c.campaignQueueName ? ` · cola ${c.campaignQueueName}` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
             </Field>
             <div className="jb-note">
-              Encola una llamada saliente; la campaña/flow de Connect rutea al agente.
+              Lanza una <strong>llamada saliente automática</strong> al teléfono del lead. La marca
+              el sistema (no un agente): Amazon Connect la coloca en la{" "}
+              <strong>cola de la campaña</strong>
+              {p.queueName ? (
+                <>
+                  {" ("}
+                  <strong>{String(p.queueName)}</strong>
+                  {")"}
+                </>
+              ) : (
+                " elegida (o la cola por defecto)"
+              )}{" "}
+              y la contesta el <strong>primer agente disponible</strong> de esa cola — no un agente
+              fijo.
             </div>
           </>
         )}
 
         {node.kind === "webhook" && (
-          <Field label="URL del webhook">
-            <input
-              value={String(p.url || "")}
-              onChange={(e) => set({ url: e.target.value })}
-              placeholder="https://…"
-              style={jbInput()}
-            />
-          </Field>
+          <>
+            <Field label="URL del webhook">
+              <input
+                value={String(p.url || "")}
+                onChange={(e) => set({ url: e.target.value })}
+                placeholder="https://…"
+                style={jbInput()}
+              />
+            </Field>
+            <div className="jb-note">
+              Hace un <strong>POST</strong> con los datos del lead a esa URL — para integrar con un
+              sistema externo (tu CRM, Zapier, etc.).
+            </div>
+          </>
         )}
 
         {node.kind === "start_journey" && (

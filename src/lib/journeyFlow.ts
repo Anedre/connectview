@@ -289,7 +289,8 @@ export const JOURNEY_KINDS: Record<JourneyNodeKind, JourneyKindDef> = {
     accent: "#10B981",
     outlets: () => single,
     defaultParams: () => ({}),
-    summary: (p) => (str(p.campaignId) ? `Llamar · camp. ${str(p.campaignId)}` : "Llamar (dialer)"),
+    summary: (p) =>
+      str(p.campaignId) ? `Llamar · ${str(p.campaignName) || "campaña"}` : "Llamar (dialer)",
   },
   webhook: {
     kind: "webhook",
