@@ -315,6 +315,8 @@ export function JourneyFlowBuilder(props: {
   onSave?: (j: Journey) => void | Promise<void>;
   saving?: boolean;
   onBack?: () => void;
+  /** Otros journeys del tenant → poblar el selector del bloque "Iniciar journey". */
+  journeys?: Journey[];
 }) {
   return (
     <ReactFlowProvider>
@@ -328,11 +330,13 @@ function JourneyFlowInner({
   onSave,
   saving,
   onBack,
+  journeys,
 }: {
   initial: Journey;
   onSave?: (j: Journey) => void | Promise<void>;
   saving?: boolean;
   onBack?: () => void;
+  journeys?: Journey[];
 }) {
   const { screenToFlowPosition, fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(initialRFNodes(initial));
@@ -1060,6 +1064,8 @@ function JourneyFlowInner({
                   entry={entry}
                   reenroll={reenroll}
                   stats={stats}
+                  journeys={journeys}
+                  currentJourneyId={initial.journeyId}
                   onEntry={setEntry}
                   onReenroll={setReenroll}
                   onParams={updateParams}

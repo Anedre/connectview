@@ -289,6 +289,7 @@ export function JourneysPage() {
       <div style={{ height: "100%", minHeight: 0 }}>
         <JourneyFlowBuilder
           initial={current}
+          journeys={journeys}
           onSave={persist}
           saving={saving}
           onBack={() => {

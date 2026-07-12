@@ -129,6 +129,8 @@ export function JourneyInspector({
   entry,
   reenroll,
   stats,
+  journeys,
+  currentJourneyId,
   onEntry,
   onReenroll,
   onParams,
@@ -139,6 +141,8 @@ export function JourneyInspector({
   entry: NonNullable<Journey["entry"]>;
   reenroll: boolean;
   stats: JourneyStats | null;
+  journeys?: Journey[];
+  currentJourneyId?: string;
   onEntry: (e: NonNullable<Journey["entry"]>) => void;
   onReenroll: (b: boolean) => void;
   onParams: (id: string, patch: NodeParams) => void;
@@ -160,6 +164,10 @@ export function JourneyInspector({
   const Icon = JOURNEY_ICONS[def.icon] || JOURNEY_ICONS.action;
   const p = (node.params as NodeParams) || {};
   const set = (patch: NodeParams) => onParams(node.id, patch);
+  // Otros journeys (excluye el actual → sin auto-inscripción infinita) para "Iniciar journey".
+  const startJourneyOptions = (journeys || []).filter(
+    (jj) => jj.journeyId && jj.journeyId !== currentJourneyId,
+  );
 
   return (
     <div className="jb-inspect">
@@ -604,16 +612,33 @@ export function JourneyInspector({
 
         {node.kind === "start_journey" && (
           <>
-            <Field label="Journey a iniciar (id)">
-              <input
-                value={String(p.journeyId || "")}
-                onChange={(e) => set({ journeyId: e.target.value })}
-                placeholder="journeyId"
-                style={jbInput()}
-              />
+            <Field label="Journey a iniciar">
+              {startJourneyOptions.length === 0 ? (
+                <div className="jb-note" style={{ margin: 0 }}>
+                  No hay otros journeys para iniciar. Crea otro recorrido primero.
+                </div>
+              ) : (
+                <select
+                  value={String(p.journeyId || "")}
+                  onChange={(e) => {
+                    const jj = startJourneyOptions.find((o) => o.journeyId === e.target.value);
+                    set({ journeyId: e.target.value, journeyName: jj?.name || "" });
+                  }}
+                  style={jbInput()}
+                >
+                  <option value="">— Elegir journey —</option>
+                  {startJourneyOptions.map((o) => (
+                    <option key={o.journeyId} value={o.journeyId}>
+                      {o.name || o.journeyId}
+                      {o.status !== "active" ? " (inactivo)" : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
             </Field>
             <div className="jb-note">
-              Inscribe al lead en otro recorrido (composición de journeys).
+              Inscribe al lead en otro recorrido (composición de journeys). Solo corre si el journey
+              destino está <strong>activo</strong>.
             </div>
           </>
         )}
