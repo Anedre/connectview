@@ -104,6 +104,175 @@ function Kpi({
   );
 }
 
+/** Motor de análisis (determinístico, sin costo): lee el reporte y saca conclusiones
+ *  + recomendaciones accionables. Rule-based → explicable y gratis. */
+type Insight = {
+  tone: "accent" | "info" | "warn" | "good";
+  icon: string;
+  title: string;
+  text: string;
+};
+const TONE: Record<Insight["tone"], string> = {
+  accent: "var(--accent-violet)",
+  info: "var(--accent-cyan)",
+  warn: "#f59e0b",
+  good: "var(--accent-green)",
+};
+function buildInsights(d: CostReport): Insight[] {
+  const out: Insight[] = [];
+  const lines = d.lines;
+  const days = d.period.days || 30;
+  const totalEst = d.summary.total;
+  const realTotal = d.summary.realTotal;
+  const fmt = (n: number) => `$${n.toFixed(2)}`;
+  const pct = (n: number, base: number) => (base > 0 ? Math.round((n / base) * 100) : 0);
+  const line = (c: string) => lines.find((l) => l.component === c);
+
+  // 1. Resumen + proyección mensual.
+  if (realTotal != null) {
+    out.push({
+      tone: "accent",
+      icon: "✨",
+      title: "Resumen del período",
+      text: `Gastaste ~${fmt(realTotal)} reales (estimado ${fmt(totalEst)}). A este ritmo, ~${fmt((realTotal / days) * 30)}/mes.`,
+    });
+  } else {
+    out.push({
+      tone: "accent",
+      icon: "✨",
+      title: "Resumen del período",
+      text: `Estimado ~${fmt(totalEst)} · a este ritmo ~${fmt((totalEst / days) * 30)}/mes. Conecta las fuentes de facturación para ver el real.`,
+    });
+  }
+
+  // 2. Mayor costo (driver).
+  const top = [...lines]
+    .filter((l) => l.estimated > 0)
+    .sort((a, b) => b.estimated - a.estimated)[0];
+  if (top) {
+    out.push({
+      tone: "info",
+      icon: "📊",
+      title: "Lo que más pesa",
+      text: `${top.label} — ${fmt(top.estimated)} (${pct(top.estimated, totalEst)}% del total estimado).`,
+    });
+  }
+
+  // 3. Anomalías: real muy por encima del estimado.
+  for (const l of lines) {
+    if (
+      l.real != null &&
+      l.estimated > 0 &&
+      l.real > l.estimated * 1.5 &&
+      l.real - l.estimated > 0.5
+    ) {
+      const hint =
+        l.component === "connect_voice"
+          ? " Probable renta de números/telefonía — valida tus tarifas de Perú."
+          : "";
+      out.push({
+        tone: "warn",
+        icon: "⚠️",
+        title: `${l.label}: real por encima del estimado`,
+        text: `Real ${fmt(l.real)} vs estimado ${fmt(l.estimated)} (+${pct(l.real - l.estimated, l.estimated)}%).${hint}`,
+      });
+    }
+  }
+
+  // 4. Eficiencia positiva del Agente IA.
+  const bot = line("bot_bedrock");
+  if (bot && bot.estimated > 0 && bot.estimated < 0.5) {
+    out.push({
+      tone: "good",
+      icon: "✅",
+      title: "Tu Agente IA es eficiente",
+      text: `El bot (Bedrock · Haiku) cuesta solo ${fmt(bot.estimated)} este período — buen uso de un modelo económico.`,
+    });
+  }
+
+  // 5. Uso bajo de WhatsApp → oportunidad.
+  const waVol = (line("whatsapp_hsm")?.volume || 0) + (line("connect_wbm_out")?.volume || 0);
+  if (waVol < 50) {
+    out.push({
+      tone: "info",
+      icon: "💡",
+      title: "Estás usando poco WhatsApp",
+      text: `${waVol} mensajes este período. Con Automatizaciones y Journeys multiplicas el alcance por WhatsApp casi sin costo de tu lado.`,
+    });
+  }
+
+  // 6. Real de plataforma no disponible → activar tags.
+  if (d.summary.platformReal == null) {
+    out.push({
+      tone: "info",
+      icon: "🏷️",
+      title: "Activa el real de la plataforma",
+      text: `Aún no ves el cobro real de la infra de ARIA. Activa el tag "aria:product" como cost allocation tag en Billing (~24 h) para compararlo con el estimado.`,
+    });
+  }
+
+  return out.slice(0, 6);
+}
+
+function AnalysisPanel({ data }: { data: CostReport }) {
+  const insights = buildInsights(data);
+  if (!insights.length) return null;
+  return (
+    <Card>
+      <CardBody>
+        <div className="row" style={{ alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <span style={{ fontSize: 15 }}>🔎</span>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Análisis y recomendaciones</div>
+          <span className="muted" style={{ fontSize: 11 }}>
+            · según tu consumo del período
+          </span>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap: 10,
+          }}
+        >
+          {insights.map((ins, i) => (
+            <div
+              key={i}
+              style={{
+                position: "relative",
+                padding: "11px 13px 11px 15px",
+                borderRadius: 11,
+                border: "1px solid var(--border-1)",
+                background: "var(--bg-1)",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 10,
+                  bottom: 10,
+                  width: 3,
+                  borderRadius: "0 3px 3px 0",
+                  background: TONE[ins.tone],
+                }}
+              />
+              <div className="row" style={{ gap: 7, alignItems: "center", marginBottom: 3 }}>
+                <span style={{ fontSize: 13 }}>{ins.icon}</span>
+                <span style={{ fontWeight: 650, fontSize: 12.5, color: "var(--text-1)" }}>
+                  {ins.title}
+                </span>
+              </div>
+              <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+                {ins.text}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
 export function ConsumptionManager() {
   const ep = getApiEndpoints();
   const endpoint = ep?.getCostReport;
@@ -259,6 +428,9 @@ export function ConsumptionManager() {
               }
             />
           </div>
+
+          {/* Análisis y recomendaciones (motor de reglas sobre el consumo) */}
+          <AnalysisPanel data={data} />
 
           {/* Aviso sobre el "real" */}
           <Card>
