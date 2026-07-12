@@ -11,7 +11,7 @@ import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useUsers } from "@/hooks/useUsers";
 import { useJourneys } from "@/hooks/useJourneys";
 import { usePrograms } from "@/hooks/usePrograms";
-import { AutomationRadialBuilder } from "@/components/automations/AutomationRadialBuilder";
+import { AutomationStepperBuilder } from "@/components/automations/AutomationStepperBuilder";
 import { colorForAction, type PickersCtx } from "@/components/automations/AutomationFields";
 import {
   ACTION_DEFS,
@@ -270,13 +270,13 @@ export function AutomationsPage() {
         </div>
 
         <p className="wf-lead">
-          El <b>disparador</b> es el núcleo; las <b>acciones</b> orbitan a su alrededor y corren en
-          orden. Toca el núcleo, el collar de filtro o un satélite para configurarlo — y{" "}
-          <b>Agregar</b> para sumar acciones a la órbita.
+          Se lee de arriba abajo: <b>cuándo</b> dispara, <b>solo si</b> pasa el filtro,{" "}
+          <b>entonces</b> corren las acciones en ese orden. Toca cualquier paso para configurarlo —
+          y <b>Agregar acción</b> para sumar más.
         </p>
 
-        {/* ═══ HUB RADIAL ═══ */}
-        <AutomationRadialBuilder rule={editing} onChange={setEditing} ctx={ctx} />
+        {/* ═══ ESPINAZO (playbook vertical) ═══ */}
+        <AutomationStepperBuilder rule={editing} onChange={setEditing} ctx={ctx} />
 
         {/* Modal · Probar regla (dry-run) */}
         <TestModal
