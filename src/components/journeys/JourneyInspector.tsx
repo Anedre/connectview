@@ -3,10 +3,59 @@ import { Trash2, X, Plus } from "lucide-react";
 import type { Journey, JourneyNode, JourneyStats } from "@/hooks/useJourneys";
 import { useSegments, type FilterRule, type FilterOp } from "@/hooks/useSegments";
 import { useCampaigns } from "@/hooks/useCampaigns";
+import { usePrograms } from "@/hooks/usePrograms";
 import { getApiEndpoints } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented";
-import { JOURNEY_KINDS, JOURNEY_ICONS } from "@/lib/journeyFlow";
+import { JOURNEY_KINDS, JOURNEY_ICONS, WEEKDAYS } from "@/lib/journeyFlow";
+
+/** Un caso del bloque "Ramificar múltiple" (switch): valor → camino etiquetado. */
+type SwitchCase = { id: string; label?: string; value?: string };
+function SwitchCases({
+  cases,
+  onChange,
+}: {
+  cases: SwitchCase[];
+  onChange: (c: SwitchCase[]) => void;
+}) {
+  const set = (i: number, patch: Partial<SwitchCase>) =>
+    onChange(cases.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+  const cid = () => "c" + Math.random().toString(36).slice(2, 6);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      {cases.map((c, i) => (
+        <div key={c.id || i} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          <input
+            value={String(c.value ?? "")}
+            onChange={(e) => set(i, { value: e.target.value, label: c.label || e.target.value })}
+            placeholder="valor"
+            style={jbInput(88)}
+          />
+          <input
+            value={String(c.label ?? "")}
+            onChange={(e) => set(i, { label: e.target.value })}
+            placeholder="camino (etiqueta)"
+            style={jbInput()}
+          />
+          <button
+            onClick={() => onChange(cases.filter((_, idx) => idx !== i))}
+            title="Quitar"
+            style={{ ...jbInput(26), color: "var(--red)", cursor: "pointer", padding: 0 }}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() => onChange([...cases, { id: cid(), label: "", value: "" }])}
+        className="jb-btn"
+        style={{ alignSelf: "flex-start" }}
+      >
+        <Plus size={12} /> Caso
+      </button>
+    </div>
+  );
+}
 
 /**
  * JourneyInspector — el panel derecho de edición de un paso del journey. Portado
@@ -154,6 +203,7 @@ export function JourneyInspector({
   // Campañas de VOZ → poblar el selector del bloque "Llamar (dialer)" (sin polling).
   const { campaigns } = useCampaigns(0);
   const voiceCampaigns = campaigns.filter((c) => c.campaignType !== "whatsapp");
+  const { programs } = usePrograms();
   const [templates, setTemplates] = useState<Array<{ name: string }>>([]);
   useEffect(() => {
     const ep = getApiEndpoints();
@@ -733,6 +783,273 @@ export function JourneyInspector({
             Marca el recorrido como <strong>convertido</strong> para este lead y lo saca del
             journey. Úsalo para medir la conversión del embudo.
           </div>
+        )}
+
+        {node.kind === "score" && (
+          <>
+            <Field label="Puntos a sumar / restar">
+              <input
+                type="number"
+                value={String(p.delta ?? 10)}
+                onChange={(e) => set({ delta: Number(e.target.value) })}
+                style={jbInput(110)}
+              />
+            </Field>
+            <div className="jb-note">
+              Ajusta el <strong>score</strong> del lead (usa negativos para restar). Sirve para
+              priorizar y ramificar por score más adelante.
+            </div>
+          </>
+        )}
+
+        {node.kind === "note" && (
+          <>
+            <Field label="Nota">
+              <textarea
+                value={String(p.text || "")}
+                onChange={(e) => set({ text: e.target.value })}
+                rows={3}
+                placeholder="Queda en el historial del lead…"
+                style={{ ...jbInput(), resize: "vertical", fontFamily: "inherit" }}
+              />
+            </Field>
+            <div className="jb-note">
+              Escribe una nota en el <strong>historial</strong> del lead — no le envía nada, solo
+              deja rastro interno para el equipo.
+            </div>
+          </>
+        )}
+
+        {node.kind === "subscription" && (
+          <>
+            <Field label="Operación">
+              <select
+                value={String(p.op || "subscribe")}
+                onChange={(e) => set({ op: e.target.value })}
+                style={jbInput()}
+              >
+                <option value="subscribe">Suscribir (permitir envíos)</option>
+                <option value="unsubscribe">Dar de baja (no enviar)</option>
+              </select>
+            </Field>
+            <Field label="Canal">
+              <select
+                value={String(p.channel || "all")}
+                onChange={(e) => set({ channel: e.target.value })}
+                style={jbInput()}
+              >
+                <option value="all">Todos</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="email">Email</option>
+              </select>
+            </Field>
+            <div className="jb-note">
+              Cambia el estado <strong>opt-in/opt-out</strong> del lead. «Dar de baja» lo agrega a
+              la supresión (no se le envía por ese canal).
+            </div>
+          </>
+        )}
+
+        {node.kind === "set_program" && (
+          <>
+            <Field label="Programa">
+              {programs.length === 0 ? (
+                <input
+                  value={String(p.programId || "")}
+                  onChange={(e) => set({ programId: e.target.value })}
+                  placeholder="id del programa"
+                  style={jbInput()}
+                />
+              ) : (
+                <select
+                  value={String(p.programId || "")}
+                  onChange={(e) => {
+                    const pr = programs.find((x) => x.programId === e.target.value);
+                    set({ programId: e.target.value, programName: pr?.name || "" });
+                  }}
+                  style={jbInput()}
+                >
+                  <option value="">— Elegir programa —</option>
+                  {programs.map((pr) => (
+                    <option key={pr.programId} value={pr.programId}>
+                      {pr.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Field>
+            <div className="jb-note">
+              Asigna el lead a esa <strong>unidad / programa</strong> (afecta el scoping de reportes
+              y campañas).
+            </div>
+          </>
+        )}
+
+        {node.kind === "sf_push" && (
+          <div className="jb-note" style={{ fontSize: 12.5 }}>
+            Empuja el lead a <strong>Salesforce</strong> (crea o actualiza el registro con el mapeo
+            del tenant). Requiere la conexión de Salesforce configurada.
+          </div>
+        )}
+
+        {node.kind === "unenroll" && (
+          <>
+            <Field label="Journey del que sacar al lead">
+              {startJourneyOptions.length === 0 ? (
+                <div className="jb-note" style={{ margin: 0 }}>
+                  No hay otros journeys.
+                </div>
+              ) : (
+                <select
+                  value={String(p.journeyId || "")}
+                  onChange={(e) => {
+                    const jj = startJourneyOptions.find((o) => o.journeyId === e.target.value);
+                    set({ journeyId: e.target.value, journeyName: jj?.name || "" });
+                  }}
+                  style={jbInput()}
+                >
+                  <option value="">— Elegir journey —</option>
+                  {startJourneyOptions.map((o) => (
+                    <option key={o.journeyId} value={o.journeyId}>
+                      {o.name || o.journeyId}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Field>
+            <div className="jb-note">
+              Termina la inscripción del lead en <strong>otro recorrido</strong>. Útil para que no
+              reciba mensajes cruzados de dos journeys.
+            </div>
+          </>
+        )}
+
+        {node.kind === "wait_business" && (
+          <>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Field label="Desde (hora)">
+                <input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={String(p.start ?? 9)}
+                  onChange={(e) => set({ start: Number(e.target.value) })}
+                  style={jbInput()}
+                />
+              </Field>
+              <Field label="Hasta (hora)">
+                <input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={String(p.end ?? 18)}
+                  onChange={(e) => set({ end: Number(e.target.value) })}
+                  style={jbInput()}
+                />
+              </Field>
+            </div>
+            <div className="jb-note">
+              Si el lead llega fuera de esa franja, <strong>espera</strong> hasta que abra; si ya
+              está dentro, sigue. (Hora local Perú.)
+            </div>
+          </>
+        )}
+
+        {node.kind === "wait_weekday" && (
+          <>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Field label="Día">
+                <select
+                  value={String(p.weekday ?? 1)}
+                  onChange={(e) => set({ weekday: Number(e.target.value) })}
+                  style={jbInput()}
+                >
+                  {WEEKDAYS.map((d, i) => (
+                    <option key={i} value={i}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Hora">
+                <input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={String(p.hour ?? 9)}
+                  onChange={(e) => set({ hour: Number(e.target.value) })}
+                  style={jbInput(80)}
+                />
+              </Field>
+            </div>
+            <div className="jb-note">
+              Pausa hasta el <strong>próximo</strong> día/hora indicados (p. ej. lunes 9h). Ideal
+              para enviar en el momento óptimo.
+            </div>
+          </>
+        )}
+
+        {node.kind === "wait_event" && (
+          <>
+            <Field label="Coincidir">
+              <select
+                value={String(p.match || "all")}
+                onChange={(e) => set({ match: e.target.value })}
+                style={jbInput()}
+              >
+                <option value="all">Todas (Y)</option>
+                <option value="any">Cualquiera (O)</option>
+              </select>
+            </Field>
+            <Field label="Esperar a que el lead cumpla">
+              <RuleRows
+                rules={(p.rules as FilterRule[]) || []}
+                onChange={(r) => set({ rules: r })}
+              />
+            </Field>
+            <Field label="Límite (días)">
+              <input
+                type="number"
+                min={0}
+                value={String(p.days ?? 3)}
+                onChange={(e) => set({ days: Math.max(0, Number(e.target.value)) })}
+                style={jbInput(90)}
+              />
+            </Field>
+            <div className="jb-note">
+              Re-chequea al lead hasta que cumpla → sale por <strong>Cumplió</strong>; si pasan los
+              días sin cumplir → sale por <strong>No a tiempo</strong>.
+            </div>
+          </>
+        )}
+
+        {node.kind === "switch" && (
+          <>
+            <Field label="Campo a evaluar">
+              <input
+                list="jb-fields"
+                value={String(p.field || "")}
+                onChange={(e) => set({ field: e.target.value })}
+                placeholder="p. ej. grade"
+                style={jbInput()}
+              />
+              <datalist id="jb-fields">
+                {LEAD_FIELDS.map((f) => (
+                  <option key={f} value={f} />
+                ))}
+              </datalist>
+            </Field>
+            <Field label="Casos (valor → camino)">
+              <SwitchCases
+                cases={Array.isArray(p.cases) ? (p.cases as SwitchCase[]) : []}
+                onChange={(cs) => set({ cases: cs })}
+              />
+            </Field>
+            <div className="jb-note">
+              Compara el campo con cada caso <strong>en orden</strong>; toma el primer valor que
+              coincida, o el camino <strong>Otro</strong> si ninguno.
+            </div>
+          </>
         )}
 
         {node.kind === "exit" && (

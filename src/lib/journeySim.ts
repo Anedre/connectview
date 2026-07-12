@@ -1,6 +1,6 @@
 import type { Journey } from "@/hooks/useJourneys";
 import type { FilterRule } from "@/hooks/useSegments";
-import { JOURNEY_KINDS, type JourneyParams } from "@/lib/journeyFlow";
+import { JOURNEY_KINDS, WEEKDAYS, type JourneyParams } from "@/lib/journeyFlow";
 
 /**
  * journeySim — simulador DRY-RUN (puro, frontend) del recorrido que estás
@@ -259,6 +259,125 @@ export function simulateJourney(j: Journey, sampleLead: Record<string, unknown>)
         ended = "exit";
         cur = undefined;
         break;
+
+      case "score": {
+        const d = Number(p.delta ?? 0);
+        lead.score = Number(lead.score ?? 0) + d;
+        push(
+          node.id,
+          node.kind,
+          `${d >= 0 ? "Sumaría" : "Restaría"} ${Math.abs(d)} al score (→ ${lead.score}).`,
+          "action",
+        );
+        cur = succ(cur);
+        break;
+      }
+      case "note":
+        push(
+          node.id,
+          node.kind,
+          str(p.text) ? `Nota: ${str(p.text)}` : "Dejaría una nota interna.",
+          "action",
+        );
+        cur = succ(cur);
+        break;
+      case "subscription": {
+        const ch =
+          p.channel === "whatsapp"
+            ? "WhatsApp"
+            : p.channel === "email"
+              ? "Email"
+              : "todos los canales";
+        push(
+          node.id,
+          node.kind,
+          `${p.op === "unsubscribe" ? "Daría de baja de" : "Suscribiría a"} ${ch}.`,
+          "action",
+        );
+        cur = succ(cur);
+        break;
+      }
+      case "set_program":
+        if (str(p.programId)) lead.programId = str(p.programId);
+        push(
+          node.id,
+          node.kind,
+          `Asignaría el programa "${str(p.programName) || str(p.programId) || "?"}".`,
+          "action",
+        );
+        cur = succ(cur);
+        break;
+      case "sf_push":
+        push(node.id, node.kind, "Sincronizaría el lead a Salesforce.", "action");
+        cur = succ(cur);
+        break;
+      case "unenroll":
+        push(
+          node.id,
+          node.kind,
+          `Sacaría al lead del journey "${str(p.journeyName) || str(p.journeyId) || "?"}".`,
+          "action",
+        );
+        cur = succ(cur);
+        break;
+      case "wait_business":
+        push(
+          node.id,
+          node.kind,
+          `Esperaría hasta el horario ${Number(p.start ?? 9)}–${Number(p.end ?? 18)}h.`,
+          "wait",
+        );
+        cur = succ(cur);
+        break;
+      case "wait_weekday":
+        push(
+          node.id,
+          node.kind,
+          `Esperaría hasta ${WEEKDAYS[Number(p.weekday ?? 1)] || "lunes"} ${Number(p.hour ?? 9)}h.`,
+          "wait",
+        );
+        cur = succ(cur);
+        break;
+      case "wait_event": {
+        const rules = (p.rules as FilterRule[]) || [];
+        const met = rules.length > 0 && evalRules(lead, rules, (p.match as "all" | "any") || "all");
+        if (met) {
+          push(node.id, node.kind, "El lead ya cumple → sale por «Cumplió».", "wait");
+          cur = succ(cur, "met");
+        } else {
+          const d = Number(p.days ?? 3);
+          waitedDays += d;
+          push(
+            node.id,
+            node.kind,
+            `Aún no cumple → esperaría ${d}d; si no, sale por «No a tiempo».`,
+            "wait",
+          );
+          cur = succ(cur, "timeout");
+        }
+        break;
+      }
+      case "switch": {
+        const field = str(p.field);
+        const val = String(lead[field] ?? "");
+        const cases = Array.isArray(p.cases)
+          ? (p.cases as { id?: string; value?: string; label?: string }[])
+          : [];
+        const hit = cases.find((c) => String(c.value ?? "") === val);
+        if (hit) {
+          push(
+            node.id,
+            node.kind,
+            `${field} = "${val}" → caso "${hit.label || hit.value}".`,
+            "branch",
+          );
+          cur = succ(cur, hit.id || `c${cases.indexOf(hit)}`);
+        } else {
+          push(node.id, node.kind, `${field} = "${val}" → ningún caso → «Otro».`, "branch");
+          cur = succ(cur, "default");
+        }
+        break;
+      }
 
       default:
         cur = succ(cur);

@@ -36,7 +36,18 @@ export type JourneyNodeKind =
   | "webhook"
   | "start_journey"
   | "leave"
-  | "goal";
+  | "goal"
+  // Fase 3 — +10 módulos
+  | "score"
+  | "note"
+  | "subscription"
+  | "set_program"
+  | "sf_push"
+  | "unenroll"
+  | "wait_business"
+  | "wait_weekday"
+  | "wait_event"
+  | "switch";
 
 /** Mapea un kind "action-like" al nombre de acción que ejecuta el runner. */
 const ACTION_OF: Partial<Record<JourneyNodeKind, string>> = {
@@ -47,7 +58,35 @@ const ACTION_OF: Partial<Record<JourneyNodeKind, string>> = {
   enqueue_dialer: "enqueueDialer",
   webhook: "webhook",
   start_journey: "startJourney",
+  // Fase 3
+  score: "scoreAdjust",
+  note: "note",
+  subscription: "subscription",
+  set_program: "setProgram",
+  sf_push: "sfPush",
+  unenroll: "unenroll",
 };
+
+/** Zona horaria de referencia (Perú, UTC-5) para las esperas por horario/día. */
+const TZ_OFFSET = -5;
+/** ms de la próxima vez que la hora LOCAL sea `hour`:00 (hoy o mañana). */
+function nextLocalHour(nowMs: number, hour: number): number {
+  const localMs = nowMs + TZ_OFFSET * 3_600_000;
+  const d = new Date(localMs);
+  d.setUTCHours(hour, 0, 0, 0);
+  let t = d.getTime();
+  if (t <= localMs) t += 86_400_000;
+  return t - TZ_OFFSET * 3_600_000;
+}
+/** ms de la próxima vez que sea `weekday` (0=dom) a las `hour`:00 LOCAL. */
+function nextWeekdayHour(nowMs: number, weekday: number, hour: number): number {
+  const localMs = nowMs + TZ_OFFSET * 3_600_000;
+  const d = new Date(localMs);
+  d.setUTCHours(hour, 0, 0, 0);
+  let t = d.getTime();
+  while (new Date(t).getUTCDay() !== weekday || t <= localMs) t += 86_400_000;
+  return t - TZ_OFFSET * 3_600_000;
+}
 
 export interface JourneyNode {
   id: string;
@@ -91,6 +130,8 @@ export interface Enrollment {
   enteredAt: string;
   nextRunAt: string;
   history: { node: string; at: string }[];
+  /** Plazo de un "Esperar respuesta" en curso (ISO). Lo maneja el runner. */
+  waitUntil?: string;
 }
 
 /** Efecto a ejecutar por el runner (side effect). `nodeId` = origen (idempotencia). */
@@ -184,7 +225,13 @@ export function planAdvance(
       case "notify_agent":
       case "enqueue_dialer":
       case "webhook":
-      case "start_journey": {
+      case "start_journey":
+      case "score":
+      case "note":
+      case "subscription":
+      case "set_program":
+      case "sf_push":
+      case "unenroll": {
         const action =
           node.kind === "action" ? String(node.params?.type || "") : ACTION_OF[node.kind] || "";
         effects.push({ type: "action", nodeId: node.id, action, params: node.params || {} });
@@ -292,6 +339,79 @@ export function planAdvance(
         }
         // untilRule cumplida → seguir al sucesor ya mismo.
         const nxt = successor(j, node.id);
+        if (!nxt) return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
+        node = nodeById(j, nxt);
+        break;
+      }
+
+      case "wait_business": {
+        // Espera a horario laboral: si estamos dentro de [start,end) local, sigue;
+        // si no, descansa en el SUCESOR hasta el próximo inicio de ventana.
+        const start = Number(node.params?.start ?? 9);
+        const end = Number(node.params?.end ?? 18);
+        const nxt = successor(j, node.id);
+        if (!nxt) return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
+        const localH = (new Date(nowMs).getUTCHours() + TZ_OFFSET + 24) % 24;
+        const inWindow =
+          start < end ? localH >= start && localH < end : localH >= start || localH < end;
+        if (inWindow) {
+          node = nodeById(j, nxt);
+          break;
+        }
+        return {
+          effects,
+          nextNodeId: nxt,
+          nextRunAt: new Date(nextLocalHour(nowMs, start)).toISOString(),
+          done: false,
+        };
+      }
+
+      case "wait_weekday": {
+        // Espera hasta el próximo día/hora indicados (descansa en el SUCESOR).
+        const weekday = Number(node.params?.weekday ?? 1);
+        const hour = Number(node.params?.hour ?? 9);
+        const nxt = successor(j, node.id);
+        if (!nxt) return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
+        return {
+          effects,
+          nextNodeId: nxt,
+          nextRunAt: new Date(nextWeekdayHour(nowMs, weekday, hour)).toISOString(),
+          done: false,
+        };
+      }
+
+      case "wait_event": {
+        // Espera respuesta: si el lead YA cumple → rama "met"; si no, descansa en
+        // SÍ MISMO re-chequeando (cada 6h). El "timeout" (plazo `days`) lo fuerza
+        // el runner con `waitUntil` empujando a la rama "timeout".
+        const rules = (node.params?.rules as FilterRule[]) || [];
+        const match = (node.params?.match as "all" | "any") || "all";
+        const met = rules.length > 0 && evaluateLeadFilter(lead, rules, match);
+        if (met) {
+          const nxt = successor(j, node.id, "met") || successor(j, node.id);
+          if (!nxt) return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
+          node = nodeById(j, nxt);
+          break;
+        }
+        return {
+          effects,
+          nextNodeId: node.id,
+          nextRunAt: new Date(nowMs + 6 * 3_600_000).toISOString(),
+          done: false,
+        };
+      }
+
+      case "switch": {
+        // Ramificar múltiple: primer caso cuyo `value` iguala el campo → su rama;
+        // si ninguno, la rama "default".
+        const field = String(node.params?.field || "");
+        const val = String((lead as Record<string, unknown>)[field] ?? "");
+        const cases = Array.isArray(node.params?.cases)
+          ? (node.params?.cases as { id?: string; value?: string }[])
+          : [];
+        const hitIdx = cases.findIndex((c) => String(c.value ?? "") === val);
+        const on = hitIdx >= 0 ? cases[hitIdx].id || `c${hitIdx}` : "default";
+        const nxt = successor(j, node.id, on) || successor(j, node.id, "default");
         if (!nxt) return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
         node = nodeById(j, nxt);
         break;

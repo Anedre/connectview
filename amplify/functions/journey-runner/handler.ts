@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import { planAdvance, entryNodeId, type JourneyDef, type Enrollment } from "../_shared/journeys";
 import { evaluateLeadFilter, type FilterRule } from "../_shared/leadFilter";
 import { appendLeadHistory, setActiveDynamo, stageIdToLabel } from "../_shared/leadSync";
-import { evaluateSend } from "../_shared/suppression";
+import { evaluateSend, recordSuppression } from "../_shared/suppression";
 import { newTrackingToken, storeTrackingToken, buildTrackedHtml } from "../_shared/emailTracking";
 
 /**
@@ -301,8 +301,183 @@ async function runEffect(
   if (effect.type === "action" && effect.action === "goal") {
     return markGoal(leadId);
   }
+  if (effect.type === "action" && effect.action === "scoreAdjust") {
+    return adjustScore(effect.params, lead, leadId);
+  }
+  if (effect.type === "action" && effect.action === "note") {
+    return addNote(effect.params, leadId);
+  }
+  if (effect.type === "action" && effect.action === "subscription") {
+    return setSubscription(effect.params, lead, leadId, tenantId);
+  }
+  if (effect.type === "action" && effect.action === "setProgram") {
+    return setProgram(effect.params, leadId);
+  }
+  if (effect.type === "action" && effect.action === "sfPush") {
+    return markSalesforceSync(leadId);
+  }
+  if (effect.type === "action" && effect.action === "unenroll") {
+    return unenrollFrom(effect.params, leadId);
+  }
 
   return `${effect.type}:noop`;
+}
+
+/** Suma/resta puntos al score del lead (lee el actual y lo re-escribe). */
+async function adjustScore(
+  params: Record<string, unknown>,
+  lead: LeadRec,
+  leadId: string,
+): Promise<string> {
+  const d = Number(params.delta || 0);
+  if (!d) return "score:sin-cambio";
+  const next = (Number(lead.score ?? 0) || 0) + d;
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: { leadId: { S: leadId } },
+        UpdateExpression: "SET #s = :v, updatedAt = :u",
+        ExpressionAttributeNames: { "#s": "score" },
+        ExpressionAttributeValues: {
+          ":v": { N: String(next) },
+          ":u": { S: new Date().toISOString() },
+        },
+      }),
+    );
+    return `score:${d >= 0 ? "+" : ""}${d}:→${next}`;
+  } catch (e) {
+    return `score:err:${e instanceof Error ? e.message : e}`;
+  }
+}
+
+/** Deja una nota interna en el historial del lead. */
+async function addNote(params: Record<string, unknown>, leadId: string): Promise<string> {
+  const text = String(params.text || "").trim();
+  if (!text) return "note:vacia";
+  try {
+    setActiveDynamo(dynamo);
+    await appendLeadHistory(leadId, {
+      ts: new Date().toISOString(),
+      type: "note",
+      notes: `Journey: ${text}`,
+    });
+    return "note:ok";
+  } catch (e) {
+    return `note:err:${e instanceof Error ? e.message : e}`;
+  }
+}
+
+/** Suscribe / da de baja al lead. Baja = supresión real (opted_out) por canal. */
+async function setSubscription(
+  params: Record<string, unknown>,
+  lead: LeadRec,
+  leadId: string,
+  tenantId: string,
+): Promise<string> {
+  const channel = String(params.channel || "all");
+  const channels = channel === "all" ? ["whatsapp", "email"] : [channel];
+  const phone = String(lead.phone || "");
+  if (params.op === "unsubscribe") {
+    if (!phone) return "subscription:sin-telefono";
+    try {
+      await recordSuppression(dynamo, phone, {
+        status: "opted_out",
+        channels,
+        reason: "Journey: baja de suscripción",
+        source: "manual",
+        tenantId: tenantId || undefined,
+        leadId,
+      });
+      return `subscription:opt-out:${channel}`;
+    } catch (e) {
+      return `subscription:err:${e instanceof Error ? e.message : e}`;
+    }
+  }
+  // Opt-in: registra la preferencia en el lead (quitar la supresión es follow-up).
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: { leadId: { S: leadId } },
+        UpdateExpression: "SET optIn = :c, updatedAt = :u",
+        ExpressionAttributeValues: {
+          ":c": { S: channel },
+          ":u": { S: new Date().toISOString() },
+        },
+      }),
+    );
+    return `subscription:opt-in:${channel}`;
+  } catch (e) {
+    return `subscription:err:${e instanceof Error ? e.message : e}`;
+  }
+}
+
+/** Asigna el lead a un programa/unidad. */
+async function setProgram(params: Record<string, unknown>, leadId: string): Promise<string> {
+  const programId = String(params.programId || "").trim();
+  if (!programId) return "setProgram:sin-programa";
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: { leadId: { S: leadId } },
+        UpdateExpression: "SET programId = :p, updatedAt = :u",
+        ExpressionAttributeValues: {
+          ":p": { S: programId },
+          ":u": { S: new Date().toISOString() },
+        },
+      }),
+    );
+    return `setProgram:${programId}`;
+  } catch (e) {
+    return `setProgram:err:${e instanceof Error ? e.message : e}`;
+  }
+}
+
+/** Marca el lead para sincronizar a Salesforce (lo levanta el sync de SF). */
+async function markSalesforceSync(leadId: string): Promise<string> {
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: { leadId: { S: leadId } },
+        UpdateExpression: "SET sfSyncPending = :t, updatedAt = :u",
+        ExpressionAttributeValues: {
+          ":t": { S: new Date().toISOString() },
+          ":u": { S: new Date().toISOString() },
+        },
+      }),
+    );
+    return "sfPush:marcado";
+  } catch (e) {
+    return `sfPush:err:${e instanceof Error ? e.message : e}`;
+  }
+}
+
+/** Saca al lead de OTRO journey (marca su enrollment como "exited"). */
+async function unenrollFrom(params: Record<string, unknown>, leadId: string): Promise<string> {
+  const journeyId = String(params.journeyId || "").trim();
+  if (!journeyId) return "unenroll:sin-journey";
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: ENROLLMENTS_TABLE,
+        Key: { journeyId: { S: journeyId }, leadId: { S: leadId } },
+        UpdateExpression: "SET #st = :s, updatedAt = :u",
+        ExpressionAttributeNames: { "#st": "status" },
+        ExpressionAttributeValues: {
+          ":s": { S: "exited" },
+          ":u": { S: new Date().toISOString() },
+        },
+        ConditionExpression: "attribute_exists(journeyId)",
+      }),
+    );
+    return `unenroll:${journeyId}`;
+  } catch {
+    // No estaba inscrito → no-op silencioso.
+    return "unenroll:no-inscrito";
+  }
 }
 
 /** Agrega o quita una etiqueta del lead (lead.tags = lista de strings). */
@@ -678,6 +853,27 @@ async function processDueEnrollments(
           advanced++;
           continue;
         }
+        // "Esperar respuesta": el PLAZO (timeout) lo maneja el runner con waitUntil.
+        // Si el lead cumplió → planAdvance lo lleva por "met"; si venció el plazo →
+        // forzamos la rama "timeout"; si sigue esperando, guardamos el deadline.
+        const curNode = journey.nodes.find((n) => n.id === enr.currentNodeId);
+        let waitUntil: string | null = null;
+        if (curNode?.kind === "wait_event") {
+          const rules = (curNode.params?.rules as FilterRule[]) || [];
+          const match = (curNode.params?.match as "all" | "any") || "all";
+          const met = rules.length > 0 && evaluateLeadFilter(lead, rules, match);
+          if (!met) {
+            const deadline =
+              enr.waitUntil ||
+              new Date(nowMs + (Number(curNode.params?.days) || 3) * 86_400_000).toISOString();
+            if (Date.parse(deadline) <= nowMs) {
+              const to = journey.edges.find((e) => e.from === curNode.id && e.on === "timeout")?.to;
+              if (to) enr.currentNodeId = to; // venció → salir por "No a tiempo"
+            } else {
+              waitUntil = deadline; // sigue esperando
+            }
+          }
+        }
         const plan = planAdvance(journey, enr.currentNodeId, lead, nowMs);
         // Horario de silencio: si el plan enviaría algo, posponer a la próxima ventana (no lo descarta).
         if (plan.effects.some((e) => e.type === "send")) {
@@ -707,6 +903,7 @@ async function processDueEnrollments(
           plan.done ? "done" : "active",
           notes.join(" · "),
           [...sent],
+          waitUntil,
         );
         advanced++;
       } catch (err) {
@@ -725,6 +922,7 @@ async function markEnrollment(
   status: string,
   note: string,
   sent?: string[],
+  waitUntil?: string | null,
 ): Promise<void> {
   const hist = Array.isArray(enr.history) ? enr.history : [];
   hist.push({ node: nodeId, at: new Date().toISOString(), ...(note ? { note } : {}) } as never);
@@ -741,11 +939,19 @@ async function markEnrollment(
     values[":snt"] = sent.slice(-100);
     expr += ", #snt = :snt";
   }
+  // waitUntil: string → guarda el plazo del "Esperar respuesta"; null → lo borra.
+  let removeExpr = "";
+  if (typeof waitUntil === "string") {
+    values[":wu"] = waitUntil;
+    expr += ", waitUntil = :wu";
+  } else if (waitUntil === null) {
+    removeExpr = " REMOVE waitUntil";
+  }
   await dynamo.send(
     new UpdateItemCommand({
       TableName: ENROLLMENTS_TABLE,
       Key: { journeyId: { S: enr.journeyId }, leadId: { S: enr.leadId } },
-      UpdateExpression: expr,
+      UpdateExpression: expr + removeExpr,
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: marshall(values, { removeUndefinedValues: true }),
     }),

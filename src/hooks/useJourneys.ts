@@ -27,7 +27,18 @@ export type JourneyNodeKind =
   | "webhook"
   | "start_journey"
   | "leave"
-  | "goal";
+  | "goal"
+  // Fase 3 — +10 módulos
+  | "score"
+  | "note"
+  | "subscription"
+  | "set_program"
+  | "sf_push"
+  | "unenroll"
+  | "wait_business"
+  | "wait_weekday"
+  | "wait_event"
+  | "switch";
 export interface JourneyNode {
   id: string;
   kind: JourneyNodeKind;

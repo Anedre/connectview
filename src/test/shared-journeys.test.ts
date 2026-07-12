@@ -242,3 +242,100 @@ describe("planAdvance · bloques Fase 2", () => {
     expect(planAdvance(past, "w", {}, NOW).effects.map((e) => e.type)).toEqual(["send"]);
   });
 });
+
+// ── Fase 3: +10 módulos (acciones, switch, esperas por horario/día, esperar respuesta) ──
+describe("planAdvance · +10 módulos", () => {
+  const mkJ = (nodes: JourneyDef["nodes"], edges: JourneyDef["edges"]): JourneyDef => ({
+    journeyId: "jx",
+    name: "F3",
+    status: "active",
+    nodes,
+    edges,
+  });
+
+  it("score/note → efecto action con su nombre (ACTION_OF)", () => {
+    const j = mkJ(
+      [
+        { id: "s", kind: "score", params: { delta: 15 } },
+        { id: "n", kind: "note", params: { text: "hola" } },
+        { id: "x", kind: "exit" },
+      ],
+      [
+        { from: "s", to: "n" },
+        { from: "n", to: "x" },
+      ],
+    );
+    const p = planAdvance(j, "s", {}, NOW);
+    expect(p.effects.map((e) => (e as { action?: string }).action)).toEqual([
+      "scoreAdjust",
+      "note",
+    ]);
+    expect(p.done).toBe(true);
+  });
+
+  it("switch: toma el caso cuyo value iguala el campo; si no, «default»", () => {
+    const j = mkJ(
+      [
+        {
+          id: "sw",
+          kind: "switch",
+          params: {
+            field: "grade",
+            cases: [
+              { id: "c0", value: "A" },
+              { id: "c1", value: "B" },
+            ],
+          },
+        },
+        { id: "a", kind: "exit" },
+        { id: "b", kind: "exit" },
+        { id: "d", kind: "exit" },
+      ],
+      [
+        { from: "sw", to: "a", on: "c0" },
+        { from: "sw", to: "b", on: "c1" },
+        { from: "sw", to: "d", on: "default" },
+      ],
+    );
+    expect(planAdvance(j, "sw", { grade: "B" }, NOW).nextNodeId).toBe("b");
+    expect(planAdvance(j, "sw", { grade: "Z" }, NOW).nextNodeId).toBe("d");
+  });
+
+  it("wait_business: fuera de franja descansa; dentro sigue", () => {
+    const j = mkJ(
+      [
+        { id: "w", kind: "wait_business", params: { start: 9, end: 18 } },
+        { id: "x", kind: "exit" },
+      ],
+      [{ from: "w", to: "x" }],
+    );
+    // NOW = 12:00Z → local Perú 07:00 (UTC-5) → FUERA de 9–18 → descansa en el sucesor.
+    const out = planAdvance(j, "w", {}, NOW);
+    expect(out.done).toBe(false);
+    expect(out.nextNodeId).toBe("x");
+    // 18:00Z → local 13:00 → dentro → sigue hasta el Fin.
+    expect(planAdvance(j, "w", {}, Date.parse("2026-07-01T18:00:00Z")).done).toBe(true);
+  });
+
+  it("wait_event: si el lead ya cumple → «met»; si no, descansa re-chequeando", () => {
+    const j = mkJ(
+      [
+        {
+          id: "we",
+          kind: "wait_event",
+          params: { rules: [{ field: "replied", op: "eq", value: "yes" }], match: "all", days: 3 },
+        },
+        { id: "m", kind: "exit" },
+        { id: "t", kind: "exit" },
+      ],
+      [
+        { from: "we", to: "m", on: "met" },
+        { from: "we", to: "t", on: "timeout" },
+      ],
+    );
+    expect(planAdvance(j, "we", { replied: "yes" }, NOW).nextNodeId).toBe("m");
+    const wait = planAdvance(j, "we", { replied: "no" }, NOW);
+    expect(wait.nextNodeId).toBe("we");
+    expect(wait.done).toBe(false);
+  });
+});

@@ -18,6 +18,16 @@ import {
   MessageCircle,
   Mail,
   ArrowRightLeft,
+  TrendingUp,
+  StickyNote,
+  MailCheck,
+  GraduationCap,
+  CloudUpload,
+  UserMinus,
+  Briefcase,
+  CalendarClock,
+  Hourglass,
+  GitFork,
   type LucideIcon,
 } from "lucide-react";
 import type { JourneyNode, JourneyNodeKind, JourneyEdge } from "@/hooks/useJourneys";
@@ -38,9 +48,11 @@ import type { FilterRule } from "@/hooks/useSegments";
 
 export type JourneyParams = Record<string, unknown>;
 
-/** Una salida (outlet) del nodo → de aquí cuelga un edge. */
+/** Una salida (outlet) del nodo → de aquí cuelga un edge. Los ids comunes son
+ *  "out" (lineal), "yes"/"no" (rama), "a"/"b" (A/B); los bloques dinámicos
+ *  (switch, esperar-evento) usan ids propios ("c0", "default", "met", "timeout"…). */
 export interface JourneyOutlet {
-  id: "out" | "yes" | "no" | "a" | "b";
+  id: string;
   label?: string;
 }
 
@@ -88,6 +100,16 @@ export const JOURNEY_ICONS: Record<string, LucideIcon> = {
   goal: Target,
   leave: DoorOpen,
   stage: ArrowRightLeft,
+  score: TrendingUp,
+  note: StickyNote,
+  subscription: MailCheck,
+  program: GraduationCap,
+  sfpush: CloudUpload,
+  unenroll: UserMinus,
+  business: Briefcase,
+  weekday: CalendarClock,
+  event: Hourglass,
+  switch: GitFork,
 };
 
 export function journeyIcon(key: string): LucideIcon {
@@ -98,6 +120,12 @@ export function journeyIcon(key: string): LucideIcon {
 export const JOURNEY_PALETTE_GROUPS = ["Mensajes", "Tiempo", "Lógica", "Acciones", "Fin"];
 
 const single: JourneyOutlet[] = [{ id: "out" }];
+
+/** Días de la semana (0=domingo) para "Esperar a día/hora". */
+export const WEEKDAYS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+function channelLabel(v: unknown): string {
+  return v === "whatsapp" ? "WhatsApp" : v === "email" ? "Email" : "todos";
+}
 
 // ── El catálogo ──────────────────────────────────────────────────────────────
 export const JOURNEY_KINDS: Record<JourneyNodeKind, JourneyKindDef> = {
@@ -341,6 +369,146 @@ export const JOURNEY_KINDS: Record<JourneyNodeKind, JourneyKindDef> = {
     summary: () => "Objetivo alcanzado (convierte)",
     terminal: true,
   },
+
+  // ── Fase 3 — +10 módulos ────────────────────────────────────────────────────
+  score: {
+    kind: "score",
+    group: "Acciones",
+    label: "Puntuar (score ±)",
+    blurb: "Suma o resta puntos al score del lead",
+    icon: "score",
+    accent: "#10B981",
+    outlets: () => single,
+    defaultParams: () => ({ delta: 10 }),
+    summary: (p) => {
+      const d = Number(p.delta ?? 0);
+      return `${d >= 0 ? "+" : ""}${d} al score`;
+    },
+  },
+  note: {
+    kind: "note",
+    group: "Acciones",
+    label: "Nota interna",
+    blurb: "Deja una nota en el historial del lead",
+    icon: "note",
+    accent: "#A78BFA",
+    outlets: () => single,
+    defaultParams: () => ({ text: "" }),
+    summary: (p) => (str(p.text) ? `Nota: ${str(p.text)}` : "Nota interna"),
+  },
+  subscription: {
+    kind: "subscription",
+    group: "Acciones",
+    label: "Suscripción",
+    blurb: "Suscribe o da de baja al lead de un canal",
+    icon: "subscription",
+    accent: "#22B87A",
+    outlets: () => single,
+    defaultParams: () => ({ op: "subscribe", channel: "all" }),
+    summary: (p) =>
+      `${p.op === "unsubscribe" ? "Dar de baja" : "Suscribir"} · ${channelLabel(p.channel)}`,
+  },
+  set_program: {
+    kind: "set_program",
+    group: "Acciones",
+    label: "Asignar programa",
+    blurb: "Cambia el programa / unidad del lead",
+    icon: "program",
+    accent: "#6366F1",
+    outlets: () => single,
+    defaultParams: () => ({ programId: "" }),
+    summary: (p) =>
+      str(p.programName) || str(p.programId)
+        ? `Programa: ${str(p.programName) || str(p.programId)}`
+        : "Asignar programa",
+  },
+  sf_push: {
+    kind: "sf_push",
+    group: "Acciones",
+    label: "Enviar a Salesforce",
+    blurb: "Sincroniza el lead a Salesforce",
+    icon: "sfpush",
+    accent: "#00A1E0",
+    outlets: () => single,
+    defaultParams: () => ({}),
+    summary: () => "Sincroniza el lead a Salesforce",
+  },
+  unenroll: {
+    kind: "unenroll",
+    group: "Acciones",
+    label: "Sacar de un journey",
+    blurb: "Quita al lead de OTRO recorrido",
+    icon: "unenroll",
+    accent: "#EF4444",
+    outlets: () => single,
+    defaultParams: () => ({ journeyId: "" }),
+    summary: (p) =>
+      str(p.journeyName) || str(p.journeyId)
+        ? `Sacar de ${str(p.journeyName) || str(p.journeyId)}`
+        : "Sacar de un journey",
+  },
+  wait_business: {
+    kind: "wait_business",
+    group: "Tiempo",
+    label: "Esperar a horario laboral",
+    blurb: "Pausa hasta la próxima ventana laboral",
+    icon: "business",
+    accent: "#E0A72E",
+    outlets: () => single,
+    defaultParams: () => ({ start: 9, end: 18 }),
+    summary: (p) => `Hasta horario ${Number(p.start ?? 9)}–${Number(p.end ?? 18)}h`,
+  },
+  wait_weekday: {
+    kind: "wait_weekday",
+    group: "Tiempo",
+    label: "Esperar a día/hora",
+    blurb: "Pausa hasta el próximo día de la semana y hora",
+    icon: "weekday",
+    accent: "#E0A72E",
+    outlets: () => single,
+    defaultParams: () => ({ weekday: 1, hour: 9 }),
+    summary: (p) => `Hasta ${WEEKDAYS[Number(p.weekday ?? 1)] || "lunes"} ${Number(p.hour ?? 9)}h`,
+  },
+  wait_event: {
+    kind: "wait_event",
+    group: "Lógica",
+    label: "Esperar respuesta",
+    blurb: "Espera a que el lead cumpla algo, con límite de días",
+    icon: "event",
+    accent: "#8B5CF6",
+    outlets: () => [
+      { id: "met", label: "Cumplió" },
+      { id: "timeout", label: "No a tiempo" },
+    ],
+    defaultParams: () => ({ rules: [] as FilterRule[], match: "all", days: 3 }),
+    summary: (p) => `Espera ${Number(p.days ?? 3)}d una respuesta`,
+  },
+  switch: {
+    kind: "switch",
+    group: "Lógica",
+    label: "Ramificar múltiple",
+    blurb: "Varios caminos según el valor de un campo",
+    icon: "switch",
+    accent: "#5B7CFA",
+    outlets: (p) => {
+      const cases = Array.isArray(p.cases) ? (p.cases as { id?: string; label?: string }[]) : [];
+      return [
+        ...cases.map((c, i) => ({ id: c.id || `c${i}`, label: c.label || `Caso ${i + 1}` })),
+        { id: "default", label: "Otro" },
+      ];
+    },
+    defaultParams: () => ({
+      field: "grade",
+      cases: [
+        { id: "c0", label: "A", value: "A" },
+        { id: "c1", label: "B", value: "B" },
+      ],
+    }),
+    summary: (p) => {
+      const n = Array.isArray(p.cases) ? p.cases.length : 0;
+      return `Por ${str(p.field) || "campo"} · ${n} caso${n === 1 ? "" : "s"}`;
+    },
+  },
 };
 
 /** Pasos insertables desde la palette (todos menos la Entrada). */
@@ -414,6 +582,14 @@ export function validateJourney(nodes: JourneyNode[], edges: JourneyEdge[]): Jou
       out.push({ message: "No elegiste el journey a iniciar.", nodeId: n.id });
     if (n.kind === "leave" && !(Array.isArray(p.rules) && p.rules.length))
       out.push({ message: "«Salir si…» no tiene condición (saldría siempre).", nodeId: n.id });
+    if (n.kind === "set_program" && !p.programId)
+      out.push({ message: "Falta el programa a asignar.", nodeId: n.id });
+    if (n.kind === "unenroll" && !p.journeyId)
+      out.push({ message: "No elegiste el journey del que sacar al lead.", nodeId: n.id });
+    if (n.kind === "wait_event" && !(Array.isArray(p.rules) && p.rules.length))
+      out.push({ message: "«Esperar respuesta» no tiene condición que esperar.", nodeId: n.id });
+    if (n.kind === "switch" && !p.field)
+      out.push({ message: "«Ramificar múltiple» no tiene campo.", nodeId: n.id });
     // Suelto: sin edge entrante y no es Entrada (con una Entrada existente).
     if (
       n.kind !== "entry" &&
