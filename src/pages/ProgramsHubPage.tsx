@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePrograms, type Program, type ProgramStatus } from "@/hooks/usePrograms";
+import { useCatalogs } from "@/hooks/useCatalogs";
 import { useProgram } from "@/context/ProgramContext";
 import { useRoles } from "@/hooks/useRoles";
 import { getApiEndpoints } from "@/lib/api";
@@ -73,6 +74,43 @@ function daysLeft(endDate?: string): number | null {
 type FormState = Partial<Program> & { code: string; name: string };
 const EMPTY: FormState = { code: "", name: "", faculty: "", description: "", status: "borrador" };
 
+/** Detecta, por el nombre de cada columna del catálogo, a qué campo del programa
+ *  corresponde. Devuelve el índice de columna (-1 si no la encuentra). */
+function mapCatalogColumns(columns: string[]) {
+  const idx = (keys: string[]) =>
+    columns.findIndex((c) => keys.some((k) => c.toLowerCase().includes(k)));
+  return {
+    name: idx(["programa", "nombre", "carrera", "curso", "producto"]),
+    code: idx(["código", "codigo", "code", "sigla"]),
+    faculty: idx(["facultad", "área", "area", "escuela", "categoría", "categoria"]),
+    modality: idx(["modalidad", "modo"]),
+    duration: idx(["duración", "duracion", "ciclos", "tiempo", "meses", "semanas"]),
+    price: idx([
+      "precio",
+      "costo",
+      "inversión",
+      "inversion",
+      "pensión",
+      "pension",
+      "cuota",
+      "monto",
+    ]),
+    requirements: idx(["requisito", "requisitos"]),
+  };
+}
+/** Genera un código estable a partir del nombre (para upsert idempotente en re-imports). */
+function slugCode(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 28) || "prog"
+  );
+}
+
 export function ProgramsHubPage() {
   const navigate = useNavigate();
   const { isAtLeast } = useRoles();
@@ -89,11 +127,13 @@ export function ProgramsHubPage() {
     removeProgram,
     importPrograms,
   } = usePrograms({ includeArchived: showArchived });
+  const { catalogs } = useCatalogs();
 
   const [q, setQ] = useState("");
   const [facultyFilter, setFacultyFilter] = useState("all");
   const [editing, setEditing] = useState<FormState | null>(null);
   const [importText, setImportText] = useState<string | null>(null); // null = modal cerrado
+  const [catImport, setCatImport] = useState<{ catalogId: string } | null>(null); // import desde catálogo
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "error" | "ok"; text: string } | null>(null);
   const { confirm, confirmDialog } = useConfirm();
@@ -137,6 +177,54 @@ export function ProgramsHubPage() {
       setMsg({ kind: "ok", text: "Programa guardado." });
     } catch (e) {
       setMsg({ kind: "error", text: e instanceof Error ? e.message : "Error al guardar" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Crea/actualiza un programa activo por cada fila de un catálogo, mapeando sus
+   *  columnas a los campos comerciales — así el Agente IA cita [P] con datos reales
+   *  sin que reescribas nada. */
+  async function doImportCatalog() {
+    const cat = catalogs.find((c) => c.catalogId === catImport?.catalogId);
+    if (!cat) {
+      setMsg({ kind: "error", text: "Elige un catálogo." });
+      return;
+    }
+    const m = mapCatalogColumns(cat.columns || []);
+    const cell = (row: string[], i: number) =>
+      i >= 0 && i < row.length ? (row[i] || "").trim() : "";
+    const rows = (cat.rows || [])
+      .map((row) => {
+        const name = cell(row, m.name >= 0 ? m.name : 0);
+        if (!name) return null;
+        return {
+          code: cell(row, m.code) || slugCode(name),
+          name,
+          faculty: cell(row, m.faculty) || undefined,
+          modality: cell(row, m.modality) || undefined,
+          duration: cell(row, m.duration) || undefined,
+          price: cell(row, m.price) || undefined,
+          requirements: cell(row, m.requirements) || undefined,
+          status: "activo" as ProgramStatus,
+        };
+      })
+      .filter(Boolean) as Array<Partial<Program>>;
+    if (rows.length === 0) {
+      setMsg({ kind: "error", text: "El catálogo no tiene filas con nombre." });
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await importPrograms(rows);
+      setCatImport(null);
+      setMsg({
+        kind: "ok",
+        text: `Importados desde "${cat.name}": ${res?.imported?.created ?? 0} nuevos, ${res?.imported?.updated ?? 0} actualizados.`,
+      });
+    } catch (e) {
+      setMsg({ kind: "error", text: e instanceof Error ? e.message : "Error al importar" });
     } finally {
       setBusy(false);
     }
@@ -244,6 +332,22 @@ export function ProgramsHubPage() {
               >
                 Importar CSV
               </Btn>
+              {catalogs.length > 0 && (
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  icon="layers"
+                  onClick={() => {
+                    setMsg(null);
+                    setCatImport({
+                      catalogId: catalogs.length === 1 ? catalogs[0].catalogId : "",
+                    });
+                  }}
+                  title="Crear programas activos desde un catálogo existente"
+                >
+                  Desde catálogo
+                </Btn>
+              )}
               <Btn
                 variant="primary"
                 size="sm"
@@ -568,6 +672,111 @@ export function ProgramsHubPage() {
         />
       </Modal>
 
+      {/* Modal importar desde catálogo — puebla Programas con datos reales para el Agente IA */}
+      <Modal
+        open={catImport !== null}
+        onOpenChange={(o) => {
+          if (!o) setCatImport(null);
+        }}
+        title="Importar programas desde un catálogo"
+        className="max-w-xl"
+        footer={
+          <>
+            <Btn variant="ghost" size="sm" onClick={() => setCatImport(null)}>
+              Cancelar
+            </Btn>
+            <Btn
+              variant="primary"
+              size="sm"
+              icon="upload"
+              onClick={doImportCatalog}
+              disabled={busy || !catImport?.catalogId}
+            >
+              {busy ? "Importando…" : "Importar programas"}
+            </Btn>
+          </>
+        }
+      >
+        {catImport &&
+          (() => {
+            const cat = catalogs.find((c) => c.catalogId === catImport.catalogId);
+            const m = cat ? mapCatalogColumns(cat.columns || []) : null;
+            const cols = cat?.columns || [];
+            const fieldRows: [string, number, boolean][] = m
+              ? [
+                  ["Nombre", m.name >= 0 ? m.name : 0, true],
+                  ["Código", m.code, false],
+                  ["Facultad", m.faculty, false],
+                  ["Modalidad", m.modality, false],
+                  ["Duración", m.duration, false],
+                  ["Inversión", m.price, false],
+                  ["Requisitos", m.requirements, false],
+                ]
+              : [];
+            return (
+              <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+                <p className="dim" style={{ fontSize: 12, margin: 0 }}>
+                  Crea (o actualiza) un programa <b>activo</b> por cada fila del catálogo, para que
+                  el Agente IA lo cite como fuente <b>[P]</b>. Detectamos las columnas por su
+                  nombre.
+                </p>
+                <Field label="Catálogo">
+                  <select
+                    value={catImport.catalogId}
+                    onChange={(e) => setCatImport({ catalogId: e.target.value })}
+                    style={inp}
+                  >
+                    <option value="">— Elige un catálogo —</option>
+                    {catalogs.map((c) => (
+                      <option key={c.catalogId} value={c.catalogId}>
+                        {c.name} · {c.rows?.length || 0} filas
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {cat && m && (
+                  <div>
+                    <div className="dim" style={{ fontSize: 11, marginBottom: 6 }}>
+                      Mapeo detectado — se importarán {cat.rows?.length || 0} programas:
+                    </div>
+                    <div style={{ display: "grid", gap: 2 }}>
+                      {fieldRows.map(([label, i, req]) => (
+                        <div
+                          key={label}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            fontSize: 12,
+                            padding: "4px 0",
+                            borderBottom: "1px solid var(--border-1)",
+                          }}
+                        >
+                          <span style={{ color: "var(--text-2)" }}>
+                            {label}
+                            {req ? " *" : ""}
+                          </span>
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              color: i >= 0 ? "var(--text-1)" : "var(--text-3)",
+                            }}
+                          >
+                            {i >= 0
+                              ? cols[i] || `columna ${i + 1}`
+                              : req
+                                ? cols[0] || "1ª columna"
+                                : "— sin mapear —"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+      </Modal>
+
       {/* Modal crear/editar */}
       <Modal
         open={!!editing}
@@ -624,6 +833,47 @@ export function ProgramsHubPage() {
                 value={editing.description || ""}
                 onChange={(e) => setEditing({ ...editing, description: e.target.value })}
                 rows={2}
+                style={{ ...inp, resize: "vertical" }}
+              />
+            </Field>
+            {/* Detalles comerciales — el Agente IA los cita como fuente rica [P]. */}
+            <Field label="Modalidad">
+              <input
+                value={editing.modality || ""}
+                onChange={(e) => setEditing({ ...editing, modality: e.target.value })}
+                placeholder="ej. Virtual"
+                style={inp}
+                list="modality-dl"
+              />
+              <datalist id="modality-dl">
+                <option value="Presencial" />
+                <option value="Virtual" />
+                <option value="Semipresencial" />
+                <option value="A distancia" />
+              </datalist>
+            </Field>
+            <Field label="Duración">
+              <input
+                value={editing.duration || ""}
+                onChange={(e) => setEditing({ ...editing, duration: e.target.value })}
+                placeholder="ej. 10 ciclos"
+                style={inp}
+              />
+            </Field>
+            <Field label="Inversión / precio" full>
+              <input
+                value={editing.price || ""}
+                onChange={(e) => setEditing({ ...editing, price: e.target.value })}
+                placeholder="ej. S/ 1200 por ciclo"
+                style={inp}
+              />
+            </Field>
+            <Field label="Requisitos" full>
+              <textarea
+                value={editing.requirements || ""}
+                onChange={(e) => setEditing({ ...editing, requirements: e.target.value })}
+                rows={2}
+                placeholder="ej. Copia del grado de bachiller, CV actualizado, entrevista."
                 style={{ ...inp, resize: "vertical" }}
               />
             </Field>

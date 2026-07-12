@@ -217,6 +217,10 @@ async function buildKnowledge(data: Record<string, unknown>): Promise<KnowledgeR
               faculty?: string;
               status?: string;
               description?: string;
+              modality?: string;
+              duration?: string;
+              price?: string;
+              requirements?: string;
             },
         )
         .filter((p) => p.status === "activo")
@@ -227,10 +231,22 @@ async function buildKnowledge(data: Record<string, unknown>): Promise<KnowledgeR
         parts.push(
           "🎓 [P1] Programas activos:\n" +
             active
-              .map(
-                (p) =>
-                  `- ${p.code || ""} · ${p.name || ""}${p.faculty ? ` (${p.faculty})` : ""}${p.description ? `: ${p.description}` : ""}`,
-              )
+              .map((p) => {
+                // Detalles comerciales en una línea para que el agente responda con
+                // modalidad / duración / precio sin inventar (fuente rica [P]).
+                const facts = [
+                  p.modality && `Modalidad: ${p.modality}`,
+                  p.duration && `Duración: ${p.duration}`,
+                  p.price && `Inversión: ${p.price}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                let line = `- ${p.code || ""} · ${p.name || ""}${p.faculty ? ` (${p.faculty})` : ""}`;
+                if (facts) line += ` — ${facts}`;
+                if (p.description) line += `. ${p.description}`;
+                if (p.requirements) line += ` Requisitos: ${p.requirements}`;
+                return line;
+              })
               .join("\n"),
         );
       }

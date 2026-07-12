@@ -16,6 +16,11 @@ export interface Program {
   name: string;
   faculty?: string;
   description?: string;
+  // Detalles comerciales — el Agente IA los cita como fuente rica [P] (RAG).
+  modality?: string; // Presencial / Virtual / Semipresencial…
+  duration?: string; // ej. "10 ciclos"
+  price?: string; // ej. "S/ 1200 por ciclo"
+  requirements?: string; // requisitos de admisión
   status: ProgramStatus;
   color?: string;
   startDate?: string;
@@ -104,7 +109,7 @@ export function usePrograms(opts?: { includeArchived?: boolean; refreshIntervalM
       if (!endpoints?.managePrograms) throw new Error("managePrograms endpoint no configurado");
       const r = await authedFetch(
         endpoints.managePrograms + "?programId=" + encodeURIComponent(programId),
-        { method: "DELETE" }
+        { method: "DELETE" },
       );
       if (!r.ok) throw new Error(await errText(r, "no se pudo borrar"));
       await invalidate();

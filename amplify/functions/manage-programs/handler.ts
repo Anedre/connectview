@@ -71,6 +71,11 @@ interface Program {
   name: string;
   faculty?: string;
   description?: string;
+  // Detalles comerciales (para que el Agente IA cite el programa como fuente rica [P]).
+  modality?: string; // Presencial / Virtual / Semipresencial…
+  duration?: string; // ej. "10 ciclos", "6 meses"
+  price?: string; // ej. "S/ 1200 por ciclo" (texto libre: moneda/periodicidad variables)
+  requirements?: string; // requisitos de admisión
   status: Status;
   color?: string;
   startDate?: string;
@@ -112,6 +117,10 @@ function sanitize(body: Record<string, unknown>): Program {
     name,
     faculty: str(body.faculty),
     description: str(body.description),
+    modality: str(body.modality),
+    duration: str(body.duration),
+    price: str(body.price),
+    requirements: str(body.requirements),
     status,
     color: str(body.color),
     startDate: str(body.startDate),
