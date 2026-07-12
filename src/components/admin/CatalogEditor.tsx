@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { useAuth } from "@/hooks/useAuth";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * CatalogEditor — Custom Lists / Catálogos (roadmap #30). Tablas de referencia
@@ -36,6 +37,7 @@ const TEMPLATES: { name: string; columns: string[] }[] = [
 
 export function CatalogEditor() {
   const { user } = useAuth();
+  const { confirm, confirmDialog } = useConfirm();
   const [catalogs, setCatalogs] = useState<CatalogDoc[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -199,6 +201,42 @@ export function CatalogEditor() {
     }
   };
 
+  /** Elimina el catálogo activo (DELETE ?catalogId). Útil para retirar catálogos
+   *  que ya migraron a otra fuente (p.ej. programas → módulo Programas). */
+  const deleteCatalog = async () => {
+    const ep = getApiEndpoints();
+    if (!ep?.manageCatalog || !activeId || activeId === "__new__") return;
+    const target = catalogs.find((c) => c.catalogId === activeId);
+    if (
+      !(await confirm({
+        title: `¿Eliminar el catálogo "${target?.name || name}"?`,
+        description: "No se puede deshacer. Se perderán sus filas.",
+        destructive: true,
+        confirmLabel: "Eliminar",
+      }))
+    )
+      return;
+    setSaving(true);
+    try {
+      const r = await authedFetch(`${ep.manageCatalog}?catalogId=${encodeURIComponent(activeId)}`, {
+        method: "DELETE",
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      toast.success("Catálogo eliminado");
+      setActiveId(null);
+      setName("");
+      setColumns([]);
+      setRows([]);
+      setDirty(false);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo eliminar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const visibleRows = rows
     .map((r, i) => ({ r, i }))
     .filter(
@@ -208,6 +246,7 @@ export function CatalogEditor() {
 
   return (
     <div className="col" style={{ gap: 18 }}>
+      {confirmDialog}
       {/* Header */}
       <div
         className="row"
@@ -241,6 +280,17 @@ export function CatalogEditor() {
           <button className="btn btn--sm" onClick={newCatalog}>
             <Icon.Plus size={12} /> Nuevo
           </button>
+          {activeId && activeId !== "__new__" && (
+            <button
+              className="btn btn--sm"
+              onClick={deleteCatalog}
+              disabled={saving}
+              style={{ color: "var(--accent-red)" }}
+              title="Eliminar este catálogo"
+            >
+              <Icon.Trash size={12} /> Eliminar
+            </button>
+          )}
           <button className="btn btn--primary btn--sm" onClick={save} disabled={saving || !dirty}>
             <Icon.Check size={12} /> {saving ? "Guardando…" : "Guardar"}
           </button>
