@@ -289,6 +289,30 @@ function makeRFNode(kind: JourneyNodeKind, pos: { x: number; y: number }): Node 
   };
 }
 
+const kindOf = (n: Node): JourneyNodeKind => (n.data as { kind: JourneyNodeKind }).kind;
+/** Salidas (outlets) de un nodo de React Flow según su kind/params. */
+function outletsOfRF(n: Node): { id: string; label?: string }[] {
+  const d = n.data as { kind: JourneyNodeKind; params?: JourneyParams };
+  return JOURNEY_KINDS[d.kind]?.outlets(d.params || {}) ?? [];
+}
+/** Cola de la cadena: recorre desde la Entrada por la salida por defecto y
+ *  devuelve el último nodo NO-Fin (donde tiene sentido empalmar el siguiente). */
+function chainTail(nodes: Node[], edges: Edge[]): Node | null {
+  const entry = nodes.find((n) => kindOf(n) === "entry") ?? nodes[0];
+  if (!entry) return null;
+  let cur: Node | undefined = entry;
+  let lastUsable = entry;
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    if (kindOf(cur) !== "exit") lastUsable = cur;
+    const e = edges.find((ed) => ed.source === cur!.id);
+    if (!e) break;
+    cur = nodes.find((n) => n.id === e.target);
+  }
+  return lastUsable;
+}
+
 /** Etiqueta de rama para un edge (Sí/No · A/B), leída del outlet de su origen. */
 function branchLabelFor(edge: Edge, nodes: Node[]): string | undefined {
   const handle = edge.sourceHandle;
@@ -367,6 +391,8 @@ function JourneyFlowInner({
   const importRef = useRef<HTMLInputElement>(null);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
   const connectFrom = useRef<{ nodeId: string; handleId: string | null } | null>(null);
   const madeConnection = useRef(false);
   const baseline = useRef(serializeJourney(nodes, edges, name, status));
@@ -427,15 +453,28 @@ function JourneyFlowInner({
     [nodes, edges],
   );
 
+  // Numera los pasos siguiendo la CADENA (DFS desde la Entrada) → los números
+  // coinciden con el orden visual del flujo, no con el orden del array (tras
+  // insertar un paso en medio, la numeración se mantiene coherente).
   const numberMap = useMemo(() => {
     const m = new Map<string, number>();
     let i = 0;
-    for (const n of nodes) {
-      if ((n.data as { kind?: string }).kind === "entry") continue;
-      m.set(n.id, ++i);
-    }
+    const seen = new Set<string>();
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const visit = (id: string) => {
+      const n = byId.get(id);
+      if (!n || seen.has(id)) return;
+      seen.add(id);
+      if (kindOf(n) !== "entry" && kindOf(n) !== "exit") m.set(id, ++i);
+      for (const e of edges.filter((ed) => ed.source === id)) visit(e.target);
+    };
+    const entry = nodes.find((n) => kindOf(n) === "entry");
+    if (entry) visit(entry.id);
+    // Pasos sueltos (no alcanzables) → numerados al final para que igual tengan badge.
+    for (const n of nodes)
+      if (!seen.has(n.id) && kindOf(n) !== "entry" && kindOf(n) !== "exit") m.set(n.id, ++i);
     return m;
-  }, [nodes]);
+  }, [nodes, edges]);
 
   const issuesByNode = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -615,63 +654,77 @@ function JourneyFlowInner({
       dropPos?: { x: number; y: number },
       autoConnect?: { source: string; sourceHandle: string },
     ) => {
-      const sel = dropPos
-        ? null
-        : selectedId
-          ? (nodes.find((n) => n.id === selectedId) ?? null)
-          : (nodes[nodes.length - 1] ?? null);
-      let pos: { x: number; y: number };
-      if (dropPos) pos = dropPos;
-      else if (sel) pos = { x: sel.position.x, y: sel.position.y + ROW_GAP };
-      else {
-        const rect = wrapperRef.current?.getBoundingClientRect();
-        pos = rect
-          ? screenToFlowPosition({ x: rect.x + rect.width / 2 - 117, y: rect.y + rect.height / 3 })
-          : { x: 120, y: 120 };
-      }
-      const node = makeRFNode(kind, pos);
-      setNodes((nds) => [...nds, node]);
-      if (autoConnect) {
-        setEdges((eds) =>
-          addEdge(
-            {
-              source: autoConnect.source,
-              sourceHandle: autoConnect.sourceHandle,
-              target: node.id,
-              targetHandle: null,
-              id: edgeId(autoConnect.source, autoConnect.sourceHandle, node.id),
-              ...edgeDefaults,
-            },
-            eds,
-          ),
-        );
-      } else if (sel) {
-        const kd = (sel.data as { kind: JourneyNodeKind }).kind;
-        const firstOutlet = JOURNEY_KINDS[kd]?.outlets(
-          (sel.data as { params?: JourneyParams }).params || {},
-        )[0];
-        const taken = edges.some(
-          (e) => e.source === sel.id && (e.sourceHandle || "out") === firstOutlet?.id,
-        );
-        if (firstOutlet && !taken) {
+      const node = makeRFNode(kind, dropPos ?? { x: 0, y: 0 });
+      const newOutlet =
+        JOURNEY_KINDS[kind].outlets(JOURNEY_KINDS[kind].defaultParams?.() ?? {})[0]?.id || "out";
+      const mkEdge = (s: string, h: string, t: string): Edge => ({
+        source: s,
+        sourceHandle: h,
+        target: t,
+        targetHandle: null,
+        id: edgeId(s, h, t),
+        ...edgeDefaults,
+      });
+      // Tras insertar: reordena la cadena (L→R vertical) + encuadra. Deferido para
+      // leer los edges YA aplicados (edgesRef se actualiza en el render siguiente).
+      const tidy = () => {
+        setSelectedId(node.id);
+        window.setTimeout(() => {
+          setNodes((nds) => layoutTB(nds, edgesRef.current));
+          window.setTimeout(() => fitView({ padding: 0.2, duration: 320 }), 30);
+        }, 0);
+      };
+
+      // ── Arrastre desde la palette: coloca donde soltaste; conecta si cayó cerca
+      //    de una salida libre. Respeta tu posición (no reordena). ──
+      if (dropPos) {
+        node.position = dropPos;
+        setNodes((nds) => [...nds, node]);
+        if (autoConnect)
           setEdges((eds) =>
-            addEdge(
-              {
-                source: sel.id,
-                sourceHandle: firstOutlet.id,
-                target: node.id,
-                targetHandle: null,
-                id: edgeId(sel.id, firstOutlet.id, node.id),
-                ...edgeDefaults,
-              },
-              eds,
-            ),
+            addEdge(mkEdge(autoConnect.source, autoConnect.sourceHandle, node.id), eds),
           );
-        }
+        setSelectedId(node.id);
+        return;
       }
-      setSelectedId(node.id);
+
+      // ── Clic en la palette: EMPALMA en la cadena → el paso NUNCA queda suelto.
+      //    Ancla = el paso seleccionado (si tiene salidas) o la cola de la cadena. ──
+      const selNode = selectedId ? (nodes.find((n) => n.id === selectedId) ?? null) : null;
+      const anchor = selNode && outletsOfRF(selNode).length > 0 ? selNode : chainTail(nodes, edges);
+
+      if (!anchor) {
+        setNodes((nds) => [...nds, node]);
+        tidy();
+        return;
+      }
+
+      node.position = { x: anchor.position.x, y: anchor.position.y + ROW_GAP };
+      setNodes((nds) => [...nds, node]);
+
+      const outlets = outletsOfRF(anchor);
+      const free = outlets.find(
+        (o) => !edges.some((e) => e.source === anchor.id && (e.sourceHandle || "out") === o.id),
+      );
+      if (free) {
+        // Hay una salida libre (rama vacía o fin de la cadena) → conecta directo.
+        setEdges((eds) => addEdge(mkEdge(anchor.id, free.id, node.id), eds));
+      } else if (outlets[0]) {
+        // Todas ocupadas → EMPALMA la 1ª: ancla → nuevo → (a donde iba el ancla).
+        const outlet = outlets[0];
+        const existing = edges.find(
+          (e) => e.source === anchor.id && (e.sourceHandle || "out") === outlet.id,
+        );
+        setEdges((eds) => {
+          let next = existing ? eds.filter((e) => e.id !== existing.id) : eds;
+          next = addEdge(mkEdge(anchor.id, outlet.id, node.id), next);
+          if (existing) next = addEdge(mkEdge(node.id, newOutlet, existing.target), next);
+          return next;
+        });
+      }
+      tidy();
     },
-    [screenToFlowPosition, setNodes, setEdges, selectedId, nodes, edges],
+    [setNodes, setEdges, selectedId, nodes, edges, fitView],
   );
 
   const insertNodeOnEdge = useCallback(
