@@ -14568,6 +14568,127 @@ select.wf-input {
   }
 }
 
+/* ══════════ PASE PREMIUM — profundidad y materiales (menos "HTML básico") ══════════ */
+
+/* Stage: lienzo con PROFUNDIDAD — glow central, malla de puntos, viñeta superior
+   e iluminación interior. Deja de ser una caja plana. */
+.arb-stage {
+  background:
+    radial-gradient(
+      circle at 50% 44%,
+      color-mix(in srgb, var(--gold) 15%, transparent),
+      transparent 40%
+    ),
+    radial-gradient(
+        circle at 1.5px 1.5px,
+        color-mix(in srgb, var(--border-2) 55%, transparent) 1px,
+        transparent 0
+      )
+      0 0 / 26px 26px,
+    radial-gradient(
+      130% 92% at 50% 0%,
+      color-mix(in srgb, var(--bg-1) 55%, transparent),
+      transparent 52%
+    ),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-1) 45%, var(--bg-2)), var(--bg-2));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent),
+    inset 0 -70px 90px -60px rgba(15, 22, 36, 0.15),
+    var(--shadow-card);
+}
+
+/* Satélites: disco de VIDRIO — sheen cenital, sombra en capas y aro fino. */
+.arb-sat__disc {
+  background:
+    radial-gradient(circle at 50% 22%, color-mix(in srgb, #fff 32%, transparent), transparent 46%),
+    radial-gradient(
+      circle at 50% 34%,
+      color-mix(in srgb, var(--arb-c, var(--gold)) 24%, var(--bg-1)),
+      var(--bg-1)
+    );
+  box-shadow:
+    0 10px 24px -10px color-mix(in srgb, var(--arb-c, var(--gold)) 58%, transparent),
+    0 2px 6px -2px rgba(15, 22, 36, 0.18),
+    inset 0 1px 1px color-mix(in srgb, #fff 42%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--arb-c, var(--gold)) 20%, transparent);
+}
+
+/* Hub: brillo cenital sutil sobre el degradado gold. */
+.arb-hub::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.5), transparent 55%);
+  pointer-events: none;
+}
+
+/* Inspector: panel con leve degradado + sombra, y CONTROLES premium (no HTML plano). */
+.arb-inspect {
+  background: linear-gradient(
+    180deg,
+    var(--bg-1),
+    color-mix(in srgb, var(--bg-2) 45%, var(--bg-1))
+  );
+  box-shadow: var(--shadow-card);
+}
+.arb-inspect .wf-input,
+.arb-inspect [data-slot="select-trigger"] {
+  min-height: 38px;
+  padding: 9px 12px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bg-2) 72%, var(--bg-1));
+  border: 1px solid var(--border-2);
+  box-shadow: inset 0 1px 2px rgba(15, 22, 36, 0.05);
+  transition:
+    border-color 0.15s var(--ease),
+    box-shadow 0.15s var(--ease),
+    background 0.15s var(--ease);
+}
+.arb-inspect .wf-input:hover,
+.arb-inspect [data-slot="select-trigger"]:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-2);
+}
+.arb-inspect .wf-input:focus,
+.arb-inspect [data-slot="select-trigger"]:focus-visible,
+.arb-inspect [data-slot="select-trigger"][data-popup-open] {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 22%, transparent);
+  outline: none;
+}
+
+/* Cards del picker de disparador: material con profundidad. */
+.arb-pick {
+  background: linear-gradient(
+    180deg,
+    var(--bg-1),
+    color-mix(in srgb, var(--bg-2) 40%, var(--bg-1))
+  );
+  box-shadow: 0 1px 2px rgba(15, 22, 36, 0.04);
+}
+.arb-pick--on {
+  box-shadow:
+    0 3px 12px -5px color-mix(in srgb, var(--arb-c, var(--gold)) 45%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--arb-c, var(--gold)) 30%, transparent);
+}
+
+/* Section labels con hairline separador. */
+.arb-ins__section {
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--border-2) 60%, transparent);
+}
+
+/* Tool buttons con material. */
+.arb-tool {
+  background: linear-gradient(
+    180deg,
+    var(--bg-1),
+    color-mix(in srgb, var(--bg-2) 50%, var(--bg-1))
+  );
+  box-shadow: 0 1px 2px rgba(15, 22, 36, 0.05);
+}
+
 @media (max-width: 980px) {
   .arb {
     grid-template-columns: 1fr;

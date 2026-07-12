@@ -529,6 +529,41 @@ export const RULE_TEMPLATES: Array<{
     }),
   },
   {
+    id: "hot-lead-playbook",
+    name: "Lead caliente · jugada completa",
+    description:
+      "Formulario Meta de un lead calificado → orquesta 8 pasos: puntúa, etiqueta, asigna programa, saluda, avisa, agenda, mueve de etapa y lo inscribe en un journey. Úsala para ver el builder al máximo.",
+    build: () => ({
+      name: "Lead caliente Meta → jugada completa",
+      enabled: false,
+      trigger: { type: "whatsapp_flow_completed", params: {} },
+      conditions: [
+        { field: "source", op: "contains", value: "meta" },
+        { field: "valoracion", op: "neq", value: "negativa" },
+        { field: "stageId", op: "exists", value: "" },
+      ],
+      actions: [
+        { type: "apply_score", params: { delta: 25 } },
+        { type: "apply_tag", params: { tag: "lead-caliente" } },
+        { type: "set_program", params: { programId: "" } },
+        {
+          type: "send_whatsapp_template",
+          params: { templateName: "", variables: ["{{name}}"] },
+        },
+        {
+          type: "notify_agent",
+          params: { message: "🔥 {{name}} completó el formulario — llámalo YA", agent: "" },
+        },
+        {
+          type: "schedule_callback",
+          params: { offsetHours: 2, channel: "voice", notes: "Lead caliente: contactar en 2h" },
+        },
+        { type: "move_stage", params: { stageId: "" } },
+        { type: "start_journey", params: { journeyId: "" } },
+      ],
+    }),
+  },
+  {
     id: "welcome-web",
     name: "Bienvenida a leads del form web",
     description: "Lead nuevo con fuente Web → plantilla de bienvenida por WhatsApp.",
