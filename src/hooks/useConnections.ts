@@ -50,6 +50,10 @@ export interface SalesforceConn {
   /** Pilar 10 — mapeo schema-aware: campo de ARIA → campo del Lead de la org del
    *  cliente. Default = estándar; "" = no escribir ese campo (R24). */
   fieldMapping?: Record<string, string>;
+  /** Dirección de la TIPIFICACIÓN entre ARIA y Salesforce:
+   *  source="salesforce" → ARIA importa el picklist de `field` (SF manda);
+   *  source="aria" → ARIA escribe su tipificación en `field` de SF (ARIA manda). */
+  tipificacion?: { source: "salesforce" | "aria"; field?: string };
 }
 /** Un WhatsApp Flow (formulario nativo de Meta, #10) registrado por el tenant.
  *  El Flow se diseña/publica en Meta Business Manager; aquí vive solo su

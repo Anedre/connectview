@@ -90,28 +90,44 @@ const DEFAULT_SF_FIELD_MAP: Record<SfMappableField, string> = {
 // caller de propagateLead (wrap-up, tablero, webhooks, campañas) respeta el
 // mapeo, no solo uno. Best-effort: sin config / sin acceso → null (defaults).
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
-const sfMapCache = new Map<string, { m: SfFieldMapping | null; at: number }>();
+/** Dirección de la tipificación entre ARIA y SF (config por tenant). */
+export interface SfTipificacion {
+  source?: "salesforce" | "aria";
+  field?: string;
+}
+interface SfConn {
+  fieldMapping: SfFieldMapping | null;
+  tipificacion: SfTipificacion | null;
+}
+const sfCfgCache = new Map<string, { c: SfConn; at: number }>();
 const SFMAP_TTL_MS = 5 * 60 * 1000;
-async function loadActiveSfMapping(): Promise<SfFieldMapping | null> {
+/** Lee la config SF del tenant (fieldMapping + tipificacion) de connectview-connections,
+ *  cacheada 5 min. Una sola lectura sirve a ambos. Best-effort → nulls (defaults). */
+async function loadActiveSfConn(): Promise<SfConn> {
   const tid = getActiveTenantId();
-  if (!tid) return null;
-  const hit = sfMapCache.get(tid);
-  if (hit && Date.now() - hit.at < SFMAP_TTL_MS) return hit.m;
-  let m: SfFieldMapping | null = null;
+  if (!tid) return { fieldMapping: null, tipificacion: null };
+  const hit = sfCfgCache.get(tid);
+  if (hit && Date.now() - hit.at < SFMAP_TTL_MS) return hit.c;
+  let c: SfConn = { fieldMapping: null, tipificacion: null };
   try {
     const r = await legacyDynamo.send(
       new GetItemCommand({ TableName: CONNECTIONS_TABLE, Key: { tenantId: { S: tid } } }),
     );
     const json = r.Item?.configJson?.S;
     if (json) {
-      const cfg = JSON.parse(json) as { salesforce?: { fieldMapping?: SfFieldMapping } };
-      m = cfg?.salesforce?.fieldMapping || null;
+      const cfg = JSON.parse(json) as {
+        salesforce?: { fieldMapping?: SfFieldMapping; tipificacion?: SfTipificacion };
+      };
+      c = {
+        fieldMapping: cfg?.salesforce?.fieldMapping || null,
+        tipificacion: cfg?.salesforce?.tipificacion || null,
+      };
     }
   } catch {
     /* sin config / sin acceso → defaults */
   }
-  sfMapCache.set(tid, { m, at: Date.now() });
-  return m;
+  sfCfgCache.set(tid, { c, at: Date.now() });
+  return c;
 }
 /** Target SF de un campo ARIA con el override del tenant. "" / "-" = skip. */
 function sfTargetWith(mapping: SfFieldMapping | null, field: SfMappableField): string {
@@ -318,6 +334,9 @@ export interface SfPushExtra {
   taskDescription?: string;
   /** TaskSubtype de SF: "Call" | "Email" | "Task" (según el canal del contacto). */
   taskSubtype?: string;
+  /** Etiqueta de tipificación de ARIA (stage › substage) a escribir en el campo SF
+   *  configurado, SOLO si tipificacion.source === "aria" (ARIA manda). */
+  tipificacionLabel?: string;
 }
 
 /** Canal del contacto → cómo se registra en SF + cómo se muestra en Vox. */
@@ -639,7 +658,8 @@ export async function pushLeadToSalesforce(
   const { firstName, lastName } = splitName(lead.name);
   // Pilar 10 — mapeo del tenant (auto-cargado de connectview-connections). Aplica
   // a CUALQUIER origen del lead, no solo al wrap-up.
-  const reqMapping = await loadActiveSfMapping();
+  const conn = await loadActiveSfConn();
+  const reqMapping = conn.fieldMapping;
   const fields: Record<string, unknown> = {};
   // Escribe cada campo en su target SF mapeado (default = estándar); target ""
   // = el admin lo deshabilitó (R24: el cliente elige qué se actualiza).
@@ -672,6 +692,13 @@ export async function pushLeadToSalesforce(
       putRoll(VOX_ROLLUP_FIELDS.touchesToClose, roll.touchesToClose);
       putRoll(VOX_ROLLUP_FIELDS.daysToClose, roll.daysToClose);
     }
+  }
+
+  // Tipificación ARIA → SF: solo si el tenant configuró source="aria" (ARIA manda)
+  // y un campo destino, y el caller pasó la etiqueta (stage › substage). Escribe el
+  // texto tal cual — si el campo no existe en la org, sfWriteLead lo descarta.
+  if (conn.tipificacion?.source === "aria" && conn.tipificacion.field && extra.tipificacionLabel) {
+    fields[conn.tipificacion.field] = extra.tipificacionLabel.slice(0, 255);
   }
 
   // Resolver el registro destino + dónde se ancla la gestión (Task).

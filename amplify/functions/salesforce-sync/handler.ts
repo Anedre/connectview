@@ -800,7 +800,14 @@ export const handler: Handler = async (event: any) => {
       },
       {
         origin: "vox",
-        sfExtra: { taskSubject: subject, taskDescription, taskSubtype: ch.subtype },
+        sfExtra: {
+          taskSubject: subject,
+          taskDescription,
+          taskSubtype: ch.subtype,
+          // Tipificación ARIA (hoja: substage, o stage) → el push la escribe al campo
+          // SF configurado SOLO si el tenant eligió source="aria".
+          tipificacionLabel: body.subStageLabel || body.stageLabel || undefined,
+        },
       },
     );
 

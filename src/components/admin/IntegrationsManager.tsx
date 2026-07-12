@@ -27,6 +27,7 @@ import {
   type MetaAccountRef,
 } from "@/hooks/useConnections";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useTaxonomy } from "@/hooks/useTaxonomy";
 import {
   Select,
   SelectContent,
@@ -764,6 +765,8 @@ interface SfDescField {
   label: string;
   type: string;
   custom: boolean;
+  /** Valores del picklist (si type === "picklist") — para importar la tipificación. */
+  picklistValues?: { label: string; value: string }[];
 }
 
 /** Mapeo schema-aware (Pilar 10): descubre los campos reales del Lead de la org
@@ -787,6 +790,78 @@ function SfFieldMapper({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [discovered, setDiscovered] = useState(false);
+  // Tipificación ↔ Salesforce: dirección + campo SF.
+  const { docs: taxDocs, refetch: refetchTax } = useTaxonomy();
+  const tip = sf.tipificacion || { source: "salesforce" as const, field: "" };
+  const [tipSource, setTipSource] = useState<"salesforce" | "aria">(tip.source || "salesforce");
+  const [tipField, setTipField] = useState<string>(tip.field || "");
+  const [importing, setImporting] = useState(false);
+  // Campos elegibles: para importar solo picklists; para escribir, texto/picklist.
+  const tipFieldOptions =
+    tipSource === "salesforce"
+      ? fields.filter((f) => (f.picklistValues?.length ?? 0) > 0 || f.type === "picklist")
+      : fields.filter((f) => ["string", "textarea", "picklist"].includes(f.type));
+
+  /** SF → ARIA: importa los valores del picklist elegido como tipificación de ARIA,
+   *  MERGE no destructivo (agrega solo los salesforceValue que falten). */
+  const importTipificacion = async () => {
+    const field = fields.find((f) => f.name === tipField);
+    const values = field?.picklistValues || [];
+    if (!values.length) {
+      toast.error("Ese campo no tiene valores de picklist");
+      return;
+    }
+    if (!ep?.manageTaxonomy) return;
+    setImporting(true);
+    try {
+      const doc = taxDocs.find((d) => d.isDefault) || taxDocs[0];
+      const existing = doc?.stages || [];
+      const haveSf = new Set(
+        existing.map((s) => (s.salesforceValue || "").trim().toLowerCase()).filter(Boolean),
+      );
+      const added = values
+        .filter((v) => !haveSf.has(String(v.value).trim().toLowerCase()))
+        .map((v) => ({
+          label: v.label || v.value,
+          valoracion: "inicial" as const,
+          salesforceValue: v.value,
+          subStages: [] as { label: string }[],
+        }));
+      if (!added.length) {
+        toast.message("Tu tipificación ya cubre todos los valores de Salesforce");
+        return;
+      }
+      const payload = {
+        taxonomyId: doc?.taxonomyId,
+        name: doc?.name || "Tipificación",
+        isDefault: doc?.isDefault ?? true,
+        stages: [
+          ...existing.map((s) => ({
+            id: s.id,
+            label: s.label,
+            valoracion: s.valoracion,
+            description: s.description,
+            salesforceValue: s.salesforceValue,
+            subStages: s.subStages.map((ss) => ({ id: ss.id, label: ss.label })),
+          })),
+          ...added,
+        ],
+        actor: "admin",
+      };
+      const r = await authedFetch(ep.manageTaxonomy, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error((await r.json())?.error || "No se pudo importar");
+      toast.success(`${added.length} tipificación(es) importadas de Salesforce`);
+      await refetchTax(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo importar");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const discover = async () => {
     if (!ep?.salesforceSync) {
@@ -812,7 +887,11 @@ function SfFieldMapper({
     if (!ep?.manageConnections) return;
     setSaving(true);
     try {
-      const nextSf = { ...sf, fieldMapping: mapping };
+      const nextSf = {
+        ...sf,
+        fieldMapping: mapping,
+        tipificacion: { source: tipSource, field: tipField },
+      };
       // POST el config COMPLETO (manage-connections reemplaza el configJson) con
       // el mapeo dentro de salesforce → no pisa la conexión/instanceUrl.
       const r = await authedFetch(ep.manageConnections, {
@@ -919,7 +998,94 @@ function SfFieldMapper({
         ))}
       </div>
 
-      <div className="row" style={{ gap: 8, marginTop: 12, alignItems: "center" }}>
+      {/* ── Tipificación ↔ Salesforce (dirección + importar) ── */}
+      <div style={{ borderTop: "1px solid var(--border-1)", marginTop: 16, paddingTop: 14 }}>
+        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
+          Tipificación ↔ Salesforce
+        </div>
+        <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 10 }}>
+          Decide quién manda en la tipificación (dispositions). <b>Salesforce manda</b> = importas
+          su picklist a ARIA; <b>ARIA manda</b> = cada wrap-up escribe su tipificación en un campo
+          de tu Lead.
+        </div>
+        <SegmentedControl
+          value={tipSource}
+          onValueChange={(v) => {
+            setTipSource(v as "salesforce" | "aria");
+            setTipField("");
+          }}
+          options={[
+            { value: "salesforce", label: "Salesforce manda" },
+            { value: "aria", label: "ARIA manda" },
+          ]}
+          size="sm"
+        />
+        <div
+          className="row"
+          style={{ gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}
+        >
+          <div style={{ width: 150, minWidth: 150, fontSize: 12.5 }}>
+            {tipSource === "salesforce" ? "Picklist a importar" : "Campo donde escribir"}
+          </div>
+          <span style={{ color: "var(--text-3)" }}>
+            {tipSource === "salesforce" ? "→ ARIA" : "ARIA →"}
+          </span>
+          <Select
+            value={tipField}
+            onValueChange={(nv) => setTipField(nv ?? "")}
+            disabled={!discovered}
+          >
+            <SelectTrigger style={{ flex: 1, minWidth: 180 }}>
+              <SelectValue>
+                {(() => {
+                  const cf = fields.find((f) => f.name === tipField);
+                  return cf
+                    ? `${cf.custom ? "✦ " : ""}${cf.label} · ${cf.name}`
+                    : "— elige un campo —";
+                })()}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">— elige un campo —</SelectItem>
+              {tipFieldOptions.map((f) => (
+                <SelectItem key={f.name} value={f.name}>
+                  {f.custom ? "✦ " : ""}
+                  {f.label} · {f.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {tipSource === "salesforce" ? (
+          <div
+            className="row"
+            style={{ marginTop: 10, gap: 8, alignItems: "center", flexWrap: "wrap" }}
+          >
+            <button
+              className="btn btn--sm"
+              onClick={importTipificacion}
+              disabled={importing || !tipField || !discovered}
+            >
+              {importing ? (
+                "Importando…"
+              ) : (
+                <>
+                  <Icon.Sparkles size={12} /> Importar valores a ARIA
+                </>
+              )}
+            </button>
+            <span className="muted" style={{ fontSize: 11 }}>
+              Agrega a tu taxonomía las tipificaciones de SF que falten — no borra nada.
+            </span>
+          </div>
+        ) : (
+          <div className="muted" style={{ fontSize: 11.5, marginTop: 8, lineHeight: 1.5 }}>
+            Usa un <b>campo de texto</b> de tu Lead. ARIA no crea ni gestiona el picklist de SF.
+          </div>
+        )}
+      </div>
+
+      <div className="row" style={{ gap: 8, marginTop: 14, alignItems: "center" }}>
         <button
           className="btn btn--primary btn--sm"
           onClick={save}
