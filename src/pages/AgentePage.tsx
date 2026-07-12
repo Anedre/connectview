@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MessageCircle,
   Wrench,
@@ -8,9 +8,19 @@ import {
   BookText,
   ShieldAlert,
   Radio,
+  GraduationCap,
+  Layers,
+  HelpCircle,
+  ArrowUpRight,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
+import { usePrograms } from "@/hooks/usePrograms";
+import { useCatalogs } from "@/hooks/useCatalogs";
+import { useQueues } from "@/hooks/useQueues";
 import * as Icon from "@/components/vox/primitives";
 import { BotTester } from "@/components/bots/BotTester";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -101,6 +111,13 @@ interface AgentCfg {
   channel: string;
   maxTurns: number;
   tools: string[];
+  // Fuentes RAG que el agente consulta y cita ([P]/[C]/[F]). El bot-runtime solo
+  // las lee si vienen en el nodo → hay que persistirlas (antes no se seteaban y el
+  // agente "no tenía acceso" a programas/catálogos/FAQ).
+  ragPrograms: boolean; // escanea programas activos → cita [P1]
+  ragCatalogs: string[]; // catalogIds a anclar → cita [C1]…
+  ragKbId: string; // base de conocimiento (FAQ) → cita [F1]…
+  ragProvisioned: boolean; // ¿ya se decidió la config RAG? (evita re-autoencender)
 }
 
 function blankAgent(): AgentCfg {
@@ -118,6 +135,10 @@ function blankAgent(): AgentCfg {
     channel: CHANNELS[0],
     maxTurns: 8,
     tools: [],
+    ragPrograms: true,
+    ragCatalogs: [],
+    ragKbId: "",
+    ragProvisioned: false,
   };
 }
 
@@ -219,6 +240,31 @@ const PERSONAS: { label: string; text: string }[] = [
     text: "Eres la recepción de la empresa, con tono formal y amable. Trata de «usted».",
   },
 ];
+/** Presets de guardrails — se agregan como líneas al textarea (acumulables). */
+const GUARDRAIL_PRESETS: { label: string; text: string }[] = [
+  {
+    label: "No inventar precios/fechas",
+    text: "No inventes precios ni fechas: si no está en tus fuentes, dilo con honestidad.",
+  },
+  {
+    label: "No prometer descuentos",
+    text: "No prometas descuentos ni beneficios que no estén autorizados.",
+  },
+  {
+    label: "No pedir datos sensibles",
+    text: "No pidas datos de tarjeta, contraseñas ni información sensible.",
+  },
+  { label: "No dar asesoría legal/médica", text: "No des asesoría legal, médica ni financiera." },
+  { label: "No filtrar datos de otros", text: "No compartas datos de otros clientes." },
+];
+/** Presets de "derivar a un humano cuando…" (reemplazan la condición). */
+const HANDOFF_PRESETS = [
+  "el cliente pide hablar con una persona",
+  "el cliente se frustra o se molesta",
+  "es un reclamo formal",
+  "piden un descuento o una excepción especial",
+  "es una emergencia o algo urgente",
+];
 const MODEL_HINT: Record<string, string> = {
   "Claude Sonnet 4.6 (Bedrock)":
     "Equilibrado: buen razonamiento a costo medio. Recomendado para la mayoría.",
@@ -258,6 +304,11 @@ function agentToBot(a: AgentCfg): Bot {
           handoffWhen: a.handoffWhen,
           maxTurns: a.maxTurns,
           tools: a.tools,
+          // Fuentes RAG (el bot-runtime las lee de aquí para anclar + citar).
+          ragPrograms: a.ragPrograms,
+          ragCatalogs: a.ragCatalogs,
+          ragKbId: a.ragKbId,
+          ragProvisioned: a.ragProvisioned,
         },
       },
       { id: "stopOk", kind: "stop", position: { x: 60, y: 360 }, data: {} },
@@ -297,6 +348,16 @@ function botToAgent(bot: Bot): AgentCfg {
     channel: bot.trigger || CHANNELS[0],
     maxTurns: typeof d.maxTurns === "number" ? (d.maxTurns as number) : 8,
     tools: Array.isArray(d.tools) ? (d.tools as string[]) : [],
+    ragPrograms: typeof d.ragPrograms === "boolean" ? (d.ragPrograms as boolean) : true,
+    ragCatalogs: Array.isArray(d.ragCatalogs) ? (d.ragCatalogs as string[]) : [],
+    ragKbId: s("ragKbId"),
+    // "Provisionado" si el bot ya trae cualquier señal de config RAG; los agentes
+    // legacy (sin ninguna) se auto-encienden al abrir el editor.
+    ragProvisioned:
+      d.ragProvisioned === true ||
+      Array.isArray(d.ragCatalogs) ||
+      (typeof d.ragKbId === "string" && d.ragKbId !== "") ||
+      typeof d.ragPrograms === "boolean",
   };
 }
 
@@ -1095,7 +1156,60 @@ function AgentBuilder({
       ...s,
       tools: s.tools.includes(key) ? s.tools.filter((t) => t !== key) : [...s.tools, key],
     }));
+  // Agrega una línea a un campo multilínea (guardrails) sin duplicar.
+  const addLine = (field: "guardrails", line: string) =>
+    setA((s) => {
+      const cur = s[field] || "";
+      if (cur.toLowerCase().includes(line.toLowerCase())) return s;
+      return { ...s, [field]: cur.trim() ? cur.replace(/\s+$/, "") + "\n" + line : line };
+    });
   const playBot = useMemo(() => agentToBot(a), [a]);
+
+  // ── Fuentes reales que el RAG del agente consulta (panel Conocimiento) ──
+  const navigate = useNavigate();
+  const { programs } = usePrograms();
+  const { catalogs, loading: catalogsLoading } = useCatalogs();
+  const { queues } = useQueues();
+  const ep = getApiEndpoints();
+  // Conteo de FAQ (base de conocimiento) — comparte caché con el inspector de Bots.
+  const kbQuery = useQuery({
+    queryKey: ["ai-agent-kbs"],
+    enabled: !!ep?.manageKnowledge,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const r = await authedFetch(ep!.manageKnowledge!);
+      const d = await r.json();
+      return (d.kbs || []) as { kbId: string; name: string; entries?: unknown[] }[];
+    },
+  });
+  const faqCount = (kbQuery.data || []).reduce(
+    (n, k) => n + (Array.isArray(k.entries) ? k.entries.length : 0),
+    0,
+  );
+  const activePrograms = programs.filter((p) => p.status === "activo").length;
+  const catalogIds = useMemo(() => catalogs.map((c) => c.catalogId), [catalogs]);
+  const firstKbId = (kbQuery.data || [])[0]?.kbId || "";
+
+  // Auto-enciende TODAS las fuentes disponibles la 1ª vez que se abre un agente sin
+  // config RAG (incluidos los legacy), para que cite de una. Corre una sola vez.
+  const provisionedRef = useRef(false);
+  useEffect(() => {
+    if (provisionedRef.current || a.ragProvisioned) return;
+    if (catalogsLoading || kbQuery.isLoading) return; // espera a tener las fuentes
+    provisionedRef.current = true;
+    setA((s) =>
+      s.ragProvisioned
+        ? s
+        : {
+            ...s,
+            ragProvisioned: true,
+            ragPrograms: true,
+            ragCatalogs: catalogIds,
+            ragKbId: s.ragKbId || firstKbId,
+          },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogsLoading, kbQuery.isLoading]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -1210,17 +1324,69 @@ function AgentBuilder({
           <Section
             kicker="Qué sabe"
             title="Conocimiento"
-            desc="Datos que el agente puede usar para responder."
+            desc="El agente busca en tus fuentes y cita de dónde saca cada dato."
             icon={BookText}
             accent="var(--cyan)"
           >
-            <textarea
-              className="ag-area"
-              rows={4}
-              placeholder="Pega FAQs, precios, horarios, políticas… El agente los usará al responder."
-              value={a.knowledge}
-              onChange={(e) => set({ knowledge: e.target.value })}
-            />
+            <div className="ag-src">
+              <SourceCard
+                cite="P"
+                color="var(--iris)"
+                icon={GraduationCap}
+                label="Programas"
+                unit="programas activos"
+                count={activePrograms}
+                on={a.ragPrograms}
+                disabled={activePrograms === 0}
+                onToggle={() => set({ ragPrograms: !a.ragPrograms, ragProvisioned: true })}
+                onManage={() => navigate("/programs")}
+              />
+              <SourceCard
+                cite="C"
+                color="var(--cyan)"
+                icon={Layers}
+                label="Catálogos"
+                unit={catalogs.length === 1 ? "catálogo" : "catálogos"}
+                count={catalogs.length}
+                on={a.ragCatalogs.length > 0}
+                disabled={catalogs.length === 0}
+                onToggle={() =>
+                  set({
+                    ragCatalogs: a.ragCatalogs.length > 0 ? [] : catalogIds,
+                    ragProvisioned: true,
+                  })
+                }
+                onManage={() => navigate("/admin?section=catalogos")}
+              />
+              <SourceCard
+                cite="F"
+                color="var(--green)"
+                icon={HelpCircle}
+                label="FAQ"
+                unit={faqCount === 1 ? "respuesta" : "respuestas"}
+                count={faqCount}
+                loading={kbQuery.isLoading}
+                on={!!a.ragKbId}
+                disabled={faqCount === 0}
+                onToggle={() => set({ ragKbId: a.ragKbId ? "" : firstKbId, ragProvisioned: true })}
+                onManage={() => navigate("/admin?section=knowledge")}
+              />
+            </div>
+            <div className="ag-note">
+              El agente consulta las fuentes <b>activas</b> y muestra la cita — <b>[P]</b> programa,{" "}
+              <b>[C]</b> catálogo, <b>[F]</b> FAQ — de dónde sacó cada dato, en vez de inventar.
+              Apaga una para que la ignore. Se gestionan en Programas y Configuración.
+            </div>
+            <label>
+              <span className="ag-label">Notas adicionales (opcional)</span>
+              <textarea
+                className="ag-area"
+                rows={3}
+                placeholder="Datos sueltos que no están en las fuentes: promociones del mes, horarios especiales, aclaraciones de tono…"
+                value={a.knowledge}
+                onChange={(e) => set({ knowledge: e.target.value })}
+              />
+            </label>
           </Section>
 
           <Section
@@ -1270,17 +1436,30 @@ function AgentBuilder({
           <Section
             kicker="Qué no debe hacer"
             title="Guardrails"
-            desc="Qué NO debe hacer el agente."
+            desc="Los límites del agente. Toca un preset para agregarlo."
             icon={ShieldAlert}
             accent="var(--coral)"
           >
             <textarea
               className="ag-area"
-              rows={2}
+              rows={3}
               placeholder="No prometas descuentos. No inventes precios. No pidas datos de tarjeta."
               value={a.guardrails}
               onChange={(e) => set({ guardrails: e.target.value })}
             />
+            <div className="ag-personas">
+              {GUARDRAIL_PRESETS.map((g) => (
+                <button
+                  key={g.label}
+                  type="button"
+                  className="ag-persona"
+                  onClick={() => addLine("guardrails", g.text)}
+                  title={g.text}
+                >
+                  + {g.label}
+                </button>
+              ))}
+            </div>
           </Section>
 
           <Section
@@ -1312,16 +1491,37 @@ function AgentBuilder({
                 value={a.handoffWhen}
                 onChange={(e) => set({ handoffWhen: e.target.value })}
               />
+              <div className="ag-personas">
+                {HANDOFF_PRESETS.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    className="ag-persona"
+                    onClick={() => set({ handoffWhen: h })}
+                    title="Usar como condición de derivación"
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
             </label>
             <div className="row" style={{ gap: 10 }}>
               <label style={{ flex: 1 }}>
                 <span className="ag-label">Cola al derivar</span>
                 <input
                   className="ag-input"
-                  placeholder="Admisión"
+                  list="ag-queue-list"
+                  placeholder={queues.length ? "Elige o escribe una cola…" : "Admisión"}
                   value={a.handoffQueue}
                   onChange={(e) => set({ handoffQueue: e.target.value })}
                 />
+                {queues.length > 0 && (
+                  <datalist id="ag-queue-list">
+                    {queues.map((qq) => (
+                      <option key={qq.id} value={qq.name} />
+                    ))}
+                  </datalist>
+                )}
               </label>
               <label style={{ width: 160 }}>
                 <span className="ag-label">Máx. turnos · {a.maxTurns}</span>
@@ -1335,6 +1535,12 @@ function AgentBuilder({
                 />
               </label>
             </div>
+            {queues.length > 0 && (
+              <div className="ag-hint">
+                Colas reales de tu Amazon Connect — elige una para que la derivación entre a la cola
+                correcta.
+              </div>
+            )}
           </Section>
         </div>
 
@@ -1380,6 +1586,73 @@ function Section({
       </div>
       <div className="ag-sec__d">{desc}</div>
       <div style={{ display: "grid", gap: 11 }}>{children}</div>
+    </div>
+  );
+}
+
+/** Tarjeta de una fuente de conocimiento conectada (Programas / Catálogos / FAQ):
+ *  conteo en vivo + la cita que el agente usará ([P]/[C]/[F]) + acceso a gestionarla. */
+function SourceCard({
+  cite,
+  color,
+  icon: Icn,
+  label,
+  unit,
+  count,
+  on,
+  disabled,
+  loading,
+  onToggle,
+  onManage,
+}: {
+  cite: string;
+  color: string;
+  icon: React.ComponentType<{ size?: number }>;
+  label: string;
+  unit: string;
+  count: number;
+  on: boolean;
+  disabled?: boolean;
+  loading?: boolean;
+  onToggle: () => void;
+  onManage: () => void;
+}) {
+  const active = on && count > 0;
+  return (
+    <div
+      className={`ag-src__card ${active ? "" : "ag-src__card--off"}`}
+      style={{ "--_c": color } as React.CSSProperties}
+    >
+      <div className="ag-src__top">
+        <span className="ag-src__icon">
+          <Icn size={15} />
+        </span>
+        <span className="ag-src__label">
+          {label} <span className="ag-src__cite">[{cite}]</span>
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          className={`ag-src__sw ${on ? "is-on" : ""}`}
+          onClick={onToggle}
+          disabled={disabled}
+          title={disabled ? "Sin datos que activar" : on ? `${label} activo` : `Activar ${label}`}
+        >
+          <span className="ag-src__sw-knob" />
+        </button>
+      </div>
+      <div className="ag-src__count">
+        {loading ? "…" : count}
+        <small>{unit}</small>
+      </div>
+      <div className="ag-src__foot">
+        <span className={`ag-src__dot ${active ? "" : "ag-src__dot--off"}`} />
+        {active ? "El agente lo cita" : on ? "Sin datos aún" : "Desactivado"}
+        <button className="ag-src__manage" onClick={onManage} title={`Gestionar ${label}`}>
+          Gestionar <ArrowUpRight size={11} />
+        </button>
+      </div>
     </div>
   );
 }

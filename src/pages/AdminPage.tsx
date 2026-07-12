@@ -48,7 +48,12 @@ export function AdminPage() {
   const [users, setUsers] = useState<ConnectUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [section, setSection] = useState("users");
+  // Sección inicial: por defecto "users", pero permitimos deep-link vía
+  // ?section=catalogos|knowledge|… (p.ej. el botón "Gestionar" del Agente IA).
+  const [section, setSection] = useState(() => {
+    if (typeof window === "undefined") return "users";
+    return new URL(window.location.href).searchParams.get("section") || "users";
+  });
   const [availableProfiles, setAvailableProfiles] = useState<{ id: string; name: string }[]>([]);
   const [editingUser, setEditingUser] = useState<ConnectUser | null>(null);
 

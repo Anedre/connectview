@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Send, X, RotateCcw, Bot as BotIcon, Braces, Wrench, Quote } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
@@ -46,6 +46,8 @@ interface ChatItem {
   buttons?: { id: string; label: string }[];
   rows?: { id: string; title: string; description?: string }[];
   media?: MediaRef;
+  /** Fuentes citadas por esta respuesta del agente (Pilar 8 RAG) → chips inline. */
+  cites?: { id: string; label: string }[];
 }
 
 export function BotTester({
@@ -109,21 +111,39 @@ export function BotTester({
       const prevN = Array.isArray(st?.toolsUsed) ? st.toolsUsed.length : 0;
       const allTools: string[] = Array.isArray(d.state?.toolsUsed) ? d.state.toolsUsed : [];
       const newTools = allTools.slice(prevN);
-      setItems((i) => [
-        ...i,
-        ...newTools.map((t) => ({ from: "tool" as const, text: TOOL_LABELS[t] || t })),
-        ...msgs
-          // No dupliques la nota cruda de la tool (p.ej. "book_appointment"): ya la
-          // mostramos arriba como badge legible ("Agendó una cita").
-          .filter((m) => !(m.kind === "note" && !!TOOL_LABELS[(m.text || "").trim()]))
-          .map((m) => ({
-            from: (m.kind === "note" ? "note" : "bot") as ChatItem["from"],
-            text: m.text,
-            buttons: m.buttons,
-            rows: m.rows,
-            media: m.media,
-          })),
-      ]);
+      // Fuentes citadas NUEVAS de esta respuesta (diff del acumulado) → chips inline
+      // bajo la última burbuja del agente, no escondidas en el cajón "Inspeccionar".
+      const prevCiteN = Array.isArray(st?.citations) ? st.citations.length : 0;
+      const allCites: { id: string; label: string }[] = Array.isArray(d.state?.citations)
+        ? d.state.citations
+        : [];
+      const newCites = allCites.slice(prevCiteN);
+      setItems((i) => {
+        const added: ChatItem[] = [
+          ...newTools.map((t) => ({ from: "tool" as const, text: TOOL_LABELS[t] || t })),
+          ...msgs
+            // No dupliques la nota cruda de la tool (p.ej. "book_appointment"): ya la
+            // mostramos arriba como badge legible ("Agendó una cita").
+            .filter((m) => !(m.kind === "note" && !!TOOL_LABELS[(m.text || "").trim()]))
+            .map((m) => ({
+              from: (m.kind === "note" ? "note" : "bot") as ChatItem["from"],
+              text: m.text,
+              buttons: m.buttons,
+              rows: m.rows,
+              media: m.media,
+            })),
+        ];
+        // Cuelga las citas de la última burbuja del agente de este turno.
+        if (newCites.length) {
+          for (let k = added.length - 1; k >= 0; k--) {
+            if (added[k].from === "bot") {
+              added[k] = { ...added[k], cites: newCites };
+              break;
+            }
+          }
+        }
+        return [...i, ...added];
+      });
       setConvState(d.state);
       setAwaiting(d.awaiting ?? null);
       setDone(!!d.done);
@@ -242,31 +262,41 @@ export function BotTester({
               {m.text}
             </div>
           ) : (
-            <div
-              key={idx}
-              className={`fb-wa__bubble ${m.from === "user" ? "fb-wa__bubble--me" : "fb-wa__bubble--bot"}`}
-            >
-              {m.media &&
-                (m.media.type === "Video" ? (
-                  <video src={m.media.url} controls className="fb-wa__media" />
-                ) : m.media.type === "Imagen" ? (
-                  <img src={m.media.url} alt={m.media.caption || ""} className="fb-wa__media" />
-                ) : (
-                  <a href={m.media.url} target="_blank" rel="noreferrer" className="fb-wa__file">
-                    📎 {m.media.type}
-                  </a>
-                ))}
-              {m.text}
-              {m.rows && m.rows.length > 0 && (
-                <div className="fb-wa__rows">
-                  {m.rows.map((r) => (
-                    <div key={r.id} className="fb-wa__listrow">
-                      {r.title}
-                    </div>
+            <Fragment key={idx}>
+              <div
+                className={`fb-wa__bubble ${m.from === "user" ? "fb-wa__bubble--me" : "fb-wa__bubble--bot"}`}
+              >
+                {m.media &&
+                  (m.media.type === "Video" ? (
+                    <video src={m.media.url} controls className="fb-wa__media" />
+                  ) : m.media.type === "Imagen" ? (
+                    <img src={m.media.url} alt={m.media.caption || ""} className="fb-wa__media" />
+                  ) : (
+                    <a href={m.media.url} target="_blank" rel="noreferrer" className="fb-wa__file">
+                      📎 {m.media.type}
+                    </a>
+                  ))}
+                {m.text}
+                {m.rows && m.rows.length > 0 && (
+                  <div className="fb-wa__rows">
+                    {m.rows.map((r) => (
+                      <div key={r.id} className="fb-wa__listrow">
+                        {r.title}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {m.cites && m.cites.length > 0 && (
+                <div className="fb-wa__cites">
+                  {m.cites.map((c) => (
+                    <span key={c.id} className="fb-wa__cite" title={`${c.id} · ${c.label}`}>
+                      <Quote size={9} /> <b>{c.id}</b> {c.label}
+                    </span>
                   ))}
                 </div>
               )}
-            </div>
+            </Fragment>
           ),
         )}
         {loading && (
