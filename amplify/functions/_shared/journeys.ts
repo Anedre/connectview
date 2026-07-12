@@ -23,7 +23,31 @@ export type JourneyNodeKind =
   | "branch"
   | "split"
   | "action"
-  | "exit";
+  | "exit"
+  // Fase 2 — bloques nuevos. send_*/action-like se resuelven a efectos send/action
+  // (el runner ya sabe ejecutarlos); goal/leave son terminales/guard.
+  | "send_whatsapp"
+  | "send_email"
+  | "move_stage"
+  | "tag"
+  | "set_field"
+  | "notify_agent"
+  | "enqueue_dialer"
+  | "webhook"
+  | "start_journey"
+  | "leave"
+  | "goal";
+
+/** Mapea un kind "action-like" al nombre de acción que ejecuta el runner. */
+const ACTION_OF: Partial<Record<JourneyNodeKind, string>> = {
+  move_stage: "moveStage",
+  tag: "tag",
+  set_field: "setField",
+  notify_agent: "notify",
+  enqueue_dialer: "enqueueDialer",
+  webhook: "webhook",
+  start_journey: "startJourney",
+};
 
 export interface JourneyNode {
   id: string;
@@ -137,26 +161,56 @@ export function planAdvance(
         break;
       }
 
-      case "send": {
-        effects.push({
-          type: "send",
-          nodeId: node.id,
-          channel: String(node.params?.channel || "whatsapp"),
-          params: node.params || {},
-        });
+      case "send":
+      case "send_whatsapp":
+      case "send_email": {
+        const channel =
+          node.kind === "send_email"
+            ? "email"
+            : node.kind === "send_whatsapp"
+              ? "whatsapp"
+              : String(node.params?.channel || "whatsapp");
+        effects.push({ type: "send", nodeId: node.id, channel, params: node.params || {} });
         const nxt = successor(j, node.id);
         if (!nxt) return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
         node = nodeById(j, nxt);
         break;
       }
 
-      case "action": {
+      case "action":
+      case "move_stage":
+      case "tag":
+      case "set_field":
+      case "notify_agent":
+      case "enqueue_dialer":
+      case "webhook":
+      case "start_journey": {
+        const action =
+          node.kind === "action" ? String(node.params?.type || "") : ACTION_OF[node.kind] || "";
+        effects.push({ type: "action", nodeId: node.id, action, params: node.params || {} });
+        const nxt = successor(j, node.id);
+        if (!nxt) return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
+        node = nodeById(j, nxt);
+        break;
+      }
+
+      case "goal": {
+        // Objetivo: marca conversión (efecto) y termina el recorrido para este lead.
         effects.push({
           type: "action",
           nodeId: node.id,
-          action: String(node.params?.type || ""),
+          action: "goal",
           params: node.params || {},
         });
+        return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
+      }
+
+      case "leave": {
+        // Salir si…: si el lead cumple las reglas, sale ya; si no, continúa.
+        const rules = (node.params?.rules as FilterRule[]) || [];
+        const match = (node.params?.match as "all" | "any") || "all";
+        if (rules.length > 0 && evaluateLeadFilter(lead, rules, match))
+          return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
         const nxt = successor(j, node.id);
         if (!nxt) return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
         node = nodeById(j, nxt);
@@ -190,6 +244,23 @@ export function planAdvance(
       }
 
       case "wait": {
+        // Espera hasta una fecha/hora concreta: descansa en el SUCESOR hasta esa fecha.
+        const untilDate = node.params?.untilDate as string | undefined;
+        if (untilDate) {
+          const target = Date.parse(untilDate);
+          const nxt = successor(j, node.id);
+          if (!nxt) return { effects, nextNodeId: node.id, nextRunAt: nowIso, done: true };
+          if (!Number.isFinite(target) || target <= nowMs) {
+            node = nodeById(j, nxt); // ya venció (o inválida) → seguir ya
+            break;
+          }
+          return {
+            effects,
+            nextNodeId: nxt,
+            nextRunAt: new Date(target).toISOString(),
+            done: false,
+          };
+        }
         // Espera condicional: re-evalúa cada tick hasta cumplirse; entonces sigue.
         const untilRule = node.params?.untilRule as FilterRule[] | undefined;
         if (untilRule && untilRule.length) {

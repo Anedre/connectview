@@ -125,3 +125,120 @@ describe("planAdvance", () => {
     expect(a1).toBe(a2);
   });
 });
+
+// ── Fase 2: bloques nuevos (canales separados, acciones CRM, goal/leave, hasta-fecha) ──
+describe("planAdvance · bloques Fase 2", () => {
+  it("send_whatsapp / send_email emiten un efecto send con el canal correcto", () => {
+    const j: JourneyDef = {
+      journeyId: "j2",
+      name: "F2",
+      status: "active",
+      nodes: [
+        { id: "wa", kind: "send_whatsapp", params: { templateName: "hola" } },
+        { id: "em", kind: "send_email", params: { subject: "Hey" } },
+        { id: "x", kind: "exit" },
+      ],
+      edges: [
+        { from: "wa", to: "em" },
+        { from: "em", to: "x" },
+      ],
+    };
+    const p = planAdvance(j, "wa", {}, NOW);
+    expect(p.effects.map((e) => (e as { channel?: string }).channel)).toEqual([
+      "whatsapp",
+      "email",
+    ]);
+    expect(p.effects.every((e) => e.type === "send")).toBe(true);
+    expect(p.done).toBe(true);
+  });
+
+  it("los bloques de acción mapean a su action del runner (tag→tag, move_stage→moveStage)", () => {
+    const j: JourneyDef = {
+      journeyId: "j3",
+      name: "F2",
+      status: "active",
+      nodes: [
+        { id: "t", kind: "tag", params: { op: "add", tag: "vip" } },
+        { id: "m", kind: "move_stage", params: { stageId: "won" } },
+        { id: "x", kind: "exit" },
+      ],
+      edges: [
+        { from: "t", to: "m" },
+        { from: "m", to: "x" },
+      ],
+    };
+    const p = planAdvance(j, "t", {}, NOW);
+    expect(p.effects.map((e) => (e as { action?: string }).action)).toEqual(["tag", "moveStage"]);
+    expect(p.done).toBe(true);
+  });
+
+  it('goal emite un efecto "goal" y TERMINA (conversión)', () => {
+    const j: JourneyDef = {
+      journeyId: "j4",
+      name: "F2",
+      status: "active",
+      nodes: [{ id: "g", kind: "goal" }],
+      edges: [],
+    };
+    const p = planAdvance(j, "g", {}, NOW);
+    expect(p.effects).toEqual([{ type: "action", nodeId: "g", action: "goal", params: {} }]);
+    expect(p.done).toBe(true);
+  });
+
+  it("leave: si cumple sale (done sin efectos); si no, continúa al sucesor", () => {
+    const j: JourneyDef = {
+      journeyId: "j5",
+      name: "F2",
+      status: "active",
+      nodes: [
+        {
+          id: "lv",
+          kind: "leave",
+          params: { rules: [{ field: "grade", op: "eq", value: "F" }], match: "all" },
+        },
+        { id: "s", kind: "send", params: { channel: "whatsapp", templateName: "sigue" } },
+        { id: "x", kind: "exit" },
+      ],
+      edges: [
+        { from: "lv", to: "s" },
+        { from: "s", to: "x" },
+      ],
+    };
+    const salio = planAdvance(j, "lv", { grade: "F" }, NOW);
+    expect(salio.effects).toEqual([]);
+    expect(salio.done).toBe(true);
+    const siguio = planAdvance(j, "lv", { grade: "A" }, NOW);
+    expect(siguio.effects.map((e) => e.type)).toEqual(["send"]);
+  });
+
+  it('wait "hasta fecha": descansa en el sucesor hasta esa fecha; si ya pasó, sigue', () => {
+    const future = new Date(NOW + 3 * 86_400_000).toISOString();
+    const base: JourneyDef = {
+      journeyId: "j6",
+      name: "F2",
+      status: "active",
+      nodes: [
+        { id: "w", kind: "wait", params: { untilDate: future } },
+        { id: "s", kind: "send", params: { channel: "whatsapp", templateName: "ping" } },
+        { id: "x", kind: "exit" },
+      ],
+      edges: [
+        { from: "w", to: "s" },
+        { from: "s", to: "x" },
+      ],
+    };
+    const espera = planAdvance(base, "w", {}, NOW);
+    expect(espera.nextNodeId).toBe("s");
+    expect(espera.done).toBe(false);
+    expect(Date.parse(espera.nextRunAt)).toBe(Date.parse(future));
+    // Fecha ya vencida → sigue de una y ejecuta el send.
+    const past: JourneyDef = {
+      ...base,
+      nodes: [
+        { id: "w", kind: "wait", params: { untilDate: new Date(NOW - 1000).toISOString() } },
+        ...base.nodes.slice(1),
+      ],
+    };
+    expect(planAdvance(past, "w", {}, NOW).effects.map((e) => e.type)).toEqual(["send"]);
+  });
+});

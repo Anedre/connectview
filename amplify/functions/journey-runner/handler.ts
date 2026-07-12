@@ -285,7 +285,152 @@ async function runEffect(
     return enqueueDialer(effect.params, lead, leadId);
   }
 
+  if (effect.type === "action" && effect.action === "tag") {
+    return applyTag(effect.params, lead, leadId);
+  }
+  if (effect.type === "action" && effect.action === "setField") {
+    return setLeadField(effect.params, leadId);
+  }
+  if (effect.type === "action" && effect.action === "notify") {
+    return notifyAgent(effect.params, lead, leadId);
+  }
+  if (effect.type === "action" && effect.action === "startJourney") {
+    return startJourney(effect.params, leadId, tenantId);
+  }
+  if (effect.type === "action" && effect.action === "goal") {
+    return markGoal(leadId);
+  }
+
   return `${effect.type}:noop`;
+}
+
+/** Agrega o quita una etiqueta del lead (lead.tags = lista de strings). */
+async function applyTag(
+  params: Record<string, unknown>,
+  lead: LeadRec,
+  leadId: string,
+): Promise<string> {
+  const tag = String(params.tag || "").trim();
+  if (!tag) return "tag:sin-etiqueta";
+  const op = params.op === "remove" ? "remove" : "add";
+  const cur = Array.isArray(lead.tags) ? (lead.tags as unknown[]).map(String) : [];
+  const next = op === "remove" ? cur.filter((t) => t !== tag) : Array.from(new Set([...cur, tag]));
+  if (op === "add" && next.length === cur.length) return "tag:ya-existe";
+  if (op === "remove" && next.length === cur.length) return "tag:no-tenia";
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: { leadId: { S: leadId } },
+        UpdateExpression: "SET tags = :t, updatedAt = :u",
+        ExpressionAttributeValues: marshall({ ":t": next, ":u": new Date().toISOString() }),
+      }),
+    );
+    return `tag:${op}:${tag}`;
+  } catch (e) {
+    return `tag:err:${e instanceof Error ? e.message : e}`;
+  }
+}
+
+/** Escribe un valor en un campo arbitrario del lead (protege claves de sistema). */
+async function setLeadField(params: Record<string, unknown>, leadId: string): Promise<string> {
+  const field = String(params.field || "").trim();
+  if (!field) return "setField:sin-campo";
+  if (field === "leadId" || field === "tenantId" || field === "phone")
+    return "setField:campo-protegido";
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: { leadId: { S: leadId } },
+        UpdateExpression: "SET #f = :v, updatedAt = :u",
+        ExpressionAttributeNames: { "#f": field },
+        ExpressionAttributeValues: marshall({
+          ":v": params.value ?? "",
+          ":u": new Date().toISOString(),
+        }),
+      }),
+    );
+    return `setField:${field}`;
+  } catch (e) {
+    return `setField:err:${e instanceof Error ? e.message : e}`;
+  }
+}
+
+/** Crea un aviso/tarea para el equipo en la cola de callbacks (channel="task"). */
+async function notifyAgent(
+  params: Record<string, unknown>,
+  lead: LeadRec,
+  leadId: string,
+): Promise<string> {
+  const message = String(params.message || "").trim() || "Aviso del journey";
+  const nowIso = new Date().toISOString();
+  const item = {
+    callbackId: randomUUID(),
+    phone: String(lead.phone || ""),
+    customerName: String(lead.name || lead.fullName || ""),
+    scheduledAt: nowIso,
+    assignedAgentUserId: "",
+    notes: message,
+    channel: "task",
+    actionType: "journey-notify",
+    queueId: String(params.queue || ""),
+    customAttributes: JSON.stringify({ source: "journey", leadId }),
+    status: "SCHEDULED",
+    attempts: 0,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  try {
+    await dynamo.send(
+      new PutItemCommand({
+        TableName: CALLBACKS_TABLE,
+        Item: marshall(item, { removeUndefinedValues: true }),
+      }),
+    );
+    return "notify:queued";
+  } catch (e) {
+    return `notify:err:${e instanceof Error ? e.message : e}`;
+  }
+}
+
+/** Inscribe al lead en OTRO journey activo (composición de recorridos). */
+async function startJourney(
+  params: Record<string, unknown>,
+  leadId: string,
+  tenantId: string,
+): Promise<string> {
+  const targetId = String(params.journeyId || "").trim();
+  if (!targetId) return "startJourney:sin-journey";
+  if (!tenantId) return "startJourney:sin-tenant";
+  const target = await loadJourney(tenantId, targetId);
+  if (!target || target.status !== "active") return "startJourney:inactivo";
+  const existing = await enrollmentFor(targetId, leadId);
+  if (existing && (existing.status === "active" || !target.reenroll))
+    return "startJourney:ya-inscrito";
+  await createEnrollment(target, leadId, Date.now());
+  return `startJourney:${targetId}`;
+}
+
+/** Marca el recorrido como convertido para el lead (meta alcanzada por nodo). */
+async function markGoal(leadId: string): Promise<string> {
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: { leadId: { S: leadId } },
+        UpdateExpression: "SET journeyConverted = :c, journeyConvertedAt = :a, updatedAt = :u",
+        ExpressionAttributeValues: {
+          ":c": { BOOL: true },
+          ":a": { S: new Date().toISOString() },
+          ":u": { S: new Date().toISOString() },
+        },
+      }),
+    );
+    return "goal:converted";
+  } catch (e) {
+    return `goal:err:${e instanceof Error ? e.message : e}`;
+  }
 }
 
 /**
