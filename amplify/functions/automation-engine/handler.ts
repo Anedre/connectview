@@ -51,6 +51,7 @@ import { entryNodeId, type JourneyDef } from "../_shared/journeys";
 const RULES_TABLE = process.env.RULES_TABLE || "connectview-automation-rules";
 const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
 const CALLBACKS_TABLE = process.env.CALLBACKS_TABLE || "connectview-callbacks";
+const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const JOURNEYS_TABLE = process.env.JOURNEYS_TABLE || "connectview-journeys";
 const JOURNEY_ENROLLMENTS_TABLE =
   process.env.JOURNEY_ENROLLMENTS_TABLE || "connectview-journey-enrollments";
@@ -98,6 +99,7 @@ type TriggerType =
   | "lead_created"
   | "lead_stage_changed"
   | "lead_inactive"
+  | "score_threshold"
   | "wrapup_saved"
   | "whatsapp_flow_completed"
   | "message_inbound"
@@ -107,6 +109,7 @@ type ActionType =
   | "send_whatsapp_template"
   | "move_stage"
   | "schedule_callback"
+  | "enqueue_dialer"
   | "webhook"
   | "send_email"
   | "apply_tag"
@@ -128,9 +131,12 @@ interface Rule {
   name: string;
   enabled: boolean;
   trigger: { type: TriggerType; params?: Record<string, unknown> };
-  conditions?: Array<{ field: string; op: "eq" | "neq"; value: string }>;
-  actions: Array<{ type: ActionType; params?: Record<string, unknown> }>;
+  conditions?: Cond[];
+  actions: Array<{ type: ActionType; params?: Record<string, unknown>; conditions?: Cond[] }>;
 }
+
+/** Condición (regla o rama de acción). `op` = eq/neq/contains/exists/notexists. */
+type Cond = { field: string; op: string; value: string };
 
 export interface AutomationEvent {
   type: Exclude<TriggerType, "lead_inactive">;
@@ -314,6 +320,17 @@ function firstFailedCondition(
       return { field: c.field, op: c.op, value: c.value, actual };
   }
   return null;
+}
+
+/** ¿Se cumplen TODAS las condiciones de RAMA de una acción? (mismo eval que la regla).
+ *  Sin condiciones → true (la acción corre siempre). */
+function actionConditionsMet(conds: Cond[] | undefined, ctx: Ctx): boolean {
+  for (const c of conds || []) {
+    const actual = String((ctx as unknown as Record<string, unknown>)[c.field] ?? "").toLowerCase();
+    const expected = String(c.value ?? "").toLowerCase();
+    if (!conditionHolds(actual, c.op, expected)) return false;
+  }
+  return true;
 }
 
 function matchesTrigger(rule: Rule, ev: AutomationEvent): boolean {
@@ -522,6 +539,56 @@ async function actScheduleCallback(
   };
   if (channel === "whatsapp" && params.templateName)
     item.templateName = { S: String(params.templateName) };
+  await legacyDynamo.send(new PutItemCommand({ TableName: CALLBACKS_TABLE, Item: item }));
+  return null;
+}
+
+/** Encola una llamada saliente AHORA por una campaña de voz (auto-dispatch).
+ *  Espejo de journey-runner enqueueDialer: resuelve el flow/número de la campaña y
+ *  escribe un callback voice que pesca el dispatcher (pooled/legacy → gate legacy). */
+async function actEnqueueDialer(ctx: Ctx, params: Record<string, unknown>): Promise<string | null> {
+  if (!isLegacyTenant(ctx.tenantId)) return "enqueue_dialer aún no soportado para tenants BYO";
+  const phone = (ctx.phone || "").trim();
+  if (!phone) return "lead sin teléfono";
+  const campaignId = String(params.campaignId || "");
+  let contactFlowId = "";
+  let sourcePhoneNumber = "";
+  if (campaignId) {
+    try {
+      const c = await legacyDynamo.send(
+        new GetItemCommand({ TableName: CAMPAIGNS_TABLE, Key: { campaignId: { S: campaignId } } }),
+      );
+      if (c.Item) {
+        const camp = unmarshall(c.Item) as { contactFlowId?: string; sourcePhoneNumber?: string };
+        contactFlowId = String(camp.contactFlowId || "");
+        sourcePhoneNumber = String(camp.sourcePhoneNumber || "");
+      }
+    } catch {
+      /* cae al flow por defecto del dispatcher (fail-open) */
+    }
+  }
+  const nowIso = new Date().toISOString();
+  const item = marshall(
+    {
+      callbackId: randomUUID(),
+      phone,
+      customerName: ctx.name || "",
+      scheduledAt: nowIso, // inmediato: el dispatcher lo toma en su próximo tick
+      assignedAgentUserId: "", // sin agente fijo: la cola de la campaña/flow rutea
+      notes: fillTokens(String(params.notes || "Automatización: llamada"), ctx).slice(0, 1024),
+      channel: "voice",
+      actionType: "auto-dispatch",
+      campaignId,
+      contactFlowId, // ← el dispatcher enruta por este flow (cola de la campaña)
+      sourcePhoneNumber, // ← número saliente de la campaña (o default)
+      customAttributes: JSON.stringify({ automation: "1", kind: "dialer", campaignId }),
+      status: "SCHEDULED",
+      attempts: 0,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    },
+    { removeUndefinedValues: true },
+  );
   await legacyDynamo.send(new PutItemCommand({ TableName: CALLBACKS_TABLE, Item: item }));
   return null;
 }
@@ -1025,6 +1092,8 @@ function actionDetail(action: string, params: Record<string, unknown>): string |
       return `→ etapa ${String(params.stageId || "?")}`;
     case "schedule_callback":
       return `callback ${String(params.channel || "voice")} +${Number(params.offsetHours ?? 24)}h`;
+    case "enqueue_dialer":
+      return `dialer campaña ${String(params.campaignId || "default")}`;
     case "webhook":
       return "POST webhook";
     case "send_email":
@@ -1125,6 +1194,8 @@ async function dispatchAction(
       return actMoveStage(ctx, p);
     case "schedule_callback":
       return actScheduleCallback(ctx, p);
+    case "enqueue_dialer":
+      return actEnqueueDialer(ctx, p);
     case "webhook":
       return actWebhook(ctx, p, rule.name, rule.ruleId);
     case "send_email":
@@ -1163,6 +1234,9 @@ async function dispatchAction(
 async function executeRule(rule: Rule, triggerType: string, ctx: Ctx): Promise<number> {
   let okCount = 0;
   for (const action of rule.actions || []) {
+    // Rama por-acción: si tiene condiciones propias y NO se cumplen, se salta
+    // (silenciosa: es control de flujo esperado, no un error).
+    if (action.conditions?.length && !actionConditionsMet(action.conditions, ctx)) continue;
     const detail = actionDetail(action.type, action.params || {});
     let error: string | null = null;
     for (let attempt = 0; ; attempt++) {
@@ -1195,7 +1269,10 @@ async function executeRule(rule: Rule, triggerType: string, ctx: Ctx): Promise<n
 async function processEvent(ev: AutomationEvent): Promise<{ matched: number; fired: number }> {
   if (!ev?.type || !ev?.tenantId) return { matched: 0, fired: 0 };
   const rules = (await loadTenantRules(ev.tenantId)).filter(
-    (r) => r.trigger.type !== "lead_inactive" && matchesTrigger(r, ev),
+    (r) =>
+      r.trigger.type !== "lead_inactive" &&
+      r.trigger.type !== "score_threshold" &&
+      matchesTrigger(r, ev),
   );
   const ctx = ctxFromEvent(ev);
   const matched: Rule[] = [];
@@ -1282,7 +1359,10 @@ async function writeFiredMarker(leadId: string, ruleId: string): Promise<void> {
 }
 
 async function processTick(): Promise<{ tenants: number; fired: number; skipped: string[] }> {
-  const all = (await loadAllRules()).filter((r) => r.trigger.type === "lead_inactive");
+  // Triggers evaluados por SCAN periódico (no por evento): inactividad + score.
+  const all = (await loadAllRules()).filter(
+    (r) => r.trigger.type === "lead_inactive" || r.trigger.type === "score_threshold",
+  );
   const byTenant = new Map<string, Rule[]>();
   for (const r of all) {
     const list = byTenant.get(r.tenantId) || [];
@@ -1311,18 +1391,28 @@ async function processTick(): Promise<{ tenants: number; fired: number; skipped:
     }
     const now = Date.now();
     for (const rule of rules) {
+      const kind = rule.trigger.type;
+      // lead_inactive
       const days = Number(rule.trigger.params?.days ?? 7);
       const stageFilter = String(rule.trigger.params?.stageId || "");
       const cutoff = now - days * 86400_000;
+      // score_threshold
+      const minScore = Number(rule.trigger.params?.min ?? 0);
       let firesLeft = MAX_FIRES_PER_TICK;
       for (const lead of leads) {
         if (firesLeft <= 0) break;
-        const updatedAt = Date.parse(lead.updatedAt || lead.createdAt || "") || 0;
-        if (updatedAt > cutoff) continue; // activo
-        if (stageFilter && (lead.stageId || "") !== stageFilter) continue;
-        // ¿Ya disparó para este episodio de inactividad?
         const marker = lead.attributes?.[`autoFired_${rule.ruleId}`];
-        if (marker && Date.parse(marker) >= updatedAt) continue;
+        if (kind === "lead_inactive") {
+          const updatedAt = Date.parse(lead.updatedAt || lead.createdAt || "") || 0;
+          if (updatedAt > cutoff) continue; // activo
+          if (stageFilter && (lead.stageId || "") !== stageFilter) continue;
+          // ¿Ya disparó para este episodio de inactividad? (marca ≥ updatedAt)
+          if (marker && Date.parse(marker) >= updatedAt) continue;
+        } else {
+          // score_threshold: dispara UNA vez al alcanzar el umbral (marca persistente).
+          if ((Number(lead.score ?? 0) || 0) < minScore) continue;
+          if (marker) continue;
+        }
         const ctx: Ctx = {
           tenantId,
           leadId: lead.leadId,
@@ -1332,7 +1422,7 @@ async function processTick(): Promise<{ tenants: number; fired: number; skipped:
           source: lead.source,
         };
         if (!matchesConditions(rule, ctx)) continue;
-        fired += await executeRule(rule, "lead_inactive", ctx);
+        fired += await executeRule(rule, kind, ctx);
         firesLeft--;
         try {
           await writeFiredMarker(lead.leadId, rule.ruleId);

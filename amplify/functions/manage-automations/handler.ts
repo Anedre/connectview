@@ -48,6 +48,7 @@ export type TriggerType =
   | "lead_created"
   | "lead_stage_changed"
   | "lead_inactive"
+  | "score_threshold"
   | "wrapup_saved"
   | "whatsapp_flow_completed"
   | "message_inbound"
@@ -57,6 +58,7 @@ export type ActionType =
   | "send_whatsapp_template"
   | "move_stage"
   | "schedule_callback"
+  | "enqueue_dialer"
   | "webhook"
   | "send_email"
   | "apply_tag"
@@ -77,7 +79,11 @@ export interface AutomationRule {
   enabled: boolean;
   trigger: { type: TriggerType; params?: Record<string, unknown> };
   conditions?: Array<{ field: string; op: string; value: string }>;
-  actions: Array<{ type: ActionType; params?: Record<string, unknown> }>;
+  actions: Array<{
+    type: ActionType;
+    params?: Record<string, unknown>;
+    conditions?: Array<{ field: string; op: string; value: string }>;
+  }>;
   firedCount?: number;
   lastFiredAt?: string;
   createdAt?: string;
@@ -88,6 +94,7 @@ const TRIGGER_TYPES: TriggerType[] = [
   "lead_created",
   "lead_stage_changed",
   "lead_inactive",
+  "score_threshold",
   "wrapup_saved",
   "whatsapp_flow_completed",
   "message_inbound",
@@ -98,6 +105,7 @@ const ACTION_TYPES: ActionType[] = [
   "send_whatsapp_template",
   "move_stage",
   "schedule_callback",
+  "enqueue_dialer",
   "webhook",
   "send_email",
   "apply_tag",
@@ -217,6 +225,8 @@ function previewAction(
       return `Agendaría un ${String(p.channel || "voice")} para ${who} en ${Number(
         p.offsetHours ?? 24,
       )}h${p.notes ? ` (nota: "${fillTokens(String(p.notes), ctx)}")` : ""}`;
+    case "enqueue_dialer":
+      return `Llamaría a ${who} ahora por la campaña "${String(p.campaignName || p.campaignId || "(sin elegir)")}"`;
     case "webhook":
       return `Haría POST al webhook ${String(p.url || "(sin URL)")}`;
     case "send_email":

@@ -11,6 +11,7 @@ import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useUsers } from "@/hooks/useUsers";
 import { useJourneys } from "@/hooks/useJourneys";
 import { usePrograms } from "@/hooks/usePrograms";
+import { useCampaigns } from "@/hooks/useCampaigns";
 import { AutomationStepperBuilder } from "@/components/automations/AutomationStepperBuilder";
 import { colorForAction, type PickersCtx } from "@/components/automations/AutomationFields";
 import {
@@ -50,6 +51,7 @@ export function AutomationsPage() {
   const { users } = useUsers();
   const { journeys } = useJourneys();
   const { programs } = usePrograms();
+  const { campaigns } = useCampaigns(0);
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [picking, setPicking] = useState(false);
@@ -75,6 +77,10 @@ export function AutomationsPage() {
       .map((u) => ({ userId: u.userId as string, username: u.username })),
     journeys: journeys.map((j) => ({ journeyId: j.journeyId, name: j.name, status: j.status })),
     programs: programs.map((pr) => ({ id: pr.programId, name: pr.name })),
+    // Solo campañas de VOZ (el dialer no aplica a WhatsApp).
+    campaigns: campaigns
+      .filter((c) => c.campaignType !== "whatsapp")
+      .map((c) => ({ id: c.campaignId, name: c.name })),
   };
 
   const load = async () => {

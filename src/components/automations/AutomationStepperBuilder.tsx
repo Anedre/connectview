@@ -1,5 +1,15 @@
 import { Fragment, useState } from "react";
-import { Trash2, Plus, Copy, X, ChevronUp, ChevronDown, Filter, AlertTriangle } from "lucide-react";
+import {
+  Trash2,
+  Plus,
+  Copy,
+  X,
+  ChevronUp,
+  ChevronDown,
+  Filter,
+  AlertTriangle,
+  GripVertical,
+} from "lucide-react";
 import {
   ACTION_DEFS,
   ACTION_ORDER,
@@ -62,6 +72,10 @@ function summarize(
     }
     case "schedule_callback":
       return `${String(p.channel || "voice")} · +${Number(p.offsetHours ?? 24)}h`;
+    case "enqueue_dialer": {
+      const id = String(p.campaignId || "");
+      return ctx.campaigns.find((cp) => cp.id === id)?.name || id;
+    }
     case "notify_agent":
       return String(p.message || "").slice(0, 46);
     case "add_note":
@@ -104,6 +118,9 @@ export function AutomationStepperBuilder({
 }) {
   const [sel, setSel] = useState<Sel>({ kind: "hub" });
   const [adding, setAdding] = useState(false);
+  // Drag-para-reordenar: índice arrastrado + índice sobre el que se suelta.
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
 
   const actions = rule.actions || [];
   const conds = rule.conditions || [];
@@ -120,6 +137,11 @@ export function AutomationStepperBuilder({
   const setActionParams = (i: number, p: Record<string, unknown>) => {
     const a = [...actions];
     a[i] = { ...a[i], params: p };
+    onChange({ ...rule, actions: a });
+  };
+  const setActionConditions = (i: number, conditions: RuleCondition[]) => {
+    const a = [...actions];
+    a[i] = { ...a[i], conditions };
     onChange({ ...rule, actions: a });
   };
   const setActionType = (i: number, t: ActionType) => {
@@ -149,6 +171,15 @@ export function AutomationStepperBuilder({
     a.splice(i + 1, 0, { type: actions[i].type, params: { ...actions[i].params } });
     onChange({ ...rule, actions: a });
     setSel({ kind: "action", index: i + 1 });
+  };
+  /** Mueve la acción `from` a la posición `to` (drag & drop). */
+  const reorder = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= actions.length) return;
+    const a = [...actions];
+    const [moved] = a.splice(from, 1);
+    a.splice(to, 0, moved);
+    onChange({ ...rule, actions: a });
+    setSel({ kind: "action", index: to });
   };
 
   return (
@@ -225,13 +256,39 @@ export function AutomationStepperBuilder({
             const sum = summarize(a, ctx);
             const last = i === actions.length - 1;
             const incomplete = isIncomplete(def.fields, a.params);
+            const condCount = a.conditions?.length || 0;
             return (
               <Fragment key={i}>
                 <div
-                  className={"ast-card" + (on ? " ast-on" : "")}
+                  className={
+                    "ast-card" +
+                    (on ? " ast-on" : "") +
+                    (dragIdx === i ? " ast-card--drag" : "") +
+                    (overIdx === i && dragIdx !== null && dragIdx !== i ? " ast-card--over" : "")
+                  }
                   style={{ ["--arb-c" as string]: c, ["--i" as string]: i + 2 }}
                   role="button"
                   tabIndex={0}
+                  draggable
+                  onDragStart={(e) => {
+                    setDragIdx(i);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (overIdx !== i) setOverIdx(i);
+                  }}
+                  onDragLeave={() => setOverIdx((v) => (v === i ? null : v))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (dragIdx !== null) reorder(dragIdx, i);
+                    setDragIdx(null);
+                    setOverIdx(null);
+                  }}
+                  onDragEnd={() => {
+                    setDragIdx(null);
+                    setOverIdx(null);
+                  }}
                   onClick={() => {
                     setSel({ kind: "action", index: i });
                     setAdding(false);
@@ -243,6 +300,9 @@ export function AutomationStepperBuilder({
                     }
                   }}
                 >
+                  <span className="ast-card__grip" aria-hidden>
+                    <GripVertical size={15} />
+                  </span>
                   <span className="ast-card__num">{i + 1}</span>
                   <span className="ast-card__ico">
                     <Icn size={17} strokeWidth={1.9} />
@@ -251,6 +311,14 @@ export function AutomationStepperBuilder({
                     <span className="ast-card__label">{def.label}</span>
                     {sum && <span className="ast-card__sum">{sum}</span>}
                   </span>
+                  {condCount > 0 && (
+                    <span
+                      className="ast-card__if"
+                      title={`Solo corre si se cumplen ${condCount} condición(es)`}
+                    >
+                      <Filter size={11} strokeWidth={2.4} /> si {condCount}
+                    </span>
+                  )}
                   {incomplete && (
                     <span className="ast-warn" title="Falta configurar">
                       <AlertTriangle size={14} strokeWidth={2.2} />
@@ -483,6 +551,16 @@ export function AutomationStepperBuilder({
                     />
                   </>
                 )}
+                <div className="arb-ins__section">Solo si (rama de esta acción)</div>
+                <p className="arb-ins__desc" style={{ margin: "0 0 8px" }}>
+                  Esta acción solo corre si se cumplen estas condiciones (además del filtro de la
+                  regla). Vacío = corre siempre.
+                </p>
+                <ConditionsEditor
+                  conds={a.conditions || []}
+                  stages={ctx.stages}
+                  onChange={(next) => setActionConditions(i, next)}
+                />
               </div>
             );
           })()}

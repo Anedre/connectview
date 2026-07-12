@@ -16,12 +16,14 @@ import {
   Mail,
   MessageCircle,
   MoveRight,
+  PhoneOutgoing,
   Route,
   PenLine,
   SlidersHorizontal,
   StickyNote,
   Tag,
   Timer,
+  TrendingUp,
   UserPlus,
 } from "lucide-react";
 
@@ -37,6 +39,7 @@ export type TriggerType =
   | "lead_created"
   | "lead_stage_changed"
   | "lead_inactive"
+  | "score_threshold"
   | "wrapup_saved"
   | "whatsapp_flow_completed"
   | "message_inbound"
@@ -46,6 +49,7 @@ export type ActionType =
   | "send_whatsapp_template"
   | "move_stage"
   | "schedule_callback"
+  | "enqueue_dialer"
   | "webhook"
   | "send_email"
   | "apply_tag"
@@ -86,7 +90,12 @@ export interface AutomationRule {
   enabled: boolean;
   trigger: { type: TriggerType; params?: Record<string, unknown> };
   conditions?: RuleCondition[];
-  actions: Array<{ type: ActionType; params?: Record<string, unknown> }>;
+  /** Cada acción puede tener sus PROPIAS condiciones (rama): solo corre si se cumplen. */
+  actions: Array<{
+    type: ActionType;
+    params?: Record<string, unknown>;
+    conditions?: RuleCondition[];
+  }>;
   firedCount?: number;
   lastFiredAt?: string;
   createdAt?: string;
@@ -140,6 +149,7 @@ export interface FieldDef {
     | "agent"
     | "journey"
     | "program"
+    | "campaign"
     | "url"
     | "variables";
   placeholder?: string;
@@ -193,6 +203,22 @@ export const TRIGGER_DEFS: Record<
         label: "Solo en la etapa",
         type: "stage",
         hint: "Vacío = cualquier etapa.",
+      },
+    ],
+  },
+  score_threshold: {
+    label: "Score cruza umbral",
+    description: "El score de un lead alcanza un mínimo (se evalúa cada 5 min). Dispara una vez.",
+    icon: TrendingUp,
+    accent: "var(--accent-violet)",
+    fields: [
+      {
+        key: "min",
+        label: "Score mínimo",
+        type: "number",
+        required: true,
+        defaultValue: 50,
+        hint: "Dispara la primera vez que el lead llega a este score (o más).",
       },
     ],
   },
@@ -327,6 +353,28 @@ export const ACTION_DEFS: Record<
         label: "Asignar a agente",
         type: "agent",
         hint: "Opcional para llamadas; recomendado para WhatsApp/email.",
+      },
+    ],
+  },
+  enqueue_dialer: {
+    label: "Llamar (dialer)",
+    description:
+      "Encola una llamada saliente AHORA por una campaña de voz: usa su flow y su número, y la atienden los agentes de esa cola.",
+    icon: PhoneOutgoing,
+    accent: "var(--accent-green)",
+    fields: [
+      {
+        key: "campaignId",
+        label: "Campaña de voz",
+        type: "campaign",
+        required: true,
+        hint: "La llamada entra a la cola de esta campaña (su flow rutea al agente).",
+      },
+      {
+        key: "notes",
+        label: "Nota para el agente",
+        type: "text",
+        placeholder: "Lead caliente — priorizar",
       },
     ],
   },
@@ -705,6 +753,7 @@ export const TRIGGER_ORDER: TriggerType[] = [
   "lead_created",
   "lead_stage_changed",
   "lead_inactive",
+  "score_threshold",
   "wrapup_saved",
   "whatsapp_flow_completed",
   "message_inbound",
@@ -716,6 +765,7 @@ export const ACTION_ORDER: ActionType[] = [
   "send_email",
   "move_stage",
   "schedule_callback",
+  "enqueue_dialer",
   "apply_tag",
   "remove_tag",
   "apply_attribute",

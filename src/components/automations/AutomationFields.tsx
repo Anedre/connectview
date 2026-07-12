@@ -23,6 +23,7 @@ export interface PickersCtx {
   agents: Array<{ userId: string; username: string }>;
   journeys: Array<{ journeyId: string; name: string; status: string }>;
   programs: Array<{ id: string; name: string }>;
+  campaigns: Array<{ id: string; name: string }>;
 }
 
 // Exports no-componente (const/fn) co-ubicados con los controles de campo — mismo
@@ -45,6 +46,7 @@ export const ACTION_COLOR: Record<ActionType, string> = {
   move_stage: "var(--accent)",
   webhook: "var(--text-3)",
   schedule_callback: "var(--gold)",
+  enqueue_dialer: "var(--green)",
   start_journey: "var(--green)",
 };
 export const colorForAction = (t: ActionType): string => ACTION_COLOR[t] ?? "var(--accent)";
@@ -190,6 +192,29 @@ export function FieldInput({
         className="wf-input"
         value={String(v)}
         placeholder={field.placeholder || "ID del programa"}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    );
+  }
+  if (field.type === "campaign") {
+    if (ctx.campaigns.length > 0) {
+      return (
+        <WfSelect
+          value={String(v)}
+          onChange={onChange}
+          className="w-full"
+          options={[
+            { value: "", label: "— elige una campaña —" },
+            ...ctx.campaigns.map((cp) => ({ value: cp.id, label: cp.name || cp.id })),
+          ]}
+        />
+      );
+    }
+    return (
+      <input
+        className="wf-input"
+        value={String(v)}
+        placeholder={field.placeholder || "ID de la campaña"}
         onChange={(e) => onChange(e.target.value)}
       />
     );

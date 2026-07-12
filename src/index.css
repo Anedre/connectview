@@ -14532,6 +14532,32 @@ select.wf-input {
 .ast-card.ast-on .ast-card__tools {
   opacity: 1;
 }
+/* Arrastrar para reordenar: grip + estados. */
+.ast-card__grip {
+  display: grid;
+  place-items: center;
+  flex: none;
+  margin-left: -4px;
+  color: var(--text-3);
+  opacity: 0;
+  cursor: grab;
+  transition: opacity 0.13s var(--ease);
+}
+.ast-card:hover .ast-card__grip,
+.ast-card.ast-on .ast-card__grip {
+  opacity: 0.55;
+}
+.ast-card__grip:active {
+  cursor: grabbing;
+}
+.ast-card--drag {
+  opacity: 0.45;
+  border-style: dashed;
+}
+.ast-card--over {
+  box-shadow: 0 -3px 0 -1px var(--gold);
+}
+
 /* Badge "falta configurar" (campo requerido vacío). */
 .ast-warn {
   display: grid;
@@ -14546,6 +14572,19 @@ select.wf-input {
 .ast-trigger .ast-warn {
   color: #fff;
   background: rgba(255, 255, 255, 0.22);
+}
+/* Chip "si N" — la acción tiene su propia rama de condiciones. */
+.ast-card__if {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--iris);
+  background: color-mix(in srgb, var(--iris) 13%, transparent);
 }
 .ast-empty-hint {
   text-align: center;
