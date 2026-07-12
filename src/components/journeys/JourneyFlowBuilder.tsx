@@ -556,9 +556,35 @@ function JourneyFlowInner({
         return next;
       });
       setSelectedId(null);
+      window.setTimeout(() => {
+        setNodes((nds) => layoutTB(nds, edgesRef.current));
+        window.setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 30);
+      }, 0);
     },
-    [nodes, edges, setNodes, setEdges],
+    [nodes, edges, setNodes, setEdges, fitView],
   );
+
+  // Borrar con teclado: Supr/Backspace elimina el paso seleccionado (re-cose la
+  // cadena). Ignora si estás escribiendo en un campo del inspector.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      )
+        return;
+      if (!selectedId) return;
+      e.preventDefault();
+      deleteNode(selectedId);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId, deleteNode]);
 
   // ── Conexiones ──
   const onConnect = useCallback(
@@ -1082,6 +1108,7 @@ function JourneyFlowInner({
                 onConnectEnd={onConnectEnd}
                 onReconnect={onReconnect}
                 connectOnClick={false}
+                deleteKeyCode={null}
                 onNodeClick={(_, n) => {
                   setSelectedId(n.id);
                   setRightTab("form");

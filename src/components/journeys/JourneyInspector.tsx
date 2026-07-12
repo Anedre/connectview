@@ -418,6 +418,12 @@ export function JourneyInspector({
                 />
               </Field>
             )}
+            <div className="jb-note">
+              Pausa el recorrido: por <strong>días fijos</strong>,{" "}
+              <strong>hasta que se cumpla</strong> una condición del lead, o{" "}
+              <strong>hasta una fecha</strong>. Los envíos posteriores respetan el horario de
+              silencio.
+            </div>
           </>
         )}
 
@@ -551,6 +557,10 @@ export function JourneyInspector({
                 style={{ ...jbInput(), resize: "vertical", fontFamily: "inherit" }}
               />
             </Field>
+            <div className="jb-note">
+              Envía un correo (SES) con marca ARIA + tracking de apertura/clic. Pasa por el gate de
+              supresión (no le manda a quien se dio de baja del email).
+            </div>
           </>
         )}
 

@@ -14165,6 +14165,33 @@ select.wf-input {
 .react-flow__handle.sfn-h--branch {
   border-color: var(--_c);
 }
+/* Afordancia: al pasar el mouse por el estado, el conector de abajo crece y
+   muestra un "+" → se descubre que ahí se agrega el siguiente paso. */
+.react-flow__handle.sfn-h--bot::after {
+  content: "+";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--_c, #64748b);
+  opacity: 0;
+  transition: opacity 0.12s;
+  pointer-events: none;
+}
+.sfn-node:hover .react-flow__handle.sfn-h--bot,
+.sfn-pill:hover .react-flow__handle.sfn-h--bot {
+  width: 17px;
+  height: 17px;
+  border-color: var(--_c, #64748b);
+  background: var(--bg-1);
+}
+.sfn-node:hover .react-flow__handle.sfn-h--bot::after,
+.sfn-pill:hover .react-flow__handle.sfn-h--bot::after {
+  opacity: 1;
+}
 
 /* Panel derecho: toggle Formulario / Definición + la Definición (solo lectura) */
 .sfn-right {

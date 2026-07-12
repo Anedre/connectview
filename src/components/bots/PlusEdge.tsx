@@ -31,11 +31,14 @@ export function branchColor(handleId: string | null | undefined): string {
     case "booked":
     case "resolved":
     case "ok":
+    case "met":
       return "#10B981"; // verde — camino resuelto/positivo
     case "false":
     case "closed":
     case "failed":
     case "error":
+    case "timeout":
+    case "expired":
       return "#EF4444"; // coral/rojo — camino fallido/negativo
     case "handoff":
       return "#8B5CF6"; // iris — derivar a humano
