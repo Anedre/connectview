@@ -125,7 +125,7 @@ async function connectRealCost(
   meta: TenantMeta,
   ceStart: string,
   ceEnd: string,
-): Promise<number | null> {
+): Promise<{ byService: Record<string, number>; total: number } | null> {
   try {
     const ce = await resolveCeClient(meta);
     const res = await ce.send(
@@ -133,6 +133,8 @@ async function connectRealCost(
         TimePeriod: { Start: ceStart, End: ceEnd },
         Granularity: "DAILY",
         Metrics: ["UnblendedCost"],
+        // Amazon Bedrock incluido: es el "Agente IA" del panel (servicio asociado),
+        // aunque no sea Connect. GroupBy SERVICE → real aproximado por-fila.
         Filter: {
           Dimensions: {
             Key: "SERVICE",
@@ -141,19 +143,39 @@ async function connectRealCost(
               "AWS End User Messaging",
               "AWS End User Messaging Social",
               "Contact Lens for Amazon Connect",
+              "Amazon Bedrock",
             ],
           },
         },
+        GroupBy: [{ Type: "DIMENSION", Key: "SERVICE" }],
       }),
     );
+    const byService: Record<string, number> = {};
     let total = 0;
-    for (const r of res.ResultsByTime || []) total += Number(r.Total?.UnblendedCost?.Amount || 0);
-    return usd(total);
+    for (const t of res.ResultsByTime || []) {
+      for (const g of t.Groups || []) {
+        const svc = g.Keys?.[0] || "otros";
+        const amt = Number(g.Metrics?.UnblendedCost?.Amount || 0);
+        byService[svc] = (byService[svc] || 0) + amt;
+        total += amt;
+      }
+    }
+    return { byService, total: usd(total) };
   } catch (e) {
     console.warn("connectRealCost falló:", e instanceof Error ? e.message : e);
     return null;
   }
 }
+
+/** Servicio de Cost Explorer → fila del panel Connect (real aproximado por-fila).
+ *  Voz = Amazon Connect + Contact Lens; WBM = End User Messaging; IA = Bedrock. */
+const CE_SERVICE_TO_CONNECT: Record<string, string> = {
+  "Amazon Connect": "connect_voice",
+  "Contact Lens for Amazon Connect": "connect_voice",
+  "AWS End User Messaging": "connect_wbm_out",
+  "AWS End User Messaging Social": "connect_wbm_out",
+  "Amazon Bedrock": "bot_bedrock",
+};
 
 /**
  * Cobro REAL de la infraestructura PROPIA de ARIA vía Cost Explorer, filtrado por
@@ -598,13 +620,28 @@ export const handler: Handler = async (event: any) => {
     unitCost: 0,
     estimated: 0,
     real: null,
+    free: true,
     note: "IAM no tiene costo en AWS: crear roles y políticas es gratis.",
   });
 
-  // ── Cobro REAL de Connect (Cost Explorer) — agregado de servicio, no por-línea ─
+  // ── Cobro REAL de Connect (Cost Explorer) — total de cuenta + aproximado por-fila ─
   const ceStart = new Date(fromMs).toISOString().slice(0, 10);
   const ceEnd = new Date(toMs + 86400_000).toISOString().slice(0, 10); // End exclusivo → +1 día
-  const connectReal = await connectRealCost(meta, ceStart, ceEnd);
+  const connectRes = await connectRealCost(meta, ceStart, ceEnd);
+  const connectReal = connectRes?.total ?? null; // total de cuenta (incluye cargos fuera de las filas)
+  if (connectRes) {
+    // Real aproximado por-fila: acumular por si dos servicios mapean a la misma
+    // (voz = Amazon Connect + Contact Lens).
+    const perRow: Record<string, number> = {};
+    for (const [svc, amt] of Object.entries(connectRes.byService)) {
+      const comp = CE_SERVICE_TO_CONNECT[svc];
+      if (comp) perRow[comp] = (perRow[comp] || 0) + amt;
+    }
+    for (const [comp, amt] of Object.entries(perRow)) {
+      const line = lines.find((l) => l.component === comp);
+      if (line) line.real = usd(amt);
+    }
+  }
 
   // ── Cobro REAL de la infra de ARIA (Cost Explorer filtrado por etiqueta) ──────
   // Solo lo etiquetado `aria:product=ARIA` → el gasto de ARIA aislado, sin el resto
@@ -626,11 +663,12 @@ export const handler: Handler = async (event: any) => {
   const connect = sum("connect");
   const metaEst = sum("meta");
   const platform = sum("platform");
-  // realTotal = suma de los reales por-línea (WhatsApp) + el real agregado de Connect (CE).
-  const realPerLine = lines.reduce<number | null>(
-    (acc, l) => (l.real != null ? (acc || 0) + l.real : acc),
-    null,
-  );
+  // realTotal = reales por-línea NO-connect (WhatsApp + plataforma) + el total de
+  // Connect (CE). Se excluye el grupo "connect" del per-línea porque `connectReal`
+  // ya cubre esos servicios (incluido Bedrock) → evita doble-conteo.
+  const realPerLine = lines
+    .filter((l) => l.group !== "connect")
+    .reduce<number | null>((acc, l) => (l.real != null ? (acc || 0) + l.real : acc), null);
   const realTotal =
     connectReal != null || realPerLine != null ? (realPerLine || 0) + (connectReal || 0) : null;
 
@@ -659,7 +697,7 @@ export const handler: Handler = async (event: any) => {
       pricingModel: "us-east-1, jun-2026 (scripts/gen-costos-xlsx.mjs)",
       peruTelephony: "las tarifas de telefonía Perú están marcadas a validar",
       connectReal:
-        "El cobro real de Amazon Connect se activa con el permiso de facturación (Cost Explorer) en tu rol de acceso.",
+        "El cobro real de Amazon Connect se activa con el permiso de facturación (Cost Explorer) en tu rol de acceso. El total de cuenta incluye TODO el gasto de Connect y servicios asociados (renta de números/DID, telefonía, Bedrock), por eso puede superar la suma de las filas estimadas.",
     },
     generatedAt: new Date().toISOString(),
   });

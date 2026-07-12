@@ -21,6 +21,7 @@ interface CostLine {
   estimated: number;
   real: number | null;
   note?: string;
+  free?: boolean;
 }
 interface CostReport {
   period: { from: string; to: string; days: number };
@@ -322,7 +323,14 @@ export function ConsumptionManager() {
                       </thead>
                       <tbody>
                         {rows.map((l) => {
-                          const delta = l.real != null ? l.real - l.estimated : null;
+                          // Real efectivo: número real; o $0 cuando es gratis-por-diseño
+                          // (IAM) o plataforma RASTREADA por tag sin costo facturado (→ gratis).
+                          // Si no, null = real no atribuible (Connect por-fila sin CE).
+                          const platformTracked = g === "platform" && data.realAvailable.platform;
+                          const effReal =
+                            l.real != null ? l.real : l.free || platformTracked ? 0 : null;
+                          const isFreeZero = l.real == null && effReal === 0;
+                          const delta = effReal != null ? effReal - l.estimated : null;
                           return (
                             <tr key={l.component}>
                               <td>
@@ -360,7 +368,21 @@ export function ConsumptionManager() {
                               <td
                                 style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 12.5 }}
                               >
-                                {l.real != null ? money(l.real) : <span className="muted">—</span>}
+                                {effReal != null ? (
+                                  <>
+                                    {money(effReal)}
+                                    {isFreeZero && (
+                                      <span
+                                        className="muted"
+                                        style={{ fontSize: 10, marginLeft: 4 }}
+                                      >
+                                        · gratis
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="muted">—</span>
+                                )}
                               </td>
                               <td
                                 style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 12 }}
@@ -402,8 +424,10 @@ export function ConsumptionManager() {
                         style={{ fontSize: 11.5, maxWidth: 560, lineHeight: 1.5 }}
                       >
                         <strong style={{ color: "var(--text-1)" }}>Cobro real de AWS</strong> (Cost
-                        Explorer): todo el gasto de Amazon Connect y servicios asociados en tu
-                        cuenta este período. La facturación de AWS tiene ~24 h de retraso.
+                        Explorer): todo el gasto de Amazon Connect y servicios asociados (Voz,
+                        WhatsApp, Bedrock, y también <b>renta de números y telefonía</b>) en tu
+                        cuenta este período. Por eso <b>puede superar la suma de las filas</b>{" "}
+                        estimadas. La facturación de AWS tiene ~24 h de retraso.
                       </span>
                       <span
                         style={{ fontWeight: 800, fontSize: 16, color: "var(--accent-violet)" }}

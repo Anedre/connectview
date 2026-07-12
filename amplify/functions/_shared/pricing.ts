@@ -103,6 +103,7 @@ export interface CostLine {
   estimated: number; // USD estimado (volume × unitCost, +derivados)
   real: number | null; // USD real (Graph / Cost Explorer) o null
   note?: string; // explicación / disclaimer para la UI
+  free?: boolean; // gratis por diseño (ej. IAM) → la UI muestra "$0.00 · gratis", no "—"
 }
 
 /** Redondeo a centavos para no arrastrar ruido de punto flotante. */
