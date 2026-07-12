@@ -31,6 +31,7 @@ import {
   Download,
   Upload,
   ArrowLeft,
+  Play,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -46,6 +47,7 @@ import { PlusEdge, branchColor } from "@/components/bots/PlusEdge";
 import { JourneyNodePicker } from "@/components/journeys/JourneyNodePicker";
 import { JourneyBuilderCtx } from "@/components/journeys/journeyBuilderCtx";
 import { JourneyInspector } from "@/components/journeys/JourneyInspector";
+import { JourneyTester } from "@/components/journeys/JourneyTester";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 
@@ -348,6 +350,7 @@ function JourneyFlowInner({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showIssues, setShowIssues] = useState(false);
   const [rightTab, setRightTab] = useState<"form" | "def">("form");
+  const [testing, setTesting] = useState(false);
   const [stats, setStats] = useState<JourneyStats | null>(null);
   const [picker, setPicker] = useState<{
     at: { x: number; y: number };
@@ -890,6 +893,13 @@ function JourneyFlowInner({
             >
               <Network size={13} /> Ordenar
             </button>
+            <button
+              onClick={() => setTesting((t) => !t)}
+              title="Probar el recorrido con un lead de muestra (sin envíos)"
+              className={`btn btn--sm ${testing ? "fb-test-on" : ""}`}
+            >
+              <Play size={13} /> Probar
+            </button>
             <button onClick={handleSave} disabled={saving} className="btn btn--primary btn--sm">
               <Save size={13} /> {saving ? "Guardando…" : dirty ? "Guardar •" : "Guardar"}
             </button>
@@ -1034,6 +1044,9 @@ function JourneyFlowInner({
                   </div>
                 </div>
               </div>
+            )}
+            {testing && (
+              <JourneyTester journey={currentJourney} onClose={() => setTesting(false)} />
             )}
           </div>
 

@@ -14231,6 +14231,156 @@ select.wf-input {
   overflow: visible;
 }
 
+/* "Probar" — panel flotante del simulador dry-run (JourneyTester) */
+.jt {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 328px;
+  max-height: calc(100% - 28px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: 12px;
+  box-shadow: 0 18px 44px -18px rgba(0, 0, 0, 0.5);
+  z-index: 6;
+  overflow: hidden;
+}
+.jt__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-1);
+  color: var(--green, #16a34a);
+}
+.jt__title {
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--text-1);
+}
+.jt__close {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.jt__close:hover {
+  background: var(--bg-2);
+  color: var(--text-1);
+}
+.jt__lead {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-1);
+}
+.jt__hint {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+.jt__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.jt__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.jt__field > span {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+.jt__field > input {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border-2);
+  background: var(--bg-1);
+  color: var(--text-1);
+  width: 100%;
+}
+.jt__run {
+  width: 100%;
+  justify-content: center;
+  margin-top: 10px;
+}
+.jt__out {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+.jt__end {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  background: color-mix(in srgb, var(--_c) 13%, var(--bg-1));
+  color: var(--_c);
+}
+.jt__waited {
+  font-weight: 600;
+  opacity: 0.85;
+}
+.jt__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.jt__step {
+  display: flex;
+  gap: 9px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  border: 1px solid var(--border-1);
+  border-left: 3px solid var(--_c);
+  background: var(--bg-1);
+}
+.jt__step-ico {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--_c) 15%, var(--bg-1));
+  color: var(--_c);
+}
+.jt__step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.jt__step-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+.jt__step-detail {
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    Journeys — "línea de vida" vertical (identidad propia, verde). A propósito
    distinta del canvas horizontal de Bots (.fb-*) y de la receta de

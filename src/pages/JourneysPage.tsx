@@ -207,6 +207,121 @@ const TEMPLATES: JourneyTemplate[] = [
       );
     },
   },
+  {
+    key: "onboarding",
+    name: "Onboarding + tarea",
+    desc: "Bienvenida por WhatsApp, refuerzo por email y una tarea para que un agente lo acompañe; cierra en objetivo.",
+    accent: "var(--cyan)",
+    build: () => {
+      const e = rid(),
+        wa = rid(),
+        w1 = rid(),
+        em = rid(),
+        w2 = rid(),
+        tk = rid(),
+        g = rid();
+      return mk(
+        "Onboarding + tarea",
+        [
+          { id: e, kind: "entry" },
+          { id: wa, kind: "send_whatsapp", params: { templateName: "" } },
+          { id: w1, kind: "wait", params: { days: 1 } },
+          { id: em, kind: "send_email", params: { subject: "¿Cómo vas?", body: "" } },
+          { id: w2, kind: "wait", params: { days: 2 } },
+          {
+            id: tk,
+            kind: "notify_agent",
+            params: { message: "Llamar al lead para acompañar el onboarding" },
+          },
+          { id: g, kind: "goal" },
+        ],
+        [
+          { from: e, to: wa },
+          { from: wa, to: w1 },
+          { from: w1, to: em },
+          { from: em, to: w2 },
+          { from: w2, to: tk },
+          { from: tk, to: g },
+        ],
+      );
+    },
+  },
+  {
+    key: "hot_lead",
+    name: "Lead caliente → llamar",
+    desc: "Ramifica por score: a los calientes (≥60) los etiqueta y encola una llamada; a los fríos les manda un email.",
+    accent: "var(--coral)",
+    build: () => {
+      const e = rid(),
+        b = rid(),
+        tg = rid(),
+        dl = rid(),
+        em = rid(),
+        x = rid();
+      return mk(
+        "Lead caliente",
+        [
+          { id: e, kind: "entry" },
+          {
+            id: b,
+            kind: "branch",
+            params: { rules: [{ field: "score", op: "gte", value: "60" }], match: "all" },
+          },
+          { id: tg, kind: "tag", params: { op: "add", tag: "caliente" } },
+          { id: dl, kind: "enqueue_dialer", params: {} },
+          { id: em, kind: "send_email", params: { subject: "Seguimos en contacto", body: "" } },
+          { id: x, kind: "exit" },
+        ],
+        [
+          { from: e, to: b },
+          { from: b, to: tg, on: "yes" },
+          { from: tg, to: dl },
+          { from: dl, to: x },
+          { from: b, to: em, on: "no" },
+          { from: em, to: x },
+        ],
+      );
+    },
+  },
+  {
+    key: "closing",
+    name: "Cierre con objetivo",
+    desc: "Empuja al cierre: si el lead ya ganó, sale; si no, lo mueve a seguimiento y avisa a un agente. Mide conversión.",
+    accent: "var(--green)",
+    build: () => {
+      const e = rid(),
+        wa = rid(),
+        w = rid(),
+        lv = rid(),
+        mv = rid(),
+        tk = rid(),
+        g = rid();
+      return mk(
+        "Cierre con objetivo",
+        [
+          { id: e, kind: "entry" },
+          { id: wa, kind: "send_whatsapp", params: { templateName: "" } },
+          { id: w, kind: "wait", params: { days: 2 } },
+          {
+            id: lv,
+            kind: "leave",
+            params: { rules: [{ field: "stageId", op: "eq", value: "won" }], match: "all" },
+          },
+          { id: mv, kind: "move_stage", params: { stageId: "seguimiento" } },
+          { id: tk, kind: "notify_agent", params: { message: "Cerrar la venta con el lead" } },
+          { id: g, kind: "goal" },
+        ],
+        [
+          { from: e, to: wa },
+          { from: wa, to: w },
+          { from: w, to: lv },
+          { from: lv, to: mv },
+          { from: mv, to: tk },
+          { from: tk, to: g },
+        ],
+      );
+    },
+  },
 ];
 
 export function JourneysPage() {
