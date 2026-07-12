@@ -5,7 +5,11 @@ import { JourneyFlowBuilder } from "@/components/journeys/JourneyFlowBuilder";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Icon, Btn, Card, Stat, Pill, HeroBand, Num } from "@/components/aria";
 import type { IconName } from "@/components/aria";
-import { FeatureCompare, FeatureCompareButton } from "@/components/aria/FeatureCompare";
+import {
+  FeatureCompare,
+  FeatureCompareButton,
+  FeatureTagline,
+} from "@/components/aria/FeatureCompare";
 
 /**
  * JourneysPage — el /journeys (Fase 3 · 3B), re-skinneado al sistema ARIA:
@@ -597,6 +601,7 @@ export function JourneysPage() {
         chipTone="var(--green)"
         right={
           <div className="row gap10">
+            <FeatureTagline feature="journeys" />
             <FeatureCompareButton current="journeys" />
             <Btn variant="ghost" size="sm" icon="refresh" onClick={reload} disabled={loading}>
               Actualizar

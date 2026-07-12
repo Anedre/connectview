@@ -4,7 +4,11 @@ import { Trash2, Plus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { getApiEndpoints } from "@/lib/api";
 import { EmptyState } from "@/components/ui/empty-state";
-import { FeatureCompare, FeatureCompareButton } from "@/components/aria/FeatureCompare";
+import {
+  FeatureCompare,
+  FeatureCompareButton,
+  FeatureTagline,
+} from "@/components/aria/FeatureCompare";
 import { Modal } from "@/components/ui/modal";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
@@ -368,6 +372,7 @@ export function AutomationsPage() {
       <HeroBand
         right={
           <div className="row gap10">
+            <FeatureTagline feature="automations" />
             <FeatureCompareButton current="automations" />
             <Btn variant="ghost" size="sm" icon="refresh" onClick={load} disabled={loading}>
               Actualizar

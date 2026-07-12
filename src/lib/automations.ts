@@ -747,6 +747,27 @@ export const RULE_TEMPLATES: Array<{
       ],
     }),
   },
+  {
+    id: "instant-plus-journey",
+    name: "Combo · reacción YA + nurture (Journey)",
+    description:
+      "El mejor de los dos mundos: la automatización reacciona al INSTANTE (puntúa, etiqueta, saluda por WhatsApp) y en el último paso ENGANCHA al lead en un Journey para el seguimiento largo. Elige tu journey en 'Iniciar Journey'.",
+    build: () => ({
+      name: "Reacción instantánea + Journey de nurture",
+      enabled: false,
+      trigger: { type: "whatsapp_flow_completed", params: {} },
+      conditions: [{ field: "source", op: "contains", value: "meta" }],
+      actions: [
+        { type: "apply_score", params: { delta: 15 } },
+        { type: "apply_tag", params: { tag: "nuevo-meta" } },
+        {
+          type: "send_whatsapp_template",
+          params: { templateName: "", variables: ["{{name}}"] },
+        },
+        { type: "start_journey", params: { journeyId: "" } },
+      ],
+    }),
+  },
 ];
 
 export const TRIGGER_ORDER: TriggerType[] = [

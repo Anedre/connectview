@@ -1,4 +1,5 @@
 import { Fragment, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Trash2,
   Plus,
@@ -9,6 +10,8 @@ import {
   Filter,
   AlertTriangle,
   GripVertical,
+  Zap,
+  Route as RouteIcon,
 } from "lucide-react";
 import {
   ACTION_DEFS,
@@ -116,6 +119,7 @@ export function AutomationStepperBuilder({
   onChange: (r: AutomationRule) => void;
   ctx: PickersCtx;
 }) {
+  const navigate = useNavigate();
   const [sel, setSel] = useState<Sel>({ kind: "hub" });
   const [adding, setAdding] = useState(false);
   // Drag-para-reordenar: índice arrastrado + índice sobre el que se suelta.
@@ -126,6 +130,7 @@ export function AutomationStepperBuilder({
   const conds = rule.conditions || [];
   const trig = TRIGGER_DEFS[rule.trigger.type];
   const TrigIcon = trig.icon;
+  const hasJourney = actions.some((a) => a.type === "start_journey");
 
   // ── Handlers (mismo modelo de datos) ──
   const defaultsFor = (t: ActionType): Record<string, unknown> => {
@@ -392,6 +397,34 @@ export function AutomationStepperBuilder({
                   );
                 })}
               </div>
+            )}
+          </div>
+
+          {/* Pista contextual: automatización vs journey (según lo que ya arma). */}
+          <div className="ast-hint">
+            {hasJourney ? (
+              <>
+                <RouteIcon size={14} strokeWidth={2.2} />
+                <span>
+                  <b>Buen combo:</b> reaccionas al instante y enganchas un Journey para el
+                  seguimiento largo.
+                </span>
+              </>
+            ) : (
+              <>
+                <Zap size={14} strokeWidth={2.2} />
+                <span>
+                  Corren <b>al instante</b> y de una. ¿Necesitas <b>esperas</b> o varios pasos en el
+                  tiempo?{" "}
+                  <button
+                    type="button"
+                    className="ast-hint__link"
+                    onClick={() => navigate("/journeys")}
+                  >
+                    Usa un Journey →
+                  </button>
+                </span>
+              </>
             )}
           </div>
         </div>

@@ -9,7 +9,11 @@ import { type Bot } from "@/lib/botFlow";
 import { FLOW_ICONS } from "@/components/bots/icons";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Icon, Btn, Stat, Pill, HeroBand, Num } from "@/components/aria";
-import { FeatureCompare, FeatureCompareButton } from "@/components/aria/FeatureCompare";
+import {
+  FeatureCompare,
+  FeatureCompareButton,
+  FeatureTagline,
+} from "@/components/aria/FeatureCompare";
 
 /**
  * FlowBuilderPage — the real /bot page (roadmap #16). Lists saved bots from
@@ -231,6 +235,7 @@ export function FlowBuilderPage() {
         chipTone="var(--accent)"
         right={
           <div className="row gap10">
+            <FeatureTagline feature="bots" />
             <FeatureCompareButton current="bots" />
             <Btn variant="ghost" size="sm" icon="flow" onClick={() => setRouting(true)}>
               Ruteo WhatsApp

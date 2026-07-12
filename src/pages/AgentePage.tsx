@@ -16,7 +16,11 @@ import { BotTester } from "@/components/bots/BotTester";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import type { Bot } from "@/lib/botFlow";
 import { Icon as AIcon, Btn, Card, Stat, Pill, HeroBand, Num } from "@/components/aria";
-import { FeatureCompare, FeatureCompareButton } from "@/components/aria/FeatureCompare";
+import {
+  FeatureCompare,
+  FeatureCompareButton,
+  FeatureTagline,
+} from "@/components/aria/FeatureCompare";
 
 /**
  * AgentePage — the "Agentes IA" hub (autonomous, tool-using AI agents).
@@ -551,6 +555,7 @@ export function AgentePage() {
         chipTone="var(--iris)"
         right={
           <div className="row gap10">
+            <FeatureTagline feature="agente" />
             <FeatureCompareButton current="agente" />
             <Btn variant="ghost" size="sm" icon="refresh" onClick={loadList} disabled={loading}>
               Actualizar

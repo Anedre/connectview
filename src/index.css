@@ -14595,6 +14595,41 @@ select.wf-input {
   border-radius: 12px;
 }
 
+/* Pista contextual al pie del espinazo (automatización vs journey). */
+.ast-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 22px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--gold) 7%, var(--bg-1));
+  border: 1px dashed color-mix(in srgb, var(--gold) 38%, var(--border-2));
+}
+.ast-hint > svg {
+  color: var(--gold);
+  flex: none;
+  margin-top: 1px;
+}
+.ast-hint b {
+  color: var(--text-1);
+}
+.ast-hint__link {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  color: var(--green);
+}
+.ast-hint__link:hover {
+  text-decoration: underline;
+}
+
 /* Agregar acción + menú. */
 .ast-addwrap {
   position: relative;
@@ -14674,6 +14709,97 @@ select.wf-input {
   font-size: 10.5px;
   color: var(--text-3);
   line-height: 1.25;
+}
+
+/* ── Comparador de features — elige-rápido (.fc-*) ── */
+.fc-quick {
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+}
+.fc-quick__q {
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--text-1);
+  margin-bottom: 10px;
+}
+.fc-quick__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+.fc-quick__opt {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 12px;
+  border-radius: 11px;
+  cursor: pointer;
+  text-align: left;
+  background: var(--bg-1);
+  border: 1.5px solid var(--border-2);
+  transition:
+    border-color 0.14s var(--ease),
+    background 0.14s var(--ease),
+    transform 0.14s var(--ease);
+}
+.fc-quick__opt:hover {
+  border-color: var(--fc-c, var(--accent));
+  transform: translateY(-1px);
+}
+.fc-quick__opt--on {
+  border-color: var(--fc-c, var(--accent));
+  background: color-mix(in srgb, var(--fc-c, var(--accent)) 8%, transparent);
+  cursor: default;
+}
+.fc-quick__ico {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  flex: none;
+  color: var(--fc-c, var(--accent));
+  background: color-mix(in srgb, var(--fc-c, var(--accent)) 15%, transparent);
+}
+.fc-quick__txt {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-1);
+  line-height: 1.25;
+}
+.fc-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+.fc-divider::before,
+.fc-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-2);
+}
+/* Tagline chip por feature (⚡ Reacciona al instante…). */
+.feat-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  color: var(--fc-c, var(--accent));
+  background: color-mix(in srgb, var(--fc-c, var(--accent)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fc-c, var(--accent)) 30%, transparent);
 }
 
 @media (max-width: 980px) {
