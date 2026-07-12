@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Trash2, X, Plus } from "lucide-react";
+import { Trash2, X, Plus, Copy } from "lucide-react";
 import type { Journey, JourneyNode, JourneyStats } from "@/hooks/useJourneys";
 import { useSegments, type FilterRule, type FilterOp } from "@/hooks/useSegments";
 import { useCampaigns } from "@/hooks/useCampaigns";
@@ -185,6 +185,7 @@ export function JourneyInspector({
   onReenroll,
   onParams,
   onDelete,
+  onDuplicate,
   onClose,
 }: {
   node: JourneyNode;
@@ -197,6 +198,7 @@ export function JourneyInspector({
   onReenroll: (b: boolean) => void;
   onParams: (id: string, patch: NodeParams) => void;
   onDelete: (id: string) => void;
+  onDuplicate?: (id: string) => void;
   onClose: () => void;
 }) {
   const { segments } = useSegments();
@@ -231,6 +233,15 @@ export function JourneyInspector({
         </span>
         <span className="jb-inspect__title">{def.label}</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+          {node.kind !== "entry" && node.kind !== "exit" && onDuplicate && (
+            <button
+              onClick={() => onDuplicate(node.id)}
+              title="Duplicar paso (Ctrl+D)"
+              className="jb-inspect__del"
+            >
+              <Copy size={15} />
+            </button>
+          )}
           {node.kind !== "entry" && (
             <button
               onClick={() => onDelete(node.id)}

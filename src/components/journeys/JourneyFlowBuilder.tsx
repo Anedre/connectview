@@ -32,6 +32,8 @@ import {
   Upload,
   ArrowLeft,
   Play,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -442,7 +444,56 @@ function JourneyFlowInner({
     return () => window.clearInterval(t);
   }, [rightTab, initial.journeyId, refreshStats]);
 
-  const dirty = serializeJourney(nodes, edges, name, status) !== baseline.current;
+  const serialized = serializeJourney(nodes, edges, name, status);
+  const dirty = serialized !== baseline.current;
+
+  // ── Undo / redo: snapshots del estado (con debounce). No re-graba al restaurar. ──
+  const histRef = useRef<
+    Array<{ nodes: Node[]; edges: Edge[]; name: string; status: Journey["status"] }>
+  >([]);
+  const ptrRef = useRef(-1);
+  const restoringRef = useRef(false);
+  const [, bumpHist] = useState(0);
+  useEffect(() => {
+    histRef.current = [];
+    ptrRef.current = -1;
+  }, [initial.journeyId]);
+  useEffect(() => {
+    if (restoringRef.current) {
+      restoringRef.current = false;
+      return;
+    }
+    const t = window.setTimeout(() => {
+      histRef.current = histRef.current.slice(0, ptrRef.current + 1);
+      histRef.current.push({ nodes, edges, name, status });
+      if (histRef.current.length > 60) histRef.current.shift();
+      ptrRef.current = histRef.current.length - 1;
+      bumpHist((v) => v + 1);
+    }, 350);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serialized]);
+  const restoreSnap = useCallback(
+    (delta: number) => {
+      const next = ptrRef.current + delta;
+      if (next < 0 || next >= histRef.current.length) return;
+      ptrRef.current = next;
+      const s = histRef.current[next];
+      restoringRef.current = true;
+      setNodes(s.nodes);
+      setEdges(s.edges);
+      setName(s.name);
+      setStatus(s.status);
+      setSelectedId(null);
+      bumpHist((v) => v + 1);
+      window.setTimeout(() => fitView({ padding: 0.2, duration: 250 }), 40);
+    },
+    [setNodes, setEdges, fitView],
+  );
+  const undo = useCallback(() => restoreSnap(-1), [restoreSnap]);
+  const redo = useCallback(() => restoreSnap(1), [restoreSnap]);
+  const canUndo = ptrRef.current > 0;
+  const canRedo = ptrRef.current < histRef.current.length - 1;
 
   const issues = useMemo(
     () =>
@@ -564,27 +615,102 @@ function JourneyFlowInner({
     [nodes, edges, setNodes, setEdges, fitView],
   );
 
-  // Borrar con teclado: Supr/Backspace elimina el paso seleccionado (re-cose la
-  // cadena). Ignora si estás escribiendo en un campo del inspector.
+  // Duplicar un paso: clona kind+params y lo EMPALMA justo después del original.
+  const duplicateNode = useCallback(
+    (id: string) => {
+      const src = nodes.find((n) => n.id === id);
+      if (!src) return;
+      const kind = kindOf(src);
+      if (kind === "entry" || kind === "exit") return;
+      const clone: Node = {
+        id: rid(),
+        type: "jstep",
+        position: { x: src.position.x, y: src.position.y + ROW_GAP },
+        data: { kind, params: { ...((src.data as { params?: JourneyParams }).params || {}) } },
+      };
+      const cloneOutlet =
+        JOURNEY_KINDS[kind].outlets(JOURNEY_KINDS[kind].defaultParams?.() ?? {})[0]?.id || "out";
+      const srcOutlet = outletsOfRF(src)[0];
+      const existing = srcOutlet
+        ? edges.find((e) => e.source === src.id && (e.sourceHandle || "out") === srcOutlet.id)
+        : undefined;
+      setNodes((nds) => [...nds, clone]);
+      setEdges((eds) => {
+        let next = existing ? eds.filter((e) => e.id !== existing.id) : eds;
+        if (srcOutlet)
+          next = addEdge(
+            {
+              source: src.id,
+              sourceHandle: srcOutlet.id,
+              target: clone.id,
+              targetHandle: null,
+              id: edgeId(src.id, srcOutlet.id, clone.id),
+              ...edgeDefaults,
+            },
+            next,
+          );
+        if (existing)
+          next = addEdge(
+            {
+              source: clone.id,
+              sourceHandle: cloneOutlet,
+              target: existing.target,
+              targetHandle: null,
+              id: edgeId(clone.id, cloneOutlet, existing.target),
+              ...edgeDefaults,
+            },
+            next,
+          );
+        return next;
+      });
+      setSelectedId(clone.id);
+      window.setTimeout(() => {
+        setNodes((nds) => layoutTB(nds, edgesRef.current));
+        window.setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 30);
+      }, 0);
+    },
+    [nodes, edges, setNodes, setEdges, fitView],
+  );
+
+  // Atajos de teclado (fuera de campos de texto): Supr borra · Ctrl+Z/⇧Z deshace/
+  // rehace · Ctrl+D duplica el paso seleccionado.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
       const t = e.target as HTMLElement | null;
-      if (
-        t &&
+      const typing =
+        !!t &&
         (t.tagName === "INPUT" ||
           t.tagName === "TEXTAREA" ||
           t.tagName === "SELECT" ||
-          t.isContentEditable)
-      )
+          t.isContentEditable);
+      if (typing) return; // no interceptar mientras escribes (undo nativo, etc.)
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
         return;
-      if (!selectedId) return;
-      e.preventDefault();
-      deleteNode(selectedId);
+      }
+      if (mod && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (mod && (e.key === "d" || e.key === "D")) {
+        if (selectedId) {
+          e.preventDefault();
+          duplicateNode(selectedId);
+        }
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+        e.preventDefault();
+        deleteNode(selectedId);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, deleteNode]);
+  }, [selectedId, deleteNode, duplicateNode, undo, redo]);
 
   // ── Conexiones ──
   const onConnect = useCallback(
@@ -967,6 +1093,26 @@ function JourneyFlowInner({
           )}
 
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="fb-undo">
+              <button
+                onClick={undo}
+                disabled={!canUndo}
+                title="Deshacer (Ctrl+Z)"
+                aria-label="Deshacer"
+                className="btn btn--sm btn--icon"
+              >
+                <Undo2 size={14} />
+              </button>
+              <button
+                onClick={redo}
+                disabled={!canRedo}
+                title="Rehacer (Ctrl+Shift+Z)"
+                aria-label="Rehacer"
+                className="btn btn--sm btn--icon"
+              >
+                <Redo2 size={14} />
+              </button>
+            </div>
             {stats && stats.total > 0 && (
               <span className="fb-chip" title={`${totalActive} activos · ${totalDone} completados`}>
                 <Users size={12} /> {stats.total} inscrito{stats.total === 1 ? "" : "s"}
@@ -1218,6 +1364,7 @@ function JourneyFlowInner({
                   onReenroll={setReenroll}
                   onParams={updateParams}
                   onDelete={deleteNode}
+                  onDuplicate={duplicateNode}
                   onClose={() => setSelectedId(null)}
                 />
               ) : (

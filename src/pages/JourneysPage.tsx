@@ -333,6 +333,97 @@ const TEMPLATES: JourneyTemplate[] = [
       );
     },
   },
+  {
+    key: "scoring",
+    name: "Scoring por respuesta",
+    desc: "Saluda por WhatsApp y espera respuesta: si contesta, suma score y etiqueta; si no, resta y refuerza por email.",
+    accent: "var(--iris)",
+    build: () => {
+      const e = rid(),
+        wa = rid(),
+        we = rid(),
+        sc1 = rid(),
+        tg = rid(),
+        sc2 = rid(),
+        em = rid(),
+        x = rid();
+      return mk(
+        "Scoring por respuesta",
+        [
+          { id: e, kind: "entry" },
+          { id: wa, kind: "send_whatsapp", params: { templateName: "" } },
+          {
+            id: we,
+            kind: "wait_event",
+            params: {
+              rules: [{ field: "replied", op: "eq", value: "yes" }],
+              match: "all",
+              days: 3,
+            },
+          },
+          { id: sc1, kind: "score", params: { delta: 20 } },
+          { id: tg, kind: "tag", params: { op: "add", tag: "respondió" } },
+          { id: sc2, kind: "score", params: { delta: -10 } },
+          { id: em, kind: "send_email", params: { subject: "¿Seguimos?", body: "" } },
+          { id: x, kind: "exit" },
+        ],
+        [
+          { from: e, to: wa },
+          { from: wa, to: we },
+          { from: we, to: sc1, on: "met" },
+          { from: sc1, to: tg },
+          { from: tg, to: x },
+          { from: we, to: sc2, on: "timeout" },
+          { from: sc2, to: em },
+          { from: em, to: x },
+        ],
+      );
+    },
+  },
+  {
+    key: "segment_grade",
+    name: "Segmentar por grade",
+    desc: "Ramifica por la calificación del lead (A / B / otro) y le pone la etiqueta correspondiente.",
+    accent: "var(--accent)",
+    build: () => {
+      const e = rid(),
+        sw = rid(),
+        ta = rid(),
+        tb = rid(),
+        tc = rid(),
+        x = rid();
+      return mk(
+        "Segmentar por grade",
+        [
+          { id: e, kind: "entry" },
+          {
+            id: sw,
+            kind: "switch",
+            params: {
+              field: "grade",
+              cases: [
+                { id: "c0", label: "A", value: "A" },
+                { id: "c1", label: "B", value: "B" },
+              ],
+            },
+          },
+          { id: ta, kind: "tag", params: { op: "add", tag: "vip" } },
+          { id: tb, kind: "tag", params: { op: "add", tag: "medio" } },
+          { id: tc, kind: "tag", params: { op: "add", tag: "frío" } },
+          { id: x, kind: "exit" },
+        ],
+        [
+          { from: e, to: sw },
+          { from: sw, to: ta, on: "c0" },
+          { from: sw, to: tb, on: "c1" },
+          { from: sw, to: tc, on: "default" },
+          { from: ta, to: x },
+          { from: tb, to: x },
+          { from: tc, to: x },
+        ],
+      );
+    },
+  },
 ];
 
 export function JourneysPage() {
