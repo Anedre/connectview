@@ -1118,6 +1118,8 @@ function SalesforceCard({
   // Token de ENTRADA (SF→Vox) recién generado, para mostrarlo UNA vez.
   const [inboundToken, setInboundToken] = useState("");
   const [genningToken, setGenningToken] = useState(false);
+  const [deployingInbound, setDeployingInbound] = useState(false);
+  const [realtimeOn, setRealtimeOn] = useState(false);
   const ep = getApiEndpoints();
   const { confirm, confirmDialog } = useConfirm();
 
@@ -1276,6 +1278,51 @@ function SalesforceCard({
     }
   };
 
+  // Auto-deploy del "puente" SF→ARIA en la org del cliente (un click). ARIA
+  // despliega vía Metadata API un ApexTrigger + clase que llaman al webhook en
+  // cada cambio de Lead. Requiere que el usuario que conectó el OAuth sea admin.
+  const onDeployInbound = async () => {
+    if (!ep?.salesforceSync) {
+      toast.message("Disponible al desplegar el backend de Salesforce.");
+      return;
+    }
+    if (
+      !(await confirm({
+        title: "¿Activar la sincronización en tiempo real?",
+        description:
+          "ARIA instalará en tu Salesforce un trigger que le avisa cada vez que un Lead " +
+          "cambia. Necesitas haber conectado Salesforce con un usuario administrador. Puede " +
+          "tardar hasta un minuto.",
+        confirmLabel: "Activar",
+      }))
+    )
+      return;
+    setDeployingInbound(true);
+    try {
+      const r = await authedFetch(ep.salesforceSync, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "deployInbound" }),
+      });
+      const j = await r.json();
+      if (j.inProgress) {
+        toast.message("El deploy sigue en curso en Salesforce; reintenta en un momento.");
+        return;
+      }
+      if (!r.ok || !j.ok) {
+        const detail = Array.isArray(j.errors) && j.errors.length ? ` — ${j.errors[0]}` : "";
+        throw new Error((j.error || "No se pudo activar") + detail);
+      }
+      setRealtimeOn(true);
+      update({ salesforce: { ...sf, inboundTokenSet: true } });
+      toast.success("Sincronización en tiempo real activada en Salesforce");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo activar la sincronización");
+    } finally {
+      setDeployingInbound(false);
+    }
+  };
+
   const onConnect = async () => {
     if (!ep?.salesforceOAuthStart) {
       toast.message("El flujo OAuth se habilita al desplegar el backend de Salesforce.");
@@ -1409,6 +1456,51 @@ function SalesforceCard({
             pégalo en el Custom Header <code style={{ fontSize: 11.5 }}>x-vox-token</code> de la
             Named Credential del Flow. Es exclusivo de tu organización: nadie más puede escribir en
             tus datos con él.
+          </div>
+          {/* Camino recomendado: un click — ARIA despliega el trigger en la org. */}
+          <div
+            style={{
+              border: "1px solid var(--border-1)",
+              borderRadius: 10,
+              background: "var(--bg-2)",
+              padding: "10px 12px",
+              marginBottom: 12,
+            }}
+          >
+            <div
+              className="row"
+              style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 12.5, color: "var(--text-1)" }}>
+                  Activar en un click {realtimeOn ? "· ✓ activo" : "(recomendado)"}
+                </div>
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 2, lineHeight: 1.45 }}>
+                  ARIA instala el trigger en tu Salesforce por ti (Metadata API). Requiere haber
+                  conectado con un usuario administrador.
+                </div>
+              </div>
+              <button
+                className="btn btn--primary btn--sm"
+                onClick={onDeployInbound}
+                disabled={deployingInbound || !sf.connected}
+                style={{ flex: "0 0 auto", alignSelf: "center" }}
+                title={
+                  sf.connected
+                    ? "Instalar el puente en tu Salesforce"
+                    : "Conecta Salesforce primero"
+                }
+              >
+                {deployingInbound
+                  ? "Instalando…"
+                  : realtimeOn
+                    ? "Reinstalar"
+                    : "Activar en tiempo real"}
+              </button>
+            </div>
+          </div>
+          <div className="muted" style={{ fontSize: 11.5, marginBottom: 6 }}>
+            ¿Prefieres hacerlo a mano? Genera el token y configura el Flow tú mismo:
           </div>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
             <button

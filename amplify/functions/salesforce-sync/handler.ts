@@ -11,7 +11,7 @@ import {
   updateSObject,
   insertSObject,
 } from "../_shared/salesforceClient";
-import { resolveTenantId } from "../_shared/cognitoAuth";
+import { resolveTenantId, isLegacyTenant } from "../_shared/cognitoAuth";
 import {
   propagateLead,
   pushLeadToSalesforce,
@@ -24,6 +24,8 @@ import {
   setActiveProfiles,
 } from "../_shared/leadSync";
 import { sfPhoneCandidates } from "../_shared/phone";
+import { provisionSfInboundToken } from "../_shared/sfInboundToken";
+import { deployInboundBridge } from "../_shared/sfMetadataDeploy";
 import {
   resolveDynamo,
   resolveCustomerProfiles,
@@ -828,6 +830,77 @@ export const handler: Handler = async (event: any) => {
         statusCode: 502,
         headers: CORS,
         body: JSON.stringify({ ok: false, mode: "pushAll", error: "export failed", message: msg }),
+      };
+    }
+  }
+
+  // ── DEPLOY INBOUND: auto-instala el "puente" SF→ARIA en la org del tenant.
+  //    Despliega vía Metadata API un ApexTrigger + clase @future(callout) que
+  //    llama al webhook de ARIA en cada cambio de Lead (filtra LeadSource=Vox,
+  //    anti-eco). Convierte el Paso 4 manual de SALESFORCE_SETUP en un click.
+  //    Usa el access_token del OAuth del tenant (getToken respeta el tenant
+  //    activo) y genera/rota su token de entrada. POST {mode:"deployInbound"}. ──
+  if (event?.queryStringParameters?.mode === "deployInbound" || body.mode === "deployInbound") {
+    if (!tenantId || isLegacyTenant(tenantId)) {
+      return {
+        statusCode: 400,
+        headers: CORS,
+        body: JSON.stringify({
+          error: "El auto-deploy requiere un tenant con Salesforce conectado por OAuth.",
+        }),
+      };
+    }
+    try {
+      // getToken() respeta el tenant activo → org del cliente (OAuth per-tenant).
+      // Si el tenant real NO conectó su OAuth, LANZA (no cae a Novasys): lo
+      // tratamos como "conecta Salesforce primero".
+      const tok = await getToken();
+      // Genera/rota el token de entrada y lo incrusta en el Apex desplegado, así
+      // el puente queda consistente con el secret guardado en este mismo momento.
+      const inboundToken = await provisionSfInboundToken(tenantId);
+      const webhookUrl =
+        process.env.SF_INBOUND_WEBHOOK_URL ||
+        "https://z3i5dvi7rnmcrtxop5dnl5pf2i0okkia.lambda-url.us-east-1.on.aws/";
+      const result = await deployInboundBridge(
+        tok.instanceUrl,
+        tok.accessToken,
+        webhookUrl,
+        inboundToken,
+      );
+      if (!result.done) {
+        return {
+          statusCode: 202,
+          headers: CORS,
+          body: JSON.stringify({
+            ok: false,
+            inProgress: true,
+            message:
+              "El deploy sigue en curso en Salesforce; reintenta en un momento para confirmar.",
+          }),
+        };
+      }
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({
+          ok: result.success,
+          status: result.status,
+          errors: result.success ? undefined : result.errors,
+        }),
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const notConnected = /SF_NOT_CONNECTED|no conect|not connected|BLOQUEA/i.test(msg);
+      return {
+        statusCode: notConnected ? 400 : 502,
+        headers: CORS,
+        body: JSON.stringify({
+          ok: false,
+          error: notConnected
+            ? "Conecta Salesforce (OAuth) antes de activar la sincronización en tiempo real."
+            : "No se pudo desplegar el puente en Salesforce.",
+          message: msg.slice(0, 300),
+        }),
       };
     }
   }
