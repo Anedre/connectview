@@ -15,7 +15,6 @@ import { SentimentChart } from "@/components/reports/SentimentChart";
 import { AgentPerformanceReport } from "@/components/reports/AgentPerformanceReport";
 import { HsmOutboundReport } from "@/components/reports/HsmOutboundReport";
 import { WhatsAppAnalyticsPanel } from "@/components/reports/WhatsAppAnalyticsPanel";
-import { AttributionReport } from "@/components/reports/AttributionReport";
 import { ProgramReport } from "@/components/reports/ProgramReport";
 import { BotAnalyticsReport } from "@/components/reports/BotAnalyticsReport";
 import { ContactsTable } from "@/components/reports/ContactsTable";
@@ -27,6 +26,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import type { ContactRecord } from "@/types/monitoring";
 import { Icon, Btn, Card, HeroBand, type IconName } from "@/components/aria";
 import { ReportsHero, type ChannelSlice } from "@/components/reports/ReportsHero";
+import { AutoInsights } from "@/components/reports/AutoInsights";
 
 /**
  * ReportsPage — analítica histórica sobre los contactos reales (queryContacts
@@ -475,6 +475,13 @@ export function ReportsPage() {
       {/* ── OPERACIÓN · contact center ── */}
       {tab === "operacion" && (
         <>
+          {!initialLoading && contacts.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <Card title="Insights automáticos" icon="sparkle" accent="var(--iris)">
+                <AutoInsights contacts={contacts} />
+              </Card>
+            </div>
+          )}
           {initialLoading ? (
             <div
               className="grid"
@@ -561,16 +568,14 @@ export function ReportsPage() {
         </>
       )}
 
-      {/* ── CRECIMIENTO · leads (Pilar 1 + Pilar 2) ── */}
+      {/* ── CRECIMIENTO · leads (Pilar 1 + Pilar 2) ──
+          ProgramReport ya incluye embudo + conversión por golpes + golpes por canal
+          + golpes al cierre, así que el AttributionReport (subconjunto, mismo fetch)
+          se eliminó para no duplicar la data ni el request. */}
       {tab === "crecimiento" && (
-        <>
-          <div style={{ marginBottom: 16 }}>
-            <ProgramReport />
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <AttributionReport />
-          </div>
-        </>
+        <div style={{ marginBottom: 16 }}>
+          <ProgramReport />
+        </div>
       )}
 
       {/* ── WHATSAPP · outbound (Pilar 9C + Pilar 4C) ── */}

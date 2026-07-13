@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Bot, CheckCircle2, UserRound, Gauge } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
+import { Kpi, KpiRow, BarList } from "@/components/reports/kit";
 
 /**
  * BotAnalyticsReport (Pilar 9 · Fase B) — Reporte del Agente IA: agrega los conv#
@@ -41,129 +42,6 @@ const REASON_COLOR: Record<string, string> = {
   ai_error: "var(--accent-red)",
   agent: "var(--accent-cyan)",
 };
-
-function Kpi({
-  icon,
-  label,
-  value,
-  hint,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-  color: string;
-}) {
-  return (
-    <div
-      style={{
-        background: "var(--bg-2)",
-        border: "1px solid var(--border-1)",
-        borderRadius: 12,
-        padding: "12px 14px",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <span
-          style={{
-            display: "grid",
-            placeItems: "center",
-            width: 22,
-            height: 22,
-            borderRadius: 6,
-            background: `color-mix(in srgb, ${color} 16%, transparent)`,
-            color,
-          }}
-        >
-          {icon}
-        </span>
-        <span
-          style={{
-            fontSize: 10.5,
-            color: "var(--text-3)",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-          }}
-        >
-          {label}
-        </span>
-      </div>
-      <div
-        style={{
-          fontSize: 24,
-          fontWeight: 800,
-          lineHeight: 1.1,
-          marginTop: 5,
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {value}
-      </div>
-      {hint && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>{hint}</div>}
-    </div>
-  );
-}
-
-function MiniBars({
-  rows,
-  color,
-}: {
-  rows: Array<{ label: string; count: number; color?: string }>;
-  color: string;
-}) {
-  const max = Math.max(1, ...rows.map((r) => r.count));
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {rows.map((r) => (
-        <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span
-            style={{
-              width: 150,
-              fontSize: 12,
-              color: "var(--text-2)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-            title={r.label}
-          >
-            {r.label}
-          </span>
-          <div
-            style={{
-              flex: 1,
-              height: 16,
-              background: "var(--bg-3)",
-              borderRadius: 5,
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                width: `${Math.max(3, Math.round((r.count / max) * 100))}%`,
-                height: "100%",
-                background: r.color || color,
-              }}
-            />
-          </div>
-          <span
-            style={{
-              width: 30,
-              fontSize: 11,
-              color: "var(--text-3)",
-              textAlign: "right",
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {r.count}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export function BotAnalyticsReport() {
   const [data, setData] = useState<BotReport | null>(null);
@@ -255,42 +133,36 @@ export function BotAnalyticsReport() {
       ) : (
         <>
           {/* KPIs */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-              gap: 11,
-            }}
-          >
+          <KpiRow>
             <Kpi
               icon={<Bot size={13} />}
               color="var(--iris)"
               label="Conversaciones"
-              value={String(data.total)}
-              hint={`${data.avgTurns} turnos · ${data.totalToolCalls} acciones`}
+              value={data.total}
+              sub={`${data.avgTurns} turnos · ${data.totalToolCalls} acciones`}
             />
             <Kpi
               icon={<CheckCircle2 size={13} />}
-              color="var(--accent-green)"
+              color="var(--green)"
               label="Resueltas solo"
               value={pct(data.resolveRate)}
-              hint={`${data.resolved}/${data.total} sin humano`}
+              sub={`${data.resolved}/${data.total} sin humano`}
             />
             <Kpi
               icon={<UserRound size={13} />}
-              color="var(--accent-amber)"
+              color="var(--gold)"
               label="Derivadas"
-              value={String(data.handoff)}
-              hint="pasaron a un agente"
+              value={data.handoff}
+              sub="pasaron a un agente"
             />
             <Kpi
               icon={<Gauge size={13} />}
-              color="var(--accent-cyan)"
+              color="var(--cyan)"
               label="Confianza prom."
               value={data.avgConfidence != null ? `${data.avgConfidence}%` : "—"}
-              hint="autoreportada"
+              sub="autoreportada"
             />
-          </div>
+          </KpiRow>
 
           {/* Motivos de derivación + Herramientas (2 col) */}
           <div
@@ -319,11 +191,11 @@ export function BotAnalyticsReport() {
                   El agente no derivó ninguna conversación. 🎉
                 </div>
               ) : (
-                <MiniBars
-                  color="var(--accent-amber)"
+                <BarList
+                  color="var(--gold)"
                   rows={data.byReason.map((r) => ({
                     label: r.label,
-                    count: r.count,
+                    value: r.count,
                     color: REASON_COLOR[r.reason],
                   }))}
                 />
@@ -347,9 +219,9 @@ export function BotAnalyticsReport() {
                   Sin herramientas ejecutadas.
                 </div>
               ) : (
-                <MiniBars
-                  color="var(--accent-violet)"
-                  rows={data.toolUsage.map((t) => ({ label: t.label, count: t.count }))}
+                <BarList
+                  color="var(--iris)"
+                  rows={data.toolUsage.map((t) => ({ label: t.label, value: t.count }))}
                 />
               )}
             </div>
@@ -370,9 +242,9 @@ export function BotAnalyticsReport() {
               >
                 Fuentes más citadas
               </h4>
-              <MiniBars
-                color="var(--accent-green)"
-                rows={data.topCitations.map((c) => ({ label: c.label, count: c.count }))}
+              <BarList
+                color="var(--green)"
+                rows={data.topCitations.map((c) => ({ label: c.label, value: c.count }))}
               />
             </div>
           )}

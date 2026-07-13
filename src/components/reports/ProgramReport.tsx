@@ -5,6 +5,7 @@ import { authedFetch } from "@/lib/authedFetch";
 import { useProgram } from "@/context/ProgramContext";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import type { Valoracion } from "@/lib/dispositions";
+import { Kpi, KpiRow, BarList, Funnel } from "@/components/reports/kit";
 
 /**
  * ProgramReport (Pilar 9 · Fase A) — el "Dashboard por Programa": el reporte
@@ -28,97 +29,18 @@ interface Attribution {
 }
 
 const VAL_COLOR: Record<Valoracion, string> = {
-  inicial: "var(--accent-cyan)",
-  positiva: "var(--accent-green)",
-  negativa: "var(--accent-red)",
-  cierre: "var(--accent-violet)",
+  inicial: "var(--cyan)",
+  positiva: "var(--green)",
+  negativa: "var(--red)",
+  cierre: "var(--iris)",
 };
 
 const CH_COLORS: Record<string, string> = {
-  Llamada: "var(--accent-cyan)",
-  WhatsApp: "var(--accent-green)",
-  Correo: "var(--accent-amber)",
-  Chat: "var(--accent-pink)",
+  Llamada: "var(--cyan)",
+  WhatsApp: "var(--green)",
+  Correo: "var(--gold)",
+  Chat: "var(--coral)",
 };
-
-function Kpi({
-  icon,
-  label,
-  value,
-  hint,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-  color: string;
-}) {
-  return (
-    <div
-      style={{
-        background: "var(--bg-2)",
-        border: "1px solid var(--border-1)",
-        borderRadius: 13,
-        padding: "13px 15px",
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `linear-gradient(135deg, color-mix(in srgb, ${color} 10%, transparent), transparent 60%)`,
-          pointerEvents: "none",
-        }}
-      />
-      <div style={{ display: "flex", alignItems: "center", gap: 7, position: "relative" }}>
-        <span
-          style={{
-            display: "grid",
-            placeItems: "center",
-            width: 24,
-            height: 24,
-            borderRadius: 7,
-            background: `color-mix(in srgb, ${color} 16%, transparent)`,
-            color,
-          }}
-        >
-          {icon}
-        </span>
-        <span
-          style={{
-            fontSize: 10.5,
-            color: "var(--text-3)",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-          }}
-        >
-          {label}
-        </span>
-      </div>
-      <div
-        style={{
-          fontSize: 26,
-          fontWeight: 800,
-          lineHeight: 1.05,
-          marginTop: 6,
-          fontVariantNumeric: "tabular-nums",
-          position: "relative",
-        }}
-      >
-        {value}
-      </div>
-      {hint && (
-        <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, position: "relative" }}>
-          {hint}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function ProgramReport() {
   const { activeProgramId, activeProgram } = useProgram();
@@ -181,8 +103,6 @@ export function ProgramReport() {
       }));
     return [...known, ...extra].filter((s) => s.count > 0);
   }, [data, tree]);
-
-  const maxStage = Math.max(1, ...funnel.map((s) => s.count));
 
   return (
     <div
@@ -263,42 +183,36 @@ export function ProgramReport() {
       ) : (
         <div style={{ marginTop: scoped ? 0 : 12 }}>
           {/* KPIs */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-              gap: 11,
-            }}
-          >
+          <KpiRow>
             <Kpi
               icon={<Layers size={14} />}
-              color="var(--accent-cyan)"
+              color="var(--cyan)"
               label="Leads"
-              value={String(data.totalLeads)}
-              hint={`${data.totalGolpes} golpes · ${fmt1(data.avgGolpes)}/lead`}
+              value={data.totalLeads}
+              sub={`${data.totalGolpes} golpes · ${fmt1(data.avgGolpes)}/lead`}
             />
             <Kpi
               icon={<TrendingUp size={14} />}
-              color="var(--accent-green)"
+              color="var(--green)"
               label="Conversión"
               value={pct(data.conversionRate)}
-              hint={`${data.converted}/${data.totalLeads} convertidos`}
+              sub={`${data.converted}/${data.totalLeads} convertidos`}
             />
             <Kpi
               icon={<Target size={14} />}
-              color="var(--accent-violet)"
+              color="var(--iris)"
               label="Golpes al cierre"
               value={data.avgGolpesToClose ? fmt1(data.avgGolpesToClose) : "—"}
-              hint="promedio para convertir"
+              sub="promedio para convertir"
             />
             <Kpi
               icon={<CalendarClock size={14} />}
-              color="var(--accent-amber)"
+              color="var(--gold)"
               label="Días al cierre"
               value={data.avgDaysToClose ? String(Math.round(data.avgDaysToClose)) : "—"}
-              hint="del 1er toque al cierre"
+              sub="del 1er toque al cierre"
             />
-          </div>
+          </KpiRow>
 
           {/* Embudo por etapa */}
           <div style={{ marginTop: 20 }}>
@@ -317,58 +231,9 @@ export function ProgramReport() {
             {funnel.length === 0 ? (
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>Sin etapas asignadas.</div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                {funnel.map((s) => (
-                  <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span
-                      style={{
-                        width: 150,
-                        fontSize: 12,
-                        color: "var(--text-2)",
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                      title={s.label}
-                    >
-                      {s.label}
-                    </span>
-                    <div
-                      style={{
-                        flex: 1,
-                        height: 22,
-                        background: "var(--bg-3)",
-                        borderRadius: 6,
-                        overflow: "hidden",
-                        position: "relative",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${Math.max(3, Math.round((s.count / maxStage) * 100))}%`,
-                          height: "100%",
-                          background: `linear-gradient(90deg, ${s.color}, color-mix(in srgb, ${s.color} 70%, transparent))`,
-                          borderRadius: 6,
-                          transition: "width .25s",
-                        }}
-                      />
-                    </div>
-                    <span
-                      style={{
-                        width: 76,
-                        fontSize: 11.5,
-                        color: "var(--text-3)",
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      <b style={{ color: "var(--text-1)" }}>{s.count}</b> ·{" "}
-                      {pct(s.count / data.totalLeads)}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <Funnel
+                stages={funnel.map((s) => ({ label: s.label, value: s.count, color: s.color }))}
+              />
             )}
           </div>
 
@@ -394,51 +259,15 @@ export function ProgramReport() {
               >
                 Conversión por # de golpes
               </h4>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {data.byBucket.map((b) => (
-                  <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span
-                      style={{
-                        width: 38,
-                        fontSize: 12,
-                        color: "var(--text-2)",
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {b.label}
-                    </span>
-                    <div
-                      style={{
-                        flex: 1,
-                        height: 16,
-                        background: "var(--bg-3)",
-                        borderRadius: 5,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${Math.round(b.rate * 100)}%`,
-                          height: "100%",
-                          background: "var(--accent-green)",
-                          minWidth: b.converted > 0 ? 2 : 0,
-                        }}
-                      />
-                    </div>
-                    <span
-                      style={{
-                        width: 88,
-                        fontSize: 11,
-                        color: "var(--text-3)",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {pct(b.rate)} · {b.converted}/{b.leads}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <BarList
+                color="var(--green)"
+                max={100}
+                rows={data.byBucket.map((b) => ({
+                  label: `${b.label} golpes`,
+                  value: Math.round(b.rate * 100),
+                  valueLabel: `${pct(b.rate)} · ${b.converted}/${b.leads}`,
+                }))}
+              />
             </div>
             <div>
               <h4
@@ -453,54 +282,19 @@ export function ProgramReport() {
               >
                 Golpes por canal
               </h4>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {Object.entries(data.byChannel).length === 0 ? (
-                  <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                    Sin golpes registrados.
-                  </div>
-                ) : (
-                  Object.entries(data.byChannel)
+              {Object.entries(data.byChannel).length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--text-3)" }}>Sin golpes registrados.</div>
+              ) : (
+                <BarList
+                  rows={Object.entries(data.byChannel)
                     .sort((a, b) => b[1] - a[1])
-                    .map(([ch, n]) => {
-                      const max = Math.max(1, ...Object.values(data.byChannel));
-                      return (
-                        <div key={ch} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ width: 80, fontSize: 12, color: "var(--text-2)" }}>
-                            {ch}
-                          </span>
-                          <div
-                            style={{
-                              flex: 1,
-                              height: 16,
-                              background: "var(--bg-3)",
-                              borderRadius: 5,
-                              overflow: "hidden",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: `${Math.round((n / max) * 100)}%`,
-                                height: "100%",
-                                background: CH_COLORS[ch] || "var(--text-3)",
-                              }}
-                            />
-                          </div>
-                          <span
-                            style={{
-                              width: 40,
-                              fontSize: 11,
-                              color: "var(--text-3)",
-                              textAlign: "right",
-                              fontVariantNumeric: "tabular-nums",
-                            }}
-                          >
-                            {n}
-                          </span>
-                        </div>
-                      );
-                    })
-                )}
-              </div>
+                    .map(([ch, n]) => ({
+                      label: ch,
+                      value: n,
+                      color: CH_COLORS[ch] || "var(--text-3)",
+                    }))}
+                />
+              )}
             </div>
           </div>
         </div>

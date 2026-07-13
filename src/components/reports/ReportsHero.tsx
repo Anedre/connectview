@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { ArrowLeftRight } from "lucide-react";
 import type { EChartsOption } from "echarts";
 import { EChart, useChartTokens } from "@/components/charts/EChart";
 import { Num } from "@/components/aria";
@@ -104,8 +105,47 @@ export function ReportsHero({
   loading: boolean;
 }) {
   const t = useChartTokens();
+  const [compare, setCompare] = useState(false);
   const dv = pctDelta(kpis.total, prevKpis?.total);
   const insights = useMemo(() => narrate(kpis, prevKpis, channelMix), [kpis, prevKpis, channelMix]);
+
+  // Comparación con el período anterior (feature "explorable"): actual vs previo
+  // + Δ por métrica. Solo si tenemos los KPIs del período previo.
+  const compareRows: {
+    label: string;
+    curr: string;
+    prev: string;
+    delta: number | null;
+    invert?: boolean;
+  }[] = prevKpis
+    ? [
+        {
+          label: "Volumen",
+          curr: String(kpis.total),
+          prev: String(prevKpis.total),
+          delta: pctDelta(kpis.total, prevKpis.total),
+        },
+        {
+          label: "AHT prom.",
+          curr: kpis.avgAht ? formatDurationSec(Math.round(kpis.avgAht)) : "—",
+          prev: prevKpis.avgAht ? formatDurationSec(Math.round(prevKpis.avgAht)) : "—",
+          delta: pctDelta(kpis.avgAht, prevKpis.avgAht),
+          invert: true,
+        },
+        {
+          label: "Sentimiento +",
+          curr: `${kpis.posPct}%`,
+          prev: `${prevKpis.posPct}%`,
+          delta: kpis.posPct - prevKpis.posPct,
+        },
+        {
+          label: "Score neto",
+          curr: `${kpis.score >= 0 ? "+" : ""}${Math.round(kpis.score)}`,
+          prev: `${prevKpis.score >= 0 ? "+" : ""}${Math.round(prevKpis.score)}`,
+          delta: kpis.score - prevKpis.score,
+        },
+      ]
+    : [];
   const narrative = insights.length ? capitalize(insights.join(", y ")) + "." : "";
 
   const sparkOption: EChartsOption = useMemo(
@@ -302,6 +342,32 @@ export function ReportsHero({
               </span>
             ))}
           </div>
+
+          {compareRows.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setCompare((c) => !c)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                marginTop: 14,
+                padding: "6px 11px",
+                borderRadius: 9,
+                border: "1px solid var(--border-1)",
+                background: compare
+                  ? "color-mix(in srgb, var(--cyan) 12%, var(--bg-1))"
+                  : "var(--bg-2)",
+                color: compare ? "var(--cyan)" : "var(--text-2)",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              <ArrowLeftRight size={13} />{" "}
+              {compare ? "Ocultar comparación" : "Comparar con período anterior"}
+            </button>
+          )}
         </div>
 
         {/* Derecha: tendencia + mezcla de canales */}
@@ -324,6 +390,84 @@ export function ReportsHero({
           <ChannelMixBar mix={channelMix} />
         </div>
       </div>
+
+      {compare && compareRows.length > 0 && (
+        <div
+          style={{
+            position: "relative",
+            marginTop: 18,
+            borderTop: "1px solid var(--border-1)",
+            paddingTop: 14,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: ".05em",
+              color: "var(--text-3)",
+              marginBottom: 10,
+            }}
+          >
+            Este período vs. el anterior
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              gap: 10,
+            }}
+          >
+            {compareRows.map((r, i) => {
+              const unit = i < 2 ? "%" : " pts";
+              const good = r.delta == null ? null : r.invert ? r.delta < 0 : r.delta > 0;
+              const color =
+                r.delta == null || r.delta === 0
+                  ? "var(--text-3)"
+                  : good
+                    ? "var(--green)"
+                    : "var(--coral)";
+              return (
+                <div
+                  key={r.label}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    background: "var(--bg-2)",
+                    border: "1px solid var(--border-1)",
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 600 }}>
+                    {r.label}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 }}>
+                    <span
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 800,
+                        color: "var(--text-1)",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {r.curr}
+                    </span>
+                    {r.delta != null && r.delta !== 0 && (
+                      <span style={{ fontSize: 12, fontWeight: 700, color }}>
+                        {r.delta > 0 ? "▲" : "▼"} {Math.abs(r.delta)}
+                        {unit}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 1 }}>
+                    antes: {r.prev}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
