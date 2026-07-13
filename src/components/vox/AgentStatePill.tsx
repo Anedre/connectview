@@ -41,6 +41,12 @@ const STATE_STYLE: Record<string, StateStyle> = {
     bg: "var(--accent-red-soft)",
     label: "Contacto perdido",
   },
+  FailedConnectAgent: {
+    fg: "var(--accent-red)",
+    bg: "var(--accent-red-soft)",
+    label: "No conectó",
+  },
+  FailedConnect: { fg: "var(--accent-red)", bg: "var(--accent-red-soft)", label: "No conectó" },
   Lunch: { fg: "var(--accent-violet)", bg: "var(--accent-violet-soft)", label: "Almuerzo" },
   Break: { fg: "var(--accent-amber)", bg: "var(--accent-amber-soft)", label: "Pausa" },
   Training: { fg: "var(--accent-cyan)", bg: "var(--accent-cyan-soft)", label: "Capacitación" },

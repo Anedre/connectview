@@ -20,10 +20,15 @@ export function MissedCallBanner() {
   // Connect's built-in "missed" agent state can appear under a few
   // names depending on the instance configuration. Match all the
   // common variants.
+  // Connect también bloquea al agente cuando FALLA el connect (media WebRTC) —
+  // estado FailedConnectAgent. Antes no estaba contemplado: el agente quedaba
+  // bloqueado en silencio, sin banner ni botón de recuperación.
+  const isFailedConnect = agentState === "FailedConnectAgent" || agentState === "FailedConnect";
   const isInMissedState =
     agentState === "MissedCallAgent" ||
     agentState === "MissedCall" ||
-    agentState === "Missed Call Agent";
+    agentState === "Missed Call Agent" ||
+    isFailedConnect;
 
   useDebugRender("MissedCallBanner", {
     agentState,
@@ -38,9 +43,7 @@ export function MissedCallBanner() {
   // fuzzy-match by type=routable first, then by name.
   const availableState =
     availableStates.find((s) => s.type === "routable") ||
-    availableStates.find((s) =>
-      /availab|routab|disponib/i.test(s.name)
-    );
+    availableStates.find((s) => /availab|routab|disponib/i.test(s.name));
 
   // Most recent miss (top of the banner — there can be more in the
   // tab strip).
@@ -83,7 +86,9 @@ export function MissedCallBanner() {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600, fontSize: 13, color: "var(--accent-red)" }}>
-          Contacto perdido — estás bloqueado para nuevos contactos
+          {isFailedConnect
+            ? "No se pudo conectar la llamada — estás bloqueado para nuevos contactos"
+            : "Contacto perdido — estás bloqueado para nuevos contactos"}
         </div>
         <div
           style={{
@@ -103,8 +108,8 @@ export function MissedCallBanner() {
             </span>
           )}
           <span>
-            Amazon Connect cambió tu estado a <strong>{agentState}</strong>. No
-            recibirás más contactos hasta que vuelvas a Disponible.
+            Amazon Connect cambió tu estado a <strong>{agentState}</strong>. No recibirás más
+            contactos hasta que vuelvas a Disponible.
           </span>
         </div>
       </div>

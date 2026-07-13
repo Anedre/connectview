@@ -13,6 +13,11 @@ export type AgentState =
   | "MissedCallAgent"
   | "MissedCall"
   | "Missed Call Agent"
+  // Connect también mueve al agente aquí cuando FALLA el connect de un contacto
+  // ruteado (p.ej. la media WebRTC no se estableció). Mismo bloqueo + misma
+  // recuperación manual que el missed.
+  | "FailedConnectAgent"
+  | "FailedConnect"
   // Custom states defined per-instance (any string) — kept as a
   // string fallback so we don't have to type-narrow every read.
   | (string & {});

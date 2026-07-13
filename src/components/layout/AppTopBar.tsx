@@ -57,6 +57,8 @@ const STATE_COLORS: Record<string, { fg: string; bg: string }> = {
   Offline: { fg: "var(--text-3)", bg: "var(--bg-3)" },
   Init: { fg: "var(--text-3)", bg: "var(--bg-3)" },
   Error: { fg: "var(--accent-red)", bg: "var(--accent-red-soft)" },
+  FailedConnectAgent: { fg: "var(--accent-red)", bg: "var(--accent-red-soft)" },
+  FailedConnect: { fg: "var(--accent-red)", bg: "var(--accent-red-soft)" },
 };
 function colorFor(s: ConnectAgentState): { fg: string; bg: string } {
   return STATE_COLORS[s.name] || STATE_COLORS[s.type] || { fg: "var(--text-3)", bg: "var(--bg-3)" };
@@ -71,6 +73,8 @@ const STATE_LABELS: Record<string, string> = {
   Offline: "Offline",
   Init: "Conectando…",
   Error: "Error",
+  FailedConnectAgent: "No conectó",
+  FailedConnect: "No conectó",
   Lunch: "Almuerzo",
   Break: "Pausa",
   Training: "Capacitación",

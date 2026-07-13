@@ -397,7 +397,14 @@ export function CCPProvider({ children }: { children: ReactNode }) {
           const syncAgentSnapshot = () => {
             try {
               const st = agent.getState?.();
-              if (st?.name) setAgentState(st.name as AgentState);
+              if (st?.name) {
+                setAgentState(st.name as AgentState);
+                // Recuperación: si Streams reporta un estado real distinto de
+                // "Error", la sesión del softphone se restableció → apagamos el
+                // chip. Sin esto, un onError transitorio dejaba "Agent connection
+                // error" clavado para siempre (nunca había un setError(null)).
+                if (st.name !== "Error") setError(null);
+              }
             } catch {
               /* noop */
             }
