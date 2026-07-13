@@ -38,7 +38,7 @@ import { WaTemplateConfigurator } from "@/components/whatsapp/WaTemplateConfigur
 import { previewSuppression, type BatchSummary } from "@/hooks/useSuppression";
 import { useAuth } from "@/hooks/useAuth";
 import { authedFetch } from "@/lib/authedFetch";
-import { useProgram } from "@/context/ProgramContext";
+import { useProgram, useProgramOptional } from "@/context/ProgramContext";
 import { Btn, Card, Pill, Icon as AriaIcon } from "@/components/aria";
 import { useTopBarActions } from "@/components/layout/TopBarSlot";
 
@@ -219,7 +219,8 @@ export function CampaignCreatePage() {
   const { flows, loading: flowsLoading } = useContactFlows();
   const { phones, loading: phonesLoading } = useSourcePhones();
   const { queues } = useQueues();
-  const { tree: leadStages } = useTaxonomy();
+  const activeProgram = useProgramOptional()?.activeProgram;
+  const { tree: leadStages } = useTaxonomy(activeProgram?.taxonomyId);
 
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState("");

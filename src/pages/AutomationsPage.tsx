@@ -12,6 +12,7 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
+import { useProgramOptional } from "@/context/ProgramContext";
 import { useUsers } from "@/hooks/useUsers";
 import { useJourneys } from "@/hooks/useJourneys";
 import { usePrograms } from "@/hooks/usePrograms";
@@ -51,7 +52,8 @@ import { Icon, Btn, Stat, Pill, HeroBand, Num } from "@/components/aria";
 export function AutomationsPage() {
   const ep = getApiEndpoints();
   const { confirm, confirmDialog } = useConfirm();
-  const { tree } = useTaxonomy();
+  const activeProgram = useProgramOptional()?.activeProgram;
+  const { tree } = useTaxonomy(activeProgram?.taxonomyId);
   const { users } = useUsers();
   const { journeys } = useJourneys();
   const { programs } = usePrograms();

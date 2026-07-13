@@ -9,6 +9,7 @@ import { useCCP } from "@/hooks/useCCP";
 import { getApiEndpoints } from "@/lib/api";
 import { VALORACION_META, type DispositionStage } from "@/lib/dispositions";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
+import { useProgramOptional } from "@/context/ProgramContext";
 import * as Icon from "@/components/vox/primitives";
 import { Btn, Card, Icon as AIcon, Pill } from "@/components/aria";
 import { ScheduleFollowupModal } from "@/components/workspace/ScheduleCallbackModal";
@@ -199,7 +200,9 @@ export function WrapUpView({
 
   // Unified taxonomy from DynamoDB (single source of truth across all
   // channels). Falls back to the static default while loading.
-  const { tree, loading: treeLoading } = useTaxonomy();
+  // Tipifica con la taxonomía del programa activo (o la default si no hay).
+  const activeProgram = useProgramOptional()?.activeProgram;
+  const { tree, loading: treeLoading } = useTaxonomy(activeProgram?.taxonomyId);
 
   const [summary, setSummary] = useState<string>("");
   const [summaryLoading, setSummaryLoading] = useState(false);

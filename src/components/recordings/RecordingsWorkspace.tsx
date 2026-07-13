@@ -14,6 +14,7 @@ import { Icon, Btn, Card, Pill, Av } from "@/components/aria";
 import type { IconName } from "@/components/aria";
 import { getApiEndpoints } from "@/lib/api";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
+import { useProgramOptional } from "@/context/ProgramContext";
 import { useLeadOverview, type LeadOverview } from "@/hooks/useLeadOverview";
 import { useContactSummary } from "@/hooks/useContactSummary";
 import {
@@ -1142,7 +1143,8 @@ export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead 
     setRefreshKey((k) => k + 1); // re-monta las vistas → re-leen datos frescos
     setRefreshing(false);
   };
-  const { tree } = useTaxonomy();
+  const activeProgram = useProgramOptional()?.activeProgram;
+  const { tree } = useTaxonomy(activeProgram?.taxonomyId);
   const ov = useLeadOverview(lead?.phone ?? null);
 
   useEffect(() => {
