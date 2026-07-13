@@ -335,6 +335,33 @@ export function CCPProvider({ children }: { children: ReactNode }) {
     const subscribeAgentAndContact = (): boolean => {
       try {
         if (!conn.core?.getEventBus?.()) return false; // bus todavía no creado
+        // Diagnóstico GRANULAR del softphone. Sin esto, todo fallo de media
+        // (micrófono, red de casa que bloquea UDP, señalización caída) se
+        // colapsaba en el genérico "Agent connection error" de agent.onError y
+        // era imposible diagnosticar a agentes remotos. Streams reporta el tipo
+        // exacto → lo traducimos a una causa accionable.
+        try {
+          conn.core.onSoftphoneError?.((err: any) => {
+            const type = String(err?.errorType || "");
+            const MSG: Record<string, string> = {
+              microphone_not_shared: "Micrófono no compartido — habilita el permiso y recarga",
+              ice_collection_timeout:
+                "Tu red bloquea el audio de la llamada (firewall/VPN: UDP 3478 hacia AWS)",
+              signalling_handshake_failure:
+                "No se pudo establecer la señalización con Connect (revisa tu red)",
+              signalling_connection_failure: "Se cayó la señalización con Connect (red inestable)",
+              user_busy_error: "Ya hay otra sesión de softphone activa con este agente",
+              unsupported_browser: "Este navegador no soporta el softphone",
+              webrtc_error: "Fallo de audio WebRTC al conectar la llamada",
+              realtime_communication_error: "Error de comunicación de audio en tiempo real",
+            };
+            const msg = MSG[type] || `Error de softphone (${type || "desconocido"})`;
+            console.error("[softphone]", type, err?.errorMessage || err);
+            setError(msg);
+          });
+        } catch {
+          /* versión de Streams sin onSoftphoneError */
+        }
         conn.agent((agent: any) => {
           agentRef.current = agent;
           setAgentName(agent.getName());
@@ -403,7 +430,10 @@ export function CCPProvider({ children }: { children: ReactNode }) {
                 // "Error", la sesión del softphone se restableció → apagamos el
                 // chip. Sin esto, un onError transitorio dejaba "Agent connection
                 // error" clavado para siempre (nunca había un setError(null)).
-                if (st.name !== "Error") setError(null);
+                // PERO: mientras siga bloqueado (Missed/FailedConnect) conservamos
+                // el diagnóstico del softphone — se limpia al volver a Disponible.
+                const blocked = /missed|failedconnect/i.test(st.name);
+                if (st.name !== "Error" && !blocked) setError(null);
               }
             } catch {
               /* noop */
