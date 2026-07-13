@@ -25,7 +25,10 @@ const TTL_MS = 60_000;
 async function fetchMatrix(force = false): Promise<Matrix> {
   const fresh = !!cached && Date.now() - cachedAt < TTL_MS;
   if (fresh && !force) return cached as Matrix;
-  if (inflight && !force) return inflight;
+  // Un fetch YA en vuelo es tan fresco como uno nuevo — reusarlo también con
+  // force dedupea el focus/poll de las N instancias montadas del hook (sin esto,
+  // cada listener de focus disparaba su propio fetch en paralelo).
+  if (inflight) return inflight;
   const ep = getApiEndpoints();
   if (!ep?.managePermissions) return cached || {};
   inflight = authedFetch(ep.managePermissions)
