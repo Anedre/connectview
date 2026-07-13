@@ -1303,6 +1303,24 @@ export function CampaignDetailPage() {
                         >
                           {row.status}
                         </span>
+                        {/* Reintento automático programado (no_answer → pending con
+                            nextRetryAt futuro): sin esto el admin ve "pending" con
+                            intentos ≥1 y no sabe por qué no marca todavía. */}
+                        {row.status === "pending" &&
+                          row.nextRetryAt &&
+                          Date.parse(row.nextRetryAt) > Date.now() && (
+                            <span
+                              className="muted"
+                              style={{ display: "block", fontSize: 10, marginTop: 2 }}
+                              title={`Reintento automático programado: ${new Date(row.nextRetryAt).toLocaleString("es-PE")}`}
+                            >
+                              ↻ reintenta{" "}
+                              {new Date(row.nextRetryAt).toLocaleTimeString("es-PE", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          )}
                       </td>
                       <td style={{ padding: "6px 10px" }}>
                         <DispositionSelect

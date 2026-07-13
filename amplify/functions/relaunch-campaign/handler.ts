@@ -205,9 +205,12 @@ export const handler: Handler = async (event: any) => {
     for (const row of rowsToReset) {
       const rowId = row.rowId as string;
       if (!rowId) continue;
+      // REMOVE assignedAgentUserId: al relanzar, el contacto vuelve al POOL común
+      // y se reparte entre los agentes con hueco. Antes conservaba el bucket del
+      // agente original → los relanzados se re-concentraban en el mismo agente.
       const updateExpr = resetAttempts
-        ? "SET #st = :pending, nextRetryAt = :now, attempts = :zero REMOVE lastError, disconnectReason, connectContactId, agentUsername"
-        : "SET #st = :pending, nextRetryAt = :now REMOVE lastError, disconnectReason, connectContactId, agentUsername";
+        ? "SET #st = :pending, nextRetryAt = :now, attempts = :zero REMOVE lastError, disconnectReason, connectContactId, agentUsername, assignedAgentUserId"
+        : "SET #st = :pending, nextRetryAt = :now REMOVE lastError, disconnectReason, connectContactId, agentUsername, assignedAgentUserId";
       try {
         await dynamo.send(
           new UpdateItemCommand({

@@ -4,6 +4,7 @@ import {
   PutItemCommand,
   UpdateItemCommand,
   QueryCommand,
+  GetItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
@@ -261,6 +262,82 @@ async function updateCampaignContactStatus(
   );
 }
 
+/**
+ * Reintento automático del no_answer. La config de la campaña
+ * (retryNoAnswerMinutes / retryMaxAttempts) se guardaba desde la creación pero
+ * NINGÚN consumidor la usaba: los no_answer quedaban terminales en 1 intento.
+ * Aquí se cierra el circuito: si la campaña sigue viva y quedan intentos, el
+ * contacto vuelve a `pending` con `nextRetryAt` futuro — TODOS los queries de
+ * pending del dialer (bucket + legacy) ya filtran `nextRetryAt <= now`, así que
+ * lo retoman solos en el tick correspondiente. Además se le quita
+ * `assignedAgentUserId`: vuelve al pool común y se reparte al primer agente con
+ * hueco en vez de re-concentrarse en el mismo. Devuelve true si re-encoló.
+ */
+async function maybeScheduleRetry(
+  link: { campaignId: string; rowId: string; attempts: number; status: string },
+  extra: Record<string, string | number>,
+): Promise<boolean> {
+  try {
+    const got = await dynamo.send(
+      new GetItemCommand({
+        TableName: CAMPAIGNS_TABLE,
+        Key: { campaignId: { S: link.campaignId } },
+        ProjectionExpression: "#st, retryNoAnswerMinutes, retryMaxAttempts",
+        ExpressionAttributeNames: { "#st": "status" },
+      }),
+    );
+    if (!got.Item) return false;
+    const camp = unmarshall(got.Item) as {
+      status?: string;
+      retryNoAnswerMinutes?: number;
+      retryMaxAttempts?: number;
+    };
+    // Solo campañas vivas: en COMPLETED/STOPPED el retry quedaría huérfano (el
+    // dialer solo tickea RUNNING) y cambiaría las stats de una campaña cerrada.
+    if (camp.status !== "RUNNING" && camp.status !== "PAUSED") return false;
+    const minutes = Number(camp.retryNoAnswerMinutes ?? 0);
+    const maxAttempts = Number(camp.retryMaxAttempts ?? 0);
+    if (minutes <= 0 || maxAttempts <= 0) return false;
+    // `attempts` YA incluye este intento (markAsDialing hace attempts+1 al marcar).
+    if (link.attempts >= maxAttempts) return false;
+
+    const nextRetryAt = new Date(Date.now() + minutes * 60_000).toISOString();
+    const setParts = ["#st = :p", "nextRetryAt = :nra"];
+    const vals: Record<string, { S?: string; N?: string }> = {
+      ":p": { S: "pending" },
+      ":nra": { S: nextRetryAt },
+      ":prev": { S: link.status },
+    };
+    for (const [k, v] of Object.entries(extra)) {
+      setParts.push(`${k} = :${k}`);
+      vals[`:${k}`] = typeof v === "number" ? { N: String(v) } : { S: String(v) };
+    }
+    // Condición sobre el status previo: si otro evento ya movió la fila, no pisamos.
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: CAMPAIGN_CONTACTS_TABLE,
+        Key: { campaignId: { S: link.campaignId }, rowId: { S: link.rowId } },
+        UpdateExpression: `SET ${setParts.join(", ")} REMOVE assignedAgentUserId`,
+        ConditionExpression: "#st = :prev",
+        ExpressionAttributeNames: { "#st": "status" },
+        ExpressionAttributeValues: vals,
+      }),
+    );
+    await updateCampaignCounters(link.campaignId, "pending", link.status);
+    console.log(
+      `[retry] ${link.campaignId}/${link.rowId}: no_answer → pending (intento ${link.attempts}/${maxAttempts}, próximo ${nextRetryAt})`,
+    );
+    return true;
+  } catch (err) {
+    // ConditionalCheckFailed → otro evento ganó la carrera (la fila ya no está en
+    // el status previo): no tocar. Cualquier otro error → dejar el no_answer
+    // terminal (no perder la clasificación por un retry fallido).
+    if (err instanceof Error && err.name === "ConditionalCheckFailedException") return true;
+    console.warn("maybeScheduleRetry falló, dejando no_answer terminal:", err);
+    return false;
+  }
+}
+
 // Bump the aggregate counters on the campaign row. Best-effort; authoritative counts
 // come from Query on the contacts GSI.
 async function updateCampaignCounters(
@@ -431,11 +508,15 @@ export const handler: EventBridgeHandler<
       }
 
       const newStatus = classifyDisconnect(detail.disconnectReason, link.status, callDurationSec);
-      await updateCampaignContactStatus(link, newStatus, {
+      const extra = {
         disconnectReason: detail.disconnectReason || "UNKNOWN",
         disconnectedAt: new Date().toISOString(),
         callDurationSec: callDurationSec ?? 0,
-      });
+      };
+      // Reintento automático del no_answer (config de la campaña, antes huérfana):
+      // re-encola como pending con nextRetryAt futuro. Si re-encoló, terminamos.
+      if (newStatus === "no_answer" && (await maybeScheduleRetry(link, extra))) return;
+      await updateCampaignContactStatus(link, newStatus, extra);
       await updateCampaignCounters(link.campaignId, newStatus, link.status);
     }
   } catch (error) {
