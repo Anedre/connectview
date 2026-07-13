@@ -9,6 +9,8 @@ import {
   ClipboardList,
   Trash2,
   ShoppingBag,
+  Download,
+  Upload,
 } from "lucide-react";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
@@ -1119,6 +1121,119 @@ function SalesforceCard({
   const ep = getApiEndpoints();
   const { confirm, confirmDialog } = useConfirm();
 
+  // ── Sincronización inicial: import/export por tandas + reset "borrar todo" ──
+  const [sync, setSync] = useState<{ running: boolean; log: string } | null>(null);
+  const [resetText, setResetText] = useState("");
+
+  const runImport = async (allTime: boolean) => {
+    if (!ep?.salesforceSync) {
+      toast.message("Disponible al desplegar el backend.");
+      return;
+    }
+    setSync({ running: true, log: "Importando de Salesforce…" });
+    const total = { created: 0, updated: 0, scanned: 0 };
+    let startUrl: string | undefined;
+    try {
+      for (let tanda = 0; tanda < 300; tanda++) {
+        const r = await authedFetch(ep.salesforceSync, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            allTime
+              ? { mode: "importAll", startUrl, batchSize: 500 }
+              : { mode: "pullFromSf", sinceDays: 30, limit: 500 },
+          ),
+        });
+        const d = await r.json();
+        if (d?.sfNotConnected) {
+          toast.error("Salesforce no está conectado.");
+          break;
+        }
+        if (!d?.ok) {
+          toast.error(d?.message || "Falló la importación.");
+          break;
+        }
+        total.created += d.created || 0;
+        total.updated += d.updated || 0;
+        total.scanned += d.scanned || 0;
+        setSync({ running: true, log: `${total.scanned} leads procesados…` });
+        if (!allTime || d.done || !d.nextUrl) break;
+        startUrl = d.nextUrl;
+      }
+      toast.success(`Importación lista: ${total.created} nuevos, ${total.updated} actualizados.`);
+    } catch {
+      toast.error("Error de red en la importación.");
+    } finally {
+      setSync(null);
+    }
+  };
+
+  const runExport = async () => {
+    if (!ep?.salesforceSync) {
+      toast.message("Disponible al desplegar el backend.");
+      return;
+    }
+    setSync({ running: true, log: "Exportando a Salesforce…" });
+    const total = { pushed: 0, scanned: 0 };
+    let startKey: Record<string, unknown> | undefined;
+    try {
+      for (let tanda = 0; tanda < 500; tanda++) {
+        const r = await authedFetch(ep.salesforceSync, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "pushAll", startKey, limit: 100 }),
+        });
+        const d = await r.json();
+        if (d?.sfNotConnected) {
+          toast.error("Salesforce no está conectado.");
+          break;
+        }
+        if (!d?.ok) {
+          toast.error(d?.message || "Falló la exportación.");
+          break;
+        }
+        total.pushed += d.pushed || 0;
+        total.scanned += d.scanned || 0;
+        setSync({ running: true, log: `${total.pushed} enviados a Salesforce…` });
+        if (d.done || !d.nextKey) break;
+        startKey = d.nextKey;
+      }
+      toast.success(`Exportación lista: ${total.pushed} leads enviados a Salesforce.`);
+    } catch {
+      toast.error("Error de red en la exportación.");
+    } finally {
+      setSync(null);
+    }
+  };
+
+  const runReset = async () => {
+    if (!ep?.manageLeads) {
+      toast.message("Disponible al desplegar el backend.");
+      return;
+    }
+    setSync({ running: true, log: "Borrando…" });
+    try {
+      const r = await authedFetch(ep.manageLeads, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resetLeads", confirm: "BORRAR TODO" }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        toast.error(d?.error || "Falló el borrado.");
+      } else {
+        toast.success(
+          `Borrado: ${d.leads} leads · ${d.conversations} conversaciones · ${d.hsm} WhatsApp.`,
+        );
+        setResetText("");
+      }
+    } catch {
+      toast.error("Error de red en el borrado.");
+    } finally {
+      setSync(null);
+    }
+  };
+
   const tone: Tone = sf.connected ? "ok" : "idle";
   const statusLabel = sf.connected ? "Conectado" : "No conectado";
 
@@ -1361,6 +1476,88 @@ function SalesforceCard({
           )}
         </div>
       </div>
+      {sf.connected && (
+        <div style={{ marginTop: 14, borderTop: "1px solid var(--border-1)", paddingTop: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>Sincronización inicial</div>
+          <p className="muted" style={{ fontSize: 11.5, margin: "3px 0 10px", lineHeight: 1.5 }}>
+            Trae tus leads de Salesforce a ARIA, o empuja los de ARIA a Salesforce (con dedup, no
+            duplica). Se procesa por tandas.
+          </p>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button
+              className="btn btn--sm"
+              disabled={!!sync?.running}
+              onClick={() => runImport(true)}
+            >
+              <Download size={12} /> Importar todo de Salesforce
+            </button>
+            <button
+              className="btn btn--sm"
+              disabled={!!sync?.running}
+              onClick={() => runImport(false)}
+            >
+              Solo últimos 30 días
+            </button>
+            <button className="btn btn--sm" disabled={!!sync?.running} onClick={runExport}>
+              <Upload size={12} /> Exportar todo a Salesforce
+            </button>
+          </div>
+          {sync?.running && (
+            <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              ⏳ {sync.log}
+            </div>
+          )}
+          <div
+            style={{
+              marginTop: 14,
+              border: "1px solid var(--accent-red)",
+              borderRadius: 8,
+              padding: "10px 12px",
+              background: "color-mix(in srgb, var(--accent-red) 6%, var(--bg-1))",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 12.5,
+                color: "var(--accent-red)",
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <AlertTriangle size={13} /> Zona de peligro · empezar desde 0
+            </div>
+            <p className="muted" style={{ fontSize: 11.5, margin: "5px 0 8px", lineHeight: 1.5 }}>
+              Borra <b>todos los leads, conversaciones y envíos de WhatsApp</b> de ARIA. No se puede
+              deshacer. <b>No toca</b> Salesforce, campañas ni citas.
+            </p>
+            <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                value={resetText}
+                onChange={(e) => setResetText(e.target.value)}
+                placeholder="Escribe BORRAR TODO"
+                style={{
+                  padding: "7px 10px",
+                  fontSize: 12.5,
+                  border: "1px solid var(--border-1)",
+                  borderRadius: 8,
+                  background: "var(--bg-1)",
+                  color: "var(--text-1)",
+                }}
+              />
+              <button
+                className="btn btn--sm"
+                style={{ background: "var(--accent-red)", color: "#fff" }}
+                disabled={resetText.trim().toUpperCase() !== "BORRAR TODO" || !!sync?.running}
+                onClick={runReset}
+              >
+                <Trash2 size={12} /> Borrar todo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmDialog}
     </ConnCard>
   );

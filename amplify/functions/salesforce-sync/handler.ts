@@ -1,6 +1,7 @@
 import type { Handler } from "aws-lambda";
 import {
   soql,
+  soqlAll,
   soqlEscape,
   sfFetch,
   getToken,
@@ -12,6 +13,7 @@ import {
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import {
   propagateLead,
+  pushLeadToSalesforce,
   sfStatusToStage,
   channelToSf,
   appendLeadHistory,
@@ -27,7 +29,8 @@ import {
   getTenantConnect,
   isTenantDataPlaneEnabled,
 } from "../_shared/tenantConnect";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 
 // BYO Data Plane (#46): leadSync escribe a DynamoDB. Si el tenant lo activó,
@@ -37,6 +40,7 @@ const legacyDynamo = new DynamoDBClient({});
 // bloquea a un tenant real sin CP (jamás escribe el perfil en Novasys).
 const legacyProfiles = new CustomerProfilesClient({ maxAttempts: 2 });
 const LEGACY_PROFILES_DOMAIN = process.env.CUSTOMER_PROFILES_DOMAIN || "amazon-connect-novasys";
+const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
 
 /**
  * salesforce-sync — Vox → Salesforce (outbound). Lo llama el agent desktop
@@ -79,8 +83,14 @@ interface SyncBody {
   fields?: Record<string, unknown>;
   /** mode:"pullFromSf" — ventana (días) hacia atrás por LastModifiedDate. Default 7. */
   sinceDays?: number;
-  /** mode:"pullFromSf" — tope de Leads a traer. Default 200, tope duro 500. */
+  /** mode:"pullFromSf"/"pushAll" — tope de registros por tanda. */
   limit?: number;
+  /** mode:"importAll" — cursor de SF (nextRecordsUrl de la tanda previa). */
+  startUrl?: string;
+  /** mode:"importAll" — tamaño de página SOQL por tanda (200..2000). */
+  batchSize?: number;
+  /** mode:"pushAll" — cursor de DynamoDB (LastEvaluatedKey de la tanda previa). */
+  startKey?: Record<string, unknown>;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -531,6 +541,176 @@ export const handler: Handler = async (event: any) => {
         statusCode: 502,
         headers: CORS,
         body: JSON.stringify({ ok: false, mode: "pullFromSf", error: "pull failed", message: msg }),
+      };
+    }
+  }
+
+  // ── IMPORT ALL (SF → ARIA "desde 0"): trae TODOS los Leads por tandas
+  //    (paginación cursor nextRecordsUrl). POST {mode:"importAll", startUrl?, batchSize?}.
+  if (event?.queryStringParameters?.mode === "importAll" || body.mode === "importAll") {
+    const batchSize = Math.min(2000, Math.max(200, Math.floor(Number(body.batchSize) || 500)));
+    const startUrl = typeof body.startUrl === "string" && body.startUrl ? body.startUrl : undefined;
+    const tc = await getTenantConnect(tenantId);
+    const dpOn = await isTenantDataPlaneEnabled(tenantId);
+    if (!tc || !dpOn) {
+      return {
+        statusCode: 403,
+        headers: CORS,
+        body: JSON.stringify({ error: "El tenant no tiene Data Plane (BYO) habilitado" }),
+      };
+    }
+    setActiveDynamo(tc.dynamo);
+    {
+      const cp = await resolveCustomerProfiles(
+        undefined,
+        legacyProfiles,
+        LEGACY_PROFILES_DOMAIN,
+        tenantId,
+      );
+      setActiveProfiles(cp.client, cp.domainName);
+    }
+    const importSoql =
+      `SELECT Id, FirstName, LastName, Phone, MobilePhone, Email, Company, Status, LeadSource ` +
+      `FROM Lead ORDER BY CreatedDate`;
+    try {
+      const page = await soqlAll(importSoql, { batchSize, startUrl });
+      const rows = page.records as SfLeadRow[];
+      const counts = { created: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0 };
+      const CONCURRENCY = 5;
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < rows.length) {
+          const row = rows[cursor++];
+          try {
+            counts[await pullOneLead(row)]++;
+          } catch (err) {
+            counts.errors++;
+            console.error("importAll: lead falló", row?.Id, err);
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, () => worker()));
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({
+          ok: true,
+          mode: "importAll",
+          scanned: rows.length,
+          ...counts,
+          nextUrl: page.nextUrl ?? null,
+          done: page.done,
+        }),
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith("SF_NOT_CONNECTED")) {
+        return {
+          statusCode: 200,
+          headers: CORS,
+          body: JSON.stringify({ ok: false, mode: "importAll", sfNotConnected: true }),
+        };
+      }
+      console.error("importAll error", err);
+      return {
+        statusCode: 502,
+        headers: CORS,
+        body: JSON.stringify({
+          ok: false,
+          mode: "importAll",
+          error: "import failed",
+          message: msg,
+        }),
+      };
+    }
+  }
+
+  // ── EXPORT ALL (ARIA → SF "desde 0"): empuja TODOS los leads de ARIA a SF por
+  //    tandas (Scan cursor). Reusa pushLeadToSalesforce (dedup determinístico, NO
+  //    duplica). POST {mode:"pushAll", startKey?, limit?}.
+  if (event?.queryStringParameters?.mode === "pushAll" || body.mode === "pushAll") {
+    const limit = Math.min(300, Math.max(20, Math.floor(Number(body.limit) || 100)));
+    const tc = await getTenantConnect(tenantId);
+    const dpOn = await isTenantDataPlaneEnabled(tenantId);
+    if (!tc || !dpOn) {
+      return {
+        statusCode: 403,
+        headers: CORS,
+        body: JSON.stringify({ error: "El tenant no tiene Data Plane (BYO) habilitado" }),
+      };
+    }
+    setActiveDynamo(tc.dynamo);
+    const startKey = body.startKey && typeof body.startKey === "object" ? body.startKey : undefined;
+    try {
+      const scan = await tc.dynamo.send(
+        new ScanCommand({
+          TableName: LEADS_TABLE,
+          Limit: limit,
+          ExclusiveStartKey: startKey as never,
+        }),
+      );
+      const leads = (scan.Items || []).map((it) => unmarshall(it) as Record<string, unknown>);
+      const s = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+      const counts = { pushed: 0, skipped: 0, errors: 0 };
+      const CONCURRENCY = 4;
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < leads.length) {
+          const l = leads[cursor++];
+          const phone = s(l.phone);
+          if (!phone) {
+            counts.skipped++;
+            continue;
+          }
+          try {
+            await pushLeadToSalesforce(
+              {
+                phone,
+                name: s(l.name),
+                email: s(l.email),
+                stageId: s(l.stageId),
+                sfLeadId: s(l.sfLeadId),
+                source: s(l.source),
+              },
+              undefined,
+              s(l.leadId),
+            );
+            counts.pushed++;
+          } catch (err) {
+            counts.errors++;
+            console.error("pushAll: lead falló", l?.leadId, err);
+          }
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(CONCURRENCY, leads.length) }, () => worker()),
+      );
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({
+          ok: true,
+          mode: "pushAll",
+          scanned: leads.length,
+          ...counts,
+          nextKey: scan.LastEvaluatedKey ?? null,
+          done: !scan.LastEvaluatedKey,
+        }),
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith("SF_NOT_CONNECTED")) {
+        return {
+          statusCode: 200,
+          headers: CORS,
+          body: JSON.stringify({ ok: false, mode: "pushAll", sfNotConnected: true }),
+        };
+      }
+      console.error("pushAll error", err);
+      return {
+        statusCode: 502,
+        headers: CORS,
+        body: JSON.stringify({ ok: false, mode: "pushAll", error: "export failed", message: msg }),
       };
     }
   }

@@ -5,6 +5,7 @@ import {
   PutItemCommand,
   UpdateItemCommand,
   DeleteItemCommand,
+  BatchWriteItemCommand,
   ScanCommand,
   QueryCommand,
 } from "@aws-sdk/client-dynamodb";
@@ -276,6 +277,131 @@ async function scanAll(): Promise<Lead[]> {
     lastKey = res.LastEvaluatedKey;
   } while (lastKey);
   return out;
+}
+
+/** Borra en tandas (BatchWrite de 25) una lista de keys crudas de una tabla. */
+async function batchDelete(
+  client: DynamoDBClient,
+  table: string,
+  keys: Record<string, unknown>[],
+): Promise<void> {
+  for (let i = 0; i < keys.length; i += 25) {
+    const chunk = keys.slice(i, i + 25);
+    if (!chunk.length) continue;
+    await client.send(
+      new BatchWriteItemCommand({
+        RequestItems: { [table]: chunk.map((Key) => ({ DeleteRequest: { Key } })) },
+      }),
+    );
+  }
+}
+
+/** "Borrar todo" para empezar desde 0: leads + membresías + conversaciones + HSM del
+ *  tenant. Idempotente. NO toca Salesforce, campañas, citas ni journeys. Seguro por
+ *  tenant: leads/membresías/HSM son tenant-scoped (`dynamo`); las conversaciones
+ *  (tabla pooled) se borran SOLO si su leadId pertenece a ESTE tenant. */
+async function resetLeads(
+  tenantId: string,
+): Promise<{ leads: number; memberships: number; conversations: number; hsm: number }> {
+  const counts = { leads: 0, memberships: 0, conversations: 0, hsm: 0 };
+  const leadIds = new Set<string>();
+
+  // 1. Leads (tenant-scoped): recoge los leadIds (para la cascada) y borra.
+  {
+    const keys: Record<string, unknown>[] = [];
+    let ESK: Record<string, unknown> | undefined;
+    do {
+      const r = await dynamo.send(
+        new ScanCommand({
+          TableName: TABLE,
+          ProjectionExpression: "leadId",
+          ExclusiveStartKey: ESK as never,
+        }),
+      );
+      for (const it of r.Items || []) {
+        const id = it.leadId?.S;
+        if (id) {
+          leadIds.add(id);
+          keys.push({ leadId: { S: id } });
+        }
+      }
+      ESK = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (ESK);
+    await batchDelete(dynamo, TABLE, keys);
+    counts.leads = keys.length;
+  }
+
+  // 2. Membresías de programa (tenant-scoped, PK=programId SK=leadId): borra todas.
+  {
+    const keys: Record<string, unknown>[] = [];
+    let ESK: Record<string, unknown> | undefined;
+    do {
+      const r = await dynamo.send(
+        new ScanCommand({
+          TableName: MEMBERSHIP,
+          ProjectionExpression: "programId, leadId",
+          ExclusiveStartKey: ESK as never,
+        }),
+      );
+      for (const it of r.Items || []) {
+        if (it.programId?.S && it.leadId?.S)
+          keys.push({ programId: it.programId, leadId: it.leadId });
+      }
+      ESK = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (ESK);
+    await batchDelete(dynamo, MEMBERSHIP, keys);
+    counts.memberships = keys.length;
+  }
+
+  // 3. Conversaciones (POOLED, legacyDynamo): borra SOLO las cuyo leadId ∈ este tenant.
+  {
+    const keys: Record<string, unknown>[] = [];
+    let ESK: Record<string, unknown> | undefined;
+    do {
+      const r = await legacyDynamo.send(
+        new ScanCommand({
+          TableName: CONVERSATIONS_TABLE,
+          ProjectionExpression: "conversationId, leadId",
+          ExclusiveStartKey: ESK as never,
+        }),
+      );
+      for (const it of r.Items || []) {
+        const cid = it.conversationId?.S;
+        const lid = it.leadId?.S;
+        if (cid && lid && leadIds.has(lid)) keys.push({ conversationId: { S: cid } });
+      }
+      ESK = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (ESK);
+    await batchDelete(legacyDynamo, CONVERSATIONS_TABLE, keys);
+    counts.conversations = keys.length;
+  }
+
+  // 4. Envíos HSM (WhatsApp, PK=sendId): borra los del tenant (por tenantId si existe).
+  {
+    const keys: Record<string, unknown>[] = [];
+    let ESK: Record<string, unknown> | undefined;
+    do {
+      const r = await dynamo.send(
+        new ScanCommand({
+          TableName: HSM_SENDS_TABLE,
+          ProjectionExpression: "sendId, tenantId",
+          ExclusiveStartKey: ESK as never,
+        }),
+      );
+      for (const it of r.Items || []) {
+        const sid = it.sendId?.S;
+        const tid = it.tenantId?.S;
+        // Con tenantId: solo las de ESTE tenant. Sin tenantId (histórico) en BYO la
+        // tabla ya es del tenant → borrar.
+        if (sid && (!tid || tid === tenantId)) keys.push({ sendId: { S: sid } });
+      }
+      ESK = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (ESK);
+    await batchDelete(dynamo, HSM_SENDS_TABLE, keys);
+    counts.hsm = keys.length;
+  }
+
+  return counts;
 }
 
 const byUpdatedDesc = (a: Lead, b: Lead) => (b.updatedAt || "").localeCompare(a.updatedAt || "");
@@ -671,6 +797,20 @@ export const handler: Handler = async (event: any) => {
 
     if (method === "POST") {
       const body = JSON.parse(event.body || "{}");
+
+      // Reset "borrar todo" (empezar desde 0): leads + membresías + conversaciones +
+      // HSM del tenant. Doble gate: admin autenticado + escribir la frase exacta.
+      // NO toca Salesforce/campañas/citas/journeys.
+      if (body.action === "resetLeads") {
+        if (
+          String(body.confirm || "")
+            .trim()
+            .toUpperCase() !== "BORRAR TODO"
+        )
+          return bad(400, 'Confirmación inválida: escribe exactamente "BORRAR TODO".');
+        const counts = await resetLeads(tenantId);
+        return ok({ reset: true, ...counts });
+      }
 
       // Move-stage action.
       if (body.action === "move") {

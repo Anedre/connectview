@@ -216,7 +216,12 @@ interface SfResponse {
 }
 
 /** Low-level REST call against the org. Path is relative to /services/data/<ver>/. */
-export async function sfFetch(method: string, path: string, body?: unknown): Promise<SfResponse> {
+export async function sfFetch(
+  method: string,
+  path: string,
+  body?: unknown,
+  extraHeaders?: Record<string, string>,
+): Promise<SfResponse> {
   let tok = await getToken();
   const url = `${tok.instanceUrl}/services/data/${API_VERSION}/${path.replace(/^\//, "")}`;
   const doCall = async (t: TokenState) =>
@@ -225,6 +230,7 @@ export async function sfFetch(method: string, path: string, body?: unknown): Pro
       headers: {
         Authorization: `Bearer ${t.accessToken}`,
         "Content-Type": "application/json",
+        ...extraHeaders,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
@@ -251,6 +257,36 @@ export async function soql(query: string): Promise<Record<string, unknown>[]> {
     throw new Error(`SOQL failed: ${JSON.stringify(res.body).slice(0, 300)}`);
   }
   return (res.body as { records?: Record<string, unknown>[] }).records || [];
+}
+
+/** SOQL paginado por CURSOR: trae UNA página (tamaño `batchSize`) y devuelve el
+ *  `nextUrl` para continuar (importación por tandas). El `nextRecordsUrl` de SF ya
+ *  viene con el prefijo `/services/data/<ver>/`, que hay que recortar para sfFetch.
+ *  Sin `startUrl` = primera página de la query; con `startUrl` = continúa el cursor. */
+export async function soqlAll(
+  query: string,
+  opts: { batchSize?: number; startUrl?: string } = {},
+): Promise<{ records: Record<string, unknown>[]; nextUrl?: string; done: boolean }> {
+  const batchSize = Math.min(2000, Math.max(200, Math.floor(opts.batchSize ?? 2000)));
+  const path = opts.startUrl
+    ? opts.startUrl.replace(/^\/services\/data\/[^/]+\//, "")
+    : `query/?q=${encodeURIComponent(query)}`;
+  const res = await sfFetch("GET", path, undefined, {
+    "Sforce-Query-Options": `batchSize=${batchSize}`,
+  });
+  if (!res.ok) {
+    throw new Error(`SOQL failed: ${JSON.stringify(res.body).slice(0, 300)}`);
+  }
+  const b = res.body as {
+    records?: Record<string, unknown>[];
+    done?: boolean;
+    nextRecordsUrl?: string;
+  };
+  return {
+    records: b.records || [],
+    nextUrl: b.done ? undefined : b.nextRecordsUrl,
+    done: !!b.done,
+  };
 }
 
 /** Insert an sObject. Returns the new record id. */
