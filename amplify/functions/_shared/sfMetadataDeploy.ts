@@ -229,7 +229,9 @@ async function ensureDedupField(instanceUrl: string, sessionId: string): Promise
   const field =
     `<met:upsertMetadata><met:metadata xsi:type="met:CustomField">` +
     `<met:fullName>Lead.VoxLeadId__c</met:fullName><met:label>Vox Lead Id</met:label>` +
-    `<met:type>Text</met:type><met:length>18</met:length>` +
+    // length 40: el External Id que escribe pushLeadToSalesforce es el leadId de
+    // ARIA (UUID de 36 chars). Con 18 daba STRING_TOO_LONG y el push fallaba entero.
+    `<met:type>Text</met:type><met:length>40</met:length>` +
     `<met:externalId>true</met:externalId><met:unique>true</met:unique>` +
     `</met:metadata></met:upsertMetadata>`;
   const fx = await metadataSoap(instanceUrl, sessionId, "upsertMetadata", field);
