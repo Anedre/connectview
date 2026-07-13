@@ -1222,6 +1222,46 @@ export function CCPProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // ── Auto-recuperación del bloqueo (MissedCallAgent / FailedConnectAgent) ──
+  // Connect bloquea al agente que no atendió/no conectó — protege al cliente
+  // (evita rebotarle llamadas a alguien que no responde), pero dejarlo CLAVADO
+  // hasta que note el banner mata la campaña. Política:
+  //  · 1ª vez en la ventana → lo devolvemos a Disponible solos a los 5s (toast).
+  //  · Reincidencia (≥2 bloqueos en 3 min) → NO auto-recuperamos: es señal de un
+  //    problema real (mic/red/ausente) y reciclar al agente rebotaría clientes
+  //    con silencio; queda el banner/pill para volver manualmente.
+  const blockRecoveryRef = useRef<number[]>([]);
+  useEffect(() => {
+    if (!/missed|failedconnect/i.test(String(agentState))) return;
+    const now = Date.now();
+    blockRecoveryRef.current = blockRecoveryRef.current.filter((t) => now - t < 3 * 60_000);
+    blockRecoveryRef.current.push(now);
+    if (blockRecoveryRef.current.length >= 2) {
+      toast.error(
+        "Volviste a quedar bloqueado — revisa tu micrófono/red y vuelve a Disponible manualmente.",
+      );
+      return;
+    }
+    const timer = setTimeout(() => {
+      const a = agentRef.current;
+      if (!a) return;
+      try {
+        const st = a.getState?.()?.name || "";
+        if (!/missed|failedconnect/i.test(st)) return; // ya se recuperó por otra vía
+        const states = a.getAgentStates?.() ?? [];
+        const routable =
+          states.find((s: any) => s.type === "routable") ||
+          states.find((s: any) => /availab|routab|disponib/i.test(s.name));
+        if (!routable) return;
+        changeAgentState(routable);
+        toast.message("Contacto perdido — te devolvimos a Disponible automáticamente.");
+      } catch {
+        /* noop — queda el banner para la recuperación manual */
+      }
+    }, 5_000);
+    return () => clearTimeout(timer);
+  }, [agentState, changeAgentState]);
+
   // Memoize the context value. Without this, every render of
   // CCPProvider (triggered by any of the state setters above —
   // onHold, muted, agentState, etc) produces a NEW object identity
