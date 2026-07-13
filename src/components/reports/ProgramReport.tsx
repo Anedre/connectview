@@ -232,6 +232,7 @@ export function ProgramReport() {
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>Sin etapas asignadas.</div>
             ) : (
               <Funnel
+                total={data.totalLeads}
                 stages={funnel.map((s) => ({ label: s.label, value: s.count, color: s.color }))}
               />
             )}

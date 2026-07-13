@@ -226,24 +226,34 @@ export interface FunnelStage {
 }
 
 /**
- * Embudo real: etapas decrecientes con ancho proporcional al MÁXIMO (la primera
- * etapa) y el % de retención respecto a la etapa anterior. Reemplaza la "lista de
- * barras" que ProgramReport dibujaba a mano.
+ * Barras por etapa con ancho proporcional al MÁXIMO. La etiqueta derecha:
+ *  - con `total` → el % del TOTAL (distribución; para etapas NO secuenciales como
+ *    el pipeline de leads, donde cada lead está en UNA etapa y "retención vs
+ *    anterior" daría valores absurdos como 2200%).
+ *  - sin `total` → el % de retención vs la etapa anterior (embudo secuencial real).
  */
 export function Funnel({
   stages,
   accent = "var(--green)",
+  total,
 }: {
   stages: FunnelStage[];
   accent?: string;
+  /** Total de la población → la etiqueta derecha muestra el % del total. */
+  total?: number;
 }) {
   const top = stages.length ? Math.max(...stages.map((s) => s.value), 1) : 1;
+  const useShare = total != null && total > 0;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {stages.map((s, i) => {
         const w = Math.max(4, Math.round((s.value / top) * 100));
         const prev = i > 0 ? stages[i - 1].value : null;
-        const retention = prev && prev > 0 ? Math.round((s.value / prev) * 100) : null;
+        const rightPct = useShare
+          ? Math.round((s.value / total!) * 100)
+          : prev && prev > 0
+            ? Math.round((s.value / prev) * 100)
+            : null;
         const color = s.color || accent;
         return (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -291,7 +301,7 @@ export function Funnel({
                 fontVariantNumeric: "tabular-nums",
               }}
             >
-              {retention != null ? `${retention}%` : ""}
+              {rightPct != null ? `${rightPct}%` : ""}
             </div>
           </div>
         );
