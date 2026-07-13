@@ -9,6 +9,7 @@ import {
   getActiveTenantId,
   describeSObject,
   updateSObject,
+  insertSObject,
 } from "../_shared/salesforceClient";
 import { resolveTenantId } from "../_shared/cognitoAuth";
 import {
@@ -91,6 +92,10 @@ interface SyncBody {
   batchSize?: number;
   /** mode:"pushAll" — cursor de DynamoDB (LastEvaluatedKey de la tanda previa). */
   startKey?: Record<string, unknown>;
+  /** mode:"createCampaigns" — Campaigns (programas) a crear en SF, cada una con N leads. */
+  campaigns?: { name: string; leadCount?: number }[];
+  /** mode:"campaignMembers" — Id de la Campaign de la que traer sus leads. */
+  campaignId?: string;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -435,6 +440,118 @@ export const handler: Handler = async (event: any) => {
         body: JSON.stringify({
           ok: false,
           mode: "ping",
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      };
+    }
+  }
+
+  // ── SF Campaigns (= "programas" agrupadores de campañas). Objetos ESTÁNDAR de SF
+  //    (Campaign + CampaignMember): NO tocan el esquema. createCampaigns crea N
+  //    Campaigns con leads asociados; listCampaigns lista; campaignMembers trae los
+  //    leads de una (para importarla a ARIA como programa + su membresía). ──────────
+  if (body.mode === "createCampaigns") {
+    try {
+      const specs = (body.campaigns || []).filter((c) => c && c.name);
+      if (specs.length === 0) throw new Error("campaigns requeridos");
+      const totalNeeded = specs.reduce((n, s) => n + Math.max(1, s.leadCount ?? 3), 0);
+      const leads = await soql(
+        `SELECT Id FROM Lead WHERE IsConverted = false ORDER BY CreatedDate DESC LIMIT ${Math.min(200, totalNeeded)}`,
+      );
+      let cursor = 0;
+      const out: { id: string; name: string; members: number }[] = [];
+      for (const s of specs) {
+        const campaignId = await insertSObject("Campaign", { Name: s.name, IsActive: true });
+        const n = Math.max(1, s.leadCount ?? 3);
+        let members = 0;
+        for (let i = 0; i < n && cursor < leads.length; i++, cursor++) {
+          try {
+            await insertSObject("CampaignMember", {
+              CampaignId: campaignId,
+              LeadId: leads[cursor].Id as string,
+            });
+            members++;
+          } catch {
+            /* ya es miembro / sin permiso → sigue */
+          }
+        }
+        out.push({ id: campaignId, name: s.name, members });
+      }
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({ ok: true, mode: "createCampaigns", campaigns: out }),
+      };
+    } catch (err) {
+      return {
+        statusCode: 502,
+        headers: CORS,
+        body: JSON.stringify({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      };
+    }
+  }
+
+  if (event?.queryStringParameters?.mode === "listCampaigns" || body.mode === "listCampaigns") {
+    try {
+      const rows = await soql(
+        "SELECT Id, Name, IsActive, NumberOfLeads, NumberOfContacts FROM Campaign ORDER BY CreatedDate DESC LIMIT 100",
+      );
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({ ok: true, mode: "listCampaigns", campaigns: rows }),
+      };
+    } catch (err) {
+      return {
+        statusCode: 502,
+        headers: CORS,
+        body: JSON.stringify({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      };
+    }
+  }
+
+  if (event?.queryStringParameters?.mode === "campaignMembers" || body.mode === "campaignMembers") {
+    const cid = String(event?.queryStringParameters?.campaignId || body.campaignId || "").replace(
+      /[^A-Za-z0-9]/g,
+      "",
+    );
+    if (!cid)
+      return {
+        statusCode: 400,
+        headers: CORS,
+        body: JSON.stringify({ error: "campaignId requerido" }),
+      };
+    try {
+      const rows = await soql(
+        `SELECT LeadId, Lead.Name, Lead.Phone, Lead.Email, Lead.Company FROM CampaignMember WHERE CampaignId = '${cid}' AND LeadId != null LIMIT 2000`,
+      );
+      const members = rows.map((r) => {
+        const l = (r.Lead as Record<string, unknown>) || {};
+        return {
+          leadId: r.LeadId,
+          name: l.Name,
+          phone: l.Phone,
+          email: l.Email,
+          company: l.Company,
+        };
+      });
+      return {
+        statusCode: 200,
+        headers: CORS,
+        body: JSON.stringify({ ok: true, mode: "campaignMembers", members }),
+      };
+    } catch (err) {
+      return {
+        statusCode: 502,
+        headers: CORS,
+        body: JSON.stringify({
+          ok: false,
           error: err instanceof Error ? err.message : String(err),
         }),
       };
