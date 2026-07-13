@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { fetchContactHistory } from "@/hooks/useCallHistory";
 
 /**
@@ -32,7 +33,13 @@ export interface LeadOverview {
   files: (ChannelSummary & { lastName?: string }) | null;
 }
 
-const EMPTY: LeadOverview = { history: null, calls: null, whatsapp: null, emails: null, files: null };
+const EMPTY: LeadOverview = {
+  history: null,
+  calls: null,
+  whatsapp: null,
+  emails: null,
+  files: null,
+};
 
 export function useLeadOverview(phone: string | null): LeadOverview {
   const [ov, setOv] = useState<LeadOverview>(EMPTY);
@@ -44,15 +51,22 @@ export function useLeadOverview(phone: string | null): LeadOverview {
     const enc = encodeURIComponent(phone);
 
     if (ep?.manageLeads) {
-      fetch(`${ep.manageLeads}?phone=${enc}`, { signal: ctrl.signal })
+      authedFetch(`${ep.manageLeads}?phone=${enc}`, { signal: ctrl.signal })
         .then((r) => r.json())
         .then((j) => {
           const lead = (j.leads || [])[0];
           const h: OvHistEvent[] = Array.isArray(lead?.history) ? lead.history : [];
           // Oculta la interacción "sin tipificar" si esa llamada terminó tipificándose.
-          const typed = new Set(h.filter((e) => e.type === "gestion" && e.contactId).map((e) => e.contactId));
-          const dedup = h.filter((e) => !(e.type === "interaccion" && e.contactId && typed.has(e.contactId)));
-          setOv((p) => ({ ...p, history: { count: dedup.length, recent: [...dedup].reverse().slice(0, 6) } }));
+          const typed = new Set(
+            h.filter((e) => e.type === "gestion" && e.contactId).map((e) => e.contactId),
+          );
+          const dedup = h.filter(
+            (e) => !(e.type === "interaccion" && e.contactId && typed.has(e.contactId)),
+          );
+          setOv((p) => ({
+            ...p,
+            history: { count: dedup.length, recent: [...dedup].reverse().slice(0, 6) },
+          }));
         })
         .catch(() => {});
     }
@@ -70,7 +84,14 @@ export function useLeadOverview(phone: string | null): LeadOverview {
         for (const c of cs) {
           const ch = String(c.channel || "").toUpperCase();
           const ts = c.initiationTimestamp || c.disconnectTimestamp;
-          const key = ch === "VOICE" || ch === "TELEPHONY" ? "calls" : ch === "CHAT" ? "whatsapp" : ch === "EMAIL" ? "emails" : null;
+          const key =
+            ch === "VOICE" || ch === "TELEPHONY"
+              ? "calls"
+              : ch === "CHAT"
+                ? "whatsapp"
+                : ch === "EMAIL"
+                  ? "emails"
+                  : null;
           if (!key) continue;
           acc[key].count++;
           if (ts && (!acc[key].lastTs || ts > acc[key].lastTs!)) acc[key].lastTs = ts;
@@ -80,7 +101,7 @@ export function useLeadOverview(phone: string | null): LeadOverview {
       .catch(() => {});
 
     if (ep?.getCustomerAttachments) {
-      fetch(`${ep.getCustomerAttachments}?phone=${enc}`, { signal: ctrl.signal })
+      authedFetch(`${ep.getCustomerAttachments}?phone=${enc}`, { signal: ctrl.signal })
         .then((r) => r.json())
         .then((j) => {
           const a = Array.isArray(j.attachments) ? j.attachments : [];
@@ -88,7 +109,10 @@ export function useLeadOverview(phone: string | null): LeadOverview {
           let lastName: string | undefined;
           for (const f of a) {
             const ts = f.timestamp || f.createdAt;
-            if (ts && (!lastTs || ts > lastTs)) { lastTs = ts; lastName = f.name || f.fileName; }
+            if (ts && (!lastTs || ts > lastTs)) {
+              lastTs = ts;
+              lastName = f.name || f.fileName;
+            }
           }
           setOv((p) => ({ ...p, files: { count: a.length, lastTs, lastName } }));
         })

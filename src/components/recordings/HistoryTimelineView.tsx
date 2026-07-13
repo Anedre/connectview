@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import * as Icon from "@/components/vox/primitives";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { initials } from "@/lib/initials";
 
 /**
@@ -172,7 +173,7 @@ export function HistoryTimelineView({ phone, name }: { phone: string | null; nam
       // 1) Historial Vox-nativo (siempre, independiente de SF).
       try {
         if (ep?.manageLeads) {
-          const r = await fetch(`${ep.manageLeads}?phone=${encodeURIComponent(phone)}`, {
+          const r = await authedFetch(`${ep.manageLeads}?phone=${encodeURIComponent(phone)}`, {
             signal: ctrl.signal,
           });
           const j = await r.json();
@@ -185,7 +186,7 @@ export function HistoryTimelineView({ phone, name }: { phone: string | null; nam
       // 2) Actividad + datos de SF (best-effort; si falla, igual mostramos Vox).
       try {
         if (ep?.salesforceSync) {
-          const r = await fetch(ep.salesforceSync, {
+          const r = await authedFetch(ep.salesforceSync, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ mode: "lead", phone }),

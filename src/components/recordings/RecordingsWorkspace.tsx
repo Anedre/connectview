@@ -13,6 +13,7 @@ import {
 import { Icon, Btn, Card, Pill, Av } from "@/components/aria";
 import type { IconName } from "@/components/aria";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useLeadTaxonomyId } from "@/hooks/useLeadTaxonomyId";
 import { useLeadOverview, type LeadOverview } from "@/hooks/useLeadOverview";
@@ -385,7 +386,7 @@ function CommandPalette({
     setCursor(0);
     const ep = getApiEndpoints();
     if (ep?.manageLeads) {
-      fetch(`${ep.manageLeads}?recent=50`)
+      authedFetch(`${ep.manageLeads}?recent=50`)
         .then((r) => r.json())
         .then((j) => setRows(Array.isArray(j.recent) ? j.recent : []))
         .catch(() => {});
@@ -402,7 +403,7 @@ function CommandPalette({
     const ctrl = new AbortController();
     (async () => {
       try {
-        const r = await fetch(url, { signal: ctrl.signal });
+        const r = await authedFetch(url, { signal: ctrl.signal });
         const j = await r.json();
         setAllRows((j.leads || []).map(mapLead));
       } catch {

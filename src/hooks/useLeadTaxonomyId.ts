@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { usePrograms } from "@/hooks/usePrograms";
 import { useProgramOptional } from "@/context/ProgramContext";
 
@@ -26,7 +27,7 @@ export function useLeadTaxonomyId(phone: string | null): string | undefined {
     const ep = getApiEndpoints();
     if (!ep?.manageLeads) return;
     const ctrl = new AbortController();
-    fetch(`${ep.manageLeads}?phone=${encodeURIComponent(phone)}`, { signal: ctrl.signal })
+    authedFetch(`${ep.manageLeads}?phone=${encodeURIComponent(phone)}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((j) => {
         const lead = (j.leads || [])[0];
