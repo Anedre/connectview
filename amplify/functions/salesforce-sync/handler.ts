@@ -916,7 +916,11 @@ export const handler: Handler = async (event: any) => {
         return {
           statusCode: 200,
           headers: CORS,
-          body: JSON.stringify({ found: false, voxHistory }),
+          // linkBroken: veníamos con un sfLeadId guardado pero NO existe en la org
+          // conectada (borrado, otra org, o dato de prueba). Es distinto de "nunca
+          // estuvo en SF" (solo teníamos teléfono) → el panel lo usa para avisar del
+          // vínculo roto en vez de pintar la copia local como si fuera de Salesforce.
+          body: JSON.stringify({ found: false, linkBroken: !!sfId, voxHistory }),
         };
       }
       const hist = voxHistory.length

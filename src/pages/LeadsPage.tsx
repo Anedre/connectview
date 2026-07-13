@@ -329,7 +329,7 @@ export function LeadCard({
         {lead.sfLeadId ? (
           <span
             className="sf-badge"
-            title={`Sincronizado con Salesforce${lead.attributes?.sf_lead_status ? ` · Status: ${lead.attributes.sf_lead_status}` : ""}`}
+            title={`Vinculado a Salesforce (ID guardado) — abre el detalle para verificar que exista en la org${lead.attributes?.sf_lead_status ? ` · Status: ${lead.attributes.sf_lead_status}` : ""}`}
           >
             <Icon.Cloud size={11} strokeWidth={2.4} />
             Salesforce
@@ -788,6 +788,9 @@ interface SfField {
 }
 interface SfLeadData {
   found?: boolean;
+  /** true ⇒ había un sfLeadId guardado pero el registro NO existe en la org
+   *  conectada (vínculo roto), distinto de "nunca estuvo en SF". */
+  linkBroken?: boolean;
   lead?: Record<string, unknown>;
   allFields?: SfField[];
   activities?: SfActivity[];
@@ -919,12 +922,21 @@ function useSfLead(lead: Lead) {
   });
 }
 
-function SalesforcePanel({ lead }: { lead: Lead }) {
+function SalesforcePanel({
+  lead,
+  onLeadPatch,
+}: {
+  lead: Lead;
+  /** Propaga al padre el cambio de vínculo (crear/desvincular en SF) para que la
+   *  tarjeta del board y el badge se actualicen sin recargar. */
+  onLeadPatch?: (patch: Partial<Lead>) => void;
+}) {
   const configured = !!getApiEndpoints()?.salesforceSync;
   const { data, isLoading, error, isFetching } = useSfLead(lead);
   const qc = useQueryClient();
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [savingSf, setSavingSf] = useState(false);
+  const [repairing, setRepairing] = useState<null | "push" | "unlink">(null);
 
   // Estado derivado del query (sin sincronizar estado con efectos).
   const hasContent =
@@ -939,6 +951,100 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
         : hasContent
           ? "ok"
           : "none";
+
+  // Vínculo roto: SF dice que el registro NO existe (found:false) pero ARIA tiene
+  // un sfLeadId guardado → NO es "sin datos", es un falso "está en Salesforce".
+  const linkBroken = !!data && data.found === false && (data.linkBroken || !!lead.sfLeadId);
+
+  const createInSf = async () => {
+    const ep = getApiEndpoints();
+    if (!ep?.manageLeads) return;
+    setRepairing("push");
+    try {
+      const r = await authedFetch(ep.manageLeads, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pushSf", leadId: lead.leadId }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.pushed) throw new Error(d?.error || "No se pudo crear en Salesforce");
+      toast.success("Lead creado en Salesforce");
+      if (d.sfLeadId) onLeadPatch?.({ sfLeadId: String(d.sfLeadId) });
+      qc.invalidateQueries({ queryKey: ["sfLead"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo crear en Salesforce");
+    } finally {
+      setRepairing(null);
+    }
+  };
+
+  const unlinkSf = async () => {
+    const ep = getApiEndpoints();
+    if (!ep?.manageLeads) return;
+    setRepairing("unlink");
+    try {
+      const r = await authedFetch(ep.manageLeads, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "unlinkSf", leadId: lead.leadId }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.unlinked) throw new Error(d?.error || "No se pudo desvincular");
+      toast.success("Vínculo con Salesforce eliminado");
+      onLeadPatch?.({ sfLeadId: undefined });
+      qc.invalidateQueries({ queryKey: ["sfLead"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo desvincular");
+    } finally {
+      setRepairing(null);
+    }
+  };
+
+  // Banner honesto para el vínculo roto: avisa que NO está en SF + repara.
+  const brokenBanner = (
+    <div style={{ padding: 12 }}>
+      <div
+        style={{
+          border: "1px solid var(--gold)",
+          background: "color-mix(in srgb, var(--gold) 10%, var(--bg-1))",
+          borderRadius: 10,
+          padding: "10px 12px",
+        }}
+      >
+        <div className="row" style={{ gap: 8, alignItems: "flex-start" }}>
+          <span style={{ fontSize: 15, flex: "0 0 auto", lineHeight: 1.2 }}>⚠️</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-1)" }}>
+              Este lead no existe en tu Salesforce
+            </div>
+            <div className="muted" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.45 }}>
+              Tiene un vínculo guardado{lead.sfLeadId ? ` (ID ${lead.sfLeadId})` : ""} pero el
+              registro no está en la org conectada — puede que se haya borrado o que ARIA esté
+              conectado a otra org. Lo de abajo es la copia local de ARIA, no datos de Salesforce.
+            </div>
+          </div>
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 10 }}>
+          <button
+            className="btn btn--primary btn--sm"
+            onClick={createInSf}
+            disabled={!!repairing}
+            title="Crea el registro en Salesforce con los datos de este lead"
+          >
+            {repairing === "push" ? "Creando…" : "Crear en Salesforce"}
+          </button>
+          <button
+            className="btn btn--ghost btn--sm"
+            onClick={unlinkSf}
+            disabled={!!repairing}
+            title="Elimina el vínculo roto (no borra nada en Salesforce)"
+          >
+            {repairing === "unlink" ? "Desvinculando…" : "Desvincular"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   // Guardar los campos editados EN Salesforce (mode:updateLead → PATCH del Lead).
   const saveSf = async () => {
@@ -994,14 +1100,14 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
     >
       <Icon.Cloud size={14} strokeWidth={2.4} />
       <span style={{ fontWeight: 700, fontSize: 12.5, flex: 1 }}>
-        Salesforce · ficha y actividad
+        {data && !data.found ? "Salesforce" : "Salesforce · ficha y actividad"}
         {isFetching && data ? (
           <span style={{ opacity: 0.75, fontWeight: 500, marginLeft: 6, fontSize: 11 }}>
             · actualizando…
           </span>
         ) : null}
       </span>
-      {sfUrl ? (
+      {sfUrl && !linkBroken ? (
         <a
           href={sfUrl}
           target="_blank"
@@ -1036,9 +1142,13 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
     return (
       <div style={card}>
         {head}
-        <div className="muted" style={{ padding: 12, fontSize: 12 }}>
-          Sin actividad ni datos de Salesforce todavía.
-        </div>
+        {linkBroken ? (
+          brokenBanner
+        ) : (
+          <div className="muted" style={{ padding: 12, fontSize: 12 }}>
+            Sin actividad ni datos de Salesforce todavía.
+          </div>
+        )}
       </div>
     );
   if (state === "err" || !data)
@@ -1085,6 +1195,7 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
   return (
     <div style={card}>
       {head}
+      {linkBroken && brokenBanner}
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         {origin && (
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -1176,7 +1287,8 @@ function SalesforcePanel({ lead }: { lead: Lead }) {
         {/* Timeline unificado: gestiones por canal + cambios + actividad de SF */}
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-2)", marginBottom: 6 }}>
-            Línea de tiempo {timeline.length > 0 ? `(${timeline.length})` : ""}
+            {data.found ? "Línea de tiempo" : "Actividad en ARIA (local)"}{" "}
+            {timeline.length > 0 ? `(${timeline.length})` : ""}
           </div>
           {timeline.length === 0 ? (
             <div className="muted" style={{ fontSize: 11.5 }}>
@@ -1627,7 +1739,7 @@ function LeadDetailModal({
         </div>
 
         {/* Historial de contacto: timeline Vox + Salesforce, traído en vivo. */}
-        <SalesforcePanel lead={lead} />
+        <SalesforcePanel lead={lead} onLeadPatch={(patch) => onSaved({ ...lead, ...patch })} />
 
         {canManage && (
           <div className="row" style={{ gap: 8 }}>

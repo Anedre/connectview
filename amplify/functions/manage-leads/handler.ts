@@ -1180,6 +1180,24 @@ export const handler: Handler = async (event: any) => {
         }
       }
 
+      // unlinkSf — rompe el vínculo con Salesforce quitando el sfLeadId guardado.
+      // Se usa cuando ese ID apunta a un registro que YA NO existe en la org
+      // conectada (borrado, otra org, o dato de prueba): deja de mostrar el falso
+      // "está en Salesforce" en la tarjeta y el detalle. Idempotente.
+      if (body.action === "unlinkSf") {
+        if (!body.leadId) return bad(400, "leadId required");
+        await dynamo.send(
+          new UpdateItemCommand({
+            TableName: TABLE,
+            Key: { leadId: { S: String(body.leadId) } },
+            UpdateExpression: "SET updatedAt = :u REMOVE sfLeadId",
+            ExpressionAttributeValues: { ":u": { S: new Date().toISOString() } },
+          }),
+        );
+        console.log(`manage-leads unlinkSf lead=${body.leadId}`);
+        return ok({ unlinked: true });
+      }
+
       // Upsert. Dedup by phone (tolerante a formato) — si ya existe un lead con
       // ese teléfono escrito distinto, lo actualiza en vez de duplicarlo.
       const phone = (body.phone || "").trim();
