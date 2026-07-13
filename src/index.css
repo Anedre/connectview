@@ -12503,6 +12503,20 @@ textarea.vox-field {
     transform: rotate(360deg);
   }
 }
+/* Onda de audio: pulso escalonado de las barras mientras se decodifica el audio
+   (estado "loading" de WaveformTimeline) — lee como "calculando la onda". */
+.wave-bar--loading {
+  animation: waveBarPulse 1.2s ease-in-out infinite;
+}
+@keyframes waveBarPulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
 @keyframes hgFadeIn {
   from {
     opacity: 0;

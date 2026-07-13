@@ -46,9 +46,10 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(funct
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [speedIdx, setSpeedIdx] = useState(0);
-  // Amplitud REAL de la onda (best-effort; null si el origen no da CORS o no
-  // decodifica → WaveformTimeline cae a su onda determinística).
-  const peaks = useAudioPeaks(src, 120);
+  // Amplitud REAL de la onda + estado (loading/ready/error): con status la onda
+  // muestra skeleton mientras decodifica o un aviso honesto si no se puede, en
+  // vez de fingir amplitud.
+  const { peaks, status: peaksStatus } = useAudioPeaks(src, 120);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -176,6 +177,7 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(funct
           currentSec={currentTime}
           segments={segments}
           peaks={peaks}
+          status={peaksStatus}
           onSeekSec={(sec) => seekToMs(sec * 1000)}
         />
       ) : (

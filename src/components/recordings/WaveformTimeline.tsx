@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Flag } from "lucide-react";
 import type { TranscriptSegment } from "@/types/recordings";
+import type { AudioPeaksStatus } from "@/hooks/useAudioPeaks";
 
 /**
  * Sentiment → vox accent color. Exported so the transcript rows can match the
@@ -49,14 +50,6 @@ export function keyMoments(segments: TranscriptSegment[]): KeyMoment[] {
 
 const BAR_COUNT = 120;
 
-/** Stable pseudo-random in [0,1) from an integer index. Used for bar heights so
- *  the waveform reads as "organic" without jittering across renders (no
- *  Math.random, which would re-roll every paint). */
-function hash01(i: number): number {
-  const x = Math.sin((i + 1) * 99.137) * 43758.5453;
-  return x - Math.floor(x);
-}
-
 function fmt(ms: number): string {
   const total = Math.floor(ms / 1000);
   const m = Math.floor(total / 60);
@@ -71,27 +64,30 @@ interface Props {
   currentSec: number;
   /** Transcript segments → per-bar sentiment color + markers. */
   segments: TranscriptSegment[];
-  /** Amplitud REAL por barra en [0,1] (de useAudioPeaks). Debe tener BAR_COUNT
-   *  elementos. `null`/omitido → alturas pseudo-aleatorias determinísticas (el
-   *  origen no dio CORS o el audio no decodificó). El COLOR sigue por sentiment. */
+  /** Amplitud REAL por barra en [0,1] (de useAudioPeaks), solo con status "ready".
+   *  Debe tener BAR_COUNT elementos. El COLOR siempre lo pone el sentiment. */
   peaks?: number[] | null;
+  /** Estado de la onda real: "loading" (skeleton), "ready" (onda real), "error"
+   *  (sin onda → barras planas honestas por sentiment, NO amplitud inventada). */
+  status?: AudioPeaksStatus;
   onSeekSec: (sec: number) => void;
   height?: number;
 }
 
 /**
- * A premium, data-driven "waveform" for a call recording. We do NOT decode the
- * audio (Connect recordings frequently lack CORS, which would break a Web-Audio
- * decode); instead each bar is colored by the SENTIMENT of the transcript
- * segment playing at that moment, with deterministic heights. The supervisor
- * reads the emotional arc of the call at a glance, and can click / drag / use
- * the keyboard to seek.
+ * Onda REAL de una grabación (amplitud extraída con Web Audio por useAudioPeaks),
+ * coloreada por el SENTIMENT del segmento que suena en cada momento. Es también la
+ * barra de scrubbing: click / drag / teclado para navegar. NUNCA inventamos la
+ * amplitud — si el audio aún se decodifica se muestra un skeleton, y si no se
+ * puede (sin CORS / formato no soportado / demasiado grande) barras planas
+ * honestas por sentiment, no una onda falsa que engañe.
  */
 export function WaveformTimeline({
   durationSec,
   currentSec,
   segments,
   peaks,
+  status = "ready",
   onSeekSec,
   height = 54,
 }: Props) {
@@ -99,7 +95,8 @@ export function WaveformTimeline({
   const [focused, setFocused] = useState(false);
   const dur = durationSec > 0 ? durationSec : 1;
 
-  const hasRealPeaks = !!peaks && peaks.length === BAR_COUNT;
+  const hasRealPeaks = status === "ready" && !!peaks && peaks.length === BAR_COUNT;
+  const loading = status === "loading";
 
   const bars = useMemo(() => {
     const slice = dur / BAR_COUNT;
@@ -107,20 +104,19 @@ export function WaveformTimeline({
       const midMs = (i + 0.5) * slice * 1000;
       const seg = segments.find((s) => midMs >= s.beginOffsetMillis && midMs <= s.endOffsetMillis);
       const speech = !!seg;
-      // Altura: amplitud REAL (con un piso de 0.1 para que las barras bajas se
-      // vean) cuando useAudioPeaks decodificó el audio; si no, la pseudo-aleatoria
-      // determinística de siempre. El COLOR nunca cambia: lo pone el sentiment.
-      const h = hasRealPeaks
-        ? 0.1 + 0.9 * peaks![i]
+      // Altura: amplitud REAL con status "ready" (piso 0.1 para que las barras
+      // bajas se vean). En loading/error NO fingimos amplitud → altura uniforme.
+      const h = hasRealPeaks ? 0.1 + 0.9 * peaks![i] : 0.3;
+      // Color: en loading gris neutro (no adelantamos tono sobre una onda que aún
+      // no existe); en ready/error, por el sentiment del segmento.
+      const color = loading
+        ? "var(--border-2, var(--border-1))"
         : speech
-          ? 0.42 + 0.58 * hash01(i)
-          : 0.12 + 0.12 * hash01(i * 7);
-      return {
-        color: speech ? sentimentColor(seg?.sentiment) : "var(--text-3)",
-        h,
-      };
+          ? sentimentColor(seg?.sentiment)
+          : "var(--text-3)";
+      return { color, h };
     });
-  }, [segments, dur, peaks, hasRealPeaks]);
+  }, [segments, dur, peaks, hasRealPeaks, loading]);
 
   // Flag pins above the track at the sentiment shifts (see keyMoments) — a
   // handful of meaningful moments, clickable to seek.
@@ -143,15 +139,18 @@ export function WaveformTimeline({
       bars.map((b, i) => (
         <div
           key={i}
+          className={loading ? "wave-bar--loading" : undefined}
           style={{
             flex: 1,
             height: `${Math.round(b.h * 100)}%`,
             background: b.color,
             borderRadius: 1.5,
+            // Shimmer escalonado durante la carga → lee como "calculando la onda".
+            ...(loading ? { animationDelay: `${((i % 30) * 0.04).toFixed(2)}s` } : {}),
           }}
         />
       )),
-    [bars],
+    [bars, loading],
   );
 
   const progressPct = Math.min(100, Math.max(0, (currentSec / dur) * 100));
@@ -269,6 +268,34 @@ export function WaveformTimeline({
         }}
       >
         {barEls}
+
+        {/* Estado honesto cuando no hay onda real: la pista sigue siendo
+            navegable (barras planas por sentiment), pero lo decimos claro en vez
+            de fingir amplitud. */}
+        {status === "error" && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "grid",
+              placeItems: "center",
+              pointerEvents: "none",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: "var(--text-3)",
+                background: "color-mix(in srgb, var(--bg-2) 82%, transparent)",
+                padding: "2px 9px",
+                borderRadius: 99,
+              }}
+            >
+              Onda no disponible
+            </span>
+          </div>
+        )}
 
         {/* Velo de lo no-reproducido — atenúa con UN solo elemento la parte que
             falta (antes cada barra cambiaba de opacidad → re-render de las 120 en
