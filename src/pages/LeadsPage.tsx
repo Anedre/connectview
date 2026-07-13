@@ -1757,9 +1757,14 @@ export function LeadsPage() {
     }
     setLoading(true);
     try {
-      const url = scoped
-        ? `${ep.manageLeads}?programId=${encodeURIComponent(activeProgramId)}`
-        : ep.manageLeads;
+      // "none" = leads sin ningún programa (huérfanos); el backend los resuelve con
+      // scanAssignedLeadIds. "all" = todos. Un programId concreto = su membership.
+      const url =
+        activeProgramId === "none"
+          ? `${ep.manageLeads}?programId=none`
+          : scoped
+            ? `${ep.manageLeads}?programId=${encodeURIComponent(activeProgramId)}`
+            : ep.manageLeads;
       const r = await authedFetch(url);
       const d = await r.json();
       setLeads(Array.isArray(d.leads) ? d.leads : []);

@@ -6,6 +6,7 @@ import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useProgram } from "@/context/ProgramContext";
 import { useRoles } from "@/hooks/useRoles";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/empty-state";
@@ -64,6 +65,13 @@ const NEXT: Record<ProgramStatus, Array<{ to: ProgramStatus; label: string; Icon
   ],
   archivado: [{ to: "activo", label: "Reabrir", Icon: Play }],
 };
+
+/** Un campo picklist del describe de Salesforce (Pilar 10) — sus valores se vuelven programas. */
+interface SfPicklistField {
+  name: string;
+  label: string;
+  picklistValues?: { label: string; value: string }[];
+}
 
 function daysLeft(endDate?: string): number | null {
   if (!endDate) return null;
@@ -136,6 +144,11 @@ export function ProgramsHubPage() {
   const [editing, setEditing] = useState<FormState | null>(null);
   const [importText, setImportText] = useState<string | null>(null); // null = modal cerrado
   const [catImport, setCatImport] = useState<{ catalogId: string } | null>(null); // import desde catálogo
+  // Import de programas desde un campo picklist de Salesforce (Pilar 10 · describe).
+  const [sfImport, setSfImport] = useState(false);
+  const [sfFields, setSfFields] = useState<SfPicklistField[]>([]);
+  const [sfField, setSfField] = useState("");
+  const [sfLoading, setSfLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "error" | "ok"; text: string } | null>(null);
   const { confirm, confirmDialog } = useConfirm();
@@ -262,6 +275,68 @@ export function ProgramsHubPage() {
     }
   }
 
+  /** Abre el modal SF: describe el Lead y deja solo los campos picklist (candidatos a programa). */
+  async function openSfImport() {
+    setSfImport(true);
+    setSfField("");
+    setSfFields([]);
+    setMsg(null);
+    setSfLoading(true);
+    try {
+      const ep = getApiEndpoints();
+      if (!ep?.salesforceSync) throw new Error("Salesforce no está conectado en este tenant.");
+      const r = await authedFetch(`${ep.salesforceSync}?mode=describe&sobject=Lead`);
+      const d = await r.json();
+      if (!r.ok || d.ok === false)
+        throw new Error(d.error || "No se pudo leer el esquema de Salesforce.");
+      const picklists = ((d.fields as SfPicklistField[]) || []).filter(
+        (f) => (f.picklistValues?.length ?? 0) > 0,
+      );
+      setSfFields(picklists);
+      if (picklists.length === 0)
+        setMsg({
+          kind: "error",
+          text: "El Lead de Salesforce no tiene campos de lista (picklist).",
+        });
+    } catch (e) {
+      setMsg({
+        kind: "error",
+        text: e instanceof Error ? e.message : "Error al conectar con Salesforce",
+      });
+    } finally {
+      setSfLoading(false);
+    }
+  }
+
+  /** Crea un programa activo por cada valor del picklist elegido (reusa importPrograms). */
+  async function doImportSf() {
+    const field = sfFields.find((f) => f.name === sfField);
+    const values = field?.picklistValues || [];
+    if (values.length === 0) {
+      setMsg({ kind: "error", text: "Elige un campo de Salesforce con valores." });
+      return;
+    }
+    const rows = values.map((v) => ({
+      code: slugCode(v.value || v.label),
+      name: v.label,
+      status: "activo" as ProgramStatus,
+    }));
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await importPrograms(rows);
+      setSfImport(false);
+      setMsg({
+        kind: "ok",
+        text: `Importados desde Salesforce (${field?.label}): ${res?.imported?.created ?? 0} nuevos, ${res?.imported?.updated ?? 0} actualizados.`,
+      });
+    } catch (e) {
+      setMsg({ kind: "error", text: e instanceof Error ? e.message : "Error al importar" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function doTransition(p: Program, to: ProgramStatus) {
     if (
       to === "cerrado" &&
@@ -350,6 +425,15 @@ export function ProgramsHubPage() {
                   Desde catálogo
                 </Btn>
               )}
+              <Btn
+                variant="ghost"
+                size="sm"
+                icon="download"
+                onClick={openSfImport}
+                title="Crear programas desde un campo de lista (picklist) de Salesforce"
+              >
+                Desde Salesforce
+              </Btn>
               <Btn
                 variant="primary"
                 size="sm"
@@ -777,6 +861,85 @@ export function ProgramsHubPage() {
               </div>
             );
           })()}
+      </Modal>
+
+      {/* Modal importar programas desde un picklist de Salesforce */}
+      <Modal
+        open={sfImport}
+        onOpenChange={(o) => {
+          if (!o) setSfImport(false);
+        }}
+        title="Importar programas desde Salesforce"
+        className="max-w-xl"
+        footer={
+          <>
+            <Btn variant="ghost" size="sm" onClick={() => setSfImport(false)}>
+              Cancelar
+            </Btn>
+            <Btn
+              variant="primary"
+              size="sm"
+              icon="download"
+              onClick={doImportSf}
+              disabled={busy || sfLoading || !sfField}
+            >
+              {busy ? "Importando…" : "Crear programas"}
+            </Btn>
+          </>
+        }
+      >
+        <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+          <p className="dim" style={{ fontSize: 12, margin: 0 }}>
+            Elige el campo de <b>lista (picklist)</b> del Lead de Salesforce donde tienes tus
+            programas (ej. "Programa de interés"). Creamos un programa <b>activo</b> por cada valor,
+            listo para que el Agente IA lo cite y para asignarle su embudo.
+          </p>
+          {sfLoading ? (
+            <div className="dim" style={{ fontSize: 13, padding: "12px 0" }}>
+              Leyendo el esquema de Salesforce…
+            </div>
+          ) : (
+            <>
+              <Field label="Campo de Salesforce (Lead)">
+                <select value={sfField} onChange={(e) => setSfField(e.target.value)} style={inp}>
+                  <option value="">— Elige un campo de lista —</option>
+                  {sfFields.map((f) => (
+                    <option key={f.name} value={f.name}>
+                      {f.label} · {f.picklistValues?.length || 0} valores
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {(() => {
+                const field = sfFields.find((f) => f.name === sfField);
+                const values = field?.picklistValues || [];
+                if (!field) return null;
+                return (
+                  <div>
+                    <div className="dim" style={{ fontSize: 11, marginBottom: 6 }}>
+                      Se crearán {values.length} programas:
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 6,
+                        maxHeight: 180,
+                        overflowY: "auto",
+                      }}
+                    >
+                      {values.map((v) => (
+                        <Pill key={v.value} tone="outline">
+                          {v.label}
+                        </Pill>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
+          )}
+        </div>
       </Modal>
 
       {/* Modal crear/editar */}
