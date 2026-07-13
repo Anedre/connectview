@@ -208,6 +208,10 @@ interface ApiEndpoints {
   getAnalyticsFeed?: string;
   /** Envío de correo por el proveedor configurado del tenant (send-email). */
   sendEmail?: string;
+  /** Recuperación de acceso auto-servicio desde el login (recover-access):
+   *  reenvía invitación (temporal caducada) o código de reset. Público,
+   *  respuesta genérica anti-enumeración. */
+  recoverAccess?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

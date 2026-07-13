@@ -176,6 +176,7 @@ function statusChip(m: TeamMember): { label: string; cls: string } {
   if (!m.enabled) return { label: "Desactivado", cls: "" };
   if (m.status === "FORCE_CHANGE_PASSWORD")
     return { label: "Invitación pendiente", cls: "chip--amber" };
+  if (m.status === "RESET_REQUIRED") return { label: "Requiere reset", cls: "chip--amber" };
   if (m.status === "CONFIRMED") return { label: "Activo", cls: "chip--green" };
   return { label: m.status || "—", cls: "" };
 }
@@ -421,7 +422,7 @@ export function TeamManager() {
   const [busyAction, setBusyAction] = useState(false);
 
   const memberAction = useCallback(
-    async (email: string, action: "remove" | "disable" | "enable") => {
+    async (email: string, action: "remove" | "disable" | "enable" | "resend") => {
       const ep = getApiEndpoints();
       if (!ep?.inviteUser) {
         toast.error("Backend de equipo no configurado");
@@ -441,7 +442,9 @@ export function TeamManager() {
             ? "Usuario eliminado del equipo"
             : action === "disable"
               ? "Acceso desactivado"
-              : "Acceso reactivado",
+              : action === "enable"
+                ? "Acceso reactivado"
+                : `Le reenviamos el acceso a ${email}. Le llega un correo para volver a entrar.`,
         );
         setMenuFor(null);
         setConfirmDelete(null);
@@ -450,6 +453,39 @@ export function TeamManager() {
         toast.error(err instanceof Error ? err.message : "Falló la acción");
       } finally {
         setBusyAction(false);
+      }
+    },
+    [fetchTeam],
+  );
+
+  /** Cambia el rol de un miembro existente (Agente/Supervisor/Admin) vía setRole.
+   *  Optimista: refleja el nuevo rol de una y revierte si el backend falla. El rol
+   *  viaja en el idToken → el afectado debe reingresar para verlo aplicado. */
+  const changeRole = useCallback(
+    async (u: TeamMember, role: UserRole) => {
+      if (role === u.role) return;
+      const ep = getApiEndpoints();
+      if (!ep?.inviteUser) {
+        toast.error("Backend de equipo no configurado");
+        return;
+      }
+      const prev = u.role;
+      setTeam((t) => t.map((m) => (m.sub === u.sub ? { ...m, role } : m)));
+      try {
+        const r = await authedFetch(ep.inviteUser, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: u.email, action: "setRole", role }),
+        });
+        const j = await r.json();
+        if (!r.ok || !j.ok) throw new Error(j.error || "No se pudo cambiar el rol");
+        toast.success(
+          `${u.name || u.email} ahora es ${ROLE_LABEL[role]}. Debe cerrar sesión y volver a entrar para que el cambio tome efecto.`,
+        );
+        fetchTeam({ silent: true });
+      } catch (err) {
+        setTeam((t) => t.map((m) => (m.sub === u.sub ? { ...m, role: prev } : m)));
+        toast.error(err instanceof Error ? err.message : "Falló el cambio de rol");
       }
     },
     [fetchTeam],
@@ -539,9 +575,32 @@ export function TeamManager() {
                         </div>
                       </td>
                       <td>
-                        <span className={`chip ${ROLE_CHIP[u.role] || ""}`}>
-                          {ROLE_LABEL[u.role as UserRole] || u.role}
-                        </span>
+                        {u.isYou ? (
+                          // Tu propia fila: chip fijo. No puedes cambiar tu propio
+                          // rol (el backend lo bloquea para evitar auto-lockout).
+                          <span className={`chip ${ROLE_CHIP[u.role] || ""}`}>
+                            {ROLE_LABEL[u.role as UserRole] || u.role}
+                          </span>
+                        ) : (
+                          <Select
+                            value={u.role}
+                            onValueChange={(v) => v && changeRole(u, v as UserRole)}
+                          >
+                            <SelectTrigger
+                              title="Cambiar el rol de este usuario. El cambio aplica cuando vuelva a iniciar sesión."
+                              style={{ maxWidth: 150 }}
+                            >
+                              <SelectValue>{ROLE_LABEL[u.role as UserRole] || u.role}</SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROLE_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </td>
                       <td>
                         <div className="col" style={{ gap: 5, alignItems: "flex-start" }}>
@@ -633,6 +692,14 @@ export function TeamManager() {
                                     gap: 2,
                                   }}
                                 >
+                                  <button
+                                    onClick={() => memberAction(u.email, "resend")}
+                                    disabled={busyAction}
+                                    style={menuItemStyle}
+                                    title="Reenvía un correo para entrar: nueva contraseña temporal si la invitación caducó, o un código de restablecimiento si ya tenía cuenta."
+                                  >
+                                    <Icon.Mail size={14} /> Reenviar acceso
+                                  </button>
                                   <button
                                     onClick={() =>
                                       memberAction(u.email, u.enabled ? "disable" : "enable")

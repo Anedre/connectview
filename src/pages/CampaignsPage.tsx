@@ -8,6 +8,7 @@ import { NotIntegrated } from "@/components/vox/NotIntegrated";
 import { CampaignBlendBoard } from "@/components/campaigns/CampaignBlendBoard";
 import { useConnections } from "@/hooks/useConnections";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useCan } from "@/hooks/usePermissions";
 import { Btn, Card, Stat, Pill, Av, HeroBand, Num, Icon } from "@/components/aria";
 
 const STATUS_TONE: Record<string, "green" | "gold" | "cyan" | "red" | "outline"> = {
@@ -76,6 +77,10 @@ export function CampaignsPage() {
   const [query, setQuery] = useState("");
   const mutations = useCampaignMutations();
   const { confirm, confirmDialog } = useConfirm();
+  // Crear/editar/lanzar campañas = capacidad `manage_campaigns` (Admin por
+  // defecto). Un Supervisor VE la sección y su monitoreo en vivo, pero sin los
+  // controles de gestión. La matriz de Seguridad puede re-escalar esto en vivo.
+  const canManage = useCan("manage_campaigns");
 
   const tabCounts = useMemo(() => {
     const acc: Record<TabId, number> = {
@@ -186,14 +191,16 @@ export function CampaignsPage() {
             <Btn variant="ghost" size="sm" icon="megaphone">
               Plantillas
             </Btn>
-            <Btn
-              variant="primary"
-              size="sm"
-              icon="plus"
-              onClick={() => navigate("/campaigns/nueva")}
-            >
-              Nueva campaña
-            </Btn>
+            {canManage && (
+              <Btn
+                variant="primary"
+                size="sm"
+                icon="plus"
+                onClick={() => navigate("/campaigns/nueva")}
+              >
+                Nueva campaña
+              </Btn>
+            )}
           </div>
         }
       />
@@ -381,15 +388,17 @@ export function CampaignsPage() {
                       <Pill tone={STATUS_TONE[c.status] || "outline"}>
                         {STATUS_LABEL[c.status] || c.status}
                       </Pill>
-                      <Btn
-                        variant="ghost"
-                        size="sm"
-                        icon="plus"
-                        onClick={(e) => handleClone(e, c)}
-                        disabled={mutations.pending}
-                        title="Clonar"
-                      />
-                      {isFinished && (
+                      {canManage && (
+                        <Btn
+                          variant="ghost"
+                          size="sm"
+                          icon="plus"
+                          onClick={(e) => handleClone(e, c)}
+                          disabled={mutations.pending}
+                          title="Clonar"
+                        />
+                      )}
+                      {canManage && isFinished && (
                         <Btn
                           variant="ghost"
                           size="sm"

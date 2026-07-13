@@ -5,6 +5,7 @@ import { useCampaignStats } from "@/hooks/useCampaignStats";
 import { useCampaignContacts, type CampaignContactRow } from "@/hooks/useCampaignContacts";
 import { useCampaignMutations, type RelaunchScope } from "@/hooks/useCampaignMutations";
 import { useCampaignContactMutations } from "@/hooks/useCampaignContactMutations";
+import { useCan } from "@/hooks/usePermissions";
 import { useCampaignAgents } from "@/hooks/useCampaignAgents";
 import { useCustomerNamesByPhone } from "@/hooks/useCustomerNamesByPhone";
 import { getApiEndpoints } from "@/lib/api";
@@ -115,6 +116,10 @@ export function CampaignDetailPage() {
   );
   const mutations = useCampaignMutations();
   const contactMutations = useCampaignContactMutations();
+  // Gestión (editar/clonar/relanzar/iniciar/pausar/cancelar) = `manage_campaigns`
+  // (Admin por defecto). Un Supervisor entra a monitorear la campaña en vivo, pero
+  // sin los controles. Configurable en Configuración → Seguridad.
+  const canManage = useCan("manage_campaigns");
   const { confirm, confirmDialog } = useConfirm();
   // Pull assigned agents so we can resolve user-ids (assignedAgentUserId on
   // the contact row, and any UUID that snuck into agentUsername on legacy
@@ -601,105 +606,107 @@ export function CampaignDetailPage() {
         chipIcon={isWa ? "wa" : "megaphone"}
         chipTone={isWa ? "var(--green)" : "var(--accent)"}
         right={
-          <div className="row gap8" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
-            {/* Edit — only while still editable */}
-            {(c.status === "DRAFT" || c.status === "RUNNING" || c.status === "PAUSED") && (
+          !canManage ? null : (
+            <div className="row gap8" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {/* Edit — only while still editable */}
+              {(c.status === "DRAFT" || c.status === "RUNNING" || c.status === "PAUSED") && (
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  icon="settings"
+                  onClick={() => setEditOpen(true)}
+                  disabled={controlling}
+                >
+                  Editar
+                </Btn>
+              )}
+
+              {/* Clone — always available */}
               <Btn
                 variant="ghost"
                 size="sm"
-                icon="settings"
-                onClick={() => setEditOpen(true)}
-                disabled={controlling}
+                icon="copy"
+                onClick={handleClone}
+                disabled={mutations.pending}
               >
-                Editar
+                Clonar
               </Btn>
-            )}
 
-            {/* Clone — always available */}
-            <Btn
-              variant="ghost"
-              size="sm"
-              icon="copy"
-              onClick={handleClone}
-              disabled={mutations.pending}
-            >
-              Clonar
-            </Btn>
+              {/* Relaunch — only for terminal states */}
+              {(c.status === "COMPLETED" || c.status === "CANCELLED") && (
+                <>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    icon="refresh"
+                    onClick={() => handleRelaunch("failed")}
+                    disabled={mutations.pending}
+                  >
+                    Relanzar fallidos
+                  </Btn>
+                  <Btn
+                    variant="primary"
+                    size="sm"
+                    icon="refresh"
+                    onClick={() => handleRelaunch("all")}
+                    disabled={mutations.pending}
+                  >
+                    Relanzar todos
+                  </Btn>
+                </>
+              )}
 
-            {/* Relaunch — only for terminal states */}
-            {(c.status === "COMPLETED" || c.status === "CANCELLED") && (
-              <>
-                <Btn
-                  variant="ghost"
-                  size="sm"
-                  icon="refresh"
-                  onClick={() => handleRelaunch("failed")}
-                  disabled={mutations.pending}
-                >
-                  Relanzar fallidos
-                </Btn>
+              {/* DRAFT → Start */}
+              {c.status === "DRAFT" && (
                 <Btn
                   variant="primary"
                   size="sm"
-                  icon="refresh"
-                  onClick={() => handleRelaunch("all")}
-                  disabled={mutations.pending}
-                >
-                  Relanzar todos
-                </Btn>
-              </>
-            )}
-
-            {/* DRAFT → Start */}
-            {c.status === "DRAFT" && (
-              <Btn
-                variant="primary"
-                size="sm"
-                icon="play"
-                onClick={() => handleControl("start")}
-                disabled={controlling}
-              >
-                Iniciar
-              </Btn>
-            )}
-            {c.status === "RUNNING" && (
-              <>
-                <Btn
-                  variant="ghost"
-                  size="sm"
-                  icon="pause"
-                  onClick={() => handleControl("pause")}
+                  icon="play"
+                  onClick={() => handleControl("start")}
                   disabled={controlling}
                 >
-                  Pausar
+                  Iniciar
                 </Btn>
+              )}
+              {c.status === "RUNNING" && (
+                <>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    icon="pause"
+                    onClick={() => handleControl("pause")}
+                    disabled={controlling}
+                  >
+                    Pausar
+                  </Btn>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    icon="x"
+                    onClick={() => handleControl("cancel")}
+                    disabled={controlling}
+                    style={{
+                      color: "var(--red)",
+                      borderColor: "color-mix(in srgb,var(--red) 40%,var(--border-1))",
+                    }}
+                  >
+                    Cancelar
+                  </Btn>
+                </>
+              )}
+              {c.status === "PAUSED" && (
                 <Btn
-                  variant="ghost"
+                  variant="primary"
                   size="sm"
-                  icon="x"
-                  onClick={() => handleControl("cancel")}
+                  icon="play"
+                  onClick={() => handleControl("resume")}
                   disabled={controlling}
-                  style={{
-                    color: "var(--red)",
-                    borderColor: "color-mix(in srgb,var(--red) 40%,var(--border-1))",
-                  }}
                 >
-                  Cancelar
+                  Reanudar
                 </Btn>
-              </>
-            )}
-            {c.status === "PAUSED" && (
-              <Btn
-                variant="primary"
-                size="sm"
-                icon="play"
-                onClick={() => handleControl("resume")}
-                disabled={controlling}
-              >
-                Reanudar
-              </Btn>
-            )}
-          </div>
+              )}
+            </div>
+          )
         }
       />
 

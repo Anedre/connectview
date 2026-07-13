@@ -19,7 +19,36 @@ const CORS = { "Content-Type": "application/json" };
 const ROLES = new Set(["Admins", "Supervisors", "Agents"]);
 
 // Default matrix — sensible starting scopes. The editor can change these.
+//
+// Dos familias de capacidades:
+//  · view_*  → VISIBILIDAD de cada sección del menú lateral. El VoxSidebar las
+//    lee (vía useCan/matrix) para decidir qué secciones aparecen por rol. Antes
+//    el gate del menú estaba HARDCODEADO en el código (minRole), desconectado de
+//    esta matriz — por eso editar Seguridad "no hacía nada". Ahora la matriz es
+//    la fuente de verdad: cambiar aquí re-escala el menú EN VIVO, sin deploy.
+//  · manage_*/edit_*/monitor_*/view_audit → ACCIONES dentro de una sección
+//    (crear/editar/lanzar), independientes de solo poder verla.
 const DEFAULT_MATRIX: Record<string, string> = {
+  // ── Acceso a secciones (menú lateral) ──────────────────────────────────
+  view_home: "Agents",
+  view_agent_desktop: "Agents",
+  view_inbox: "Agents",
+  view_live_queue: "Supervisors",
+  view_programs: "Supervisors",
+  view_leads: "Admins",
+  // Campañas visibles para Supervisores: su monitoreo en vivo (contactos en
+  // vuelo por cola/agente) es tarea natural del supervisor. Crear/editar/lanzar
+  // sigue gobernado aparte por `manage_campaigns` (Admins).
+  view_campaigns: "Supervisors",
+  view_bots: "Admins",
+  view_journeys: "Admins",
+  view_automations: "Admins",
+  view_agente_ai: "Admins",
+  view_appointments: "Admins",
+  view_reports: "Supervisors",
+  view_recordings: "Supervisors",
+  view_settings: "Admins",
+  // ── Acciones (dentro de cada sección) ──────────────────────────────────
   manage_campaigns: "Admins",
   manage_leads: "Admins",
   manage_appointments: "Admins",
@@ -29,8 +58,6 @@ const DEFAULT_MATRIX: Record<string, string> = {
   manage_users: "Admins",
   view_audit: "Admins",
   monitor_agents: "Supervisors",
-  view_reports: "Supervisors",
-  view_live_queue: "Supervisors",
   // R29 — Copilot desactivable por rol. "Agents" = abierto a todos (comportamiento
   // actual); un admin puede subir el mínimo a Supervisors/Admins para restringirlo.
   use_copilot: "Agents",
