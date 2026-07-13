@@ -62,6 +62,34 @@ function asFunction(fn: lambda.IFunction): lambda.Function {
   return fn as lambda.Function;
 }
 
+// ---- Cognito User Pool: correo por SES + validez de la contraseña temporal ----
+// Por defecto el pool usa el correo "de prueba" de Cognito (COGNITO_DEFAULT, tope
+// 50 emails/día para TODO el pool) → las invitaciones y los códigos de "olvidé mi
+// contraseña" no llegan de forma confiable. Lo apuntamos a SES (dominio
+// novasys.com.pe verificado con DKIM y fuera de sandbox) y subimos la validez de
+// la contraseña temporal de 7 → 30 días, para que una invitación no caduque antes
+// de que la persona alcance a entrar (ese caso deja al usuario en
+// FORCE_CHANGE_PASSWORD, donde Cognito NO permite "olvidé mi contraseña").
+// NOTA: este bloque toma efecto con `npx ampx pipeline-deploy`. Se aplicó también
+// en vivo por CLI (update-user-pool) para efecto inmediato; el código lo persiste
+// para que un deploy futuro no revierta el cambio (drift).
+const { cfnUserPool } = backend.auth.resources.cfnResources;
+cfnUserPool.emailConfiguration = {
+  emailSendingAccount: "DEVELOPER",
+  from: "ARIA <no-reply@novasys.com.pe>",
+  sourceArn: `arn:aws:ses:${REGION}:${ACCOUNT_ID}:identity/novasys.com.pe`,
+};
+cfnUserPool.policies = {
+  passwordPolicy: {
+    minimumLength: 8,
+    requireLowercase: true,
+    requireNumbers: true,
+    requireSymbols: true,
+    requireUppercase: true,
+    temporaryPasswordValidityDays: 30,
+  },
+};
+
 // ---- DynamoDB Table + EventBridge in the "data" resource group stack ----
 const dataStack = cdk.Stack.of(backend.processContactEvent.resources.lambda);
 
@@ -93,21 +121,12 @@ const connectEventRule = new events.Rule(dataStack, "ConnectContactRule", {
 
 // DynamoDB policy for all lambdas that need table access
 const dynamoWritePolicy = new iam.PolicyStatement({
-  actions: [
-    "dynamodb:PutItem",
-    "dynamodb:UpdateItem",
-    "dynamodb:DeleteItem",
-    "dynamodb:GetItem",
-  ],
+  actions: ["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:GetItem"],
   resources: [contactsTableArn, `${contactsTableArn}/index/*`],
 });
 
 const dynamoReadPolicy = new iam.PolicyStatement({
-  actions: [
-    "dynamodb:GetItem",
-    "dynamodb:Query",
-    "dynamodb:Scan",
-  ],
+  actions: ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:Scan"],
   resources: [contactsTableArn, `${contactsTableArn}/index/*`],
 });
 
@@ -123,10 +142,7 @@ const connectMetricsPolicy = new iam.PolicyStatement({
 });
 
 const connectContactPolicy = new iam.PolicyStatement({
-  actions: [
-    "connect:DescribeContact",
-    "connect:SearchContacts",
-  ],
+  actions: ["connect:DescribeContact", "connect:SearchContacts"],
   resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
 });
 
@@ -148,7 +164,7 @@ processEventLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["lambda:InvokeFunction"],
     resources: [enrichLambda.functionArn],
-  })
+  }),
 );
 asFunction(processEventLambda).addEnvironment("CONTACTS_TABLE_NAME", CONTACTS_TABLE_NAME);
 asFunction(processEventLambda).addEnvironment("ENRICH_FUNCTION_NAME", enrichLambda.functionName);
@@ -167,13 +183,13 @@ recordingLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["connect:DescribeContact"],
     resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
-  })
+  }),
 );
 recordingLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["s3:GetObject"],
     resources: ["arn:aws:s3:::connect-*/*", "arn:aws:s3:::amazon-connect-*/*"],
-  })
+  }),
 );
 asFunction(recordingLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
 
@@ -181,13 +197,9 @@ asFunction(recordingLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTAN
 const listUsersLambda = backend.listUsers.resources.lambda;
 listUsersLambda.addToRolePolicy(
   new iam.PolicyStatement({
-    actions: [
-      "connect:ListUsers",
-      "connect:DescribeUser",
-      "connect:DescribeSecurityProfile",
-    ],
+    actions: ["connect:ListUsers", "connect:DescribeUser", "connect:DescribeSecurityProfile"],
     resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
-  })
+  }),
 );
 asFunction(listUsersLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
 
@@ -204,7 +216,7 @@ profileLambda.addToRolePolicy(
       `arn:aws:profile:${REGION}:${ACCOUNT_ID}:domains/${CUSTOMER_PROFILES_DOMAIN}`,
       `arn:aws:profile:${REGION}:${ACCOUNT_ID}:domains/${CUSTOMER_PROFILES_DOMAIN}/*`,
     ],
-  })
+  }),
 );
 // Tenant resolution: leer la config del tenant + asumir su rol, para que
 // getTenantConnect/resolveCustomerProfiles resuelva (founder t_* Y tenants BYO).
@@ -213,18 +225,15 @@ profileLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["dynamodb:GetItem"],
     resources: [`arn:aws:dynamodb:${REGION}:${ACCOUNT_ID}:table/connectview-connections`],
-  })
+  }),
 );
 profileLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["sts:AssumeRole"],
     resources: ["arn:aws:iam::*:role/VoxCrmConnectAccess"],
-  })
+  }),
 );
-asFunction(profileLambda).addEnvironment(
-  "CUSTOMER_PROFILES_DOMAIN",
-  CUSTOMER_PROFILES_DOMAIN
-);
+asFunction(profileLambda).addEnvironment("CUSTOMER_PROFILES_DOMAIN", CUSTOMER_PROFILES_DOMAIN);
 
 // ---- get-live-transcript (Contact Lens real-time) ----
 const liveTranscriptLambda = backend.getLiveTranscript.resources.lambda;
@@ -232,7 +241,7 @@ liveTranscriptLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["connect:ListRealtimeContactAnalysisSegments"],
     resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
-  })
+  }),
 );
 // Tenant resolution (mismo motivo que lookup-customer-profile): leer config +
 // asumir el rol del tenant para que resolveConnect resuelva SU instancia/Contact
@@ -241,18 +250,15 @@ liveTranscriptLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["dynamodb:GetItem"],
     resources: [`arn:aws:dynamodb:${REGION}:${ACCOUNT_ID}:table/connectview-connections`],
-  })
+  }),
 );
 liveTranscriptLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["sts:AssumeRole"],
     resources: ["arn:aws:iam::*:role/VoxCrmConnectAccess"],
-  })
+  }),
 );
-asFunction(liveTranscriptLambda).addEnvironment(
-  "CONNECT_INSTANCE_ID",
-  CONNECT_INSTANCE_ID
-);
+asFunction(liveTranscriptLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
 
 // ---- get-contact-history (SearchContacts + DescribeContact) ----
 const historyLambda = backend.getContactHistory.resources.lambda;
@@ -260,12 +266,9 @@ historyLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["connect:SearchContacts", "connect:DescribeContact"],
     resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
-  })
+  }),
 );
-asFunction(historyLambda).addEnvironment(
-  "CONNECT_INSTANCE_ID",
-  CONNECT_INSTANCE_ID
-);
+asFunction(historyLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
 
 // ---- list-missed-contacts (SearchContacts + DescribeContact + DescribeQueue) ----
 // Powers the "Perdidas hoy" drawer in the agent desktop. Filters
@@ -273,27 +276,17 @@ asFunction(historyLambda).addEnvironment(
 const missedLambda = backend.listMissedContacts.resources.lambda;
 missedLambda.addToRolePolicy(
   new iam.PolicyStatement({
-    actions: [
-      "connect:SearchContacts",
-      "connect:DescribeContact",
-      "connect:DescribeQueue",
-    ],
+    actions: ["connect:SearchContacts", "connect:DescribeContact", "connect:DescribeQueue"],
     resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
-  })
+  }),
 );
-asFunction(missedLambda).addEnvironment(
-  "CONNECT_INSTANCE_ID",
-  CONNECT_INSTANCE_ID
-);
+asFunction(missedLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
 
 // ---- save-agent-notes (DynamoDB) ----
 const notesLambda = backend.saveAgentNotes.resources.lambda;
 notesLambda.addToRolePolicy(dynamoWritePolicy);
 notesLambda.addToRolePolicy(dynamoReadPolicy);
-asFunction(notesLambda).addEnvironment(
-  "CONTACTS_TABLE_NAME",
-  CONTACTS_TABLE_NAME
-);
+asFunction(notesLambda).addEnvironment("CONTACTS_TABLE_NAME", CONTACTS_TABLE_NAME);
 // Config que estaba seteada por CLI (drift en ampx). Ahora persiste vía backend.ts.
 asFunction(notesLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
 asFunction(notesLambda).addEnvironment("FOLLOWUP_FLOW_ID", FOLLOWUP_FLOW_ID);
@@ -313,42 +306,32 @@ summaryLambda.addToRolePolicy(
     // Wildcard required for cross-region inference profiles (us.* prefix routes to multiple regions).
     // Claude 3.5+ no longer supports on-demand foundation model invocation directly.
     resources: ["*"],
-  })
+  }),
 );
 summaryLambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: ["connect:ListRealtimeContactAnalysisSegments"],
     resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
-  })
+  }),
 );
-asFunction(summaryLambda).addEnvironment(
-  "CONNECT_INSTANCE_ID",
-  CONNECT_INSTANCE_ID
-);
+asFunction(summaryLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
 asFunction(summaryLambda).addEnvironment(
   "BEDROCK_MODEL_ID",
   // US cross-region inference profile for Claude Haiku 4.5 — fast and active.
   // The older 3.5-haiku model is now legacy and blocked unless used in last 30 days.
-  "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+  "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 );
 
 // ---- get-q-suggestions (Amazon Q in Connect / Wisdom) ----
 const qLambda = backend.getQSuggestions.resources.lambda;
 qLambda.addToRolePolicy(
   new iam.PolicyStatement({
-    actions: [
-      "wisdom:QueryAssistant",
-      "wisdom:GetRecommendations",
-      "wisdom:SearchContent",
-    ],
+    actions: ["wisdom:QueryAssistant", "wisdom:GetRecommendations", "wisdom:SearchContent"],
     resources: ["*"],
-  })
+  }),
 );
 // Q Assistant ID comes from the Wisdom integration we saw in the instance
-asFunction(qLambda).addEnvironment(
-  "Q_ASSISTANT_ID",
-  "f5a5f6cf-9bd5-429a-88bb-70ba7c132f4d"
-);
+asFunction(qLambda).addEnvironment("Q_ASSISTANT_ID", "f5a5f6cf-9bd5-429a-88bb-70ba7c132f4d");
 
 // ---- get-agent-active-contact (GetCurrentUserData - bypasses Streams stale IPC) ----
 const activeContactLambda = backend.getAgentActiveContact.resources.lambda;
@@ -361,12 +344,9 @@ activeContactLambda.addToRolePolicy(
       "connect:DescribeContact",
     ],
     resources: [CONNECT_INSTANCE_ARN, `${CONNECT_INSTANCE_ARN}/*`],
-  })
+  }),
 );
-asFunction(activeContactLambda).addEnvironment(
-  "CONNECT_INSTANCE_ID",
-  CONNECT_INSTANCE_ID
-);
+asFunction(activeContactLambda).addEnvironment("CONNECT_INSTANCE_ID", CONNECT_INSTANCE_ID);
 
 // ---- Function URLs for frontend API access (NONE auth for simplicity, app behind Cognito) ----
 const metricsUrl = asFunction(realtimeMetricsLambda).addFunctionUrl({
@@ -476,7 +456,6 @@ const activeContactUrl = asFunction(activeContactLambda).addFunctionUrl({
     allowedHeaders: ["*"],
   },
 });
-
 
 // ---- Export Function URLs to amplify_outputs.json ----
 backend.addOutput({

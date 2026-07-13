@@ -44,6 +44,73 @@ const ROLE_META: Record<string, { label: string; tone: string; soft: string }> =
 };
 
 const CAP_META: Record<string, { label: string; desc: string; icon: React.ElementType }> = {
+  // ── Acceso a secciones del menú (visibilidad) ────────────────────────────
+  view_home: {
+    label: "Inicio",
+    desc: "Ver el panel de inicio.",
+    icon: Icon.Home,
+  },
+  view_agent_desktop: {
+    label: "Agent Desktop",
+    desc: "Ver el escritorio del agente (softphone).",
+    icon: Icon.Headset,
+  },
+  view_inbox: {
+    label: "Conversaciones",
+    desc: "Ver la bandeja omnicanal.",
+    icon: Icon.Chat,
+  },
+  view_programs: {
+    label: "Programas",
+    desc: "Ver los programas y su centro.",
+    icon: Icon.Star,
+  },
+  view_leads: {
+    label: "Leads",
+    desc: "Ver el embudo de leads.",
+    icon: Icon.Ticket,
+  },
+  view_campaigns: {
+    label: "Campañas",
+    desc: "Ver las campañas y su monitoreo en vivo.",
+    icon: Icon.Megaphone,
+  },
+  view_bots: {
+    label: "Bots",
+    desc: "Ver el constructor de bots.",
+    icon: Icon.Sparkles,
+  },
+  view_journeys: {
+    label: "Journeys",
+    desc: "Ver los journeys automatizados.",
+    icon: Icon.Lightning,
+  },
+  view_automations: {
+    label: "Automatizaciones",
+    desc: "Ver las reglas de automatización.",
+    icon: Icon.Lightning,
+  },
+  view_agente_ai: {
+    label: "Agente IA",
+    desc: "Ver el hub del Agente IA.",
+    icon: Icon.Sparkles,
+  },
+  view_appointments: {
+    label: "Citas",
+    desc: "Ver la agenda de citas.",
+    icon: Icon.Calendar,
+  },
+  view_recordings: {
+    label: "Grabaciones",
+    desc: "Ver el centro de grabaciones.",
+    icon: Icon.Disc,
+  },
+  view_settings: {
+    label: "Configuración",
+    desc: "Ver Configuración (integraciones, equipo, seguridad).",
+    icon: Icon.Settings,
+  },
+  // ── Acciones y datos sensibles ───────────────────────────────────────────
   manage_campaigns: {
     label: "Gestionar campañas",
     desc: "Crear, editar y lanzar campañas outbound.",
@@ -85,12 +152,12 @@ const CAP_META: Record<string, { label: string; desc: string; icon: React.Elemen
     icon: Icon.Headset,
   },
   view_reports: {
-    label: "Ver reportes",
+    label: "Reportes",
     desc: "Acceder a dashboards y reportes.",
     icon: Icon.Chart,
   },
   view_live_queue: {
-    label: "Ver cola en vivo",
+    label: "Cola en vivo",
     desc: "Ver el estado de las colas en tiempo real.",
     icon: Icon.Queue,
   },
@@ -100,6 +167,29 @@ const CAP_META: Record<string, { label: string; desc: string; icon: React.Elemen
     icon: Icon.Sparkles,
   },
 };
+
+// Capacidades de VISIBILIDAD de secciones (orden = orden del menú lateral). El
+// resto de la matriz (manage_*/edit_*/monitor_*/view_audit/use_copilot) son
+// acciones o datos sensibles DENTRO de las secciones. Separarlas hace la matriz
+// legible: "quién ve qué" arriba, "quién puede hacer qué" abajo.
+const SECTION_CAPS = [
+  "view_home",
+  "view_agent_desktop",
+  "view_inbox",
+  "view_live_queue",
+  "view_programs",
+  "view_leads",
+  "view_campaigns",
+  "view_bots",
+  "view_journeys",
+  "view_automations",
+  "view_agente_ai",
+  "view_appointments",
+  "view_reports",
+  "view_recordings",
+  "view_settings",
+] as const;
+const SECTION_CAP_SET = new Set<string>(SECTION_CAPS);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -126,6 +216,84 @@ function targetToString(t: AdminAuditEntry["target"]): string {
   return Object.entries(t)
     .map(([k, v]) => `${k}=${String(v)}`)
     .join(" · ");
+}
+
+/** Una fila de la matriz: ícono + label/desc + segmented de rol mínimo. Extraída
+ *  para reusarla en los dos grupos (Acceso a secciones / Acciones). */
+function CapRow({
+  cap,
+  role,
+  onChange,
+}: {
+  cap: string;
+  role: string;
+  onChange: (role: string) => void;
+}) {
+  const meta = CAP_META[cap];
+  const Icn = meta?.icon || Icon.Shield;
+  return (
+    <div
+      className="row"
+      style={{
+        alignItems: "center",
+        gap: 12,
+        padding: "11px 0",
+        borderBottom: "1px solid var(--border-1)",
+      }}
+    >
+      <span
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 34,
+          height: 34,
+          borderRadius: 9,
+          background: "var(--bg-2)",
+          color: "var(--text-2)",
+          flex: "0 0 auto",
+        }}
+      >
+        <Icn size={17} />
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600, fontSize: 13.5 }}>{meta?.label || cap}</div>
+        {meta?.desc && (
+          <div className="muted" style={{ fontSize: 11.5, marginTop: 1 }}>
+            {meta.desc}
+          </div>
+        )}
+      </div>
+      <SegmentedControl
+        value={role as (typeof ROLE_SEQ)[number]}
+        onValueChange={(r) => onChange(r)}
+        options={ROLE_SEQ.map((r) => ({
+          value: r,
+          label: ROLE_META[r].label,
+          color: ROLE_META[r].tone,
+        }))}
+        size="sm"
+        aria-label={`Rol mínimo: ${meta?.label || cap}`}
+      />
+    </div>
+  );
+}
+
+/** Subtítulo de grupo dentro de la matriz de permisos. */
+function CapGroupHead({ children, first }: { children: React.ReactNode; first?: boolean }) {
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: ".05em",
+        color: "var(--text-3)",
+        margin: first ? "6px 0 2px" : "18px 0 2px",
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function SecurityManager() {
@@ -171,11 +339,16 @@ export function SecurityManager() {
     }
   };
 
-  const caps = useMemo(
+  const allCaps = useMemo(() => Object.keys(matrix), [matrix]);
+  // Acceso a secciones — en el orden del menú (no alfabético) para que se lea
+  // como el sidebar. Solo las que existen en la matriz recibida.
+  const sectionCaps = useMemo(() => SECTION_CAPS.filter((c) => c in matrix), [matrix]);
+  // Acciones — todo lo que no es visibilidad de sección; alfabético por label.
+  const actionCaps = useMemo(
     () =>
-      Object.keys(matrix).sort((a, b) =>
-        (CAP_META[a]?.label || a).localeCompare(CAP_META[b]?.label || b),
-      ),
+      Object.keys(matrix)
+        .filter((c) => !SECTION_CAP_SET.has(c))
+        .sort((a, b) => (CAP_META[a]?.label || a).localeCompare(CAP_META[b]?.label || b)),
     [matrix],
   );
 
@@ -228,7 +401,7 @@ export function SecurityManager() {
 
   // ── KPIs ────────────────────────────────────────────────────────────────
   const now = Date.now();
-  const adminOnly = caps.filter((c) => matrix[c] === "Admins").length;
+  const adminOnly = allCaps.filter((c) => matrix[c] === "Admins").length;
   const events24h = entries.filter((e) => now - new Date(e.timestamp).getTime() < DAY_MS).length;
   const errors24h = entries.filter(
     (e) => e.result === "error" && now - new Date(e.timestamp).getTime() < DAY_MS,
@@ -275,7 +448,7 @@ export function SecurityManager() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 14 }}>
         <Kpi
           label="Capacidades gobernadas"
-          value={<span>{caps.length}</span>}
+          value={<span>{allCaps.length}</span>}
           color="var(--accent-cyan)"
         />
         <Kpi
@@ -361,61 +534,39 @@ export function SecurityManager() {
               <div className="muted" style={{ padding: 24, textAlign: "center" }}>
                 Cargando permisos…
               </div>
-            ) : caps.length === 0 ? (
+            ) : allCaps.length === 0 ? (
               <div className="muted" style={{ padding: 24, textAlign: "center" }}>
                 No hay capacidades configuradas.
               </div>
             ) : (
-              caps.map((cap) => {
-                const meta = CAP_META[cap];
-                const Icn = meta?.icon || Icon.Shield;
-                return (
-                  <div
-                    key={cap}
-                    className="row"
-                    style={{
-                      alignItems: "center",
-                      gap: 12,
-                      padding: "11px 0",
-                      borderBottom: "1px solid var(--border-1)",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "grid",
-                        placeItems: "center",
-                        width: 34,
-                        height: 34,
-                        borderRadius: 9,
-                        background: "var(--bg-2)",
-                        color: "var(--text-2)",
-                        flex: "0 0 auto",
-                      }}
-                    >
-                      <Icn size={17} />
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{meta?.label || cap}</div>
-                      {meta?.desc && (
-                        <div className="muted" style={{ fontSize: 11.5, marginTop: 1 }}>
-                          {meta.desc}
-                        </div>
-                      )}
-                    </div>
-                    <SegmentedControl
-                      value={matrix[cap] as (typeof ROLE_SEQ)[number]}
-                      onValueChange={(r) => setRole(cap, r)}
-                      options={ROLE_SEQ.map((r) => ({
-                        value: r,
-                        label: ROLE_META[r].label,
-                        color: ROLE_META[r].tone,
-                      }))}
-                      size="sm"
-                      aria-label={`Rol mínimo: ${meta?.label || cap}`}
-                    />
-                  </div>
-                );
-              })
+              <>
+                {sectionCaps.length > 0 && (
+                  <>
+                    <CapGroupHead first>Acceso a secciones</CapGroupHead>
+                    {sectionCaps.map((cap) => (
+                      <CapRow
+                        key={cap}
+                        cap={cap}
+                        role={matrix[cap]}
+                        onChange={(r) => setRole(cap, r)}
+                      />
+                    ))}
+                  </>
+                )}
+                {actionCaps.length > 0 && (
+                  <>
+                    <CapGroupHead>Acciones y datos sensibles</CapGroupHead>
+                    {actionCaps.map((cap) => (
+                      <CapRow
+                        key={cap}
+                        cap={cap}
+                        role={matrix[cap]}
+                        onChange={(r) => setRole(cap, r)}
+                      />
+                    ))}
+                  </>
+                )}
+              </>
             )}
           </div>
         </CardBody>

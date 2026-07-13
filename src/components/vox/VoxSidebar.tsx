@@ -24,6 +24,8 @@ import {
 import type { CSSProperties } from "react";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useRoles } from "@/hooks/useRoles";
+import { usePermissions } from "@/hooks/usePermissions";
+import type { UserRole } from "@/types/auth";
 import { SECTION_COLOR } from "@/components/aria";
 import { VoxSidebarFooter } from "./VoxSidebarFooter";
 
@@ -36,19 +38,25 @@ interface NavItem {
   icon: PhIcon;
   count?: string;
   alert?: boolean;
-  minRole?: "Agents" | "Supervisors" | "Admins";
+  // Capacidad de VISIBILIDAD en la matriz de permisos (Configuración → Seguridad).
+  // El rol mínimo sale de esa matriz EN VIVO — cambiarlo ahí re-escala el menú sin
+  // deploy. `minRole` queda solo como fallback mientras la matriz carga (o si el
+  // backend de permisos no responde), preservando el comportamiento por defecto.
+  cap?: string;
+  minRole?: UserRole;
 }
 
 type NavEntry = { section: string } | NavItem;
 
 const NAV: NavEntry[] = [
   { section: "Operación" },
-  { id: "home", path: "/", label: "Inicio", icon: House, minRole: "Agents" },
+  { id: "home", path: "/", label: "Inicio", icon: House, cap: "view_home", minRole: "Agents" },
   {
     id: "call",
     path: "/agent",
     label: "Agent Desktop",
     icon: Headset,
+    cap: "view_agent_desktop",
     minRole: "Agents",
   },
   {
@@ -56,6 +64,7 @@ const NAV: NavEntry[] = [
     path: "/inbox",
     label: "Conversaciones",
     icon: ChatsCircle,
+    cap: "view_inbox",
     minRole: "Agents",
   },
   {
@@ -63,6 +72,7 @@ const NAV: NavEntry[] = [
     path: "/queue",
     label: "Cola en vivo",
     icon: Stack,
+    cap: "view_live_queue",
     minRole: "Supervisors",
   },
   { section: "Crecimiento" },
@@ -71,6 +81,7 @@ const NAV: NavEntry[] = [
     path: "/programs",
     label: "Programas",
     icon: GraduationCap,
+    cap: "view_programs",
     minRole: "Supervisors",
   },
   {
@@ -78,6 +89,7 @@ const NAV: NavEntry[] = [
     path: "/leads",
     label: "Leads",
     icon: UserPlus,
+    cap: "view_leads",
     minRole: "Admins",
   },
   {
@@ -85,13 +97,15 @@ const NAV: NavEntry[] = [
     path: "/campaigns",
     label: "Campañas",
     icon: Megaphone,
-    minRole: "Admins",
+    cap: "view_campaigns",
+    minRole: "Supervisors",
   },
   {
     id: "bots",
     path: "/bot",
     label: "Bots",
     icon: Robot,
+    cap: "view_bots",
     minRole: "Admins",
   },
   {
@@ -99,6 +113,7 @@ const NAV: NavEntry[] = [
     path: "/journeys",
     label: "Journeys",
     icon: FlowArrow,
+    cap: "view_journeys",
     minRole: "Admins",
   },
   {
@@ -106,6 +121,7 @@ const NAV: NavEntry[] = [
     path: "/automations",
     label: "Automatizaciones",
     icon: Lightning,
+    cap: "view_automations",
     minRole: "Admins",
   },
   {
@@ -113,6 +129,7 @@ const NAV: NavEntry[] = [
     path: "/agente",
     label: "Agente IA",
     icon: Sparkle,
+    cap: "view_agente_ai",
     minRole: "Admins",
   },
   {
@@ -120,6 +137,7 @@ const NAV: NavEntry[] = [
     path: "/appointments",
     label: "Citas",
     icon: CalendarDots,
+    cap: "view_appointments",
     minRole: "Admins",
   },
   {
@@ -127,6 +145,7 @@ const NAV: NavEntry[] = [
     path: "/reports",
     label: "Reportes",
     icon: ChartBar,
+    cap: "view_reports",
     minRole: "Supervisors",
   },
   {
@@ -134,6 +153,7 @@ const NAV: NavEntry[] = [
     path: "/recordings",
     label: "Grabaciones",
     icon: Disc,
+    cap: "view_recordings",
     minRole: "Supervisors",
   },
   { section: "Sistema" },
@@ -142,6 +162,7 @@ const NAV: NavEntry[] = [
     path: "/admin",
     label: "Configuración",
     icon: Gear,
+    cap: "view_settings",
     minRole: "Admins",
   },
 ];
@@ -167,6 +188,9 @@ export function VoxSidebar({ collapsed, onToggleCollapse }: VoxSidebarProps) {
   const navigate = useNavigate();
   const { productName } = useConnectAuth();
   const { isAtLeast } = useRoles();
+  // Matriz de permisos (Configuración → Seguridad). Es la fuente de verdad de la
+  // VISIBILIDAD por rol: el rol mínimo de cada sección sale de aquí, en vivo.
+  const { matrix } = usePermissions();
 
   // Renders the product name so "IA" (or the accent suffix) gets the gradient
   // treatment from the ARIA design system (.sb__name b).
@@ -223,7 +247,11 @@ export function VoxSidebar({ collapsed, onToggleCollapse }: VoxSidebarProps) {
               </div>
             );
           }
-          if (entry.minRole && !isAtLeast(entry.minRole)) return null;
+          // Rol mínimo EFECTIVO: el de la matriz si ya cargó esa capacidad; si no
+          // (aún cargando o sin backend), cae al minRole hardcodeado — así no hay
+          // "flash" de secciones que luego desaparecen.
+          const effMinRole = (entry.cap && matrix[entry.cap]) || entry.minRole;
+          if (effMinRole && !isAtLeast(effMinRole as UserRole)) return null;
           const Icn = entry.icon;
           const active =
             location.pathname === entry.path ||

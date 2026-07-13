@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Authenticator } from "@aws-amplify/ui-react";
+import { Authenticator, useAuthenticator } from "@aws-amplify/ui-react";
 import "@aws-amplify/ui-react/styles.css";
 import { fetchAuthSession, signInWithRedirect, signOut as amplifySignOut } from "aws-amplify/auth";
 import { I18n } from "aws-amplify/utils";
@@ -399,6 +399,231 @@ function SsoSignInSlot() {
   );
 }
 
+/**
+ * RecoverAccessSlot — recuperación de acceso AUTO-SERVICIO bajo el formulario de
+ * "Iniciar sesión". Cubre el hueco que el "¿Olvidaste tu contraseña?" nativo de
+ * Cognito NO resuelve: un invitado cuya contraseña temporal ya caducó queda en
+ * FORCE_CHANGE_PASSWORD y ahí Cognito prohíbe el reset. Este flujo llama al
+ * endpoint recover-access, que reenvía la invitación (o un código de reset según
+ * el estado). La respuesta es SIEMPRE genérica (anti-enumeración).
+ */
+function RecoverAccessSlot() {
+  const [mode, setMode] = useState<"idle" | "form" | "done">("idle");
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+  const submit = async () => {
+    if (!valid || sending) return;
+    setSending(true);
+    const ep = getApiEndpoints();
+    try {
+      if (ep?.recoverAccess) {
+        await fetch(ep.recoverAccess, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        });
+      }
+    } catch {
+      /* silencioso — mostramos el mismo mensaje genérico pase lo que pase */
+    } finally {
+      setSending(false);
+      setMode("done");
+    }
+  };
+
+  if (mode === "done") {
+    return (
+      <div
+        style={{
+          margin: "2px 0 10px",
+          padding: "12px 14px",
+          borderRadius: 10,
+          border: "1px solid var(--border-1, #2a2f3a)",
+          background: "var(--bg-2, #12151c)",
+          fontSize: 12.5,
+          color: "var(--text-2, #b7c0d0)",
+          lineHeight: 1.5,
+        }}
+      >
+        Si el correo está registrado, te enviamos un email con instrucciones para recuperar el
+        acceso. Revisa tu bandeja de entrada (y la carpeta de spam).
+        <button
+          type="button"
+          onClick={() => {
+            setMode("idle");
+            setEmail("");
+          }}
+          style={{
+            display: "block",
+            marginTop: 8,
+            background: "none",
+            border: "none",
+            color: "var(--accent, #6ea8fe)",
+            fontSize: 12.5,
+            fontWeight: 600,
+            fontFamily: "var(--font-ui)",
+            cursor: "pointer",
+            padding: 0,
+          }}
+        >
+          Volver
+        </button>
+      </div>
+    );
+  }
+
+  if (mode === "form") {
+    return (
+      <div style={{ margin: "2px 0 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+        <span style={{ fontSize: 12, color: "var(--text-3, #8a93a6)", lineHeight: 1.4 }}>
+          Ingresa tu correo y te reenviamos el acceso (sirve aunque tu invitación haya caducado).
+        </span>
+        <input
+          type="email"
+          autoFocus
+          placeholder="tu@empresa.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void submit();
+          }}
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            borderRadius: 9,
+            border: "1px solid var(--border-1, #2a2f3a)",
+            background: "var(--bg-1, #0c0e13)",
+            color: "var(--text-1, #e8ecf3)",
+            fontSize: 13.5,
+            fontFamily: "var(--font-ui)",
+            outline: "none",
+          }}
+        />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={!valid || sending}
+            style={{
+              flex: 1,
+              padding: "10px 14px",
+              borderRadius: 9,
+              border: "1px solid var(--accent, #6ea8fe)",
+              background: "var(--accent, #6ea8fe)",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 600,
+              fontFamily: "var(--font-ui)",
+              cursor: !valid || sending ? "not-allowed" : "pointer",
+              opacity: !valid || sending ? 0.6 : 1,
+            }}
+          >
+            {sending ? "Enviando…" : "Enviar instrucciones"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode("idle");
+              setEmail("");
+            }}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 9,
+              border: "1px solid var(--border-1, #2a2f3a)",
+              background: "var(--bg-2, #12151c)",
+              color: "var(--text-2, #b7c0d0)",
+              fontSize: 13,
+              fontWeight: 600,
+              fontFamily: "var(--font-ui)",
+              cursor: "pointer",
+            }}
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setMode("form")}
+      style={{
+        display: "block",
+        width: "100%",
+        textAlign: "center",
+        margin: "0 0 10px",
+        padding: "4px 0",
+        background: "none",
+        border: "none",
+        color: "var(--text-3, #8a93a6)",
+        fontSize: 12,
+        fontFamily: "var(--font-ui)",
+        cursor: "pointer",
+        textDecoration: "underline",
+        textUnderlineOffset: 2,
+      }}
+    >
+      ¿No recibiste tu invitación o caducó? Recupera el acceso
+    </button>
+  );
+}
+
+/**
+ * ForgotPasswordSlot — restaura el "¿Olvidaste tu contraseña?" NATIVO del
+ * Authenticator. Amplify pone ese enlace en el SignIn.Footer por defecto; al
+ * montar un Footer propio (para el SSO) se perdía sin querer — por eso "faltaba".
+ * `toForgotPassword` (del hook useAuthenticator) navega al flujo nativo completo:
+ * pide el correo, manda el código por email (ahora vía SES) y abre la pantalla
+ * para ingresar el código + la nueva contraseña. Sirve para cuentas ya activas
+ * (CONFIRMED). El caso "invitación caducada" lo cubre RecoverAccessSlot.
+ */
+function ForgotPasswordSlot() {
+  const { toForgotPassword } = useAuthenticator();
+  return (
+    <button
+      type="button"
+      onClick={toForgotPassword}
+      style={{
+        display: "block",
+        width: "100%",
+        textAlign: "center",
+        margin: "2px 0 12px",
+        padding: "2px 0",
+        background: "none",
+        border: "none",
+        color: "var(--accent, #6ea8fe)",
+        fontSize: 13,
+        fontWeight: 600,
+        fontFamily: "var(--font-ui)",
+        cursor: "pointer",
+      }}
+    >
+      ¿Olvidaste tu contraseña?
+    </button>
+  );
+}
+
+/**
+ * Footer del formulario de "Iniciar sesión": el "¿Olvidaste tu contraseña?"
+ * nativo (restaurado) + el botón de SSO (si hay IdP) + el auto-servicio de
+ * recuperación de acceso para invitaciones caducadas. El Authenticator solo
+ * admite UN componente como Footer, así que los componemos acá.
+ */
+function SignInFooter() {
+  return (
+    <>
+      <ForgotPasswordSlot />
+      <SsoSignInSlot />
+      <RecoverAccessSlot />
+    </>
+  );
+}
+
 /** Footer line shown at the bottom of the form column (small caption). */
 function VoxAuthFooter() {
   return (
@@ -444,7 +669,7 @@ export function VoxAuthGate({ children }: { children: ReactNode }) {
       components={{
         Header: VoxAuthHeader,
         Footer: VoxAuthFooter,
-        SignIn: { Footer: SsoSignInSlot },
+        SignIn: { Footer: SignInFooter },
       }}
     >
       {() => <VoxAuthProvider>{children}</VoxAuthProvider>}
