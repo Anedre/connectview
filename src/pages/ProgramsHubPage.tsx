@@ -307,7 +307,7 @@ export function ProgramsHubPage() {
 
   function enter(p: Program) {
     setActiveProgram(p.programId);
-    navigate("/leads");
+    navigate(`/programs/${p.programId}`);
   }
 
   return (

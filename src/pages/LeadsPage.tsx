@@ -21,6 +21,7 @@ import * as Icon from "@/components/vox/primitives";
 import { Btn, Stat, HeroBand, Num, Icon as AIcon } from "@/components/aria";
 import { SourceHealthBar } from "@/components/leads/SourceHealthBar";
 import { PipelineSummary } from "@/components/leads/PipelineSummary";
+import { LeadImportModal } from "@/components/leads/LeadImportModal";
 import { WhatsAppQuickSendModal } from "@/components/workspace/WhatsAppQuickSendModal";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Modal } from "@/components/ui/modal";
@@ -1698,6 +1699,7 @@ export function LeadsPage() {
     setWaTarget({ phone: phone.trim(), name });
   };
   const [adding, setAdding] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [q, setQ] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [view, setView] = useState<"board" | "table">("board");
@@ -2193,6 +2195,17 @@ export function LeadsPage() {
             <Btn variant="ghost" size="sm" icon="refresh" onClick={load} disabled={loading}>
               Actualizar
             </Btn>
+            {canManage && (
+              <Btn
+                variant="ghost"
+                size="sm"
+                icon="upload"
+                onClick={() => setShowImport(true)}
+                title="Importar un CSV histórico como leads de un programa (sin llamar)"
+              >
+                Importar
+              </Btn>
+            )}
             {canManage && (
               <Btn variant="primary" size="sm" icon="plus" onClick={() => setAdding((a) => !a)}>
                 Nuevo lead
@@ -2805,6 +2818,13 @@ export function LeadsPage() {
           onClose={() => setWaTarget(null)}
         />
       )}
+
+      {/* Importar CSV histórico → leads del programa (sin lanzar llamadas). */}
+      <LeadImportModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={() => load()}
+      />
     </div>
   );
 }

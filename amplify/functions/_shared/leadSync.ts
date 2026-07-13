@@ -1036,7 +1036,15 @@ export async function bulkUpsertVoxLeads(
   // que lo pasen los callers de bulk (create-campaign / edit-campaign-contacts):
   // ellos NO llaman setActiveTenant, así que aquí NO se cae al tenant activo (sería
   // "" o stale). Sin este override las filas quedan sin tenantId (legacy).
-  opts: { source?: string; deadlineMs?: number; programId?: string; tenantId?: string } = {},
+  opts: {
+    source?: string;
+    deadlineMs?: number;
+    programId?: string;
+    tenantId?: string;
+    /** Import puro (CSV → programa): etapa inicial para los leads NUEVOS y para la
+     *  membership del programa. Sin él (campañas) se preserva la etapa existente. */
+    stageId?: string;
+  } = {},
 ): Promise<{
   attempted: number;
   created: number;
@@ -1083,7 +1091,9 @@ export async function bulkUpsertVoxLeads(
       name: (c.customerName || "").trim() || prev?.name,
       email: pickAttr(c.attributes, EMAIL_KEYS) ?? prev?.email,
       company: pickAttr(c.attributes, COMPANY_KEYS) ?? prev?.company,
-      stageId: prev?.stageId,
+      // Import puro: los NUEVOS entran en la etapa inicial elegida; a los existentes
+      // no se les pisa su etapa global (pueden estar avanzados en otro programa).
+      stageId: prev?.stageId ?? opts.stageId,
       source: prev?.source || source,
       sfLeadId: prev?.sfLeadId,
       attributes:
@@ -1125,7 +1135,14 @@ export async function bulkUpsertVoxLeads(
       // utm_campaign / columna "programa" del CSV (R26).
       const pid = opts.programId || (await resolveProgramIdFromAttributes(it.attributes));
       if (pid) {
-        await upsertLeadProgramMembership(it.leadId, pid, it.stageId, it.source).catch(() => {});
+        // En import puro la etapa del programa es la inicial elegida (opts.stageId),
+        // aunque el lead ya exista con otra etapa global.
+        await upsertLeadProgramMembership(
+          it.leadId,
+          pid,
+          opts.stageId || it.stageId,
+          it.source,
+        ).catch(() => {});
       }
     }
   }

@@ -30,6 +30,9 @@ import { NotFoundPage } from "@/pages/NotFoundPage";
 const AgentDesktopPage = lazy(() =>
   import("@/pages/AgentDesktopPage").then((m) => ({ default: m.AgentDesktopPage })),
 );
+const ProgramDetailPage = lazy(() =>
+  import("@/pages/ProgramDetailPage").then((m) => ({ default: m.ProgramDetailPage })),
+);
 const ReportsPage = lazy(() =>
   import("@/pages/ReportsPage").then((m) => ({ default: m.ReportsPage })),
 );
@@ -647,6 +650,7 @@ function AnimatedRoutes() {
               <Route path="/leads" element={<LeadsPage />} />
               <Route path="/inbox" element={<InboxPage />} />
               <Route path="/programs" element={<ProgramsHubPage />} />
+              <Route path="/programs/:programId" element={<ProgramDetailPage />} />
               <Route path="/charts-lab" element={<ChartsLabPage />} />
               <Route path="/appointments" element={<AppointmentsPage />} />
               <Route path="/bot" element={<FlowBuilderPage />} />

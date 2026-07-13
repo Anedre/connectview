@@ -20,6 +20,7 @@ import {
   setActiveDynamo,
   setActiveProfiles,
   upsertLeadProgramMembership,
+  bulkUpsertVoxLeads,
   isGolpe,
   summarizeGolpes,
   type LeadHistoryEvent,
@@ -828,6 +829,41 @@ export const handler: Handler = async (event: any) => {
           return bad(400, 'Confirmación inválida: escribe exactamente "BORRAR TODO".');
         const counts = await resetLeads(tenantId);
         return ok({ reset: true, ...counts });
+      }
+
+      // Import puro de leads (CSV histórico → programa): crea/mergea leads en lote y
+      // los mete al board del programa en la etapa inicial elegida, SIN lanzar
+      // campaña ni dialing y SIN empujar a Salesforce (eso queda como paso aparte).
+      // Reutiliza el motor idempotente de campañas (dedup por teléfono normalizado).
+      if (body.action === "importLeads") {
+        const programId = String(body.programId || "").trim();
+        const stageId = body.stageId ? String(body.stageId) : undefined;
+        const raw: unknown = body.contacts;
+        if (!Array.isArray(raw) || raw.length === 0)
+          return bad(400, "contacts requeridos (array no vacío)");
+        if (raw.length > 5000) return bad(400, "Máximo 5000 contactos por lote");
+        const contacts = (raw as Array<Record<string, unknown>>)
+          .map((c) => ({
+            phone: String(c.phone ?? "").trim(),
+            customerName:
+              c.name || c.customerName
+                ? String(c.name ?? c.customerName).trim() || undefined
+                : undefined,
+            attributes:
+              c.attributes && typeof c.attributes === "object"
+                ? (c.attributes as Record<string, string>)
+                : undefined,
+          }))
+          .filter((c) => c.phone);
+        if (contacts.length === 0) return bad(400, "Ningún contacto con teléfono válido");
+        const summary = await bulkUpsertVoxLeads(contacts, {
+          source: "import-csv",
+          programId: programId || undefined,
+          stageId,
+          tenantId,
+          deadlineMs: 25_000,
+        });
+        return ok({ imported: true, programId: programId || null, ...summary });
       }
 
       // Move-stage action.
