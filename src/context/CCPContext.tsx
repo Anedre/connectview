@@ -477,8 +477,22 @@ export function CCPProvider({ children }: { children: ReactNode }) {
           });
           agent.onMuteToggle?.(({ muted: m }: { muted: boolean }) => setMuted(m));
           agent.onError(() => {
-            setError("Agent connection error");
-            setAgentState("Error");
+            // OJO: Streams dispara onError TAMBIÉN cuando el agente entra a los
+            // estados de bloqueo (MissedCallAgent / FailedConnectAgent son
+            // "error states" para Streams). Ese caso YA se comunica con el pill
+            // ("Contacto perdido"/"No conectó") + el banner "Volver a
+            // disponible" — el chip genérico encima solo asusta y no aporta
+            // causa. Lo reservamos para errores reales de sesión/softphone (los
+            // granulares llegan por onSoftphoneError).
+            let stateName = "";
+            try {
+              stateName = agent.getState?.()?.name || "";
+            } catch {
+              /* noop */
+            }
+            const blocked = /missed|failedconnect/i.test(stateName);
+            if (!blocked) setError("Agent connection error");
+            setAgentState((stateName || "Error") as AgentState);
           });
 
           // Attach to ANY contact already on the agent (the global
