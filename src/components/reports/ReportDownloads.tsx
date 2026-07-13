@@ -32,6 +32,26 @@ function colsFromKeys(rows: Row[]): Column[] {
 const isVoice = (c: ContactRecord) =>
   ["VOICE", "TELEPHONY"].includes((c.channel || "").toUpperCase());
 
+/** Agrupa el catálogo por dominio en vez de un muro de 10 tarjetas iguales. */
+const GROUPS: { id: string; label: string; icon: IconName }[] = [
+  { id: "cc", label: "Contact center", icon: "headset" },
+  { id: "leads", label: "Leads", icon: "userplus" },
+  { id: "wa", label: "WhatsApp", icon: "wa" },
+  { id: "cost", label: "Costos", icon: "gauge" },
+];
+const GROUP_OF: Record<string, string> = {
+  "chat-detail": "cc",
+  agentes: "cc",
+  llamadas: "cc",
+  canales: "cc",
+  conversaciones: "cc",
+  hsm: "wa",
+  leads: "leads",
+  "leads-history": "leads",
+  "leads-stages": "leads",
+  consumo: "cost",
+};
+
 export function ReportDownloads({
   contacts,
   range,
@@ -263,69 +283,112 @@ export function ReportDownloads({
     }
   };
 
-  return (
+  const renderCard = (rep: (typeof REPORTS)[number]) => (
     <div
+      key={rep.id}
+      className="rep-dl-card"
       style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-        gap: 12,
+        border: "1px solid var(--border-1)",
+        borderRadius: 12,
+        background: "var(--bg-1)",
+        padding: 14,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
       }}
     >
-      {REPORTS.map((rep) => (
-        <div
-          key={rep.id}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span
           style={{
-            border: "1px solid var(--border-1)",
-            borderRadius: 12,
-            background: "var(--bg-1)",
-            padding: 14,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            display: "grid",
+            placeItems: "center",
+            background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+            color: "var(--accent)",
+            flex: "0 0 auto",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span
+          <Icon name={rep.icon} size={17} />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 13.5 }}>{rep.label}</div>
+        </div>
+      </div>
+      <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.45, flex: 1 }}>
+        {rep.hint}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          className="btn btn--sm"
+          style={{ flex: 1 }}
+          disabled={!!busy}
+          onClick={() => run(rep, "csv")}
+        >
+          {busy === `${rep.id}:csv` ? "…" : "CSV"}
+        </button>
+        <button
+          className="btn btn--sm btn--primary"
+          style={{ flex: 1 }}
+          disabled={!!busy}
+          onClick={() => run(rep, "xlsx")}
+        >
+          <Icon name="download" size={12} /> {busy === `${rep.id}:xlsx` ? "…" : "Excel"}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+      {GROUPS.map((g) => {
+        const reps = REPORTS.filter((r) => GROUP_OF[r.id] === g.id);
+        if (!reps.length) return null;
+        return (
+          <div key={g.id}>
+            <div className="row gap8" style={{ alignItems: "center", marginBottom: 11 }}>
+              <span
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 8,
+                  display: "grid",
+                  placeItems: "center",
+                  background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                  color: "var(--accent)",
+                  flex: "0 0 auto",
+                }}
+              >
+                <Icon name={g.icon} size={14} />
+              </span>
+              <span
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: ".04em",
+                  color: "var(--text-2)",
+                }}
+              >
+                {g.label}
+              </span>
+              <span className="dim" style={{ fontSize: 11 }}>
+                · {reps.length} reporte{reps.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
                 display: "grid",
-                placeItems: "center",
-                background: "color-mix(in srgb, var(--accent) 12%, transparent)",
-                color: "var(--accent)",
-                flex: "0 0 auto",
+                gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                gap: 12,
               }}
             >
-              <Icon name={rep.icon} size={17} />
-            </span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13.5 }}>{rep.label}</div>
+              {reps.map(renderCard)}
             </div>
           </div>
-          <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.45, flex: 1 }}>
-            {rep.hint}
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="btn btn--sm"
-              style={{ flex: 1 }}
-              disabled={!!busy}
-              onClick={() => run(rep, "csv")}
-            >
-              {busy === `${rep.id}:csv` ? "…" : "CSV"}
-            </button>
-            <button
-              className="btn btn--sm btn--primary"
-              style={{ flex: 1 }}
-              disabled={!!busy}
-              onClick={() => run(rep, "xlsx")}
-            >
-              <Icon name="download" size={12} /> {busy === `${rep.id}:xlsx` ? "…" : "Excel"}
-            </button>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

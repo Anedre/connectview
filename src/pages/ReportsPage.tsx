@@ -23,6 +23,7 @@ import { ChannelTrendChart } from "@/components/reports/ChannelTrendChart";
 import type { ExecChannelDay } from "@/components/dashboard/exec/execMock";
 import { EChart, useChartTokens } from "@/components/charts/EChart";
 import { EmptyState } from "@/components/ui/empty-state";
+import { downloadCsv, type Column } from "@/lib/reportExport";
 import type { ContactRecord } from "@/types/monitoring";
 import { Icon, Btn, Card, HeroBand, type IconName } from "@/components/aria";
 import { ReportsHero, type ChannelSlice } from "@/components/reports/ReportsHero";
@@ -155,45 +156,35 @@ function AhtHistogramEChart({ contacts }: { contacts: ContactRecord[] }) {
   );
 }
 
+/** Columnas del "Chat detail" — MISMAS que ReportDownloads, para que el botón
+ *  Exportar del topbar y la descarga del catálogo den el mismo CSV (español,
+ *  con BOM + CRLF de reportExport.ts). Antes el botón usaba un CSV local aparte
+ *  (columnas en inglés, sin BOM). */
+const CONTACT_EXPORT_COLS: Column[] = [
+  { key: "contactId", label: "Contact ID" },
+  { key: "initiationTimestamp", label: "Inicio" },
+  { key: "disconnectTimestamp", label: "Fin" },
+  { key: "agentUsername", label: "Agente" },
+  { key: "queueName", label: "Cola" },
+  { key: "channel", label: "Canal" },
+  { key: "duration", label: "Duración (s)" },
+  { key: "sentiment", label: "Sentiment" },
+  { key: "categories", label: "Categorías" },
+  { key: "status", label: "Estado" },
+  { key: "disconnectReason", label: "Motivo cierre" },
+];
+
 function exportContactsToCsv(contacts: ContactRecord[]) {
   if (contacts.length === 0) {
     toast.info("No hay contactos para exportar");
     return;
   }
-  const cols = [
-    "contactId",
-    "initiationTimestamp",
-    "disconnectTimestamp",
-    "agentUsername",
-    "queueName",
-    "channel",
-    "duration",
-    "sentiment",
-    "categories",
-    "status",
-    "disconnectReason",
-  ] as const;
-  const escape = (raw: unknown): string => {
-    if (raw == null) return "";
-    const s = Array.isArray(raw) ? raw.join("|") : String(raw);
-    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-  const lines = [cols.join(",")];
-  for (const c of contacts) {
-    const row = c as unknown as Record<string, unknown>;
-    lines.push(cols.map((k) => escape(row[k])).join(","));
-  }
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-  a.href = url;
-  a.download = `contacts-${stamp}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadCsv(
+    `contactos-${stamp}`,
+    CONTACT_EXPORT_COLS,
+    contacts as unknown as Record<string, unknown>[],
+  );
   toast.success(`CSV descargado · ${contacts.length} contactos`);
 }
 
