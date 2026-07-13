@@ -96,6 +96,8 @@ export function ReportsHero({
   channelMix,
   periodLabel,
   loading,
+  onChannelClick,
+  activeChannel,
 }: {
   kpis: HeroKpis;
   prevKpis: HeroKpis | null;
@@ -103,6 +105,9 @@ export function ReportsHero({
   channelMix: ChannelSlice[];
   periodLabel: string;
   loading: boolean;
+  /** Drill-down: clic en un canal de la mezcla → filtra la vista de abajo. */
+  onChannelClick?: (key: string) => void;
+  activeChannel?: string | null;
 }) {
   const t = useChartTokens();
   const [compare, setCompare] = useState(false);
@@ -387,7 +392,7 @@ export function ReportsHero({
               </div>
             )}
           </div>
-          <ChannelMixBar mix={channelMix} />
+          <ChannelMixBar mix={channelMix} active={activeChannel} onSelect={onChannelClick} />
         </div>
       </div>
 
@@ -472,53 +477,79 @@ export function ReportsHero({
   );
 }
 
-/** Barra apilada de mezcla de canales + leyenda compacta. */
-function ChannelMixBar({ mix }: { mix: ChannelSlice[] }) {
-  const active = mix.filter((c) => c.count > 0);
-  const total = active.reduce((a, c) => a + c.count, 0);
+/** Barra apilada de mezcla de canales + leyenda compacta CLICABLE (drill-down). */
+function ChannelMixBar({
+  mix,
+  active,
+  onSelect,
+}: {
+  mix: ChannelSlice[];
+  active?: string | null;
+  onSelect?: (key: string) => void;
+}) {
+  const present = mix.filter((c) => c.count > 0);
+  const total = present.reduce((a, c) => a + c.count, 0);
   if (total === 0) return null;
+  const clickable = !!onSelect;
   return (
     <div style={{ marginTop: 12 }}>
-      <div
-        style={{
-          display: "flex",
-          gap: 2,
-          height: 9,
-          borderRadius: 99,
-          overflow: "hidden",
-        }}
-      >
-        {active.map((c) => (
+      <div style={{ display: "flex", gap: 2, height: 9, borderRadius: 99, overflow: "hidden" }}>
+        {present.map((c) => (
           <div
             key={c.key}
             title={`${c.label}: ${c.count}`}
-            style={{ flex: c.count, background: c.color }}
+            style={{
+              flex: c.count,
+              background: c.color,
+              opacity: active && active !== c.key ? 0.35 : 1,
+              transition: "opacity .15s",
+            }}
           />
         ))}
       </div>
-      <div className="row wrap gap12" style={{ marginTop: 8 }}>
-        {active
+      <div className="row wrap gap8" style={{ marginTop: 8 }}>
+        {present
           .sort((a, b) => b.count - a.count)
-          .map((c) => (
-            <span key={c.key} className="row gap4" style={{ alignItems: "center" }}>
-              <span
-                style={{ width: 8, height: 8, borderRadius: 99, background: c.color }}
-                aria-hidden
-              />
-              <span style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 600 }}>
-                {c.label}
-              </span>
-              <span
+          .map((c) => {
+            const on = active === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                onClick={clickable ? () => onSelect!(c.key) : undefined}
+                title={clickable ? (on ? "Quitar filtro" : `Filtrar por ${c.label}`) : undefined}
+                className="row gap4"
                 style={{
-                  fontSize: 11.5,
-                  color: "var(--text-3)",
-                  fontVariantNumeric: "tabular-nums",
+                  alignItems: "center",
+                  padding: "3px 8px",
+                  borderRadius: 8,
+                  border: on ? `1px solid ${c.color}` : "1px solid transparent",
+                  background: on
+                    ? `color-mix(in srgb, ${c.color} 12%, transparent)`
+                    : "transparent",
+                  cursor: clickable ? "pointer" : "default",
+                  opacity: active && !on ? 0.55 : 1,
                 }}
               >
-                {Math.round((c.count / total) * 100)}%
-              </span>
-            </span>
-          ))}
+                <span
+                  style={{ width: 8, height: 8, borderRadius: 99, background: c.color }}
+                  aria-hidden
+                />
+                <span style={{ fontSize: 11.5, color: "var(--text-2)", fontWeight: 600 }}>
+                  {c.label}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    color: "var(--text-3)",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {Math.round((c.count / total) * 100)}%
+                </span>
+              </button>
+            );
+          })}
       </div>
     </div>
   );

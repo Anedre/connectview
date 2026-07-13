@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { HsmDeliverySummary } from "./HsmDeliverySummary";
+import { Kpi, KpiRow } from "@/components/reports/kit";
 
 /**
  * HsmOutboundReport — WhatsApp template (HSM) Outbound report (roadmap #6),
@@ -120,29 +121,6 @@ export function HsmOutboundReport() {
   }
 
   const t = data.totals;
-  const kpi = (label: string, value: number | string, color?: string) => (
-    <div
-      style={{
-        flex: 1,
-        minWidth: 92,
-        padding: "10px 12px",
-        border: "1px solid var(--border-1)",
-        borderRadius: 8,
-        background: "var(--bg-2)",
-      }}
-    >
-      <div
-        className="muted"
-        style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4 }}
-      >
-        {label}
-      </div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: color || "var(--text-1)", marginTop: 2 }}>
-        {value}
-      </div>
-    </div>
-  );
-
   const totalSends = t.total;
   const mostRecent = data.templates.reduce(
     (acc, tpl) => (tpl.lastSentAt > acc ? tpl.lastSentAt : acc),
@@ -156,24 +134,34 @@ export function HsmOutboundReport() {
 
       {/* KPI strip — ciclo de entrega (delivered/read/failed los llena el
           status-webhook desde números Meta no anclados a Connect, Pilar 4). */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        {kpi("Enviados", totalSends)}
-        {/* Entregado del embudo = delivered + read (leído implica entregado). */}
-        {kpi("Entregados", (t.delivered || 0) + (t.read || 0), "var(--accent-cyan)")}
-        {kpi("Leídos", t.read || 0, "var(--accent-violet)")}
-        {kpi("Fallidos", t.failed || 0, (t.failed || 0) > 0 ? "var(--accent-red)" : undefined)}
-        {kpi("Plantillas", data.templates.length)}
-        {/* Pilar 9 Fase C (R16/R17) — respuesta + 1ª respuesta (del inbound). */}
-        {data.response && data.response.inboundTracked && (
-          <>
-            {kpi(
-              "Respuestas",
-              `${Math.round(data.response.responseRate * 100)}%`,
-              "var(--accent-green)",
-            )}
-            {kpi("1ª respuesta", fmtDur(data.response.avgFirstResponseSec), "var(--accent-cyan)")}
-          </>
-        )}
+      <div style={{ marginTop: 14, marginBottom: 8 }}>
+        <KpiRow min={118}>
+          <Kpi label="Enviados" value={totalSends} color="var(--accent)" />
+          {/* Entregado del embudo = delivered + read (leído implica entregado). */}
+          <Kpi label="Entregados" value={(t.delivered || 0) + (t.read || 0)} color="var(--cyan)" />
+          <Kpi label="Leídos" value={t.read || 0} color="var(--iris)" />
+          <Kpi
+            label="Fallidos"
+            value={t.failed || 0}
+            color={(t.failed || 0) > 0 ? "var(--red)" : "var(--text-3)"}
+          />
+          <Kpi label="Plantillas" value={data.templates.length} color="var(--accent)" />
+          {/* Pilar 9 Fase C (R16/R17) — respuesta + 1ª respuesta (del inbound). */}
+          {data.response && data.response.inboundTracked && (
+            <>
+              <Kpi
+                label="Respuestas"
+                value={`${Math.round(data.response.responseRate * 100)}%`}
+                color="var(--green)"
+              />
+              <Kpi
+                label="1ª respuesta"
+                value={fmtDur(data.response.avgFirstResponseSec)}
+                color="var(--cyan)"
+              />
+            </>
+          )}
+        </KpiRow>
       </div>
       <div className="muted" style={{ fontSize: 11, marginBottom: 14 }}>
         Tasa de lectura <b>{data.rates.readRate}%</b> (leídos/entregados) · Tasa de fallo{" "}

@@ -27,11 +27,7 @@ function fmtAht(s: number): string {
 
 type SortKey = "total" | "ahtSeconds" | "negPct";
 
-export function AgentPerformanceReport({
-  contacts,
-}: {
-  contacts: ContactRecord[];
-}) {
+export function AgentPerformanceReport({ contacts }: { contacts: ContactRecord[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("total");
   const { userIdToName } = useUsers();
 
@@ -59,9 +55,7 @@ export function AgentPerformanceReport({
     for (const [agent, list] of byAgent) {
       const total = list.length;
       const durs = list.map((c) => c.duration || 0).filter((d) => d > 0);
-      const ahtSeconds = durs.length
-        ? durs.reduce((a, b) => a + b, 0) / durs.length
-        : 0;
+      const ahtSeconds = durs.length ? durs.reduce((a, b) => a + b, 0) / durs.length : 0;
       const pos = list.filter((c) => c.sentiment === "POSITIVE").length;
       const neg = list.filter((c) => c.sentiment === "NEGATIVE").length;
       const chCount = new Map<string, number>();
@@ -69,11 +63,8 @@ export function AgentPerformanceReport({
         const ch = (c.channel || "—").toLowerCase();
         chCount.set(ch, (chCount.get(ch) || 0) + 1);
       }
-      const topChannel =
-        [...chCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
-      const abandoned = list.filter(
-        (c) => c.disconnectReason === "CUSTOMER_DISCONNECT"
-      ).length;
+      const topChannel = [...chCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+      const abandoned = list.filter((c) => c.disconnectReason === "CUSTOMER_DISCONNECT").length;
       out.push({
         agent,
         total,
@@ -108,6 +99,8 @@ export function AgentPerformanceReport({
     );
   }
 
+  const maxTotal = Math.max(1, ...rows.map((r) => r.total));
+
   const Th = ({
     label,
     k,
@@ -118,14 +111,18 @@ export function AgentPerformanceReport({
     align?: "left" | "right";
   }) => (
     <th
+      aria-sort={k ? (sortKey === k ? "descending" : "none") : undefined}
       style={{
         textAlign: align,
-        padding: "6px 10px",
+        padding: "8px 10px",
         cursor: k ? "pointer" : "default",
-        color: k && sortKey === k ? "var(--accent-violet)" : "var(--text-2)",
+        color: k && sortKey === k ? "var(--iris)" : "var(--text-3)",
         userSelect: "none",
-        fontWeight: 600,
-        fontSize: 11,
+        fontWeight: 700,
+        fontSize: 10.5,
+        textTransform: "uppercase",
+        letterSpacing: ".03em",
+        whiteSpace: "nowrap",
       }}
       onClick={k ? () => setSortKey(k) : undefined}
       title={k ? "Ordenar" : undefined}
@@ -134,6 +131,13 @@ export function AgentPerformanceReport({
       {k && sortKey === k ? " ↓" : ""}
     </th>
   );
+
+  const td: React.CSSProperties = { padding: "8px 10px", verticalAlign: "middle" };
+  const tdNum: React.CSSProperties = {
+    ...td,
+    textAlign: "right",
+    fontVariantNumeric: "tabular-nums",
+  };
 
   return (
     <div style={{ overflowX: "auto" }}>
@@ -144,40 +148,101 @@ export function AgentPerformanceReport({
             <Th label="Contactos" k="total" />
             <Th label="AHT" k="ahtSeconds" />
             <Th label="Canal" align="left" />
-            <Th label="% Positivo" />
-            <Th label="% Negativo" k="negPct" />
+            <Th label="Sentimiento" align="left" />
+            <Th label="% Neg" k="negPct" />
             <Th label="Abandono" />
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={r.agent} style={{ borderBottom: "1px solid var(--border-1)" }}>
-              <td style={{ padding: "7px 10px", fontWeight: 500 }}>{r.agent}</td>
-              <td style={{ padding: "7px 10px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                {r.total}
+          {rows.map((r, i) => (
+            <tr
+              key={r.agent}
+              style={{
+                borderBottom: "1px solid var(--border-1)",
+                background: i % 2 ? "var(--bg-2)" : "transparent",
+              }}
+            >
+              <td style={{ ...td, fontWeight: 600 }}>{r.agent}</td>
+              <td style={tdNum}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <span
+                    style={{
+                      flex: "0 1 60px",
+                      height: 6,
+                      borderRadius: 99,
+                      background: "var(--bg-2)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "block",
+                        width: `${Math.round((r.total / maxTotal) * 100)}%`,
+                        height: "100%",
+                        background: "var(--cyan)",
+                        borderRadius: 99,
+                      }}
+                    />
+                  </span>
+                  <b style={{ minWidth: 22 }}>{r.total}</b>
+                </div>
               </td>
-              <td style={{ padding: "7px 10px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                {fmtAht(r.ahtSeconds)}
-              </td>
-              <td style={{ padding: "7px 10px", textTransform: "capitalize" }}>
+              <td style={tdNum}>{fmtAht(r.ahtSeconds)}</td>
+              <td style={{ ...td, textTransform: "capitalize", color: "var(--text-2)" }}>
                 {r.topChannel}
               </td>
-              <td style={{ padding: "7px 10px", textAlign: "right", color: "var(--accent-green)" }}>
-                {r.posPct}%
+              <td style={td}>
+                {/* Barra de sentimiento: verde (positivo) desde la izquierda, rojo
+                    (negativo) desde la derecha, hueco = neutro. */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      flex: "0 1 100px",
+                      height: 7,
+                      borderRadius: 99,
+                      background: "var(--bg-2)",
+                      overflow: "hidden",
+                      display: "flex",
+                    }}
+                    title={`${r.posPct}% positivo · ${r.negPct}% negativo`}
+                  >
+                    <span style={{ width: `${r.posPct}%`, background: "var(--green)" }} />
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        width: `${r.negPct}%`,
+                        background: "var(--red)",
+                      }}
+                    />
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: "var(--green)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {r.posPct}%
+                  </span>
+                </div>
               </td>
               <td
                 style={{
-                  padding: "7px 10px",
-                  textAlign: "right",
-                  color: r.negPct >= 30 ? "var(--accent-red)" : "var(--text-1)",
+                  ...tdNum,
+                  color: r.negPct >= 30 ? "var(--red)" : "var(--text-1)",
                   fontWeight: r.negPct >= 30 ? 700 : 400,
                 }}
               >
                 {r.negPct}%
               </td>
-              <td style={{ padding: "7px 10px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                {r.abandoned || "—"}
-              </td>
+              <td style={{ ...tdNum, color: "var(--text-3)" }}>{r.abandoned || "—"}</td>
             </tr>
           ))}
         </tbody>

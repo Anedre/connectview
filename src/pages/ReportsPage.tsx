@@ -267,6 +267,10 @@ export function ReportsPage() {
   });
   const [tab, setTab] = useState<ReportTab>("operacion");
   const [showSchedule, setShowSchedule] = useState(false);
+  // Drill-down: canal seleccionado desde el hero → filtra el DETALLE de Operación
+  // (AHT, sentimiento, agentes, tabla, insights). El hero y el chart de volumen
+  // siguen mostrando todos los canales (panorama + navegador).
+  const [channelFilter, setChannelFilter] = useState<ChannelKey | null>(null);
 
   // El calendario de rango re-consulta el rango REAL elegido.
   useEffect(() => {
@@ -345,6 +349,22 @@ export function ReportsPage() {
     ];
   }, [contacts]);
 
+  // Contactos del DETALLE, filtrados por el canal del drill-down (o todos).
+  const filteredContacts = useMemo(
+    () =>
+      channelFilter
+        ? contacts.filter((c) => normalizeChannel(c.channel) === channelFilter)
+        : contacts,
+    [contacts, channelFilter],
+  );
+  const CHANNEL_LABEL: Record<ChannelKey, string> = {
+    voz: "Llamadas",
+    wa: "WhatsApp",
+    chat: "Chat",
+    email: "Email",
+    sms: "SMS",
+  };
+
   const initialLoading = loading && contacts.length === 0;
 
   return (
@@ -417,6 +437,10 @@ export function ReportsPage() {
         channelMix={channelMix}
         periodLabel={range.label}
         loading={initialLoading}
+        activeChannel={channelFilter}
+        onChannelClick={(k) =>
+          setChannelFilter((cur) => (cur === (k as ChannelKey) ? null : (k as ChannelKey)))
+        }
       />
 
       {/* Tab bar de categorías — segmenta los reportes por dominio (Operación,
@@ -464,10 +488,39 @@ export function ReportsPage() {
       {/* ── OPERACIÓN · contact center ── */}
       {tab === "operacion" && (
         <>
+          {channelFilter && (
+            <div className="row gap8" style={{ marginBottom: 12, alignItems: "center" }}>
+              <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+                Explorando el detalle de:
+              </span>
+              <button
+                type="button"
+                onClick={() => setChannelFilter(null)}
+                title="Quitar el filtro de canal"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  padding: "4px 11px",
+                  borderRadius: 99,
+                  border: "1px solid var(--accent)",
+                  background: "var(--accent-soft)",
+                  color: "var(--accent)",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {CHANNEL_LABEL[channelFilter]} · {filteredContacts.length} contacto
+                {filteredContacts.length === 1 ? "" : "s"}
+                <span style={{ fontSize: 13 }}>✕</span>
+              </button>
+            </div>
+          )}
           {!initialLoading && contacts.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <Card title="Insights automáticos" icon="sparkle" accent="var(--iris)">
-                <AutoInsights contacts={contacts} />
+                <AutoInsights contacts={filteredContacts} />
               </Card>
             </div>
           )}
@@ -512,7 +565,7 @@ export function ReportsPage() {
                   </span>
                 }
               >
-                <AhtHistogramEChart contacts={contacts} />
+                <AhtHistogramEChart contacts={filteredContacts} />
               </Card>
             </div>
           )}
@@ -522,7 +575,7 @@ export function ReportsPage() {
               {initialLoading ? (
                 <div className="card" style={{ height: 280 }} />
               ) : (
-                <SentimentChart contacts={contacts} />
+                <SentimentChart contacts={filteredContacts} />
               )}
             </Card>
           </div>
@@ -538,7 +591,7 @@ export function ReportsPage() {
               }
               pad={false}
             >
-              <AgentPerformanceReport contacts={contacts} />
+              <AgentPerformanceReport contacts={filteredContacts} />
             </Card>
           </div>
 
@@ -547,12 +600,12 @@ export function ReportsPage() {
             icon="fileText"
             extra={
               <span className="dim" style={{ fontSize: 12 }}>
-                {contacts.length} contactos
+                {filteredContacts.length} contactos
               </span>
             }
             pad={false}
           >
-            <ContactsTable contacts={contacts} />
+            <ContactsTable contacts={filteredContacts} />
           </Card>
         </>
       )}

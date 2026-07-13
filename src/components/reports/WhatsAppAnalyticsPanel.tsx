@@ -1,4 +1,5 @@
 import { useWhatsAppAnalytics } from "@/hooks/useWhatsAppAnalytics";
+import { Kpi, KpiRow } from "@/components/reports/kit";
 
 /**
  * WhatsAppAnalyticsPanel — entrega agregada de WhatsApp directo de Meta (Pilar 4
@@ -25,52 +26,36 @@ export function WhatsAppAnalyticsPanel() {
   const act = data.wabaActivity || { sent: 0, delivered: 0 };
   const actDeliveredRate = act.sent > 0 ? Math.round((act.delivered / act.sent) * 100) : 0;
 
-  const kpi = (label: string, value: number | string, sub?: string, color?: string) => (
-    <div
-      style={{
-        flex: 1,
-        minWidth: 110,
-        padding: "10px 12px",
-        border: "1px solid var(--border-1)",
-        borderRadius: 8,
-        background: "var(--bg-2)",
-      }}
-    >
-      <div
-        className="muted"
-        style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4 }}
-      >
-        {label}
-      </div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: color || "var(--text-1)", marginTop: 2 }}>
-        {value}
-      </div>
-      {sub && (
-        <div className="muted" style={{ fontSize: 10.5, marginTop: 1 }}>
-          {sub}
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <div>
       {/* Actividad del número (WABA-level, mensajes) + embudo de plantillas */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        {kpi("Enviados (número)", act.sent, "mensajes · últimos 30 días")}
-        {kpi("Entregados", act.delivered, `${actDeliveredRate}% del enviado`, "var(--accent-cyan)")}
-        {kpi(
-          "Plantillas (envíos)",
-          data.totals.sent,
-          `${data.templates.length} con tráfico`,
-          "var(--accent-violet)",
-        )}
-        {kpi(
-          "Tasa de lectura",
-          `${data.rates.readRate}%`,
-          "leídos/entregados (plantillas)",
-          "var(--accent-green)",
-        )}
+      <div style={{ marginBottom: 12 }}>
+        <KpiRow min={130}>
+          <Kpi
+            label="Enviados (número)"
+            value={act.sent}
+            sub="mensajes · últimos 30 días"
+            color="var(--green)"
+          />
+          <Kpi
+            label="Entregados"
+            value={act.delivered}
+            sub={`${actDeliveredRate}% del enviado`}
+            color="var(--cyan)"
+          />
+          <Kpi
+            label="Plantillas (envíos)"
+            value={data.totals.sent}
+            sub={`${data.templates.length} con tráfico`}
+            color="var(--iris)"
+          />
+          <Kpi
+            label="Tasa de lectura"
+            value={`${data.rates.readRate}%`}
+            sub="leídos/entregados (plantillas)"
+            color="var(--green)"
+          />
+        </KpiRow>
       </div>
 
       {data.templates.length > 0 ? (
