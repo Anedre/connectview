@@ -15,20 +15,29 @@ import type { UserRole } from "@/types/auth";
 type Matrix = Record<string, UserRole>;
 
 let cached: Matrix | null = null;
+let cachedAt = 0;
 let inflight: Promise<Matrix> | null = null;
+// La matriz que edita un admin debe llegar a los agentes con la pestaña abierta.
+// Con un TTL corto + refetch al enfocar (ver usePermissions) se refresca sola,
+// sin exigir recarga completa ni re-login.
+const TTL_MS = 60_000;
 
 async function fetchMatrix(force = false): Promise<Matrix> {
-  if (cached && !force) return cached;
+  const fresh = !!cached && Date.now() - cachedAt < TTL_MS;
+  if (fresh && !force) return cached as Matrix;
   if (inflight && !force) return inflight;
   const ep = getApiEndpoints();
-  if (!ep?.managePermissions) return {};
+  if (!ep?.managePermissions) return cached || {};
   inflight = authedFetch(ep.managePermissions)
     .then((r) => r.json())
     .then((d) => {
       cached = (d?.matrix || {}) as Matrix;
+      cachedAt = Date.now();
       return cached;
     })
-    .catch(() => ({} as Matrix))
+    // En error CONSERVAMOS la última matriz buena (antes devolvía {} → el sidebar
+    // caía al minRole restrictivo y ocultaba secciones ante un hipo de red).
+    .catch(() => cached || ({} as Matrix))
     .finally(() => {
       inflight = null;
     });
@@ -42,14 +51,23 @@ export function usePermissions() {
 
   useEffect(() => {
     let on = true;
-    fetchMatrix().then((m) => {
-      if (on) {
-        setMatrix(m);
-        setLoading(false);
-      }
-    });
+    const load = (force = false) =>
+      fetchMatrix(force).then((m) => {
+        if (on) {
+          setMatrix(m);
+          setLoading(false);
+        }
+      });
+    load();
+    // Refresco sin recargar: poll suave + al volver a la pestaña, para que el
+    // cambio que hace un admin en la matriz llegue a los agentes ya logueados.
+    const iv = window.setInterval(() => load(true), 90_000);
+    const onFocus = () => load(true);
+    window.addEventListener("focus", onFocus);
     return () => {
       on = false;
+      window.clearInterval(iv);
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
 
@@ -60,7 +78,7 @@ export function usePermissions() {
       if (!min) return true; // uncapped capability → allowed
       return isAtLeast(min);
     },
-    [matrix, isAtLeast]
+    [matrix, isAtLeast],
   );
 
   const refresh = useCallback(async () => {

@@ -278,6 +278,14 @@ export const handler = async (event: FnEvent) => {
     return resp(200, { ok: true, email, action });
   }
 
+  // Guard: SOLO "invite" (o sin action) debe llegar a crear usuario. Cualquier
+  // otra acción provista pero no reconocida arriba NO debe caer a invitar por
+  // defecto — ese fall-through convertía un "setRole" contra un Lambda viejo en
+  // un AdminCreateUser → "Ese email ya tiene una cuenta". Fallar explícito.
+  if (action !== "invite") {
+    return resp(400, { error: `Acción no reconocida: ${action}` });
+  }
+
   // 3) INVITAR (default): validar rol + nombre.
   const role = (body.role || "Agents").trim();
   const name = (body.name || "").trim();
