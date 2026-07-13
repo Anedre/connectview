@@ -72,14 +72,17 @@ export function ExecFunnel({
   data: Array<{ label: string; value: number; color: string }>;
 }) {
   const max = Math.max(...data.map((d) => d.value), 1);
+  const total = data.reduce((sum, d) => sum + d.value, 0);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 2 }}>
       {data.map((s, i) => {
         const c = FUNNEL_PALETTE[i % FUNNEL_PALETTE.length];
         const pct = Math.round((s.value / max) * 100);
-        // % de conversión respecto de la etapa anterior del embudo.
-        const conv =
-          i > 0 && data[i - 1].value > 0 ? Math.round((s.value / data[i - 1].value) * 100) : null;
+        // % del TOTAL de leads (distribución por etapa). Antes era "s.value /
+        // etapa anterior" (retención): con etapas categóricas —cada lead está en
+        // UNA etapa, no es un embudo secuencial— daba valores absurdos
+        // (Contactado 22 / Gestionado 1 = 2200%).
+        const conv = total > 0 ? Math.round((s.value / total) * 100) : null;
         return (
           <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span
