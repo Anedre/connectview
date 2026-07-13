@@ -886,6 +886,7 @@ export const handler: Handler = async (event: any) => {
           ok: result.success,
           status: result.status,
           errors: result.success ? undefined : result.errors,
+          warnings: result.warnings?.length ? result.warnings : undefined,
         }),
       };
     } catch (err) {

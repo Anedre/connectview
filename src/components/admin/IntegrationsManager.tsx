@@ -1316,6 +1316,9 @@ function SalesforceCard({
       setRealtimeOn(true);
       update({ salesforce: { ...sf, inboundTokenSet: true } });
       toast.success("Sincronización en tiempo real activada en Salesforce");
+      if (Array.isArray(j.warnings) && j.warnings.length) {
+        toast.message(`Puente activo. Pendiente para el push: ${j.warnings[0]}`);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo activar la sincronización");
     } finally {

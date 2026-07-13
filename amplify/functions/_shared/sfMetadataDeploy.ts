@@ -205,11 +205,89 @@ async function upsertRemoteSite(
   }
 }
 
+/** Llamada REST con el access_token del OAuth como Bearer. */
+async function sfRest(
+  instanceUrl: string,
+  sessionId: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<Response> {
+  return fetch(`${instanceUrl.replace(/\/+$/, "")}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${sessionId}`, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+/** Deja la org lista para el push ARIA→SF: crea el campo de dedup
+ *  `Lead.VoxLeadId__c` (External Id único) y le da field-level security al usuario
+ *  del conector. Crear el campo NO lo hace escribible (FLS): sin el permiso, el
+ *  upsert por External Id que hace `pushLeadToSalesforce` da 404. Idempotente. */
+async function ensureDedupField(instanceUrl: string, sessionId: string): Promise<void> {
+  // 1) Campo External Id único.
+  const field =
+    `<met:upsertMetadata><met:metadata xsi:type="met:CustomField">` +
+    `<met:fullName>Lead.VoxLeadId__c</met:fullName><met:label>Vox Lead Id</met:label>` +
+    `<met:type>Text</met:type><met:length>18</met:length>` +
+    `<met:externalId>true</met:externalId><met:unique>true</met:unique>` +
+    `</met:metadata></met:upsertMetadata>`;
+  const fx = await metadataSoap(instanceUrl, sessionId, "upsertMetadata", field);
+  if (pick(fx, "success") !== "true") {
+    throw new Error(
+      `VoxLeadId__c: ${pick(fx, "errors") || pick(fx, "faultstring") || "no se pudo crear"}`,
+    );
+  }
+  // 2) PermissionSet con la FLS del campo (readable + editable).
+  const ps =
+    `<met:upsertMetadata><met:metadata xsi:type="met:PermissionSet">` +
+    `<met:fullName>Vox_Lead_Sync</met:fullName><met:label>Vox Lead Sync</met:label>` +
+    `<met:fieldPermissions><met:field>Lead.VoxLeadId__c</met:field><met:editable>true</met:editable><met:readable>true</met:readable></met:fieldPermissions>` +
+    `</met:metadata></met:upsertMetadata>`;
+  const px = await metadataSoap(instanceUrl, sessionId, "upsertMetadata", ps);
+  if (pick(px, "success") !== "true") {
+    throw new Error(
+      `PermissionSet: ${pick(px, "errors") || pick(px, "faultstring") || "no se pudo crear"}`,
+    );
+  }
+  // 3) Asignar el PermissionSet al usuario del conector (el que corre el push).
+  const me = (await (
+    await sfRest(instanceUrl, sessionId, "GET", "/services/oauth2/userinfo")
+  ).json()) as {
+    user_id?: string;
+  };
+  const q = (await (
+    await sfRest(
+      instanceUrl,
+      sessionId,
+      "GET",
+      `/services/data/v${MD_VERSION}/query?q=${encodeURIComponent("SELECT Id FROM PermissionSet WHERE Name='Vox_Lead_Sync'")}`,
+    )
+  ).json()) as { records?: Array<{ Id?: string }> };
+  const userId = me.user_id;
+  const psId = q.records?.[0]?.Id;
+  if (!userId || !psId) return; // sin usuario/permset resueltos no forzamos (no fatal)
+  const asg = await sfRest(
+    instanceUrl,
+    sessionId,
+    "POST",
+    `/services/data/v${MD_VERSION}/sobjects/PermissionSetAssignment`,
+    { AssigneeId: userId, PermissionSetId: psId },
+  );
+  // 201 = asignado; DUPLICATE_VALUE = ya lo tenía (idempotente).
+  if (asg.status !== 201) {
+    const t = await asg.text();
+    if (!/DUPLICATE_VALUE/.test(t)) throw new Error(`asignación PermissionSet HTTP ${asg.status}`);
+  }
+}
+
 export interface DeployResult {
   done: boolean;
   success: boolean;
   errors: string[];
   status: string;
+  /** Avisos no-fatales (p.ej. no se pudo preparar VoxLeadId__c para el push). */
+  warnings?: string[];
 }
 
 /** Lanza el deploy y hace polling hasta terminar (o agotar el presupuesto). */
@@ -223,7 +301,15 @@ export async function deployInboundBridge(
   // 1) Remote Site (autoriza el callout saliente) por CRUD síncrono — el deploy
   //    ZIP no reconoce este componente. Si el usuario no es admin, lanza aquí.
   await upsertRemoteSite(instanceUrl, sessionId, webhookUrl);
-  // 2) Apex (trigger + clases + tests) por deploy ZIP.
+  // 2) Campo de dedup Lead.VoxLeadId__c + FLS → deja la org lista para el push
+  //    ARIA→SF. Best-effort: si falla, el inbound igual queda activo (warning).
+  const warnings: string[] = [];
+  try {
+    await ensureDedupField(instanceUrl, sessionId);
+  } catch (e) {
+    warnings.push(e instanceof Error ? e.message : "No se pudo preparar VoxLeadId__c");
+  }
+  // 3) Apex (trigger + clases + tests) por deploy ZIP.
   const files = buildInboundPackage(webhookUrl, inboundToken);
   const zipB64 = makeZip(files).toString("base64");
 
@@ -268,10 +354,10 @@ export async function deployInboundBridge(
         const msg = pick(statusXml, "errorMessage");
         if (msg) errors.push(msg);
       }
-      return { done: true, success, errors, status };
+      return { done: true, success, errors, status, warnings };
     }
     if (Date.now() > deadline) {
-      return { done: false, success: false, errors: [], status: "InProgress" };
+      return { done: false, success: false, errors: [], status: "InProgress", warnings };
     }
   }
 }
