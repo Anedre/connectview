@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Icon, Pill } from "@/components/aria";
 import { Modal } from "@/components/ui/modal";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
-import { useProgramOptional } from "@/context/ProgramContext";
+import { useLeadTaxonomyId } from "@/hooks/useLeadTaxonomyId";
 import { useLeadOverview } from "@/hooks/useLeadOverview";
 import { VALORACION_META, type DispositionStage } from "@/lib/dispositions";
 import { useConversationActions, type Conversation } from "@/hooks/useConversations";
@@ -28,8 +28,7 @@ export function ConversationTypifyModal({
   conversation: Conversation;
   onClose: () => void;
 }) {
-  const activeProgram = useProgramOptional()?.activeProgram;
-  const { tree } = useTaxonomy(activeProgram?.taxonomyId);
+  const { tree } = useTaxonomy(useLeadTaxonomyId(conversation.phone ?? null));
   const { typify } = useConversationActions();
   const { user } = useConnectAuth();
   const leadOv = useLeadOverview(conversation.phone ?? null);

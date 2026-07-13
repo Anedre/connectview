@@ -520,6 +520,24 @@ async function hsmEventsByPhone(): Promise<Map<string, LeadHistoryEvent[]>> {
   return m;
 }
 
+/** Pilar 1: leadId → programIds a los que pertenece (vía GSI byLead). Para
+ *  resolver la taxonomía del programa del lead al tipificarlo (refinamiento 1:1). */
+async function leadPrograms(leadId: string): Promise<string[]> {
+  try {
+    const r = await dynamo.send(
+      new QueryCommand({
+        TableName: MEMBERSHIP,
+        IndexName: "byLead",
+        KeyConditionExpression: "leadId = :l",
+        ExpressionAttributeValues: { ":l": { S: leadId } },
+      }),
+    );
+    return (r.Items || []).map((it) => it.programId?.S).filter((x): x is string => !!x);
+  } catch {
+    return []; // sin GSI/tabla → sin programas (cae a la default en el front)
+  }
+}
+
 /** Pilar 1: leadId → stageId-por-programa (membership de un programa). */
 async function queryMembership(programId: string): Promise<Map<string, string | undefined>> {
   const m = new Map<string, string | undefined>();
@@ -744,7 +762,7 @@ export const handler: Handler = async (event: any) => {
               (a, b) => (a.ts || "").localeCompare(b.ts || ""),
             );
             const golpes = await summarizeGolpes(history, l.stageId);
-            return { ...l, history, golpes };
+            return { ...l, history, golpes, programIds: await leadPrograms(l.leadId) };
           }),
         );
         return ok({ leads: out });
