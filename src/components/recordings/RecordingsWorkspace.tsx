@@ -30,6 +30,7 @@ import { WhatsAppThreadView } from "@/components/recordings/WhatsAppThreadView";
 import { EmailThreadsView } from "@/components/recordings/EmailThreadsView";
 import { AttachmentsGrid } from "@/components/recordings/AttachmentsGrid";
 import { HistoryTimelineView } from "@/components/recordings/HistoryTimelineView";
+import { ListeningCenter } from "@/components/recordings/ListeningCenter";
 import { useTopBarActions } from "@/components/layout/TopBarSlot";
 import { initials } from "@/lib/initials";
 
@@ -1082,52 +1083,11 @@ function AISlideOver({
   );
 }
 
-/* ───────────────────────── Estado vacío ───────────────────────── */
-function EmptyState({ onOpen }: { onOpen: () => void }) {
-  return (
-    <div style={{ height: "100%", display: "grid", placeItems: "center", padding: 24 }}>
-      <div
-        className="card card__pad"
-        style={{ padding: "36px 40px", textAlign: "center", maxWidth: 460 }}
-      >
-        <div
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: 16,
-            background: "var(--cyan-soft)",
-            color: "var(--cyan)",
-            display: "grid",
-            placeItems: "center",
-            margin: "0 auto 16px",
-          }}
-        >
-          <Icon name="search" size={26} />
-        </div>
-        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Elige un contacto</div>
-        <div className="muted" style={{ fontSize: 13.5, lineHeight: 1.6, marginBottom: 18 }}>
-          Su historial, llamadas con audio y transcripción, WhatsApp, emails y archivos aparecen
-          aquí — todo en una sola historia.
-        </div>
-        <Btn variant="primary" icon="search" onClick={onOpen} style={{ margin: "0 auto" }}>
-          Buscar contacto
-          <span
-            className="pill"
-            style={{ background: "rgba(255,255,255,.2)", color: "#fff", height: 20 }}
-          >
-            ⌘K
-          </span>
-        </Btn>
-      </div>
-    </div>
-  );
-}
-
 /* ───────────────────────── Workspace ───────────────────────── */
 export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead } = {}) {
   const [lead, setLead] = useState<RecentLead | null>(initialLead ?? null);
   const [tab, setTab] = useState<Lens>("resumen");
-  const [cmdOpen, setCmdOpen] = useState<boolean>(!initialLead);
+  const [cmdOpen, setCmdOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -1240,7 +1200,7 @@ export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead 
           </>
         ) : (
           <div style={{ minHeight: "60vh" }}>
-            <EmptyState onOpen={() => setCmdOpen(true)} />
+            <ListeningCenter onPick={setLead} onSearch={() => setCmdOpen(true)} />
           </div>
         )}
       </div>
