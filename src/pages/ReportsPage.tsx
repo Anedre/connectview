@@ -10,7 +10,7 @@ import { useContactEvents } from "@/lib/contactEvents";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { ContactFilters } from "@/components/reports/ContactFilters";
-import { DateRangePicker, type DateRange } from "@/components/reports/DateRangePicker";
+import { type DateRange } from "@/components/reports/DateRangePicker";
 import { SentimentChart } from "@/components/reports/SentimentChart";
 import { AgentPerformanceReport } from "@/components/reports/AgentPerformanceReport";
 import { HsmOutboundReport } from "@/components/reports/HsmOutboundReport";
@@ -19,7 +19,7 @@ import { ProgramReport } from "@/components/reports/ProgramReport";
 import { BotAnalyticsReport } from "@/components/reports/BotAnalyticsReport";
 import { ContactsTable } from "@/components/reports/ContactsTable";
 import { FeatureNotice } from "@/components/vox/FeatureNotice";
-import { ExecBarsEChart } from "@/components/dashboard/exec/ExecEcharts";
+import { ChannelTrendChart } from "@/components/reports/ChannelTrendChart";
 import type { ExecChannelDay } from "@/components/dashboard/exec/execMock";
 import { EChart, useChartTokens } from "@/components/charts/EChart";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -408,12 +408,15 @@ export function ReportsPage() {
 
       <FeatureNotice feature="contactLens" />
 
-      {/* Período (REAL: re-consulta queryContacts) + resumen ejecutivo narrado. */}
-      <div className="row between wrap" style={{ marginBottom: 14, alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 12.5, color: "var(--text-3)", fontWeight: 600 }}>
-          Período de análisis
-        </span>
-        <DateRangePicker value={range} onChange={setRange} />
+      {/* Barra de control ÚNICA (rango premium + filtros finos) — reemplaza el
+          período separado y los inputs de fecha nativos. Un solo control. */}
+      <div style={{ marginBottom: 16 }}>
+        <ContactFilters
+          range={range}
+          onRangeChange={setRange}
+          onSearch={searchContacts}
+          loading={loading}
+        />
       </div>
 
       <ReportsHero
@@ -424,11 +427,6 @@ export function ReportsPage() {
         periodLabel={range.label}
         loading={initialLoading}
       />
-
-      {/* Filtros finos (fecha custom / agente / cola / sentiment) */}
-      <div style={{ marginBottom: 16 }}>
-        <ContactFilters onSearch={searchContacts} loading={loading} />
-      </div>
 
       {/* Tab bar de categorías — segmenta los reportes por dominio (Operación,
           Crecimiento, WhatsApp, Agente IA) en vez de una página larga apilada. */}
@@ -511,7 +509,7 @@ export function ReportsPage() {
                     description="Ajusta el período o los filtros para ver volumen por canal."
                   />
                 ) : (
-                  <ExecBarsEChart data={volumeByChannel} height={264} />
+                  <ChannelTrendChart data={volumeByChannel} height={264} />
                 )}
               </Card>
               <Card

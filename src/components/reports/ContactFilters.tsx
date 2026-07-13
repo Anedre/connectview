@@ -1,43 +1,67 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Search } from "lucide-react";
+import { useState, type CSSProperties, type ReactNode } from "react";
+import { Btn } from "@/components/aria";
+import { DateRangePicker, type DateRange } from "@/components/reports/DateRangePicker";
 import type { ContactFilters as FilterType } from "@/types/monitoring";
 import { useQueues } from "@/hooks/useQueues";
 
+/**
+ * ContactFilters — la barra de control ÚNICA de Reportes (premium, lenguaje ARIA).
+ * Fusiona el rango de fechas (DateRangePicker con presets + calendario, antes un
+ * control aparte y duplicado) con los filtros finos (agente / cola / sentimiento).
+ * Antes eran inputs de fecha nativos + selects shadcn crudos que se veían planos y
+ * chocaban con el resto de la página.
+ */
+
 interface ContactFiltersProps {
+  range: DateRange;
+  onRangeChange: (r: DateRange) => void;
   onSearch: (filters: FilterType) => void;
   loading?: boolean;
 }
 
-export function ContactFilters({ onSearch, loading }: ContactFiltersProps) {
-  const today = new Date().toISOString().split("T")[0];
-  const weekAgo = new Date(Date.now() - 7 * 86400000)
-    .toISOString()
-    .split("T")[0];
+const fieldStyle: CSSProperties = {
+  height: 38,
+  padding: "0 11px",
+  borderRadius: 10,
+  border: "1px solid var(--border-2)",
+  background: "var(--bg-1)",
+  color: "var(--text-1)",
+  fontSize: 13,
+  outline: "none",
+  minWidth: 0,
+};
 
-  const [startDate, setStartDate] = useState(weekAgo);
-  const [endDate, setEndDate] = useState(today);
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+      <label
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: ".04em",
+          color: "var(--text-3)",
+        }}
+      >
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+export function ContactFilters({ range, onRangeChange, onSearch, loading }: ContactFiltersProps) {
   const [agent, setAgent] = useState("");
   const [queue, setQueue] = useState("all");
   const [sentiment, setSentiment] = useState("all");
 
-  // Bug #14 — the dropdown used to be hardcoded to the Connect demo
-  // queues (BasicQueue/SalesQueue/SupportQueue). Now we pull the real
-  // queues from listQueues so Reports matches /queue and /admin.
+  // Bug #14 — colas reales de listQueues (antes hardcodeadas a las demo de Connect).
   const { queues } = useQueues();
 
   const handleSearch = () => {
     onSearch({
-      startDate: `${startDate}T00:00:00Z`,
-      endDate: `${endDate}T23:59:59Z`,
+      startDate: range.start.toISOString(),
+      endDate: range.end.toISOString(),
       agentUsername: agent || undefined,
       queueName: queue !== "all" ? queue : undefined,
       sentiment: sentiment !== "all" ? sentiment : undefined,
@@ -45,79 +69,66 @@ export function ContactFilters({ onSearch, loading }: ContactFiltersProps) {
   };
 
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Inicio
-        </label>
-        <Input
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          className="w-40"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Fin
-        </label>
-        <Input
-          type="date"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-          className="w-40"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Agente
-        </label>
-        <Input
+    <div
+      className="card"
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "flex-end",
+        gap: 14,
+        padding: "14px 16px",
+        background:
+          "radial-gradient(120% 160% at 0% 0%, color-mix(in srgb, var(--cyan) 5%, var(--bg-1)) 0%, var(--bg-1) 60%)",
+      }}
+    >
+      <Field label="Período">
+        <DateRangePicker value={range} onChange={onRangeChange} />
+      </Field>
+
+      <Field label="Agente">
+        <input
           placeholder="Username del agente"
           value={agent}
           onChange={(e) => setAgent(e.target.value)}
-          className="w-40"
+          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+          style={{ ...fieldStyle, width: 170 }}
         />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Cola
-        </label>
-        <Select value={queue} onValueChange={(v) => setQueue(v ?? "all")}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="Todas las colas" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas las colas</SelectItem>
-            {queues.map((q) => (
-              <SelectItem key={q.id} value={q.name}>
-                {q.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Sentiment
-        </label>
-        <Select value={sentiment} onValueChange={(v) => setSentiment(v ?? "all")}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="Todos" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            <SelectItem value="POSITIVE">Positivo</SelectItem>
-            <SelectItem value="NEGATIVE">Negativo</SelectItem>
-            <SelectItem value="NEUTRAL">Neutral</SelectItem>
-            <SelectItem value="MIXED">Mixto</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <Button onClick={handleSearch} disabled={loading}>
-        <Search className="mr-2 h-4 w-4" />
+      </Field>
+
+      <Field label="Cola">
+        <select
+          value={queue}
+          onChange={(e) => setQueue(e.target.value)}
+          style={{ ...fieldStyle, width: 160, cursor: "pointer" }}
+          aria-label="Filtrar por cola"
+        >
+          <option value="all">Todas las colas</option>
+          {queues.map((q) => (
+            <option key={q.id} value={q.name}>
+              {q.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Sentimiento">
+        <select
+          value={sentiment}
+          onChange={(e) => setSentiment(e.target.value)}
+          style={{ ...fieldStyle, width: 150, cursor: "pointer" }}
+          aria-label="Filtrar por sentimiento"
+        >
+          <option value="all">Todos</option>
+          <option value="POSITIVE">Positivo</option>
+          <option value="NEGATIVE">Negativo</option>
+          <option value="NEUTRAL">Neutral</option>
+          <option value="MIXED">Mixto</option>
+        </select>
+      </Field>
+
+      <Btn variant="primary" icon="search" onClick={handleSearch} disabled={loading}>
         Buscar
-      </Button>
+      </Btn>
     </div>
   );
 }
