@@ -10,8 +10,18 @@ interface Props {
 }
 
 const MONTHS_ES = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
 ];
 const DOW_ES = ["L", "M", "M", "J", "V", "S", "D"];
 
@@ -77,17 +87,13 @@ export function ThreadDatePicker({ daysWithActivity, onPick }: Props) {
   const goPrev = () => {
     setView((v) => {
       const m = v.month0 - 1;
-      return m < 0
-        ? { year: v.year - 1, month0: 11 }
-        : { year: v.year, month0: m };
+      return m < 0 ? { year: v.year - 1, month0: 11 } : { year: v.year, month0: m };
     });
   };
   const goNext = () => {
     setView((v) => {
       const m = v.month0 + 1;
-      return m > 11
-        ? { year: v.year + 1, month0: 0 }
-        : { year: v.year, month0: m };
+      return m > 11 ? { year: v.year + 1, month0: 0 } : { year: v.year, month0: m };
     });
   };
 
@@ -110,7 +116,7 @@ export function ThreadDatePicker({ daysWithActivity, onPick }: Props) {
             title="Saltar a fecha"
             aria-label="Calendario"
           >
-            <Icon.Disc size={13} />
+            <Icon.Calendar size={13} />
             <span style={{ marginLeft: 6, fontSize: 12 }}>Calendario</span>
           </button>
         )}
@@ -147,10 +153,7 @@ export function ThreadDatePicker({ daysWithActivity, onPick }: Props) {
               <div style={{ fontSize: 12.5, fontWeight: 600 }}>
                 {MONTHS_ES[view.month0]} {view.year}
                 {activityInMonth > 0 && (
-                  <span
-                    className="muted"
-                    style={{ marginLeft: 6, fontSize: 11, fontWeight: 400 }}
-                  >
+                  <span className="muted" style={{ marginLeft: 6, fontSize: 11, fontWeight: 400 }}>
                     · {activityInMonth} msj
                   </span>
                 )}
@@ -205,9 +208,7 @@ export function ThreadDatePicker({ daysWithActivity, onPick }: Props) {
                   today.getMonth() === view.month0 &&
                   today.getDate() === day;
                 // Dot opacity scales 0.3 → 1 based on relative density.
-                const opacity = hasActivity
-                  ? 0.3 + 0.7 * Math.min(1, count / maxPerDay)
-                  : 0;
+                const opacity = hasActivity ? 0.3 + 0.7 * Math.min(1, count / maxPerDay) : 0;
                 return (
                   <button
                     key={i}
@@ -219,23 +220,15 @@ export function ThreadDatePicker({ daysWithActivity, onPick }: Props) {
                     }}
                     disabled={!hasActivity}
                     title={
-                      hasActivity
-                        ? `${count} mensaje${count === 1 ? "" : "s"}`
-                        : "Sin actividad"
+                      hasActivity ? `${count} mensaje${count === 1 ? "" : "s"}` : "Sin actividad"
                     }
                     style={{
                       position: "relative",
                       aspectRatio: "1",
                       borderRadius: 6,
-                      border: isToday
-                        ? "1.5px solid var(--accent-amber)"
-                        : "1px solid transparent",
-                      background: hasActivity
-                        ? "var(--bg-2)"
-                        : "transparent",
-                      color: hasActivity
-                        ? "var(--text-1)"
-                        : "var(--text-3)",
+                      border: isToday ? "1.5px solid var(--accent-amber)" : "1px solid transparent",
+                      background: hasActivity ? "var(--bg-2)" : "transparent",
+                      color: hasActivity ? "var(--text-1)" : "var(--text-3)",
                       fontSize: 11.5,
                       cursor: hasActivity ? "pointer" : "default",
                       padding: 0,

@@ -15,7 +15,15 @@ interface BtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: IconName | string;
   iconR?: IconName | string;
 }
-export function Btn({ variant = "ghost", size, icon, iconR, children, className = "", ...p }: BtnProps) {
+export function Btn({
+  variant = "ghost",
+  size,
+  icon,
+  iconR,
+  children,
+  className = "",
+  ...p
+}: BtnProps) {
   const cls = [
     "btn",
     "btn--" + variant,
@@ -38,7 +46,15 @@ export function Btn({ variant = "ghost", size, icon, iconR, children, className 
 }
 
 /* ---- Tooltip ---- */
-export function TT({ label, children, side }: { label: ReactNode; children: ReactNode; side?: "r" }) {
+export function TT({
+  label,
+  children,
+  side,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  side?: "r";
+}) {
   return (
     <span className="tt">
       {children}
@@ -116,14 +132,27 @@ interface CardProps {
   /** Color del chip del icono de título (gradiente). Default: --accent. */
   iconColor?: string;
   extra?: ReactNode;
-  accent?: string;
+  /** Barra de acento a la izquierda. Un color (`"var(--iris)"`) la pinta con ese
+   *  tono; `true` la activa con el color de sección por defecto del CSS. */
+  accent?: string | boolean;
   children: ReactNode;
   pad?: boolean;
   className?: string;
   bodyStyle?: CSSProperties;
   style?: CSSProperties;
 }
-export function Card({ title, icon, iconColor, extra, accent, children, pad = true, className = "", bodyStyle, style }: CardProps) {
+export function Card({
+  title,
+  icon,
+  iconColor,
+  extra,
+  accent,
+  children,
+  pad = true,
+  className = "",
+  bodyStyle,
+  style,
+}: CardProps) {
   // Sin iconColor explícito, el chip del título toma el color de la sección
   // activa (variedad de color por página); cae a --accent fuera del shell.
   const sectionColor = useContext(SectionColorContext);
@@ -131,7 +160,10 @@ export function Card({ title, icon, iconColor, extra, accent, children, pad = tr
   return (
     <div
       className={"card " + (accent ? "card__accent-bar " : "") + className}
-      style={{ ...(accent ? ({ "--_c": accent } as CSSProperties) : {}), ...style }}
+      style={{
+        ...(typeof accent === "string" ? ({ "--_c": accent } as CSSProperties) : {}),
+        ...style,
+      }}
     >
       {title && (
         <div className="card__head">
@@ -176,7 +208,11 @@ export function Stat({ icon, color, label, value, sub, delta, deltaUp }: StatPro
       <div className="stat__sub">
         {delta != null && (
           <span className={"delta " + (deltaUp ? "delta--up" : "delta--down")}>
-            <Icon name="trending" size={13} style={deltaUp ? undefined : { transform: "scaleY(-1)" }} />
+            <Icon
+              name="trending"
+              size={13}
+              style={deltaUp ? undefined : { transform: "scaleY(-1)" }}
+            />
             {delta > 0 ? "+" : ""}
             {delta}%
           </span>
@@ -262,11 +298,17 @@ export function AreaChart({
   const min = 0;
   const X = (i: number) => pad + (i / (series.length - 1)) * (w - pad * 2);
   const Y = (v: number) => h - pad - ((v - min) / (max - min)) * (h - pad * 2);
-  const path = (s: number[]) => s.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(" ");
+  const path = (s: number[]) =>
+    s.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(" ");
   const area = path(series) + ` L${X(series.length - 1)} ${h - pad} L${X(0)} ${h - pad} Z`;
   const id = "g" + Math.abs(series.reduce((a, b) => a + b, series.length)).toString(36);
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} width="100%" preserveAspectRatio="none" style={{ display: "block" }}>
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      width="100%"
+      preserveAspectRatio="none"
+      style={{ display: "block" }}
+    >
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.24" />
@@ -274,19 +316,49 @@ export function AreaChart({
         </linearGradient>
       </defs>
       {[0.25, 0.5, 0.75].map((f) => (
-        <line key={f} x1={pad} x2={w - pad} y1={h * f} y2={h * f} stroke="var(--border-1)" strokeDasharray="3 5" />
+        <line
+          key={f}
+          x1={pad}
+          x2={w - pad}
+          y1={h * f}
+          y2={h * f}
+          stroke="var(--border-1)"
+          strokeDasharray="3 5"
+        />
       ))}
       {prev && (
-        <path d={path(prev)} fill="none" stroke="var(--text-3)" strokeWidth="2" strokeDasharray="5 5" opacity="0.5" />
+        <path
+          d={path(prev)}
+          fill="none"
+          stroke="var(--text-3)"
+          strokeWidth="2"
+          strokeDasharray="5 5"
+          opacity="0.5"
+        />
       )}
       <path d={area} fill={`url(#${id})`} />
-      <path d={path(series)} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d={path(series)}
+        fill="none"
+        stroke={color}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 /* ---- Mini bars ---- */
-export function MiniBars({ data, color = "var(--accent)", h = 40 }: { data: number[]; color?: string; h?: number }) {
+export function MiniBars({
+  data,
+  color = "var(--accent)",
+  h = 40,
+}: {
+  data: number[];
+  color?: string;
+  h?: number;
+}) {
   const max = Math.max(...data) || 1;
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: h }}>

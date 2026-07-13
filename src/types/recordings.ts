@@ -17,6 +17,7 @@ export interface RecentLead {
   source?: string;
   sfLeadId?: string;
   updatedAt?: string;
+  createdAt?: string;
   lastActivity?: {
     type?: string;
     channel?: string;

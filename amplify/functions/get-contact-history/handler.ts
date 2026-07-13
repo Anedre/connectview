@@ -12,7 +12,12 @@ import {
   ListProfileObjectsCommand,
 } from "@aws-sdk/client-customer-profiles";
 import { resolveConnect } from "../_shared/tenantConnect";
-import { readRecordingsCache, writeRecordingsCache, getCachedName, putCachedName } from "../_shared/recordingsCache";
+import {
+  readRecordingsCache,
+  writeRecordingsCache,
+  getCachedName,
+  putCachedName,
+} from "../_shared/recordingsCache";
 import { DynamoDBClient, BatchGetItemCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 
@@ -32,7 +37,10 @@ let CUSTOMER_PROFILES_DOMAIN = LEGACY_CUSTOMER_PROFILES_DOMAIN;
 const userCache = new Map<string, string>();
 const queueCache = new Map<string, string>();
 // Sentiment por contacto (Contact Lens) vive en connectview-contacts (PK contactId);
-// lo mergeamos al historial para el heatmap coloreado por tono del día.
+// lo mergeamos al historial para el heatmap coloreado por tono del día. Este
+// client legacy (creds de Novasys) es el FALLBACK para el tenant fundador; para
+// tenants BYO usamos el DynamoDB assumed del tenant (ver handler) — si no, el
+// heatmap salía SIEMPRE neutro porque leíamos la tabla de Novasys, no la suya.
 const contactsDynamo = new DynamoDBClient({});
 const CONTACTS_TABLE = process.env.CONTACTS_TABLE_NAME || "connectview-contacts";
 
@@ -58,13 +66,16 @@ async function resolveAgentUsername(agentId: string): Promise<string> {
   if (userCache.has(k)) return userCache.get(k)!;
   // Caché persistente (DynamoDB) — sobrevive cold starts (era el grueso del costo).
   const persisted = await getCachedName(instanceId, `user_${agentId}`);
-  if (persisted) { userCache.set(k, persisted); return persisted; }
+  if (persisted) {
+    userCache.set(k, persisted);
+    return persisted;
+  }
   try {
     const res = await connect.send(
       new DescribeUserCommand({
         InstanceId: instanceId,
         UserId: agentId,
-      })
+      }),
     );
     const username = res.User?.Username || agentId;
     userCache.set(k, username);
@@ -81,13 +92,16 @@ async function resolveQueueName(queueId: string): Promise<string> {
   const k = `${instanceId}:${queueId}`;
   if (queueCache.has(k)) return queueCache.get(k)!;
   const persisted = await getCachedName(instanceId, `queue_${queueId}`);
-  if (persisted) { queueCache.set(k, persisted); return persisted; }
+  if (persisted) {
+    queueCache.set(k, persisted);
+    return persisted;
+  }
   try {
     const res = await connect.send(
       new DescribeQueueCommand({
         InstanceId: instanceId,
         QueueId: queueId,
-      })
+      }),
     );
     const name = res.Queue?.Name || queueId;
     queueCache.set(k, name);
@@ -104,7 +118,7 @@ async function resolveQueueName(queueId: string): Promise<string> {
 function deriveSubChannel(
   channel: string,
   initiationMethod: string | undefined,
-  customerEndpointType: string | undefined
+  customerEndpointType: string | undefined,
 ): string | undefined {
   if (channel !== "CHAT") return undefined;
   if (initiationMethod === "API") return "Messaging API";
@@ -137,7 +151,7 @@ async function findProfileId(phone: string): Promise<string | null> {
         DomainName: CUSTOMER_PROFILES_DOMAIN,
         KeyName: "_phone",
         Values: [phone],
-      })
+      }),
     );
     return res.Items?.[0]?.ProfileId || null;
   } catch (err) {
@@ -146,10 +160,7 @@ async function findProfileId(phone: string): Promise<string | null> {
   }
 }
 
-async function listProfileCtrs(
-  profileId: string,
-  cap: number
-): Promise<HistoricalContact[]> {
+async function listProfileCtrs(profileId: string, cap: number): Promise<HistoricalContact[]> {
   // ListProfileObjects caps each call at 100; paginate with NextToken until
   // we've gathered enough rows. cap is the upper bound; we never exceed it
   // because the frontend only ever renders ~200 entries.
@@ -165,7 +176,7 @@ async function listProfileCtrs(
           ObjectTypeName: "CTR",
           MaxResults: 100,
           NextToken: nextToken,
-        })
+        }),
       );
     items.push(...(res.Items || []));
     if (!res.NextToken) break;
@@ -187,30 +198,30 @@ async function listProfileCtrs(
         queueId ? resolveQueueName(queueId) : Promise.resolve(ctr.queue?.name || ""),
       ]);
 
-      const initiationMs = typeof ctr.initiationTimestamp === "number"
-        ? ctr.initiationTimestamp
-        : Date.parse(ctr.initiationTimestamp || "") || 0;
-      const disconnectMs = typeof ctr.disconnectTimestamp === "number"
-        ? ctr.disconnectTimestamp
-        : Date.parse(ctr.disconnectTimestamp || "") || 0;
-      const duration = initiationMs && disconnectMs
-        ? Math.max(0, Math.round((disconnectMs - initiationMs) / 1000))
-        : 0;
+      const initiationMs =
+        typeof ctr.initiationTimestamp === "number"
+          ? ctr.initiationTimestamp
+          : Date.parse(ctr.initiationTimestamp || "") || 0;
+      const disconnectMs =
+        typeof ctr.disconnectTimestamp === "number"
+          ? ctr.disconnectTimestamp
+          : Date.parse(ctr.disconnectTimestamp || "") || 0;
+      const duration =
+        initiationMs && disconnectMs
+          ? Math.max(0, Math.round((disconnectMs - initiationMs) / 1000))
+          : 0;
 
       // Normalizá el canal (CHAT/chat/Chat → CHAT) para que deriveSubChannel
       // pueda etiquetar "WhatsApp/SMS" y el frontend cuente bien. (#grabaciones)
       const channel =
-        String(ctr.channel ?? ctr.Channel ?? "").trim().toUpperCase() ||
-        "UNKNOWN";
+        String(ctr.channel ?? ctr.Channel ?? "")
+          .trim()
+          .toUpperCase() || "UNKNOWN";
 
       return {
         contactId: ctr.contactId,
         channel,
-        subChannel: deriveSubChannel(
-          channel,
-          ctr.initiationMethod,
-          ctr.customerEndpoint?.type
-        ),
+        subChannel: deriveSubChannel(channel, ctr.initiationMethod, ctr.customerEndpoint?.type),
         initiationTimestamp: initiationMs ? new Date(initiationMs).toISOString() : "",
         disconnectTimestamp: disconnectMs ? new Date(disconnectMs).toISOString() : "",
         duration,
@@ -221,7 +232,7 @@ async function listProfileCtrs(
         customerEndpoint: ctr.customerEndpoint?.address,
         hasRecording: Array.isArray(ctr.recordings) && ctr.recordings.length > 0,
       };
-    })
+    }),
   );
 
   return rows;
@@ -229,7 +240,7 @@ async function listProfileCtrs(
 
 async function searchContactsFallback(
   phone: string,
-  maxDays: number
+  maxDays: number,
 ): Promise<HistoricalContact[]> {
   // SearchContacts limita el TimeRange a 1345h (~56 días). Si el front pide más
   // (el perfil pide 90), capamos a 55 para no tirar 500 (que dejaba el panel en
@@ -256,7 +267,7 @@ async function searchContactsFallback(
       // subconjunto arbitrario de la ventana. Sin esto, ventanas grandes devolvían 0.
       Sort: { FieldName: "INITIATION_TIMESTAMP", Order: "DESCENDING" },
       MaxResults: 100,
-    })
+    }),
   );
 
   // SearchContacts NO incluye el CustomerEndpoint en el resumen, así que hay que
@@ -276,20 +287,21 @@ async function searchContactsFallback(
             new DescribeContactCommand({
               InstanceId: instanceId,
               ContactId: c.Id!,
-            })
+            }),
           );
           return detail.Contact || null;
         } catch {
           return null;
         }
-      })
+      }),
     )
+  )
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ).filter((x): x is any => !!x);
+    .filter((x): x is any => !!x);
 
   const matching = detailed.filter(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (contact: any) => contact.CustomerEndpoint?.Address === phone
+    (contact: any) => contact.CustomerEndpoint?.Address === phone,
   );
 
   const rows = await Promise.all(
@@ -298,8 +310,8 @@ async function searchContactsFallback(
       const duration =
         contact.DisconnectTimestamp && contact.InitiationTimestamp
           ? Math.round(
-              (contact.DisconnectTimestamp.getTime() -
-                contact.InitiationTimestamp.getTime()) / 1000
+              (contact.DisconnectTimestamp.getTime() - contact.InitiationTimestamp.getTime()) /
+                1000,
             )
           : 0;
       const agentId = contact.AgentInfo?.Id || "";
@@ -314,7 +326,7 @@ async function searchContactsFallback(
         subChannel: deriveSubChannel(
           contact.Channel || "",
           contact.InitiationMethod,
-          contact.CustomerEndpoint?.Type
+          contact.CustomerEndpoint?.Type,
         ),
         initiationTimestamp: contact.InitiationTimestamp?.toISOString() || "",
         disconnectTimestamp: contact.DisconnectTimestamp?.toISOString() || "",
@@ -326,22 +338,28 @@ async function searchContactsFallback(
         customerEndpoint: contact.CustomerEndpoint?.Address,
         hasRecording: (contact.Recordings?.length || 0) > 0,
       };
-    })
+    }),
   );
 
   return rows;
 }
 
 /** Mergea el sentimiento de Contact Lens (connectview-contacts, PK contactId) al
- *  historial — habilita el heatmap coloreado por tono del día. Best-effort. */
-async function enrichSentiment(rows: HistoricalContact[]): Promise<void> {
+ *  historial — habilita el heatmap coloreado por tono del día. Best-effort.
+ *  `dynamoClient` es el DynamoDB del TENANT (creds assumed) para BYO, o el legacy
+ *  de Novasys para el tenant fundador. Sin esto el heatmap de un tenant BYO leía
+ *  la tabla de Novasys (siempre vacía para él) → neutro permanente. */
+async function enrichSentiment(
+  rows: HistoricalContact[],
+  dynamoClient: DynamoDBClient,
+): Promise<void> {
   const ids = [...new Set(rows.map((r) => r.contactId).filter(Boolean))];
   if (!ids.length) return;
   const map = new Map<string, string>();
   for (let i = 0; i < ids.length; i += 100) {
     const batch = ids.slice(i, i + 100);
     try {
-      const res = await contactsDynamo.send(
+      const res = await dynamoClient.send(
         new BatchGetItemCommand({
           RequestItems: {
             [CONTACTS_TABLE]: {
@@ -349,7 +367,7 @@ async function enrichSentiment(rows: HistoricalContact[]): Promise<void> {
               ProjectionExpression: "contactId, sentiment",
             },
           },
-        })
+        }),
       );
       for (const it of res.Responses?.[CONTACTS_TABLE] || []) {
         const u = unmarshall(it) as { contactId?: string; sentiment?: string };
@@ -371,14 +389,25 @@ export const handler: Handler = async (event: any) => {
   // Warmup (#perf): EventBridge pinguea {warmup:true} cada ~5min para evitar el
   // cold start. Cortamos antes de cualquier trabajo (resolveConnect/S3/etc).
   if (event?.warmup || event?.queryStringParameters?.warmup) {
-    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: '{"warm":true}' };
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: '{"warm":true}',
+    };
   }
   // BYO (#43+#46): tenant primero, fallback Novasys.
+  // sentimentDynamo = el DynamoDB donde vive el sentiment de ESTE tenant: el del
+  // tenant (creds assumed) para BYO, o el legacy de Novasys para el fundador.
+  let sentimentDynamo: DynamoDBClient = contactsDynamo;
   {
     const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);
     connect = r.client;
     instanceId = r.instanceId;
     profiles = r.customerProfiles || legacyProfiles;
+    // Tenant BYO → su DynamoDB (connectview-contacts en SU cuenta). Novasys
+    // (r.dynamo undefined) → el legacy. Tenant sin data plane / anónimo →
+    // blockedDynamoClient (reads vacío) → heatmap neutro, sin leak de Novasys.
+    sentimentDynamo = r.dynamo || contactsDynamo;
     // Fail-closed: tenant real sin CP resuelto → "" (Strategy 1 se saltea y
     // cae a SearchContacts del Connect del tenant), NUNCA el dominio de Novasys.
     CUSTOMER_PROFILES_DOMAIN = r.tenantScoped
@@ -409,7 +438,12 @@ export const handler: Handler = async (event: any) => {
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, source: "cache", totalContacts: cached.length, contacts: cached }),
+        body: JSON.stringify({
+          phone,
+          source: "cache",
+          totalContacts: cached.length,
+          contacts: cached,
+        }),
       };
     }
   }
@@ -439,13 +473,12 @@ export const handler: Handler = async (event: any) => {
     // Sort newest first
     contacts.sort(
       (a, b) =>
-        new Date(b.initiationTimestamp).getTime() -
-        new Date(a.initiationTimestamp).getTime()
+        new Date(b.initiationTimestamp).getTime() - new Date(a.initiationTimestamp).getTime(),
     );
 
     // Enriquecé con el sentimiento de Contact Lens (connectview-contacts) para el
     // heatmap coloreado por tono del día. Best-effort; se cachea junto al resto.
-    await enrichSentiment(contacts);
+    await enrichSentiment(contacts, sentimentDynamo);
 
     // Poblá el caché para las próximas lecturas (await: en Lambda el trabajo
     // post-return no se completa). Best-effort — si falla, no rompe la respuesta.

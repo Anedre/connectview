@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Mail, Paperclip } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
-import { useContactDetail } from "@/hooks/useContactDetail";
+import { useCallHistory, type CallHistoryRow } from "@/hooks/useCallHistory";
+import { useContactDetail, contactDetailQueryOptions } from "@/hooks/useContactDetail";
 import * as Icon from "@/components/vox/primitives";
 import { sanitizeText } from "@/lib/utils";
 
@@ -22,27 +24,13 @@ interface Props {
   customerKey: string | null;
 }
 
-interface EmailRow {
-  contactId: string;
-  channel: string;
-  initiationTimestamp: string;
-  agentUsername: string;
-  queueName: string;
-  customerEndpoint?: string;
-}
-
-interface HistoryResponse {
-  totalContacts: number;
-  contacts: EmailRow[];
-}
-
 interface ThreadGroup {
   /** Normalized subject (lowercased, prefix-stripped). */
   key: string;
   /** Display title (first non-empty subject from members, original case). */
   title: string;
   /** Ordered oldest-first inside the thread for natural reading. */
-  rows: EmailRow[];
+  rows: CallHistoryRow[];
   latestTs: number;
 }
 
@@ -56,82 +44,33 @@ function normalizeSubject(raw: string): { display: string; key: string } {
 }
 
 export function EmailThreadsView({ customerKey }: Props) {
-  const [data, setData] = useState<HistoryResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Historial vía el fetch COMPARTIDO (authedFetch + caché/dedup): antes usaba
+  // fetch() plano sin Bearer → tras el hardening anti-leak devolvía vacío y los
+  // emails no cargaban en producción autenticada. Ahora reusa el mismo caché que
+  // el resto de Grabaciones.
+  const { rows, loading, error } = useCallHistory(customerKey);
 
-  useEffect(() => {
-    setData(null);
-    setError(null);
-    if (!customerKey) return;
-    const ep = getApiEndpoints();
-    const url = ep?.getContactHistory;
-    if (!url) {
-      setError("Endpoint no configurado");
-      return;
-    }
-    const ctrl = new AbortController();
-    setLoading(true);
-    fetch(`${url}?phone=${encodeURIComponent(customerKey)}&limit=200`, {
-      signal: ctrl.signal,
-    })
-      .then((r) => r.json().then((j) => ({ ok: r.ok, status: r.status, j })))
-      .then(({ ok, status, j }) => {
-        if (!ok) throw new Error(j.message || `HTTP ${status}`);
-        setData(j as HistoryResponse);
-      })
-      .catch((e) => {
-        if ((e as Error).name === "AbortError") return;
-        setError(e instanceof Error ? e.message : "Error");
-      })
-      .finally(() => {
-        if (!ctrl.signal.aborted) setLoading(false);
-      });
-    return () => ctrl.abort();
-  }, [customerKey]);
+  const emailRows = useMemo(
+    () => rows.filter((c) => (c.channel || "").toUpperCase() === "EMAIL"),
+    [rows],
+  );
 
-  const emailRows = useMemo(() => {
-    if (!data) return [];
-    return (data.contacts || []).filter(
-      (c) => (c.channel || "").toUpperCase() === "EMAIL"
-    );
-  }, [data]);
-
-  // We need subjects to group — fetch each detail in parallel to obtain the
-  // Subject (Contact.Name in DescribeContact). Light request fan-out: history
-  // is capped at 200 → at most 200 detail calls, but the typical customer has
-  // <20 emails.
-  const [subjects, setSubjects] = useState<Record<string, string>>({});
-  useEffect(() => {
-    if (emailRows.length === 0) {
-      setSubjects({});
-      return;
-    }
-    const ep = getApiEndpoints();
-    const url = ep?.getContactDetail;
-    if (!url) return;
-    let cancelled = false;
+  // Necesitamos los subjects para agrupar hilos. Los precargamos con la MISMA
+  // queryKey de useContactDetail (["contactDetail", id]) → cuando cada
+  // EmailMessageRow reabre su detalle, sale del caché sin un segundo fetch. Esto
+  // elimina el doble fetch N+1 anterior (subject por fetch plano + detalle por hook).
+  const detailUrl = getApiEndpoints()?.getContactDetail;
+  const detailQueries = useQueries({
+    queries: emailRows.map((r) => contactDetailQueryOptions(r.contactId, detailUrl)),
+  });
+  const subjects = useMemo(() => {
     const out: Record<string, string> = {};
-    Promise.all(
-      emailRows.map(async (row) => {
-        try {
-          const r = await fetch(
-            `${url}?contactId=${encodeURIComponent(row.contactId)}`
-          );
-          if (!r.ok) return;
-          const j = await r.json();
-          out[row.contactId] = j.subject || "";
-        } catch {
-          // ignore individual failures
-        }
-      })
-    ).then(() => {
-      if (!cancelled) setSubjects(out);
+    emailRows.forEach((r, i) => {
+      const subj = detailQueries[i]?.data?.subject;
+      if (subj) out[r.contactId] = subj;
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [emailRows]);
+    return out;
+  }, [emailRows, detailQueries]);
 
   const threads = useMemo<ThreadGroup[]>(() => {
     const buckets = new Map<string, ThreadGroup>();
@@ -151,8 +90,7 @@ export function EmailThreadsView({ customerKey }: Props) {
     for (const g of buckets.values()) {
       g.rows.sort(
         (a, b) =>
-          (Date.parse(a.initiationTimestamp) || 0) -
-          (Date.parse(b.initiationTimestamp) || 0)
+          (Date.parse(a.initiationTimestamp) || 0) - (Date.parse(b.initiationTimestamp) || 0),
       );
     }
     return Array.from(buckets.values()).sort((a, b) => b.latestTs - a.latestTs);
@@ -225,8 +163,8 @@ export function EmailThreadsView({ customerKey }: Props) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>{customerKey}</div>
           <div className="muted" style={{ fontSize: 10.5, marginTop: 1 }}>
-            {threads.length} hilo{threads.length === 1 ? "" : "s"} ·{" "}
-            {emailRows.length} email{emailRows.length === 1 ? "" : "s"}
+            {threads.length} hilo{threads.length === 1 ? "" : "s"} · {emailRows.length} email
+            {emailRows.length === 1 ? "" : "s"}
           </div>
         </div>
       </div>
@@ -246,9 +184,7 @@ export function EmailThreadsView({ customerKey }: Props) {
             key={g.key}
             group={g}
             expanded={openKey === g.key}
-            onToggle={() =>
-              setOpenKey((cur) => (cur === g.key ? null : g.key))
-            }
+            onToggle={() => setOpenKey((cur) => (cur === g.key ? null : g.key))}
           />
         ))}
       </div>
@@ -320,10 +256,7 @@ function EmailThreadCard({
           >
             {group.title}
           </div>
-          <div
-            className="muted"
-            style={{ fontSize: 10.5, marginTop: 2 }}
-          >
+          <div className="muted" style={{ fontSize: 10.5, marginTop: 2 }}>
             {group.rows.length} mensaje{group.rows.length === 1 ? "" : "s"} · último {relativeAgo}
           </div>
         </div>
@@ -358,7 +291,7 @@ function EmailThreadCard({
   );
 }
 
-function EmailMessageRow({ row }: { row: EmailRow }) {
+function EmailMessageRow({ row }: { row: CallHistoryRow }) {
   const { detail, loading } = useContactDetail(row.contactId);
 
   // Heuristic: AGENT → outbound (right-aligned, blue tint), CUSTOMER → inbound
@@ -376,7 +309,10 @@ function EmailMessageRow({ row }: { row: EmailRow }) {
     participant?: string;
     content?: string;
   }>;
-  const body = segs.map((s) => s.content || "").filter(Boolean).join("\n\n");
+  const body = segs
+    .map((s) => s.content || "")
+    .filter(Boolean)
+    .join("\n\n");
   const attrs = detail?.attributes || {};
   const from =
     attrs.email_from ||
@@ -392,9 +328,7 @@ function EmailMessageRow({ row }: { row: EmailRow }) {
   return (
     <div
       style={{
-        background: isOutbound
-          ? "var(--accent-blue-soft, #e6f0ff)"
-          : "var(--bg-2)",
+        background: isOutbound ? "var(--accent-blue-soft, #e6f0ff)" : "var(--bg-2)",
         border: "1px solid var(--border-1)",
         borderRadius: 8,
         padding: 10,

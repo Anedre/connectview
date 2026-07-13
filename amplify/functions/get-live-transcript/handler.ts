@@ -84,46 +84,58 @@ export const handler: Handler = async (event: any) => {
       issueText?: string;
     }> = [];
 
-    // SINGLE page, no pagination. With MaxResults: 100 a live conversation easily fits.
-    // Pagination + throttling retries was killing the 10s Lambda budget and causing 502s.
-    // If a call ever exceeds 100 segments, we just lose the oldest ones — better than nothing.
-    const result = await client.send(
-      new ListRealtimeContactAnalysisSegmentsCommand({
-        InstanceId: instanceId,
-        ContactId: contactId,
-        MaxResults: 100,
-      }),
-    );
+    // Paginación ACOTADA: hasta MAX_PAGES × 100 = 500 segmentos. La paginación
+    // ILIMITADA + reintentos de throttling reventaba el budget de 10s (502s); un
+    // tope duro cubre llamadas largas sin ese riesgo. Con maxAttempts:1 cada
+    // página es UNA sola request (sin backoff). Una conversación corta (<100
+    // segmentos) sale en una única página, igual que antes.
+    const MAX_PAGES = 5;
+    let nextToken: string | undefined = undefined;
+    let pages = 0;
+    do {
+      const result: import("@aws-sdk/client-connect-contact-lens").ListRealtimeContactAnalysisSegmentsCommandOutput =
+        await client.send(
+          new ListRealtimeContactAnalysisSegmentsCommand({
+            InstanceId: instanceId,
+            ContactId: contactId,
+            MaxResults: 100,
+            NextToken: nextToken,
+          }),
+        );
 
-    for (const s of result.Segments || []) {
-      if (s.Transcript) {
-        segments.push({
-          type: "transcript",
-          // ParticipantRole ("AGENT"/"CUSTOMER") is the canonical field; ParticipantId may be a UUID.
-          participant: s.Transcript.ParticipantRole || s.Transcript.ParticipantId || "UNKNOWN",
-          content: s.Transcript.Content || "",
-          sentiment: s.Transcript.Sentiment,
-          beginOffsetMs: s.Transcript.BeginOffsetMillis || 0,
-          endOffsetMs: s.Transcript.EndOffsetMillis || 0,
-          issueText: s.Transcript.IssuesDetected?.[0]
-            ? s.Transcript.Content?.substring(
-                s.Transcript.IssuesDetected[0].CharacterOffsets?.BeginOffsetChar || 0,
-                s.Transcript.IssuesDetected[0].CharacterOffsets?.EndOffsetChar || 0,
-              )
-            : undefined,
-        });
-      }
-      if (s.Categories) {
-        for (const matched of s.Categories.MatchedCategories || []) {
+      for (const s of result.Segments || []) {
+        if (s.Transcript) {
           segments.push({
-            type: "category",
-            categoryName: matched,
-            beginOffsetMs: 0,
-            endOffsetMs: 0,
+            type: "transcript",
+            // ParticipantRole ("AGENT"/"CUSTOMER") is the canonical field; ParticipantId may be a UUID.
+            participant: s.Transcript.ParticipantRole || s.Transcript.ParticipantId || "UNKNOWN",
+            content: s.Transcript.Content || "",
+            sentiment: s.Transcript.Sentiment,
+            beginOffsetMs: s.Transcript.BeginOffsetMillis || 0,
+            endOffsetMs: s.Transcript.EndOffsetMillis || 0,
+            issueText: s.Transcript.IssuesDetected?.[0]
+              ? s.Transcript.Content?.substring(
+                  s.Transcript.IssuesDetected[0].CharacterOffsets?.BeginOffsetChar || 0,
+                  s.Transcript.IssuesDetected[0].CharacterOffsets?.EndOffsetChar || 0,
+                )
+              : undefined,
           });
         }
+        if (s.Categories) {
+          for (const matched of s.Categories.MatchedCategories || []) {
+            segments.push({
+              type: "category",
+              categoryName: matched,
+              beginOffsetMs: 0,
+              endOffsetMs: 0,
+            });
+          }
+        }
       }
-    }
+
+      nextToken = result.NextToken;
+      pages++;
+    } while (nextToken && pages < MAX_PAGES);
 
     // Get the contact start timestamp so the frontend can render absolute clock times.
     // Cached after first lookup so this only adds ~150ms once per contactId.

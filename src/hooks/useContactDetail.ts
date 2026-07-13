@@ -125,15 +125,15 @@ export interface ContactDetail {
 }
 
 /**
- * Fetch the full detail of a single contact: metadata + presigned
- * audio URL + transcript + attachments. Used by the ContactDetailModal
- * the agent opens from the history timeline.
+ * Opciones de react-query para el detalle de UN contacto. Extraídas para que
+ * tanto `useContactDetail` (single) como consumidores que cargan varios a la vez
+ * (p.ej. EmailThreadsView con `useQueries`) compartan la MISMA queryKey → el
+ * caché se deduplica: precargar N subjects no cuesta fetches extra cuando cada
+ * fila luego reabre su propio detalle. `contactId` vacío deshabilita la query.
  */
-export function useContactDetail(contactId: string | null) {
-  const url = getApiEndpoints()?.getContactDetail;
-
-  const query = useQuery({
-    queryKey: ["contactDetail", contactId],
+export function contactDetailQueryOptions(contactId: string | null, url: string | undefined) {
+  return {
+    queryKey: ["contactDetail", contactId] as const,
     enabled: !!contactId && !!url,
     // El detalle de un contacto cerrado (transcript / grabación / adjuntos /
     // wrap-up) es prácticamente inmutable → lo cacheamos: reabrir un contacto
@@ -142,12 +142,23 @@ export function useContactDetail(contactId: string | null) {
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     retry: 1,
-    queryFn: async ({ signal }) => {
+    queryFn: async ({ signal }: { signal?: AbortSignal }) => {
       const r = await authedFetch(`${url}?contactId=${encodeURIComponent(contactId!)}`, { signal });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return (await r.json()) as ContactDetail;
     },
-  });
+  };
+}
+
+/**
+ * Fetch the full detail of a single contact: metadata + presigned
+ * audio URL + transcript + attachments. Used by the ContactDetailModal
+ * the agent opens from the history timeline.
+ */
+export function useContactDetail(contactId: string | null) {
+  const url = getApiEndpoints()?.getContactDetail;
+
+  const query = useQuery(contactDetailQueryOptions(contactId, url));
 
   return {
     detail: (query.data as ContactDetail | undefined) ?? null,
@@ -155,9 +166,9 @@ export function useContactDetail(contactId: string | null) {
     error: !url
       ? "Endpoint getContactDetail no configurado"
       : query.error instanceof Error
-      ? query.error.message
-      : query.error
-      ? "Error"
-      : null,
+        ? query.error.message
+        : query.error
+          ? "Error"
+          : null,
   };
 }
