@@ -37,7 +37,6 @@ export function buildInboundPackage(
   webhookUrl: string,
   inboundToken: string,
 ): Record<string, string> {
-  const origin = new URL(webhookUrl).origin; // RemoteSiteSetting usa el host, no el path
   const ep = apexEscape(webhookUrl);
   const tok = apexEscape(inboundToken);
 
@@ -127,19 +126,13 @@ private class VoxLeadSyncTest {
     <status>Active</status>
 </ApexTrigger>`;
 
-  const remoteSite = `<?xml version="1.0" encoding="UTF-8"?>
-<RemoteSiteSetting xmlns="http://soap.sforce.com/2006/04/metadata">
-    <description>ARIA — webhook de sincronización de Leads</description>
-    <disableProtocolSecurity>false</disableProtocolSecurity>
-    <isActive>true</isActive>
-    <url>${xmlEscape(origin)}</url>
-</RemoteSiteSetting>`;
-
+  // El RemoteSiteSetting NO va en el ZIP: el Metadata API deploy lo reporta
+  // "not found in zipped directory" aunque el archivo esté presente (los Apex del
+  // mismo ZIP sí se despliegan). Se crea aparte con upsertMetadata (CRUD síncrono).
   const packageXml = `<?xml version="1.0" encoding="UTF-8"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
     <types><members>VoxLeadSync</members><members>VoxLeadSyncTest</members><name>ApexClass</name></types>
     <types><members>VoxLeadSyncTrigger</members><name>ApexTrigger</name></types>
-    <types><members>Vox_Inbound_Webhook</members><name>RemoteSiteSetting</name></types>
     <version>${MD_VERSION}</version>
 </Package>`;
 
@@ -151,7 +144,6 @@ private class VoxLeadSyncTest {
     "classes/VoxLeadSyncTest.cls-meta.xml": clsMeta,
     "triggers/VoxLeadSyncTrigger.trigger": apexTrigger,
     "triggers/VoxLeadSyncTrigger.trigger-meta.xml": trgMeta,
-    "remoteSiteSettings/Vox_Inbound_Webhook.remoteSiteSetting": remoteSite,
   };
 }
 
@@ -171,7 +163,7 @@ async function metadataSoap(
   body: string,
 ): Promise<string> {
   const envelope = `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:met="http://soap.sforce.com/2006/04/metadata">
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:met="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <soapenv:Header><met:SessionHeader><met:sessionId>${xmlEscape(sessionId)}</met:sessionId></met:SessionHeader></soapenv:Header>
   <soapenv:Body>${body}</soapenv:Body>
 </soapenv:Envelope>`;
@@ -186,6 +178,31 @@ async function metadataSoap(
     throw new Error(fault || `Metadata API HTTP ${r.status}`);
   }
   return text;
+}
+
+/** Crea/actualiza el Remote Site (autoriza el callout saliente) vía upsertMetadata
+ *  (CRUD síncrono). Fuera del ZIP: el deploy no reconoce el RemoteSiteSetting
+ *  empaquetado. Idempotente (crea o actualiza por fullName). */
+async function upsertRemoteSite(
+  instanceUrl: string,
+  sessionId: string,
+  webhookUrl: string,
+): Promise<void> {
+  const origin = new URL(webhookUrl).origin; // el Remote Site usa el host, no el path
+  const body =
+    `<met:upsertMetadata><met:metadata xsi:type="met:RemoteSiteSetting">` +
+    `<met:fullName>Vox_Inbound_Webhook</met:fullName>` +
+    `<met:description>ARIA - webhook de sincronizacion de Leads</met:description>` +
+    `<met:disableProtocolSecurity>false</met:disableProtocolSecurity>` +
+    `<met:isActive>true</met:isActive>` +
+    `<met:url>${xmlEscape(origin)}</met:url>` +
+    `</met:metadata></met:upsertMetadata>`;
+  const xml = await metadataSoap(instanceUrl, sessionId, "upsertMetadata", body);
+  if (pick(xml, "success") !== "true") {
+    const err =
+      pick(xml, "errors") || pick(xml, "faultstring") || "no se pudo crear el Remote Site";
+    throw new Error(`RemoteSiteSetting: ${err}`);
+  }
 }
 
 export interface DeployResult {
@@ -203,6 +220,10 @@ export async function deployInboundBridge(
   inboundToken: string,
   budgetMs = 75_000,
 ): Promise<DeployResult> {
+  // 1) Remote Site (autoriza el callout saliente) por CRUD síncrono — el deploy
+  //    ZIP no reconoce este componente. Si el usuario no es admin, lanza aquí.
+  await upsertRemoteSite(instanceUrl, sessionId, webhookUrl);
+  // 2) Apex (trigger + clases + tests) por deploy ZIP.
   const files = buildInboundPackage(webhookUrl, inboundToken);
   const zipB64 = makeZip(files).toString("base64");
 
