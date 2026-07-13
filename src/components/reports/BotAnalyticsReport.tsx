@@ -225,8 +225,8 @@ export function BotAnalyticsReport() {
             width: 34,
             height: 34,
             borderRadius: 10,
-            background: "color-mix(in srgb, #9B6DFF 16%, transparent)",
-            color: "#9B6DFF",
+            background: "color-mix(in srgb, var(--iris) 16%, transparent)",
+            color: "var(--iris)",
             flex: "0 0 auto",
           }}
         >
@@ -264,7 +264,7 @@ export function BotAnalyticsReport() {
           >
             <Kpi
               icon={<Bot size={13} />}
-              color="#9B6DFF"
+              color="var(--iris)"
               label="Conversaciones"
               value={String(data.total)}
               hint={`${data.avgTurns} turnos · ${data.totalToolCalls} acciones`}

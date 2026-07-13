@@ -13,19 +13,19 @@ import type { ContactRecord } from "@/types/monitoring";
  */
 
 const SENTIMENT_META = [
-  { key: "POSITIVE", label: "Positivo", color: "#25B873" },
-  { key: "NEUTRAL", label: "Neutral", color: "#6E8BFF" },
-  { key: "MIXED", label: "Mixto", color: "#F5C518" },
-  { key: "NEGATIVE", label: "Negativo", color: "#ED5257" },
+  { key: "POSITIVE", label: "Positivo" },
+  { key: "NEUTRAL", label: "Neutral" },
+  { key: "MIXED", label: "Mixto" },
+  { key: "NEGATIVE", label: "Negativo" },
 ] as const;
-
-function rgba(hex: string, a: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-}
 
 export function SentimentChart({ contacts }: { contacts: ContactRecord[] }) {
   const t = useChartTokens();
+  // Color por sentimiento desde tokens (reactivo al tema) — misma convención que
+  // el resto de la app (grabaciones): positivo verde · negativo rojo · mixto ámbar
+  // · neutral gris. Antes eran hex crudos que no cambiaban con el dark mode.
+  const colorFor = (key: string) =>
+    key === "POSITIVE" ? t.green : key === "NEGATIVE" ? t.red : key === "MIXED" ? t.gold : t.text3;
 
   const { labels, series } = useMemo(() => {
     const byDay = new Map<string, Record<string, number>>();
@@ -107,8 +107,8 @@ export function SentimentChart({ contacts }: { contacts: ContactRecord[] }) {
           x2: 0,
           y2: 1,
           colorStops: [
-            { offset: 0, color: rgba(s.meta.color, 1) },
-            { offset: 1, color: rgba(s.meta.color, 0.78) },
+            { offset: 0, color: colorFor(s.meta.key) },
+            { offset: 1, color: `color-mix(in srgb, ${colorFor(s.meta.key)} 78%, transparent)` },
           ],
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any,

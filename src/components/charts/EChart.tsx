@@ -90,6 +90,14 @@ export interface ChartTokens {
   bg2: string;
   /** infographic palette: teal · emerald · lime · orange · cyan-teal · amber */
   palette: string[];
+  /** Acentos ARIA resueltos del DOM (valores concretos, reactivos al tema) — para
+   *  que los charts no hardcodeen hex que rompen el dark mode. */
+  cyan: string;
+  green: string;
+  red: string;
+  gold: string;
+  iris: string;
+  coral: string;
 }
 
 const PALETTE = ["#15485A", "#2E9D8E", "#92C73E", "#F2972E", "#1C97A6", "#F5A524"];
@@ -109,6 +117,12 @@ function readTokens(): ChartTokens {
     bg1: cssVar("--bg-1", "#111A2C"),
     bg2: cssVar("--bg-2", "#18243A"),
     palette: PALETTE,
+    cyan: cssVar("--cyan", "#2bc6e6"),
+    green: cssVar("--green", "#33c084"),
+    red: cssVar("--red", "#ed5257"),
+    gold: cssVar("--gold", "#f5c518"),
+    iris: cssVar("--iris", "#9b6dff"),
+    coral: cssVar("--coral", "#ff7a66"),
   };
 }
 
@@ -128,7 +142,13 @@ export function useChartTokens(): ChartTokens {
           prev.text3 === next.text3 &&
           prev.border === next.border &&
           prev.bg1 === next.bg1 &&
-          prev.bg2 === next.bg2;
+          prev.bg2 === next.bg2 &&
+          prev.cyan === next.cyan &&
+          prev.green === next.green &&
+          prev.red === next.red &&
+          prev.gold === next.gold &&
+          prev.iris === next.iris &&
+          prev.coral === next.coral;
         return unchanged ? prev : next; // keep stable ref unless a value changed
       });
     // Only watch the theme switches (class / data-theme) — NOT style, which the

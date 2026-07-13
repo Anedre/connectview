@@ -20,13 +20,13 @@ import { ProgramReport } from "@/components/reports/ProgramReport";
 import { BotAnalyticsReport } from "@/components/reports/BotAnalyticsReport";
 import { ContactsTable } from "@/components/reports/ContactsTable";
 import { FeatureNotice } from "@/components/vox/FeatureNotice";
-import { formatDurationSec } from "@/lib/utils";
 import { ExecBarsEChart } from "@/components/dashboard/exec/ExecEcharts";
 import type { ExecChannelDay } from "@/components/dashboard/exec/execMock";
 import { EChart, useChartTokens } from "@/components/charts/EChart";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { ContactRecord } from "@/types/monitoring";
-import { Icon, Btn, Card, Stat, MiniBars, HeroBand, Num, type IconName } from "@/components/aria";
+import { Icon, Btn, Card, HeroBand, type IconName } from "@/components/aria";
+import { ReportsHero, type ChannelSlice } from "@/components/reports/ReportsHero";
 
 /**
  * ReportsPage — analítica histórica sobre los contactos reales (queryContacts
@@ -129,8 +129,8 @@ function AhtHistogramEChart({ contacts }: { contacts: ContactRecord[] }) {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: "rgba(43,198,230,1)" },
-              { offset: 1, color: "rgba(43,198,230,0.72)" },
+              { offset: 0, color: t.cyan },
+              { offset: 1, color: `color-mix(in srgb, ${t.cyan} 60%, transparent)` },
             ],
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } as any,
@@ -264,34 +264,6 @@ function computeKpis(contacts: ContactRecord[]) {
   };
 }
 
-/** Chip ▲/▼ de comparación vs. el período previo. `invert` = subir es malo (AHT). */
-function DeltaChip({ curr, prev, invert }: { curr: number; prev?: number; invert?: boolean }) {
-  if (prev == null || prev === 0) return null;
-  const pct = Math.round(((curr - prev) / Math.abs(prev)) * 100);
-  if (pct === 0)
-    return (
-      <span style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 600 }}>= vs. previo</span>
-    );
-  const good = invert ? pct < 0 : pct > 0;
-  const color = good ? "var(--green)" : "var(--coral)";
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        fontSize: 11.5,
-        fontWeight: 700,
-        color,
-      }}
-      title="Comparado con el período inmediatamente anterior del mismo largo"
-    >
-      {pct > 0 ? "▲" : "▼"} {Math.abs(pct)}%
-      <span style={{ color: "var(--text-3)", fontWeight: 500 }}>vs. previo</span>
-    </span>
-  );
-}
-
 export function ReportsPage() {
   const { contacts, loading, searchContacts } = useContacts();
   const [range, setRange] = useState<DateRange>(() => {
@@ -369,6 +341,19 @@ export function ReportsPage() {
     };
   }, [contacts]);
 
+  // Mezcla de canales del período (para el hero) — tokens ARIA por canal.
+  const channelMix = useMemo<ChannelSlice[]>(() => {
+    const acc = { voz: 0, wa: 0, chat: 0, email: 0, sms: 0 };
+    for (const c of contacts) acc[normalizeChannel(c.channel)] += 1;
+    return [
+      { key: "voz", label: "Llamadas", count: acc.voz, color: "var(--cyan)" },
+      { key: "wa", label: "WhatsApp", count: acc.wa, color: "var(--green)" },
+      { key: "chat", label: "Chat", count: acc.chat, color: "var(--iris)" },
+      { key: "email", label: "Email", count: acc.email, color: "var(--gold)" },
+      { key: "sms", label: "SMS", count: acc.sms, color: "var(--coral)" },
+    ];
+  }, [contacts]);
+
   const initialLoading = loading && contacts.length === 0;
 
   return (
@@ -423,93 +408,22 @@ export function ReportsPage() {
 
       <FeatureNotice feature="contactLens" />
 
-      {/* Período (REAL: re-consulta queryContacts) — calendario de rango con presets. */}
-      <div className="row" style={{ marginBottom: 16, alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 12.5, color: "var(--text-3)", fontWeight: 600 }}>Período</span>
+      {/* Período (REAL: re-consulta queryContacts) + resumen ejecutivo narrado. */}
+      <div className="row between wrap" style={{ marginBottom: 14, alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 12.5, color: "var(--text-3)", fontWeight: 600 }}>
+          Período de análisis
+        </span>
         <DateRangePicker value={range} onChange={setRange} />
       </div>
 
-      {/* KPIs — familia ARIA (Stat + count-up). */}
-      {initialLoading ? (
-        <div
-          className="grid"
-          style={{
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 16,
-            marginBottom: 20,
-          }}
-        >
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="card" style={{ height: 116 }} />
-          ))}
-        </div>
-      ) : (
-        <div
-          className="grid aria-stagger"
-          style={{
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 16,
-            marginBottom: 20,
-          }}
-        >
-          <Stat
-            icon="headset"
-            color="var(--cyan)"
-            label="Volumen total"
-            value={<Num value={kpis.total} />}
-            sub={
-              <>
-                <DeltaChip curr={kpis.total} prev={prevKpis?.total} />
-                {volumeSpark.length > 1 ? (
-                  <div style={{ marginTop: 6 }}>
-                    <MiniBars data={volumeSpark} color="var(--cyan)" h={26} />
-                  </div>
-                ) : (
-                  <div style={{ color: "var(--text-3)" }}>contactos en el período</div>
-                )}
-              </>
-            }
-          />
-          <Stat
-            icon="clock"
-            color="var(--gold)"
-            label="AHT promedio"
-            value={kpis.avgAht ? formatDurationSec(Math.round(kpis.avgAht)) : "—"}
-            sub={
-              <>
-                <DeltaChip curr={kpis.avgAht} prev={prevKpis?.avgAht} invert />
-                <div style={{ color: "var(--text-3)" }}>
-                  {kpis.medianAht ? `mediana ${formatDurationSec(kpis.medianAht)}` : "sin datos"}
-                </div>
-              </>
-            }
-          />
-          <Stat
-            icon="gauge"
-            color="var(--green)"
-            label="Sentiment positivo"
-            value={<Num value={kpis.posPct} suffix="%" />}
-            sub={
-              <>
-                <DeltaChip curr={kpis.posPct} prev={prevKpis?.posPct} />
-                <div style={{ color: "var(--text-3)" }}>de los contactos analizados</div>
-              </>
-            }
-          />
-          <Stat
-            icon="trending"
-            color="var(--iris)"
-            label="Score neto"
-            value={`${kpis.score >= 0 ? "+" : ""}${Math.round(kpis.score)}`}
-            sub={
-              <>
-                <DeltaChip curr={kpis.score} prev={prevKpis?.score} />
-                <div style={{ color: "var(--text-3)" }}>(positivos − negativos) / total</div>
-              </>
-            }
-          />
-        </div>
-      )}
+      <ReportsHero
+        kpis={kpis}
+        prevKpis={prevKpis}
+        volumeSpark={volumeSpark}
+        channelMix={channelMix}
+        periodLabel={range.label}
+        loading={initialLoading}
+      />
 
       {/* Filtros finos (fecha custom / agente / cola / sentiment) */}
       <div style={{ marginBottom: 16 }}>

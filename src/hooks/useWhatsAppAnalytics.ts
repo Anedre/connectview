@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 
 /**
  * useWhatsAppAnalytics — entrega agregada de WhatsApp desde Meta Graph (Pilar 4 ·
@@ -35,9 +36,14 @@ export function useWhatsAppAnalytics(days = 30) {
 
   useEffect(() => {
     const url = getApiEndpoints()?.getWhatsAppAnalytics;
-    if (!url) { setLoading(false); return; }
+    if (!url) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    fetch(`${url}?days=${days}`)
+    // authedFetch (Bearer): el handler ahora resuelve el WABA/token del TENANT del
+    // JWT; sin token → "no autenticado" (antes fetch plano veía la WABA global).
+    authedFetch(`${url}?days=${days}`)
       .then((r) => r.json())
       .then((d) => setData(d))
       .catch(() => setData(null))

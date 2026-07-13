@@ -8,6 +8,9 @@ export function useContacts() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usingLiveData, setUsingLiveData] = useState(false);
+  // El backend trae hasta un tope (HARD_MAX); `truncated` avisa que el período
+  // excede ese tope y los KPIs son de una muestra (no del total).
+  const [truncated, setTruncated] = useState(false);
 
   const searchContacts = useCallback(async (filters: ContactFilters) => {
     setLoading(true);
@@ -20,31 +23,28 @@ export function useContacts() {
         const params = new URLSearchParams();
         if (filters.startDate) params.set("startDate", filters.startDate);
         if (filters.endDate) params.set("endDate", filters.endDate);
-        if (filters.agentUsername)
-          params.set("agentUsername", filters.agentUsername);
+        if (filters.agentUsername) params.set("agentUsername", filters.agentUsername);
         if (filters.queueName) params.set("queueName", filters.queueName);
         if (filters.sentiment) params.set("sentiment", filters.sentiment);
 
-        const response = await authedFetch(
-          `${endpoints.queryContacts}?${params.toString()}`
-        );
+        const response = await authedFetch(`${endpoints.queryContacts}?${params.toString()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         setContacts(data.contacts || []);
+        setTruncated(!!data.truncated);
         setUsingLiveData(true);
       } else {
         throw new Error("API not configured");
       }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch contacts"
-      );
+      setError(err instanceof Error ? err.message : "Failed to fetch contacts");
       setContacts([]);
+      setTruncated(false);
       setUsingLiveData(false);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  return { contacts, loading, error, usingLiveData, searchContacts };
+  return { contacts, loading, error, usingLiveData, truncated, searchContacts };
 }
