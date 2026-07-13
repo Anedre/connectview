@@ -9,7 +9,9 @@ import {
   Share2,
   Download,
   RefreshCw,
+  Check,
 } from "lucide-react";
+import { buildContactMarkdown, downloadText } from "@/lib/recordingsExport";
 import { Icon, Btn, Card, Pill, Av } from "@/components/aria";
 import type { IconName } from "@/components/aria";
 import { getApiEndpoints } from "@/lib/api";
@@ -31,6 +33,7 @@ import { EmailThreadsView } from "@/components/recordings/EmailThreadsView";
 import { AttachmentsGrid } from "@/components/recordings/AttachmentsGrid";
 import { HistoryTimelineView } from "@/components/recordings/HistoryTimelineView";
 import { ListeningCenter } from "@/components/recordings/ListeningCenter";
+import { RelationshipScrubber } from "@/components/recordings/RelationshipScrubber";
 import { useTopBarActions } from "@/components/layout/TopBarSlot";
 import { initials } from "@/lib/initials";
 
@@ -707,154 +710,163 @@ function OverviewView({
   ov,
   onGoto,
   onOpenAI,
+  onOpenInteraction,
 }: {
   lead: RecentLead;
   ov: LeadOverview;
   onGoto: (l: Lens) => void;
   onOpenAI: () => void;
+  onOpenInteraction: (contactId: string, channel: string) => void;
 }) {
   const name = lead.name || lead.phone;
   const { ch, total, last, primary, nba } = relationSummary(ov);
   const mix = ch.filter((c) => c.count > 0);
   return (
-    <div className="hg-ov">
-      <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
-        {lead.phone && <ActivityHeatmap phone={lead.phone} onGoto={onGoto} />}
-        <Card
-          title="Línea de tiempo · todos los canales"
-          icon="history"
-          extra={
-            <span className="dim tnum" style={{ fontSize: 12, fontWeight: 700 }}>
-              {total} interaccion{total === 1 ? "" : "es"}
-            </span>
-          }
-        >
-          <ConversationCanvas phone={lead.phone} name={name} />
-        </Card>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-        <Card title="Resumen del cliente" icon="user">
-          <div className="row between" style={{ padding: "7px 0" }}>
-            <span className="muted" style={{ fontWeight: 600 }}>
-              Última interacción
-            </span>
-            <b>{last ? `${last.label} · ${relTime(last.lastTs)}` : "—"}</b>
-          </div>
-          <div className="row between" style={{ padding: "7px 0" }}>
-            <span className="muted" style={{ fontWeight: 600 }}>
-              Canal principal
-            </span>
-            <b>{primary.count ? primary.label : "—"}</b>
-          </div>
-          <div className="row between" style={{ padding: "7px 0" }}>
-            <span className="muted" style={{ fontWeight: 600 }}>
-              Total interacciones
-            </span>
-            <b className="tnum">{total}</b>
-          </div>
-          {total > 0 && (
-            <>
-              <div
-                style={{
-                  margin: "12px 0 8px",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "var(--text-3)",
-                }}
-              >
-                Mezcla de canales
-              </div>
-              <div style={{ display: "flex", gap: 2, height: 10 }}>
-                {mix.map((c) => (
-                  <div
-                    key={c.key}
-                    title={`${c.label}: ${c.count}`}
-                    style={{ flex: c.count, background: `var(${c.tone})`, borderRadius: 99 }}
-                  />
-                ))}
-              </div>
-              <div
-                className="row wrap gap14"
-                style={{ marginTop: 10, fontSize: 11.5, color: "var(--text-3)", fontWeight: 700 }}
-              >
-                {mix.map((c) => (
-                  <span key={c.key} className="row gap4" style={{ alignItems: "center" }}>
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 99,
-                        background: `var(${c.tone})`,
-                      }}
-                    />{" "}
-                    {c.label} {c.count}
-                  </span>
-                ))}
-              </div>
-            </>
-          )}
-        </Card>
-
-        {nba && (
-          <button
-            onClick={onOpenAI}
-            className="card card__accent-bar hg-lift"
-            style={
-              {
-                "--_c": "var(--iris)",
-                padding: "18px 20px",
-                textAlign: "left",
-                cursor: "pointer",
-                background: "linear-gradient(135deg,var(--iris-soft),var(--bg-1))",
-              } as React.CSSProperties
+    <>
+      {lead.phone && (
+        <div style={{ marginBottom: 18 }}>
+          <RelationshipScrubber phone={lead.phone} onOpen={onOpenInteraction} />
+        </div>
+      )}
+      <div className="hg-ov">
+        <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+          {lead.phone && <ActivityHeatmap phone={lead.phone} onGoto={onGoto} />}
+          <Card
+            title="Línea de tiempo · todos los canales"
+            icon="history"
+            extra={
+              <span className="dim tnum" style={{ fontSize: 12, fontWeight: 700 }}>
+                {total} interaccion{total === 1 ? "" : "es"}
+              </span>
             }
           >
-            <div className="row gap8" style={{ alignItems: "center", marginBottom: 8 }}>
-              <span
+            <ConversationCanvas phone={lead.phone} name={name} />
+          </Card>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+          <Card title="Resumen del cliente" icon="user">
+            <div className="row between" style={{ padding: "7px 0" }}>
+              <span className="muted" style={{ fontWeight: 600 }}>
+                Última interacción
+              </span>
+              <b>{last ? `${last.label} · ${relTime(last.lastTs)}` : "—"}</b>
+            </div>
+            <div className="row between" style={{ padding: "7px 0" }}>
+              <span className="muted" style={{ fontWeight: 600 }}>
+                Canal principal
+              </span>
+              <b>{primary.count ? primary.label : "—"}</b>
+            </div>
+            <div className="row between" style={{ padding: "7px 0" }}>
+              <span className="muted" style={{ fontWeight: 600 }}>
+                Total interacciones
+              </span>
+              <b className="tnum">{total}</b>
+            </div>
+            {total > 0 && (
+              <>
+                <div
+                  style={{
+                    margin: "12px 0 8px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "var(--text-3)",
+                  }}
+                >
+                  Mezcla de canales
+                </div>
+                <div style={{ display: "flex", gap: 2, height: 10 }}>
+                  {mix.map((c) => (
+                    <div
+                      key={c.key}
+                      title={`${c.label}: ${c.count}`}
+                      style={{ flex: c.count, background: `var(${c.tone})`, borderRadius: 99 }}
+                    />
+                  ))}
+                </div>
+                <div
+                  className="row wrap gap14"
+                  style={{ marginTop: 10, fontSize: 11.5, color: "var(--text-3)", fontWeight: 700 }}
+                >
+                  {mix.map((c) => (
+                    <span key={c.key} className="row gap4" style={{ alignItems: "center" }}>
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 99,
+                          background: `var(${c.tone})`,
+                        }}
+                      />{" "}
+                      {c.label} {c.count}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
+          </Card>
+
+          {nba && (
+            <button
+              onClick={onOpenAI}
+              className="card card__accent-bar hg-lift"
+              style={
+                {
+                  "--_c": "var(--iris)",
+                  padding: "18px 20px",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  background: "linear-gradient(135deg,var(--iris-soft),var(--bg-1))",
+                } as React.CSSProperties
+              }
+            >
+              <div className="row gap8" style={{ alignItems: "center", marginBottom: 8 }}>
+                <span
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 9,
+                    background: "var(--iris)",
+                    color: "#fff",
+                    display: "grid",
+                    placeItems: "center",
+                  }}
+                >
+                  <Icon name="sparkle" size={16} />
+                </span>
+                <span style={{ fontWeight: 800, fontSize: 14, color: "var(--iris)" }}>
+                  Sugerencia IA
+                </span>
+              </div>
+              <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.55 }}>{nba}</div>
+              <div
+                className="row gap4"
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 9,
-                  background: "var(--iris)",
-                  color: "#fff",
-                  display: "grid",
-                  placeItems: "center",
+                  marginTop: 10,
+                  fontSize: 12.5,
+                  fontWeight: 800,
+                  color: "var(--iris)",
+                  alignItems: "center",
                 }}
               >
-                <Icon name="sparkle" size={16} />
-              </span>
-              <span style={{ fontWeight: 800, fontSize: 14, color: "var(--iris)" }}>
-                Sugerencia IA
-              </span>
-            </div>
-            <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.55 }}>{nba}</div>
-            <div
-              className="row gap4"
-              style={{
-                marginTop: 10,
-                fontSize: 12.5,
-                fontWeight: 800,
-                color: "var(--iris)",
-                alignItems: "center",
-              }}
-            >
-              Ver resumen IA <Icon name="arrowRight" size={14} />
-            </div>
-          </button>
-        )}
+                Ver resumen IA <Icon name="arrowRight" size={14} />
+              </div>
+            </button>
+          )}
 
-        <Btn
-          variant="ghost"
-          size="sm"
-          iconR="arrowRight"
-          style={{ alignSelf: "flex-start" }}
-          onClick={() => onGoto("calls")}
-        >
-          Ver todas las llamadas
-        </Btn>
+          <Btn
+            variant="ghost"
+            size="sm"
+            iconR="arrowRight"
+            style={{ alignSelf: "flex-start" }}
+            onClick={() => onGoto("calls")}
+          >
+            Ver todas las llamadas
+          </Btn>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -1090,8 +1102,25 @@ export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead 
   const [cmdOpen, setCmdOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [pendingCallId, setPendingCallId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [copied, setCopied] = useState(false);
+  // Abre una llamada desde el timeline de Actividad → salta a la pestaña Llamadas
+  // con esa grabación preseleccionada.
+  const openCallFromHistory = (contactId: string) => {
+    setPendingCallId(contactId);
+    setTab("calls");
+  };
+  // Abre una interacción desde el scrubber omnicanal, ruteando por canal:
+  // voz → reproductor de esa llamada; chat/email → su pestaña.
+  const openInteraction = (contactId: string, channel: string) => {
+    const c = (channel || "").toUpperCase();
+    if (c === "VOICE" || c === "TELEPHONY") openCallFromHistory(contactId);
+    else if (c === "CHAT") setTab("whatsapp");
+    else if (c === "EMAIL") setTab("emails");
+    else setTab("history");
+  };
   const onRefresh = async () => {
     if (!lead?.phone || refreshing) return;
     setRefreshing(true);
@@ -1110,9 +1139,13 @@ export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead 
   useEffect(() => {
     setTab("resumen");
     setActiveCall(null);
+    setPendingCallId(null);
   }, [lead?.leadId]);
   useEffect(() => {
-    if (tab !== "calls") setActiveCall(null);
+    if (tab !== "calls") {
+      setActiveCall(null);
+      setPendingCallId(null); // no re-forzar la llamada al volver a Llamadas
+    }
   }, [tab]);
 
   useEffect(() => {
@@ -1124,6 +1157,33 @@ export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Deep-link Compartir: si la URL trae ?contact=<teléfono>, abrimos ese contacto
+  // al cargar (una sola vez). Busca el lead en manage-leads para tener nombre/etapa;
+  // si no aparece, arma uno mínimo con el teléfono para que el workspace funcione.
+  useEffect(() => {
+    if (initialLead) return;
+    const contact = new URLSearchParams(window.location.search).get("contact");
+    if (!contact) return;
+    const ep = getApiEndpoints();
+    if (!ep?.manageLeads) return;
+    let alive = true;
+    authedFetch(`${ep.manageLeads}?phone=${encodeURIComponent(contact)}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (!alive) return;
+        const l = (j.leads || [])[0];
+        setLead(
+          l ? mapLead(l) : ({ leadId: contact, phone: contact, lastActivity: null } as RecentLead),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+    // Solo al montar — el deep-link es el estado inicial, no reactivo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const counts: Record<string, number | undefined> = useMemo(
@@ -1141,6 +1201,29 @@ export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead 
   const stageLabel = lead ? tree.find((s) => s.id === lead.stageId)?.label : undefined;
   const customerKey = lead ? lead.phone || lead.email || null : null;
 
+  // Compartir: copia un deep-link (?contact=…) al portapapeles → cualquiera con
+  // acceso abre el mismo expediente. Feedback efímero "Copiado".
+  const shareContact = async () => {
+    if (!lead) return;
+    const key = lead.phone || lead.leadId;
+    const url = `${window.location.origin}${window.location.pathname}?contact=${encodeURIComponent(key)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      window.prompt("Copia este enlace al expediente:", url);
+    }
+  };
+  // Exportar: descarga la ficha del contacto (datos + resumen + transcripción de
+  // la llamada abierta, si hay) como Markdown — todo client-side.
+  const exportContact = () => {
+    if (!lead) return;
+    const md = buildContactMarkdown({ lead, ov, activeCall, stageLabel });
+    const safe = (lead.name || lead.phone || "contacto").replace(/[^\w.-]+/g, "_");
+    downloadText(`${safe}-historial.md`, md);
+  };
+
   // Acciones de la página → top bar (chrome conectado al sidebar). Antes vivían
   // en una .hg-toolbar dentro del contenido.
   useTopBarActions(
@@ -1154,14 +1237,25 @@ export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead 
         <RefreshCw size={14} className={refreshing ? "hg-spin" : ""} />{" "}
         {refreshing ? "Actualizando…" : "Actualizar"}
       </button>
-      <button className="btn" disabled={!lead} title="Compartir — próximamente">
-        <Share2 size={14} /> Compartir
+      <button
+        className="btn"
+        disabled={!lead}
+        onClick={shareContact}
+        title="Copiar enlace a este expediente"
+      >
+        {copied ? <Check size={14} style={{ color: "var(--green)" }} /> : <Share2 size={14} />}{" "}
+        {copied ? "Copiado" : "Compartir"}
       </button>
-      <button className="btn" disabled={!lead} title="Exportar — próximamente">
+      <button
+        className="btn"
+        disabled={!lead}
+        onClick={exportContact}
+        title="Descargar la ficha del contacto (Markdown)"
+      >
         <Download size={14} /> Exportar
       </button>
     </>,
-    [lead, refreshing],
+    [lead, refreshing, copied, activeCall, stageLabel, ov],
   );
 
   return (
@@ -1187,15 +1281,26 @@ export function RecordingsWorkspace({ initialLead }: { initialLead?: RecentLead 
                   ov={ov}
                   onGoto={setTab}
                   onOpenAI={() => setAiOpen(true)}
+                  onOpenInteraction={openInteraction}
                 />
               )}
               {tab === "calls" && (
-                <CallPlayerView phone={lead.phone} onActiveCall={setActiveCall} />
+                <CallPlayerView
+                  phone={lead.phone}
+                  onActiveCall={setActiveCall}
+                  initialContactId={pendingCallId}
+                />
               )}
               {tab === "whatsapp" && <WhatsAppThreadView phone={lead.phone} />}
               {tab === "emails" && <EmailThreadsView customerKey={customerKey} />}
               {tab === "files" && <AttachmentsGrid phone={lead.phone} />}
-              {tab === "history" && <HistoryTimelineView phone={lead.phone} name={name} />}
+              {tab === "history" && (
+                <HistoryTimelineView
+                  phone={lead.phone}
+                  name={name}
+                  onOpenCall={openCallFromHistory}
+                />
+              )}
             </div>
           </>
         ) : (

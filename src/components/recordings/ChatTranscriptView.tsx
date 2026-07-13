@@ -2,6 +2,14 @@ import { useMemo } from "react";
 import { Image as ImageIcon, Paperclip } from "lucide-react";
 import * as Icon from "@/components/vox/primitives";
 import { sanitizeText } from "@/lib/utils";
+import {
+  formatChatTime,
+  chatDayLabel,
+  chatEventLabel,
+  bubbleStyle,
+  ymdLocal,
+  CHAT_SCROLLER_BG,
+} from "@/components/recordings/chatShared";
 
 /**
  * Chat transcript renderer designed to look like a WhatsApp / messaging
@@ -42,89 +50,6 @@ interface ChatTranscriptViewProps {
   attachments: ChatAttachment[];
   /** When true, render in tighter spacing — useful in modals. */
   dense?: boolean;
-}
-
-const PARTICIPANT_STYLES: Record<
-  string,
-  { align: "left" | "right" | "center"; bg: string; fg: string; label: string }
-> = {
-  // Convención unificada con WhatsAppThreadView / RecordingsShowcase / Email: el
-  // negocio (AGENT) va a la DERECHA con burbuja de acento ("yo"); el CLIENTE a la
-  // IZQUIERDA, neutra. Antes estaba espejado (cliente a la derecha en verde), así
-  // que el mismo cliente aparecía en lados opuestos según la vista.
-  CUSTOMER: {
-    align: "left",
-    bg: "var(--bg-1, #ffffff)",
-    fg: "var(--text-1, #111b21)",
-    label: "Cliente",
-  },
-  AGENT: {
-    align: "right",
-    bg: "var(--accent-green-soft, #d9fdd3)",
-    fg: "var(--text-1, #111b21)",
-    label: "Agente",
-  },
-  SYSTEM: {
-    align: "left",
-    bg: "var(--accent-violet-soft, #ebe0ff)",
-    fg: "var(--text-1, #111b21)",
-    label: "Sistema",
-  },
-  UNKNOWN: {
-    align: "left",
-    bg: "var(--bg-2)",
-    fg: "var(--text-1)",
-    label: "—",
-  },
-};
-
-const EVENT_LABELS: Record<string, string> = {
-  "participant.joined": "se unió al chat",
-  "participant.left": "salió del chat",
-  "chat.ended": "Chat terminado",
-  transferred: "Transferencia",
-  typing: "Escribiendo…",
-  read: "Leído",
-  delivered: "Entregado",
-  unknown: "Evento",
-};
-
-function localizeEvent(kind: string, participant: string): string {
-  const label = EVENT_LABELS[kind] || `Evento · ${kind}`;
-  if (kind.startsWith("participant.") && participant !== "SYSTEM") {
-    const who =
-      participant === "AGENT" ? "Agente" : participant === "CUSTOMER" ? "Cliente" : participant;
-    return `${who} ${label}`;
-  }
-  return label;
-}
-
-function fmtTime(iso: string): string {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleTimeString("es-PE", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-  } catch {
-    return "";
-  }
-}
-
-function fmtDate(iso: string): string {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString("es-PE", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
-  } catch {
-    return "";
-  }
 }
 
 function fmtFileSize(bytes?: number): string {
@@ -389,11 +314,11 @@ export function ChatTranscriptView({ segments, attachments, dense }: ChatTranscr
     );
   }
 
-  // Group segments by date so we can drop a "23 de febrero de 2026"
-  // separator above each new day (WhatsApp does this).
+  // Group segments by LOCAL date so we can drop a day separator above each new
+  // day. ymdLocal (no UTC slice) evita el corrimiento de día al este de GMT.
   const groups: Array<{ date: string; segments: ChatSegment[] }> = [];
   for (const s of segments) {
-    const d = s.timestamp ? s.timestamp.slice(0, 10) : "";
+    const d = s.timestamp ? ymdLocal(s.timestamp) : "";
     const last = groups[groups.length - 1];
     if (last && last.date === d) last.segments.push(s);
     else groups.push({ date: d, segments: [s] });
@@ -410,7 +335,7 @@ export function ChatTranscriptView({ segments, attachments, dense }: ChatTranscr
         maxHeight: 540,
         overflowY: "auto",
         padding: dense ? 8 : 12,
-        background: "var(--bg-0, #f0e6d8)",
+        background: CHAT_SCROLLER_BG,
         borderRadius: 10,
       }}
     >
@@ -428,13 +353,16 @@ export function ChatTranscriptView({ segments, attachments, dense }: ChatTranscr
                 border: "1px solid var(--border-1)",
               }}
             >
-              {fmtDate(g.date)}
+              {chatDayLabel(g.date)}
             </div>
           )}
           {g.segments.map((s, i) => {
-            const style = PARTICIPANT_STYLES[s.participant] || PARTICIPANT_STYLES.UNKNOWN;
+            const style = bubbleStyle(s.participant);
 
             if (s.type === "event") {
+              // Eventos ruidosos (typing/read/delivered) → label "" → no se renderiza.
+              const evLabel = chatEventLabel(s.eventKind || "unknown", s.participant);
+              if (!evLabel) return null;
               return (
                 <div
                   key={i}
@@ -445,9 +373,9 @@ export function ChatTranscriptView({ segments, attachments, dense }: ChatTranscr
                     fontStyle: "italic",
                     padding: "2px 8px",
                   }}
-                  title={fmtTime(s.timestamp)}
+                  title={formatChatTime(s.timestamp)}
                 >
-                  · {localizeEvent(s.eventKind || "unknown", s.participant)}
+                  · {evLabel}
                 </div>
               );
             }
@@ -468,7 +396,7 @@ export function ChatTranscriptView({ segments, attachments, dense }: ChatTranscr
                   style={{
                     alignSelf,
                     background: style.bg,
-                    color: style.fg,
+                    color: "var(--text-1)",
                     borderRadius: 10,
                     padding: 8,
                     maxWidth: "75%",
@@ -480,7 +408,7 @@ export function ChatTranscriptView({ segments, attachments, dense }: ChatTranscr
                   </div>
                   <AttachmentBubble ref_={s.attachmentRef} attachment={att} />
                   <div className="muted" style={{ fontSize: 10, marginTop: 4, textAlign: "right" }}>
-                    {fmtTime(s.timestamp)}
+                    {formatChatTime(s.timestamp)}
                   </div>
                 </div>
               );
@@ -495,7 +423,7 @@ export function ChatTranscriptView({ segments, attachments, dense }: ChatTranscr
                 style={{
                   alignSelf,
                   background: style.bg,
-                  color: style.fg,
+                  color: "var(--text-1)",
                   borderRadius: 10,
                   padding: "6px 10px",
                   maxWidth: "75%",
@@ -520,7 +448,7 @@ export function ChatTranscriptView({ segments, attachments, dense }: ChatTranscr
                     textAlign: "right",
                   }}
                 >
-                  {fmtTime(s.timestamp)}
+                  {formatChatTime(s.timestamp)}
                 </div>
               </div>
             );

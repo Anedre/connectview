@@ -19,7 +19,11 @@ export function sentimentColor(sentiment?: string): string {
   }
 }
 
-export interface KeyMoment { sec: number; tone: "pos" | "neg"; label: string }
+export interface KeyMoment {
+  sec: number;
+  tone: "pos" | "neg";
+  label: string;
+}
 
 /**
  * "Momentos clave" de una llamada: los puntos donde el sentimiento VIRA hacia
@@ -32,7 +36,11 @@ export function keyMoments(segments: TranscriptSegment[]): KeyMoment[] {
   for (const s of segments) {
     const k = (s.sentiment || "").toUpperCase();
     if ((k === "NEGATIVE" || k === "POSITIVE") && k !== prev) {
-      out.push({ sec: (s.beginOffsetMillis || 0) / 1000, tone: k === "POSITIVE" ? "pos" : "neg", label: k === "POSITIVE" ? "Momento positivo" : "Tensión" });
+      out.push({
+        sec: (s.beginOffsetMillis || 0) / 1000,
+        tone: k === "POSITIVE" ? "pos" : "neg",
+        label: k === "POSITIVE" ? "Momento positivo" : "Tensión",
+      });
     }
     if (k === "NEGATIVE" || k === "POSITIVE") prev = k;
   }
@@ -63,6 +71,10 @@ interface Props {
   currentSec: number;
   /** Transcript segments → per-bar sentiment color + markers. */
   segments: TranscriptSegment[];
+  /** Amplitud REAL por barra en [0,1] (de useAudioPeaks). Debe tener BAR_COUNT
+   *  elementos. `null`/omitido → alturas pseudo-aleatorias determinísticas (el
+   *  origen no dio CORS o el audio no decodificó). El COLOR sigue por sentiment. */
+  peaks?: number[] | null;
   onSeekSec: (sec: number) => void;
   height?: number;
 }
@@ -79,6 +91,7 @@ export function WaveformTimeline({
   durationSec,
   currentSec,
   segments,
+  peaks,
   onSeekSec,
   height = 54,
 }: Props) {
@@ -86,23 +99,28 @@ export function WaveformTimeline({
   const [focused, setFocused] = useState(false);
   const dur = durationSec > 0 ? durationSec : 1;
 
+  const hasRealPeaks = !!peaks && peaks.length === BAR_COUNT;
+
   const bars = useMemo(() => {
     const slice = dur / BAR_COUNT;
     return Array.from({ length: BAR_COUNT }, (_, i) => {
       const midMs = (i + 0.5) * slice * 1000;
-      const seg = segments.find(
-        (s) => midMs >= s.beginOffsetMillis && midMs <= s.endOffsetMillis
-      );
+      const seg = segments.find((s) => midMs >= s.beginOffsetMillis && midMs <= s.endOffsetMillis);
       const speech = !!seg;
-      const h = speech
-        ? 0.42 + 0.58 * hash01(i)
-        : 0.12 + 0.12 * hash01(i * 7);
+      // Altura: amplitud REAL (con un piso de 0.1 para que las barras bajas se
+      // vean) cuando useAudioPeaks decodificó el audio; si no, la pseudo-aleatoria
+      // determinística de siempre. El COLOR nunca cambia: lo pone el sentiment.
+      const h = hasRealPeaks
+        ? 0.1 + 0.9 * peaks![i]
+        : speech
+          ? 0.42 + 0.58 * hash01(i)
+          : 0.12 + 0.12 * hash01(i * 7);
       return {
         color: speech ? sentimentColor(seg?.sentiment) : "var(--text-3)",
         h,
       };
     });
-  }, [segments, dur]);
+  }, [segments, dur, peaks, hasRealPeaks]);
 
   // Flag pins above the track at the sentiment shifts (see keyMoments) — a
   // handful of meaningful moments, clickable to seek.
@@ -114,7 +132,7 @@ export function WaveformTimeline({
         color: m.tone === "pos" ? sentimentColor("POSITIVE") : sentimentColor("NEGATIVE"),
         label: `${m.label} · ${fmt(m.sec * 1000)}`,
       })),
-    [segments, dur]
+    [segments, dur],
   );
 
   // Barras memoizadas: solo dependen de segments/dur, NO del playhead. Así, al
@@ -133,7 +151,7 @@ export function WaveformTimeline({
           }}
         />
       )),
-    [bars]
+    [bars],
   );
 
   const progressPct = Math.min(100, Math.max(0, (currentSec / dur) * 100));
@@ -183,7 +201,10 @@ export function WaveformTimeline({
           <button
             key={i}
             title={m.label}
-            onClick={(e) => { e.stopPropagation(); onSeekSec(m.sec); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSeekSec(m.sec);
+            }}
             style={{
               position: "absolute",
               left: `${m.left}%`,

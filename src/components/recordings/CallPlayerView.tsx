@@ -17,6 +17,7 @@ import { useContactDetail, type ContactTranscriptSegment } from "@/hooks/useCont
 import { useCallHistory, type CallHistoryRow as CallRow } from "@/hooks/useCallHistory";
 import { Sparkline } from "@/components/recordings/Sparkline";
 import { keyMoments, type KeyMoment } from "@/components/recordings/WaveformTimeline";
+import { deriveChapters, CallChapters } from "@/components/recordings/callChapters";
 import { VALORACION_META } from "@/lib/dispositions";
 import { formatDurationSec, sanitizeText } from "@/lib/utils";
 import type { TranscriptSegment } from "@/types/recordings";
@@ -55,19 +56,50 @@ const realAgentOf = (r: CallRow) =>
 const realQueueOf = (r: CallRow) => (r.queueName && !looksUuid(r.queueName) ? r.queueName : "");
 const WD = ["lu", "ma", "mi", "ju", "vi", "sá", "do"];
 
+/** Controles del reproductor que expone CallPlayer hacia arriba, para que el modo
+ *  teclado-first de CallPlayerView maneje play/velocidad/saltos sin acoplarse al
+ *  <audio> ni al transcript (que viven en el hijo re-montado por llamada). */
+interface PlayerControls {
+  toggle: () => void;
+  changeSpeed: (dir: 1 | -1) => void;
+  seekMs: (ms: number) => void;
+  getCurrentMs: () => number;
+  moments: KeyMoment[];
+}
+
+/** Salta al próximo (dir=1) / anterior (dir=-1) momento de TENSIÓN de la llamada.
+ *  El margen de 300ms evita quedarse pegado en el momento actual. */
+function jumpNeg(ctl: PlayerControls, dir: 1 | -1): void {
+  const negs = ctl.moments
+    .filter((m) => m.tone === "neg")
+    .map((m) => m.sec * 1000)
+    .sort((a, b) => a - b);
+  if (!negs.length) return;
+  const cur = ctl.getCurrentMs();
+  const target =
+    dir === 1 ? negs.find((t) => t > cur + 300) : [...negs].reverse().find((t) => t < cur - 300);
+  if (target != null) ctl.seekMs(target);
+}
+
 export function CallPlayerView({
   phone,
   onActiveCall,
+  initialContactId,
 }: {
   phone: string | null;
   onActiveCall?: (c: ActiveCall | null) => void;
+  /** Llamada a preseleccionar al abrir (desde el timeline de Actividad). */
+  initialContactId?: string | null;
 }) {
-  const { rows, loading, error } = useCallHistory(phone);
+  const { rows, loading, error, source } = useCallHistory(phone);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [month, setMonth] = useState<{ y: number; m: number } | null>(null);
   const [dir, setDir] = useState<"all" | "in" | "out" | "missed">("all");
   const [agent, setAgent] = useState<string>("all");
+  // Controles del reproductor activo (los registra el CallPlayer hijo) para el
+  // modo teclado-first.
+  const playerRef = useRef<PlayerControls | null>(null);
 
   // Reinicia la selección/filtros al cambiar de cliente (el fetch lo hace el hook).
   useEffect(() => {
@@ -89,7 +121,10 @@ export function CallPlayerView({
   const agents = useMemo(() => {
     const s = new Set<string>();
     callRows.forEach((c) => {
-      if (c.agentUsername) s.add(c.agentUsername);
+      // No incluir agentUsername sin resolver (GUID de cola/IVR) en el dropdown —
+      // el usuario no puede reconocer "a1b2c3d4-…". realAgentOf ya los oculta en
+      // la fila; acá evitamos que aparezcan como opción de filtro.
+      if (c.agentUsername && !looksUuid(c.agentUsername)) s.add(c.agentUsername);
     });
     return [...s].sort();
   }, [callRows]);
@@ -143,17 +178,19 @@ export function CallPlayerView({
   }, [filtered]);
 
   // Inicializa mes + día + selección desde la llamada más reciente (el backend
-  // ordena de más nuevo a más viejo). Solo corre una vez por contacto.
+  // ordena de más nuevo a más viejo). Solo corre una vez por contacto. Si el
+  // timeline pidió abrir una llamada concreta (initialContactId), se prioriza esa.
   useEffect(() => {
     if (callRows.length === 0 || month) return;
-    const recent = callRows[0];
+    const target = initialContactId ? callRows.find((c) => c.contactId === initialContactId) : null;
+    const recent = target || callRows[0];
     const d = new Date(recent.initiationTimestamp);
     if (!Number.isNaN(d.getTime())) {
       setMonth({ y: d.getFullYear(), m: d.getMonth() });
       setSelectedDay(ymdLocal(recent.initiationTimestamp));
     }
     setSelectedId(recent.contactId);
-  }, [callRows, month]);
+  }, [callRows, month, initialContactId]);
 
   const dayRows = useMemo(() => {
     if (!selectedDay) return [];
@@ -175,6 +212,78 @@ export function CallPlayerView({
       )[0];
     if (first) setSelectedId(first.contactId);
   };
+
+  // Modo revisión teclado-first: J/K entre llamadas del día, espacio play/pausa,
+  // [ ] velocidad, N/P al próximo/anterior momento de tensión. Ignora cuando el
+  // foco está en un campo de texto (p.ej. el buscador del transcript) o con
+  // modificadores (no pisar ⌘K global).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      )
+        return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const ctl = playerRef.current;
+      const idx = dayRows.findIndex((c) => c.contactId === selectedId);
+      const pick = (i: number) => {
+        if (i >= 0 && i < dayRows.length) setSelectedId(dayRows[i].contactId);
+      };
+      switch (e.key) {
+        case "j":
+        case "J":
+        case "ArrowDown":
+          e.preventDefault();
+          pick(idx + 1);
+          break;
+        case "k":
+        case "K":
+        case "ArrowUp":
+          e.preventDefault();
+          pick(idx - 1);
+          break;
+        case " ":
+          if (ctl) {
+            e.preventDefault();
+            ctl.toggle();
+          }
+          break;
+        case "]":
+          if (ctl) {
+            e.preventDefault();
+            ctl.changeSpeed(1);
+          }
+          break;
+        case "[":
+          if (ctl) {
+            e.preventDefault();
+            ctl.changeSpeed(-1);
+          }
+          break;
+        case "n":
+        case "N":
+          if (ctl) {
+            e.preventDefault();
+            jumpNeg(ctl, 1);
+          }
+          break;
+        case "p":
+        case "P":
+          if (ctl) {
+            e.preventDefault();
+            jumpNeg(ctl, -1);
+          }
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dayRows, selectedId]);
 
   if (!phone) return <div className="cpv__msg">Selecciona un cliente para ver sus llamadas.</div>;
   if (loading) return <div className="cpv__msg">Cargando llamadas…</div>;
@@ -331,10 +440,46 @@ export function CallPlayerView({
               })
             )}
           </div>
+          {source === "search-contacts" && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "var(--bg-2)",
+                border: "1px solid var(--border-1)",
+                fontSize: 10.5,
+                lineHeight: 1.5,
+                color: "var(--text-3)",
+              }}
+            >
+              Mostrando los ~55 días más recientes. El historial más antiguo aparece cuando el
+              contacto se sincroniza a Customer Profiles.
+            </div>
+          )}
+          <div
+            style={{
+              marginTop: 10,
+              fontSize: 10,
+              color: "var(--text-3)",
+              lineHeight: 1.7,
+            }}
+            title="Atajos del modo revisión"
+          >
+            <b style={{ color: "var(--text-2)", fontWeight: 700 }}>Teclado</b> · J/K llamadas ·
+            espacio reproducir · [ ] velocidad · N/P tensión
+          </div>
         </aside>
         <main className="cpv2__right">
           {selected ? (
-            <CallPlayer key={selected.contactId} row={selected} onActiveCall={onActiveCall} />
+            <CallPlayer
+              key={selected.contactId}
+              row={selected}
+              onActiveCall={onActiveCall}
+              registerPlayer={(c) => {
+                playerRef.current = c;
+              }}
+            />
           ) : (
             <div className="cpv__msg" style={{ margin: "auto" }}>
               Elige una llamada del día para reproducirla.
@@ -409,9 +554,11 @@ function Calendar({
 function CallPlayer({
   row,
   onActiveCall,
+  registerPlayer,
 }: {
   row: CallRow;
   onActiveCall?: (c: ActiveCall | null) => void;
+  registerPlayer?: (ctl: PlayerControls | null) => void;
 }) {
   const { detail, loading } = useContactDetail(row.contactId);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
@@ -442,6 +589,8 @@ function CallPlayer({
       sentiment: s.sentiment || s.Sentiment,
     }));
   }, [detail]);
+
+  const chapters = useMemo(() => deriveChapters(transcript), [transcript]);
 
   const wrap = detail?.wrapUp;
   const valMeta =
@@ -488,6 +637,20 @@ function CallPlayer({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail, row.contactId]);
+
+  // Registra los controles del reproductor hacia arriba (modo teclado-first).
+  // Referencian audioRef → no dependen del play state, siempre operan el actual.
+  useEffect(() => {
+    if (!registerPlayer) return;
+    registerPlayer({
+      toggle: () => audioRef.current?.toggle(),
+      changeSpeed: (d) => audioRef.current?.changeSpeed(d),
+      seekMs: (ms) => audioRef.current?.seekTo(ms),
+      getCurrentMs: () => audioRef.current?.getCurrentMs() ?? 0,
+      moments: keyMoments(transcript),
+    });
+    return () => registerPlayer(null);
+  }, [registerPlayer, transcript]);
 
   return (
     <div className="cpv__main">
@@ -563,6 +726,13 @@ function CallPlayer({
             />
           ) : (
             <div className="cpv__noaudio">No hay grabación de audio para esta llamada.</div>
+          )}
+          {detail.recording?.url && (
+            <CallChapters
+              chapters={chapters}
+              currentMs={currentTimeMs}
+              onSeek={(ms) => audioRef.current?.seekTo(ms)}
+            />
           )}
           {transcript.length > 0 ? (
             <div className="cpv__transcript">

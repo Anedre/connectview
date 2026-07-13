@@ -11,6 +11,12 @@ import { ThreadDatePicker } from "@/components/recordings/ThreadDatePicker";
 import * as Icon from "@/components/vox/primitives";
 import { sanitizeText } from "@/lib/utils";
 import { AttachmentLightbox, type PreviewItem } from "@/components/recordings/AttachmentLightbox";
+import {
+  formatChatTime,
+  chatDayLabel,
+  chatEventLabel,
+  ymdLocal,
+} from "@/components/recordings/chatShared";
 
 /**
  * Unified WhatsApp-style thread for a customer — merges every CHAT contact
@@ -38,50 +44,6 @@ type TimelineItem =
       gapDays: number | null;
       label: string;
     };
-
-const MONTHS_ES = [
-  "enero",
-  "febrero",
-  "marzo",
-  "abril",
-  "mayo",
-  "junio",
-  "julio",
-  "agosto",
-  "septiembre",
-  "octubre",
-  "noviembre",
-  "diciembre",
-];
-const DOW_ES = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
-
-function dayLabel(yyyyMmDd: string): string {
-  // yyyy-mm-dd → "jueves 22 mayo 2026"
-  const [y, m, d] = yyyyMmDd.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  const today = new Date();
-  const isToday = today.getFullYear() === y && today.getMonth() === m - 1 && today.getDate() === d;
-  if (isToday) return "Hoy";
-  const yest = new Date(today);
-  yest.setDate(yest.getDate() - 1);
-  const isYest = yest.getFullYear() === y && yest.getMonth() === m - 1 && yest.getDate() === d;
-  if (isYest) return "Ayer";
-  return `${DOW_ES[date.getDay()]} ${d} de ${MONTHS_ES[m - 1]} ${y}`;
-}
-
-function formatHm(iso: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-function ymdLocal(iso: string): string {
-  // Map an absolute ISO timestamp into a local YYYY-MM-DD bucket. Using the
-  // server-side .slice(0,10) trick would break for users east of GMT
-  // because the same moment can be "ayer" or "hoy" depending on tz.
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 /**
  * Try to render an interactive WhatsApp ContentType=application/json payload
@@ -168,7 +130,7 @@ function buildTimeline(messages: ThreadMessage[], sessions: ThreadSession[]): Ti
     }
 
     if (day !== prevDay) {
-      out.push({ kind: "day", day, label: dayLabel(day) });
+      out.push({ kind: "day", day, label: chatDayLabel(day) });
     }
     out.push({ kind: "msg", msg: m });
 
@@ -545,8 +507,11 @@ function MessageBubble({
   index?: number;
 }) {
   // Connect "EVENT" segments are participant.joined / chat.ended / typing
-  // / read — render as small centered system pills, not bubbles.
+  // / read — render as small centered system pills, not bubbles. Los eventos
+  // ruidosos (typing/read/delivered) devuelven "" → no se renderizan.
   if (msg.type === "event") {
+    const evLabel = chatEventLabel(msg.eventKind, msg.participant);
+    if (!evLabel) return null;
     return (
       <div
         style={{
@@ -556,7 +521,7 @@ function MessageBubble({
           color: "var(--text-3)",
         }}
       >
-        {eventLabel(msg.eventKind, msg.participant)}
+        {evLabel}
       </div>
     );
   }
@@ -646,33 +611,11 @@ function MessageBubble({
           }}
           title={msg.timestamp}
         >
-          {formatHm(msg.timestamp)}
+          {formatChatTime(msg.timestamp)}
         </div>
       </div>
     </div>
   );
-}
-
-function eventLabel(kind: string | undefined, participant: string): string {
-  const map: Record<string, string> = {
-    "participant.joined": "se unió al chat",
-    "participant.left": "salió del chat",
-    "chat.ended": "Chat terminado",
-    transferred: "Transferencia",
-    typing: "", // skip noisy "typing" events visually
-    read: "",
-    delivered: "",
-    unknown: "Evento",
-  };
-  if (!kind) return "Evento";
-  const label = map[kind] ?? `Evento · ${kind}`;
-  if (!label) return ""; // suppressed events render nothing
-  if (kind.startsWith("participant.") && participant !== "SYSTEM") {
-    const who =
-      participant === "AGENT" ? "Agente" : participant === "CUSTOMER" ? "Cliente" : participant;
-    return `${who} ${label}`;
-  }
-  return label;
 }
 
 function AttachmentInline({

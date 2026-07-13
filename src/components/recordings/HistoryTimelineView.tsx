@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Play } from "lucide-react";
 import * as Icon from "@/components/vox/primitives";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
@@ -50,6 +51,15 @@ interface TimelineItem {
   meta?: string;
   src: "vox" | "sf";
   tone: string;
+  /** contactId de Connect si el evento es una interacción reproducible (voz). */
+  contactId?: string;
+  /** true → el evento es una llamada con contactId → se puede abrir en Llamadas. */
+  playable?: boolean;
+}
+
+/** ¿El canal del evento es de voz/llamada? → su contacto se puede reproducir. */
+function isVoiceChannel(channel?: string): boolean {
+  return /(llam|call|voz|voice|telef|phone)/i.test(channel || "");
 }
 
 const ORIGIN_STYLES: { match: string[]; label: string; bg: string }[] = [
@@ -139,6 +149,12 @@ function buildTimeline(vox: VoxHistoryEvent[], acts: SfActivity[]): TimelineItem
       meta: meta || undefined,
       src: "vox",
       tone,
+      contactId: ev.contactId,
+      // Reproducible si es una interacción/gestión de VOZ con contactId de Connect.
+      playable:
+        !!ev.contactId &&
+        (ev.type === "interaccion" || ev.type === "gestion") &&
+        isVoiceChannel(ev.channel),
     });
   });
   acts.forEach((a) => {
@@ -158,7 +174,16 @@ function buildTimeline(vox: VoxHistoryEvent[], acts: SfActivity[]): TimelineItem
   return items;
 }
 
-export function HistoryTimelineView({ phone, name }: { phone: string | null; name: string }) {
+export function HistoryTimelineView({
+  phone,
+  name,
+  onOpenCall,
+}: {
+  phone: string | null;
+  name: string;
+  /** Abre una llamada del timeline en la pestaña Llamadas (reproductor). */
+  onOpenCall?: (contactId: string) => void;
+}) {
   const [vox, setVox] = useState<VoxHistoryEvent[]>([]);
   const [sf, setSf] = useState<SfData | null>(null);
   // Estado inicial lazy; el componente se remonta por `key={phone}` desde la página,
@@ -386,6 +411,22 @@ export function HistoryTimelineView({ phone, name }: { phone: string | null; nam
                     <div className="muted" style={{ fontSize: 10.5, marginTop: 3 }}>
                       {it.meta}
                     </div>
+                  ) : null}
+                  {it.playable && onOpenCall && it.contactId ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenCall(it.contactId!)}
+                      className="btn btn--ghost btn--sm"
+                      style={{
+                        marginTop: 6,
+                        fontSize: 11.5,
+                        color: "var(--accent-cyan)",
+                        gap: 5,
+                        padding: "3px 9px",
+                      }}
+                    >
+                      <Play size={12} /> Escuchar
+                    </button>
                   ) : null}
                 </div>
               </div>

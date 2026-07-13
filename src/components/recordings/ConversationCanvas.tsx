@@ -37,6 +37,19 @@ export interface CanvasContact {
   queueName?: string;
   disconnectReason?: string;
   hasRecording?: boolean;
+  /** Sentimiento de Contact Lens (POSITIVE/NEGATIVE/MIXED/NEUTRAL). Solo voz. */
+  sentiment?: string;
+}
+
+/** Tono de sentimiento → color + etiqueta, para el punto por-fila del hilo. */
+const SENTIMENT_DOT: Record<string, { color: string; label: string }> = {
+  POSITIVE: { color: "var(--accent-green)", label: "positivo" },
+  NEGATIVE: { color: "var(--accent-red)", label: "negativo" },
+  MIXED: { color: "var(--accent-amber)", label: "mixto" },
+};
+function sentimentDot(sentiment?: string): { color: string; label: string } | null {
+  const k = (sentiment || "").toUpperCase();
+  return SENTIMENT_DOT[k] || null; // NEUTRAL / sin dato → sin punto (no ensucia)
 }
 
 interface ChannelMeta {
@@ -166,6 +179,26 @@ export function ConversationCanvas({ phone, name, demo }: Props) {
     return acc;
   }, [contacts]);
 
+  // Clima de la relación (cross-canal): tono dominante de las llamadas con
+  // sentiment. Severidad-first (una tensión pesa más que varios positivos). Solo
+  // se muestra con ≥2 señales para no sacar conclusiones de una sola llamada.
+  const climate = useMemo(() => {
+    let pos = 0,
+      neg = 0,
+      mix = 0;
+    for (const c of contacts) {
+      const k = (c.sentiment || "").toUpperCase();
+      if (k === "POSITIVE") pos++;
+      else if (k === "NEGATIVE") neg++;
+      else if (k === "MIXED") mix++;
+    }
+    if (pos + neg + mix < 2) return null;
+    if (neg > 0 && neg >= pos) return { color: "var(--accent-red)", label: "tensa" };
+    if (mix > pos) return { color: "var(--accent-amber)", label: "mixta" };
+    if (pos > 0) return { color: "var(--accent-green)", label: "positiva" };
+    return null;
+  }, [contacts]);
+
   if (!phone && !demo) {
     return (
       <div
@@ -249,6 +282,29 @@ export function ConversationCanvas({ phone, name, demo }: Props) {
               {c.meta.icon} {c.n} {c.label}
             </span>
           ))}
+          {climate && (
+            <span
+              className="chip"
+              style={{
+                gap: 5,
+                background: `color-mix(in srgb, ${climate.color} 15%, transparent)`,
+                color: climate.color,
+                borderColor: "transparent",
+              }}
+              title="Clima general según el sentimiento de las llamadas"
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 99,
+                  background: climate.color,
+                  display: "inline-block",
+                }}
+              />
+              Relación {climate.label}
+            </span>
+          )}
         </div>
       </div>
 
@@ -387,6 +443,33 @@ function ConversationItem({
                   <Icon.Disc size={10} /> grabación
                 </span>
               )}
+              {(() => {
+                const s = sentimentDot(contact.sentiment);
+                return s ? (
+                  <span
+                    className="chip"
+                    style={{
+                      height: 17,
+                      fontSize: 10,
+                      textTransform: "capitalize",
+                      background: `color-mix(in srgb, ${s.color} 15%, transparent)`,
+                      color: s.color,
+                    }}
+                    title={`Sentimiento de la llamada: ${s.label}`}
+                  >
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 99,
+                        background: s.color,
+                        display: "inline-block",
+                      }}
+                    />{" "}
+                    {s.label}
+                  </span>
+                ) : null;
+              })()}
             </div>
             <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
               {exact}
