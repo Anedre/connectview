@@ -749,23 +749,26 @@ export const handler: Handler = async (event: any) => {
   //    duplica). POST {mode:"pushAll", startKey?, limit?}.
   if (event?.queryStringParameters?.mode === "pushAll" || body.mode === "pushAll") {
     const limit = Math.min(300, Math.max(20, Math.floor(Number(body.limit) || 100)));
-    const tc = await getTenantConnect(tenantId);
-    const dpOn = await isTenantDataPlaneEnabled(tenantId);
-    if (!tc || !dpOn) {
-      return {
-        statusCode: 403,
-        headers: CORS,
-        body: JSON.stringify({ error: "El tenant no tiene Data Plane (BYO) habilitado" }),
-      };
-    }
-    setActiveDynamo(tc.dynamo);
+    // Escanea la MISMA tabla que ve el board (resolveDynamo): BYO aislada, o la
+    // pooled. En pooled FILTRA por tenantId para no mandar leads de OTRO tenant a
+    // TU Salesforce. Antes exigía BYO (getTenantConnect + gate) y escaneaba una
+    // tabla distinta de donde el board tiene los leads → devolvía 0.
+    const rd = await resolveDynamo(event?.headers, legacyDynamo);
+    setActiveDynamo(rd.tenantScoped ? rd.dynamo : null);
     const startKey = body.startKey && typeof body.startKey === "object" ? body.startKey : undefined;
     try {
-      const scan = await tc.dynamo.send(
+      const scan = await rd.dynamo.send(
         new ScanCommand({
           TableName: LEADS_TABLE,
           Limit: limit,
           ExclusiveStartKey: startKey as never,
+          // Pooled → aislar por tenant (seguridad). BYO → la tabla ya está aislada.
+          ...(rd.tenantScoped
+            ? {}
+            : {
+                FilterExpression: "tenantId = :t",
+                ExpressionAttributeValues: { ":t": { S: tenantId } },
+              }),
         }),
       );
       const leads = (scan.Items || []).map((it) => unmarshall(it) as Record<string, unknown>);
