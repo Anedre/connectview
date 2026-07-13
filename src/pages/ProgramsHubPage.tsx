@@ -73,6 +73,14 @@ interface SfPicklistField {
   picklistValues?: { label: string; value: string }[];
 }
 
+/** Una Campaign de Salesforce (= un "programa" agrupador). */
+interface SfCampaign {
+  Id: string;
+  Name: string;
+  IsActive?: boolean;
+  NumberOfLeads?: number;
+}
+
 function daysLeft(endDate?: string): number | null {
   if (!endDate) return null;
   const end = new Date(endDate).getTime();
@@ -135,6 +143,7 @@ export function ProgramsHubPage() {
     transitionProgram,
     removeProgram,
     importPrograms,
+    refresh,
   } = usePrograms({ includeArchived: showArchived });
   const { catalogs } = useCatalogs();
   const { docs: taxDocs } = useTaxonomy(); // para el selector de taxonomía del programa
@@ -149,6 +158,9 @@ export function ProgramsHubPage() {
   const [sfFields, setSfFields] = useState<SfPicklistField[]>([]);
   const [sfField, setSfField] = useState("");
   const [sfLoading, setSfLoading] = useState(false);
+  const [sfSource, setSfSource] = useState<"picklist" | "campaigns">("picklist");
+  const [sfCampaigns, setSfCampaigns] = useState<SfCampaign[]>([]);
+  const [sfSelCampaigns, setSfSelCampaigns] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "error" | "ok"; text: string } | null>(null);
   const { confirm, confirmDialog } = useConfirm();
@@ -278,26 +290,29 @@ export function ProgramsHubPage() {
   /** Abre el modal SF: describe el Lead y deja solo los campos picklist (candidatos a programa). */
   async function openSfImport() {
     setSfImport(true);
+    setSfSource("campaigns");
     setSfField("");
     setSfFields([]);
+    setSfCampaigns([]);
+    setSfSelCampaigns(new Set());
     setMsg(null);
     setSfLoading(true);
     try {
       const ep = getApiEndpoints();
       if (!ep?.salesforceSync) throw new Error("Salesforce no está conectado en este tenant.");
-      const r = await authedFetch(`${ep.salesforceSync}?mode=describe&sobject=Lead`);
-      const d = await r.json();
-      if (!r.ok || d.ok === false)
+      const [descR, campR] = await Promise.all([
+        authedFetch(`${ep.salesforceSync}?mode=describe&sobject=Lead`),
+        authedFetch(`${ep.salesforceSync}?mode=listCampaigns`),
+      ]);
+      const d = await descR.json();
+      if (!descR.ok || d.ok === false)
         throw new Error(d.error || "No se pudo leer el esquema de Salesforce.");
       const picklists = ((d.fields as SfPicklistField[]) || []).filter(
         (f) => (f.picklistValues?.length ?? 0) > 0,
       );
       setSfFields(picklists);
-      if (picklists.length === 0)
-        setMsg({
-          kind: "error",
-          text: "El Lead de Salesforce no tiene campos de lista (picklist).",
-        });
+      const camp = await campR.json().catch(() => ({}));
+      if (campR.ok && camp.ok !== false) setSfCampaigns((camp.campaigns as SfCampaign[]) || []);
     } catch (e) {
       setMsg({
         kind: "error",
@@ -332,6 +347,71 @@ export function ProgramsHubPage() {
       });
     } catch (e) {
       setMsg({ kind: "error", text: e instanceof Error ? e.message : "Error al importar" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Crea un programa por cada Campaign seleccionada y trae sus leads (CampaignMember)
+   *  al programa. Usa el programId real (refetch) para no depender del cache de códigos. */
+  async function doImportSfCampaigns() {
+    const chosen = sfCampaigns.filter((c) => sfSelCampaigns.has(c.Id));
+    if (chosen.length === 0) {
+      setMsg({ kind: "error", text: "Elige al menos una campaña de Salesforce." });
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const ep = getApiEndpoints();
+      const res = await importPrograms(
+        chosen.map((c) => ({
+          code: slugCode(c.Name),
+          name: c.Name,
+          status: "activo" as ProgramStatus,
+        })),
+      );
+      // programId real de cada programa recién creado (para asociar sus leads).
+      const refreshed = await refresh();
+      const byCode = new Map((refreshed.data ?? []).map((p) => [p.code, p.programId] as const));
+      let leadsImported = 0;
+      if (ep?.salesforceSync && ep?.manageLeads) {
+        for (const c of chosen) {
+          const programId = byCode.get(slugCode(c.Name));
+          if (!programId) continue;
+          try {
+            const mr = await authedFetch(
+              `${ep.salesforceSync}?mode=campaignMembers&campaignId=${encodeURIComponent(c.Id)}`,
+            );
+            const md = await mr.json();
+            const contacts = (
+              (md.members as { phone?: string; name?: string; email?: string }[]) || []
+            )
+              .filter((m) => m.phone)
+              .map((m) => ({ phone: m.phone, name: m.name, attributes: { email: m.email || "" } }));
+            if (contacts.length === 0) continue;
+            const ir = await authedFetch(ep.manageLeads, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "importLeads", programId, contacts }),
+            });
+            const id = await ir.json();
+            leadsImported += id.created ?? 0;
+          } catch {
+            /* sigue con la siguiente campaña */
+          }
+        }
+      }
+      setSfImport(false);
+      setMsg({
+        kind: "ok",
+        text: `Importadas ${chosen.length} campañas como programas (${res?.imported?.created ?? 0} nuevos)${leadsImported ? ` · ${leadsImported} leads traídos` : ""}.`,
+      });
+    } catch (e) {
+      setMsg({
+        kind: "error",
+        text: e instanceof Error ? e.message : "Error al importar campañas",
+      });
     } finally {
       setBusy(false);
     }
@@ -863,7 +943,7 @@ export function ProgramsHubPage() {
           })()}
       </Modal>
 
-      {/* Modal importar programas desde un picklist de Salesforce */}
+      {/* Modal importar programas desde Salesforce (Campaigns o picklist) */}
       <Modal
         open={sfImport}
         onOpenChange={(o) => {
@@ -880,8 +960,12 @@ export function ProgramsHubPage() {
               variant="primary"
               size="sm"
               icon="download"
-              onClick={doImportSf}
-              disabled={busy || sfLoading || !sfField}
+              onClick={sfSource === "campaigns" ? doImportSfCampaigns : doImportSf}
+              disabled={
+                busy ||
+                sfLoading ||
+                (sfSource === "picklist" ? !sfField : sfSelCampaigns.size === 0)
+              }
             >
               {busy ? "Importando…" : "Crear programas"}
             </Btn>
@@ -889,17 +973,94 @@ export function ProgramsHubPage() {
         }
       >
         <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-          <p className="dim" style={{ fontSize: 12, margin: 0 }}>
-            Elige el campo de <b>lista (picklist)</b> del Lead de Salesforce donde tienes tus
-            programas (ej. "Programa de interés"). Creamos un programa <b>activo</b> por cada valor,
-            listo para que el Agente IA lo cite y para asignarle su embudo.
-          </p>
+          {/* Origen: Campañas (programa = agrupador) o un campo de lista del Lead */}
+          <div
+            className="row gap6"
+            style={{
+              background: "var(--bg-2)",
+              borderRadius: "var(--r-md)",
+              padding: 3,
+              width: "fit-content",
+            }}
+          >
+            {(
+              [
+                ["campaigns", "Campañas de SF"],
+                ["picklist", "Campo (lista)"],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                className={`btn btn--sm ${sfSource === k ? "btn--soft" : "btn--ghost"}`}
+                onClick={() => setSfSource(k)}
+                style={{ fontSize: 12 }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           {sfLoading ? (
             <div className="dim" style={{ fontSize: 13, padding: "12px 0" }}>
-              Leyendo el esquema de Salesforce…
+              Leyendo Salesforce…
             </div>
+          ) : sfSource === "campaigns" ? (
+            <>
+              <p className="dim" style={{ fontSize: 12, margin: 0 }}>
+                Cada <b>Campaign</b> de Salesforce se vuelve un <b>programa</b> en ARIA. Traemos
+                también sus leads (miembros de la campaña) al programa.
+              </p>
+              {sfCampaigns.length === 0 ? (
+                <div className="dim" style={{ fontSize: 12.5 }}>
+                  No hay campañas en tu Salesforce (o el usuario no tiene acceso a Campaigns).
+                </div>
+              ) : (
+                <div className="col gap6" style={{ maxHeight: 260, overflowY: "auto" }}>
+                  {sfCampaigns.map((c) => {
+                    const on = sfSelCampaigns.has(c.Id);
+                    return (
+                      <label
+                        key={c.Id}
+                        className="row gap10"
+                        style={{
+                          alignItems: "center",
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          border: "1px solid var(--border-1)",
+                          background: on ? "var(--bg-active)" : "transparent",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() =>
+                            setSfSelCampaigns((prev) => {
+                              const n = new Set(prev);
+                              if (n.has(c.Id)) n.delete(c.Id);
+                              else n.add(c.Id);
+                              return n;
+                            })
+                          }
+                          style={{ accentColor: "var(--gold)" }}
+                        />
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{c.Name}</span>
+                        <span className="dim" style={{ fontSize: 11 }}>
+                          {c.NumberOfLeads ?? 0} leads
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           ) : (
             <>
+              <p className="dim" style={{ fontSize: 12, margin: 0 }}>
+                Elige un campo de <b>lista (picklist)</b> del Lead (ej. "Producto de interés").
+                Creamos un programa <b>activo</b> por cada valor.
+              </p>
               <Field label="Campo de Salesforce (Lead)">
                 <select value={sfField} onChange={(e) => setSfField(e.target.value)} style={inp}>
                   <option value="">— Elige un campo de lista —</option>
