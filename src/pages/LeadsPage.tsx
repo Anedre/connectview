@@ -606,9 +606,9 @@ export function StageColumn({
             {conversionPct != null && (
               <span
                 style={{ fontSize: 10, fontWeight: 700, color: "var(--text-3)" }}
-                title="Conversión desde la etapa anterior (acotada a 100%)"
+                title="% del total de leads en el embudo"
               >
-                {Math.min(conversionPct, 100)}%↓
+                {conversionPct}%
               </span>
             )}
             <span
@@ -2525,12 +2525,12 @@ export function LeadsPage() {
                     const colValue = items.reduce((a, l) => a + (l.montoEstimado || 0), 0);
                     const prob = stageProbability(stage.valoracion, i, tree.length);
                     const weighted = colValue * prob;
-                    // Conversion vs previous stage (by lead count).
-                    const prevCount = i > 0 ? (byStage.get(tree[i - 1].id) || []).length : null;
+                    // Share del pipeline (% del total de leads en el embudo). Antes
+                    // era "vs etapa anterior": el board es un snapshot categórico
+                    // (cada lead en UNA etapa), no un embudo secuencial acumulativo,
+                    // así que la retención vs anterior daba valores absurdos (>100%).
                     const conv =
-                      prevCount && prevCount > 0
-                        ? Math.round((items.length / prevCount) * 100)
-                        : null;
+                      shownCount > 0 ? Math.round((items.length / shownCount) * 100) : null;
                     return (
                       <StageColumn
                         key={stage.id}

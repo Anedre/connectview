@@ -28,14 +28,100 @@ const now = Date.now();
 const ago = (h: number) => new Date(now - h * 3600000).toISOString();
 
 const LEADS: Lead[] = [
-  { leadId: "1", name: "María Quispe", phone: "+51 987 654 321", company: "Bodega Alata", email: "maria@alata.pe", stageId: "nuevo", source: "web_form", montoEstimado: 1200, updatedAt: ago(2), createdAt: ago(2) },
-  { leadId: "2", name: "Carlos Mendoza", phone: "+51 911 222 333", company: "Ferretería Sur", stageId: "nuevo", source: "campaign", montoEstimado: 800, updatedAt: ago(20), createdAt: ago(20) },
-  { leadId: "3", name: "Lucía Ramos", phone: "+51 955 888 777", company: "Clínica Dental Norte", email: "lucia@dentalnorte.pe", stageId: "calificacion", source: "whatsapp", montoEstimado: 4500, updatedAt: ago(5), createdAt: ago(48), sfLeadId: "00Q1" },
-  { leadId: "4", name: "Jorge Salas", phone: "+51 933 444 555", stageId: "contactado", source: "manual", updatedAt: ago(190), createdAt: ago(200) },
-  { leadId: "5", name: "Andrea Flores", phone: "+51 944 111 999", company: "Distribuidora ABC", email: "andrea@abc.pe", stageId: "interesado", source: "salesforce", montoEstimado: 12000, updatedAt: ago(8), createdAt: ago(72), sfLeadId: "00Q2" },
-  { leadId: "6", name: "Pedro Vega", phone: "+51 922 333 111", company: "Transportes Vega", stageId: "propuesta", source: "web_form", montoEstimado: 7800, updatedAt: ago(30), createdAt: ago(120) },
-  { leadId: "7", name: "Sofía Núñez", phone: "+51 988 777 666", company: "Estudio Núñez", email: "sofia@nunez.pe", stageId: "negociando", source: "whatsapp", montoEstimado: 25000, updatedAt: ago(3), createdAt: ago(96), sfLeadId: "00Q3" },
-  { leadId: "8", name: "Diego Torres", phone: "+51 977 555 444", company: "Importadora Torres", stageId: "cerrado", source: "campaign", montoEstimado: 18000, updatedAt: ago(12), createdAt: ago(240), sfLeadId: "00Q4" },
+  {
+    leadId: "1",
+    name: "María Quispe",
+    phone: "+51 987 654 321",
+    company: "Bodega Alata",
+    email: "maria@alata.pe",
+    stageId: "nuevo",
+    source: "web_form",
+    montoEstimado: 1200,
+    updatedAt: ago(2),
+    createdAt: ago(2),
+  },
+  {
+    leadId: "2",
+    name: "Carlos Mendoza",
+    phone: "+51 911 222 333",
+    company: "Ferretería Sur",
+    stageId: "nuevo",
+    source: "campaign",
+    montoEstimado: 800,
+    updatedAt: ago(20),
+    createdAt: ago(20),
+  },
+  {
+    leadId: "3",
+    name: "Lucía Ramos",
+    phone: "+51 955 888 777",
+    company: "Clínica Dental Norte",
+    email: "lucia@dentalnorte.pe",
+    stageId: "calificacion",
+    source: "whatsapp",
+    montoEstimado: 4500,
+    updatedAt: ago(5),
+    createdAt: ago(48),
+    sfLeadId: "00Q1",
+  },
+  {
+    leadId: "4",
+    name: "Jorge Salas",
+    phone: "+51 933 444 555",
+    stageId: "contactado",
+    source: "manual",
+    updatedAt: ago(190),
+    createdAt: ago(200),
+  },
+  {
+    leadId: "5",
+    name: "Andrea Flores",
+    phone: "+51 944 111 999",
+    company: "Distribuidora ABC",
+    email: "andrea@abc.pe",
+    stageId: "interesado",
+    source: "salesforce",
+    montoEstimado: 12000,
+    updatedAt: ago(8),
+    createdAt: ago(72),
+    sfLeadId: "00Q2",
+  },
+  {
+    leadId: "6",
+    name: "Pedro Vega",
+    phone: "+51 922 333 111",
+    company: "Transportes Vega",
+    stageId: "propuesta",
+    source: "web_form",
+    montoEstimado: 7800,
+    updatedAt: ago(30),
+    createdAt: ago(120),
+  },
+  {
+    leadId: "7",
+    name: "Sofía Núñez",
+    phone: "+51 988 777 666",
+    company: "Estudio Núñez",
+    email: "sofia@nunez.pe",
+    stageId: "negociando",
+    source: "whatsapp",
+    montoEstimado: 25000,
+    updatedAt: ago(3),
+    createdAt: ago(96),
+    sfLeadId: "00Q3",
+  },
+  {
+    leadId: "8",
+    name: "Diego Torres",
+    phone: "+51 977 555 444",
+    company: "Importadora Torres",
+    stageId: "cerrado",
+    source: "campaign",
+    montoEstimado: 18000,
+    updatedAt: ago(12),
+    createdAt: ago(240),
+    sfLeadId: "00Q4",
+  },
 ];
 
 export function LeadsDemoPage() {
@@ -52,7 +138,13 @@ export function LeadsDemoPage() {
 
   const pipelineStages: PipelineStageStat[] = STAGES.map((s) => {
     const items = byStage.get(s.id) || [];
-    return { id: s.id, label: s.label, color: s.color, count: items.length, value: items.reduce((a, l) => a + (l.montoEstimado || 0), 0) };
+    return {
+      id: s.id,
+      label: s.label,
+      color: s.color,
+      count: items.length,
+      value: items.reduce((a, l) => a + (l.montoEstimado || 0), 0),
+    };
   });
   const totalLeads = LEADS.length;
   const totalValue = LEADS.reduce((a, l) => a + (l.montoEstimado || 0), 0);
@@ -69,22 +161,43 @@ export function LeadsDemoPage() {
   return (
     <div style={{ height: "100vh", overflow: "auto", background: "var(--bg-0)" }}>
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: 24 }}>
-        <div style={{ marginBottom: 6, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)" }}>
+        <div
+          style={{
+            marginBottom: 6,
+            fontSize: 11,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--text-3)",
+          }}
+        >
           Leads · preview premium (mock)
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 18px", color: "var(--text-1)" }}>
           Embudo de ventas
         </h1>
 
-        <PipelineSummary stages={pipelineStages} totalLeads={totalLeads} totalValue={totalValue} weightedValue={weightedValue} />
+        <PipelineSummary
+          stages={pipelineStages}
+          totalLeads={totalLeads}
+          totalValue={totalValue}
+          weightedValue={weightedValue}
+        />
 
         <DndProvider backend={HTML5Backend}>
-          <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12, alignItems: "flex-start" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 14,
+              overflowX: "auto",
+              paddingBottom: 12,
+              alignItems: "flex-start",
+            }}
+          >
             {STAGES.map((s, i) => {
               const items = byStage.get(s.id) || [];
               const colValue = items.reduce((a, l) => a + (l.montoEstimado || 0), 0);
-              const prevCount = i > 0 ? (byStage.get(STAGES[i - 1].id) || []).length : null;
-              const conv = prevCount && prevCount > 0 ? Math.round((items.length / prevCount) * 100) : null;
+              // Share del pipeline (% del total), coherente con el board real.
+              const conv = totalLeads > 0 ? Math.round((items.length / totalLeads) * 100) : null;
               return (
                 <StageColumn
                   key={s.id}
