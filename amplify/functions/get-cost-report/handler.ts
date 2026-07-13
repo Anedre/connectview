@@ -378,7 +378,7 @@ export const handler: Handler = async (event: any) => {
   //   · Solicitante LEGACY (novasys/default): filas SIN tenantId (históricas) O la suya.
   //   · Tenant REAL: match EXACTO (descarta las sin tenantId).
   const legacy = isLegacyTenant(tenantId);
-  const hsmBelongs = (rowTenant?: string): boolean =>
+  const belongsTenant = (rowTenant?: string): boolean =>
     legacy ? !rowTenant || rowTenant === tenantId : rowTenant === tenantId;
   let hsmCount = 0;
   try {
@@ -389,7 +389,7 @@ export const handler: Handler = async (event: any) => {
       fromIso,
       toIso,
       (it) => {
-        if (!hsmBelongs(it.tenantId)) return;
+        if (!belongsTenant(it.tenantId)) return;
         if (!it.status || it.status !== "failed") hsmCount++;
       },
     );
@@ -429,7 +429,9 @@ export const handler: Handler = async (event: any) => {
       tenantId?: string;
       assignedAgentUserId?: string;
     }>(legacyDynamo, CONVERSATIONS_TABLE, "lastMessageAt", fromIso, toIso, (c) => {
-      if (c.tenantId && c.tenantId !== tenantId) return;
+      // Guard fuerte: un tenant real NO cuenta las filas pooled sin tenantId
+      // (antes `c.tenantId && …` las dejaba pasar → mezcla de tenants en el costo).
+      if (!belongsTenant(c.tenantId)) return;
       for (const m of c.messages || []) {
         convMsgsTotal++;
         if (c.channel === "whatsapp" && m.direction === "out") waOutMsgs++;
@@ -497,6 +499,9 @@ export const handler: Handler = async (event: any) => {
       toIso,
       (c) => {
         if (c.recType && c.recType !== "conversation") return;
+        // Antes sumaba los turnos de TODOS los tenants → el costo Bedrock mezclaba
+        // cuentas. Ahora solo los del tenant del reporte.
+        if (!belongsTenant(c.tenantId)) return;
         botTurns += Number(c.turns || 0);
       },
     );

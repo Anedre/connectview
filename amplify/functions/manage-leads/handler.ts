@@ -650,8 +650,16 @@ export const handler: Handler = async (event: any) => {
       // scopeado por programa (?programId=). Fusiona WhatsApp (HSM) por teléfono.
       if (params.report === "attribution") {
         let leads = all;
-        if (params.programId && params.programId !== "all" && params.programId !== "none") {
-          const mem = await queryMembership(String(params.programId));
+        // programId específico → la conversión usa la taxonomía de ESE programa
+        // (sus etapas "cierre"); "all"/"none" → taxonomía default. Antes NO se
+        // pasaba → converted/avgGolpesToClose salían con la taxonomía default
+        // aunque el embudo de al lado usara la del programa (no cuadraban).
+        const attrProgramId =
+          params.programId && params.programId !== "all" && params.programId !== "none"
+            ? String(params.programId)
+            : undefined;
+        if (attrProgramId) {
+          const mem = await queryMembership(attrProgramId);
           leads = all.filter((l) => mem.has(l.leadId));
         }
         const waByPhone = await hsmEventsByPhone();
@@ -659,7 +667,7 @@ export const handler: Handler = async (event: any) => {
           leads.map((l) => {
             const wa = waByPhone.get(normalizePhone(l.phone)?.e164 || l.phone) || [];
             const history = [...(Array.isArray(l.history) ? l.history : []), ...wa];
-            return summarizeGolpes(history, l.stageId);
+            return summarizeGolpes(history, l.stageId, attrProgramId);
           }),
         );
         const totalLeads = perLead.length;

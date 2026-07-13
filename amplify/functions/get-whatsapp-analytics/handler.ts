@@ -1,5 +1,8 @@
 import type { Handler } from "aws-lambda";
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
+import { unmarshall } from "@aws-sdk/util-dynamodb";
+import { resolveTenantId, isLegacyTenant } from "../_shared/cognitoAuth";
 
 /**
  * get-whatsapp-analytics — entrega agregada por plantilla desde Meta (Pilar 4 ·
@@ -15,27 +18,60 @@ import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-sec
  * Query: ?days=30 (ventana).
  */
 const sm = new SecretsManagerClient({});
+const legacyDynamo = new DynamoDBClient({});
+const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
 const WABA_ID = process.env.WHATSAPP_ANALYTICS_WABA_ID || "";
 const TOKEN_SECRET = process.env.WHATSAPP_TOKEN_SECRET || "WhatsAppKeyPin";
 const GRAPH = "https://graph.facebook.com/v20.0";
 const CORS = { "Content-Type": "application/json" };
 const ok = (b: unknown) => ({ statusCode: 200, headers: CORS, body: JSON.stringify(b) });
 
-let cachedToken: string | null = null;
-async function getToken(): Promise<string> {
-  if (cachedToken) return cachedToken;
-  const r = await sm.send(new GetSecretValueCommand({ SecretId: TOKEN_SECRET }));
-  const raw = r.SecretString || "";
-  // El secreto puede ser el token plano o un JSON {token}.
-  let token = raw.trim();
+/** Extrae el token de un secreto (token plano o JSON {token}). */
+function parseTokenSecret(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
   try {
     const j = JSON.parse(raw);
-    if (j && typeof j.token === "string") token = j.token;
+    if (j && typeof j.token === "string") return j.token;
   } catch {
     /* string plano */
   }
-  cachedToken = token;
-  return token;
+  return t;
+}
+
+/** Token de Meta del env (fundador/Novasys). */
+let cachedToken: string | null = null;
+async function getLegacyToken(): Promise<string | null> {
+  if (cachedToken) return cachedToken;
+  const r = await sm.send(new GetSecretValueCommand({ SecretId: TOKEN_SECRET }));
+  cachedToken = parseTokenSecret(r.SecretString || "");
+  return cachedToken;
+}
+
+/** WABA del TENANT (de su config en connectview-connections). "" si no configuró. */
+async function getTenantWaba(tenantId: string): Promise<string> {
+  try {
+    const it = await legacyDynamo.send(
+      new GetItemCommand({ TableName: CONNECTIONS_TABLE, Key: { tenantId: { S: tenantId } } }),
+    );
+    if (!it.Item) return "";
+    const cfg = JSON.parse(unmarshall(it.Item).configJson || "{}");
+    return cfg.whatsapp?.wabaId || "";
+  } catch {
+    return "";
+  }
+}
+
+/** Token de Meta del TENANT (Secrets Manager por-tenant). null si no lo cargó. */
+async function getTenantToken(tenantId: string): Promise<string | null> {
+  try {
+    const r = await sm.send(
+      new GetSecretValueCommand({ SecretId: `connectview/tenant/${tenantId}/whatsapp` }),
+    );
+    return parseTokenSecret(r.SecretString || "");
+  } catch {
+    return null;
+  }
 }
 
 interface TemplateAgg {
@@ -61,10 +97,25 @@ export const handler: Handler = async (event: any) => {
   if (event?.requestContext?.http?.method === "OPTIONS") {
     return { statusCode: 200, headers: CORS, body: "" };
   }
-  if (!WABA_ID) return ok({ configured: false, error: "WABA de analytics no configurada" });
+  // Per-tenant: el WABA + token salen de la config del TENANT del JWT. Antes se
+  // usaba una WABA de env GLOBAL → todos los tenants veían la misma. Anónimo →
+  // bloqueado; fundador/Novasys → env (comportamiento histórico); real → el suyo.
+  const tenantId = await resolveTenantId(event?.headers);
+  if (!tenantId) return ok({ configured: false, error: "No autenticado" });
+  let wabaId: string;
+  let token: string | null;
+  if (isLegacyTenant(tenantId)) {
+    wabaId = WABA_ID;
+    token = await getLegacyToken();
+  } else {
+    wabaId = await getTenantWaba(tenantId);
+    token = await getTenantToken(tenantId);
+  }
+  if (!wabaId || !token) {
+    return ok({ configured: false, error: "WhatsApp (Meta) no configurado para tu organización" });
+  }
   try {
     const days = Math.min(90, Math.max(1, Number(event?.queryStringParameters?.days) || 30));
-    const token = await getToken();
     const end = Math.floor(Date.now() / 1000);
     const start = end - days * 86400;
 
@@ -72,7 +123,7 @@ export const handler: Handler = async (event: any) => {
     const tmplMap = new Map<string, { name: string; status: string }>();
     let after: string | undefined;
     do {
-      const q = `${WABA_ID}/message_templates?fields=id,name,status&limit=100${after ? `&after=${after}` : ""}`;
+      const q = `${wabaId}/message_templates?fields=id,name,status&limit=100${after ? `&after=${after}` : ""}`;
       const res = await graph(q, token);
       for (const t of res.data || []) tmplMap.set(String(t.id), { name: t.name, status: t.status });
       after = res.paging?.cursors?.after && res.data?.length ? res.paging.cursors.after : undefined;
@@ -86,7 +137,7 @@ export const handler: Handler = async (event: any) => {
       const batch = ids.slice(i, i + 10);
       const metrics = encodeURIComponent(JSON.stringify(["SENT", "DELIVERED", "READ"]));
       const tids = encodeURIComponent(JSON.stringify(batch));
-      const q = `${WABA_ID}/template_analytics?start=${start}&end=${end}&granularity=DAILY&metric_types=${metrics}&template_ids=${tids}`;
+      const q = `${wabaId}/template_analytics?start=${start}&end=${end}&granularity=DAILY&metric_types=${metrics}&template_ids=${tids}`;
       let res;
       try {
         res = await graph(q, token);
@@ -121,7 +172,7 @@ export const handler: Handler = async (event: any) => {
     const wabaActivity = { sent: 0, delivered: 0 };
     try {
       const a = await graph(
-        `${WABA_ID}?fields=analytics.start(${start}).end(${end}).granularity(DAY)`,
+        `${wabaId}?fields=analytics.start(${start}).end(${end}).granularity(DAY)`,
         token,
       );
       for (const dp of a?.analytics?.data_points || []) {
@@ -148,7 +199,7 @@ export const handler: Handler = async (event: any) => {
     return ok({
       configured: true,
       source: "meta_graph",
-      wabaId: WABA_ID,
+      wabaId,
       windowDays: days,
       templateCount: tmplMap.size,
       templates: templates.map((t) => ({

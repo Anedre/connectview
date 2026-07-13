@@ -19,6 +19,7 @@ import {
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import ExcelJS from "exceljs";
+import { isLegacyTenant } from "../_shared/cognitoAuth";
 
 const dynamo = new DynamoDBClient({});
 const ses = new SESv2Client({});
@@ -60,15 +61,29 @@ export function computeNextRun(freq: string, hourUtc: number, fromMs: number): s
   return next.toISOString();
 }
 
-/** Escanea TODOS los leads (pooled / Novasys) y los devuelve como filas. */
-async function fetchLeads(): Promise<Record<string, unknown>[]> {
+/** ¿La fila pertenece al tenant del job? Misma regla que get-analytics-feed: el
+ *  tenant fundador (legacy/Novasys) incluye las filas pooled SIN tenantId + las
+ *  suyas; un tenant real solo las que llevan EXACTAMENTE su tenantId. Cierra el
+ *  leak: antes fetchLeads escaneaba TODA la tabla y mandaba por email los leads
+ *  de todos los clientes al destinatario del job. */
+function belongsToTenant(row: Record<string, unknown>, tenantId: string): boolean {
+  const rt = row.tenantId as string | undefined;
+  if (isLegacyTenant(tenantId)) return !rt || rt === tenantId;
+  return rt === tenantId;
+}
+
+/** Escanea los leads y devuelve SOLO los del tenant del job. */
+async function fetchLeads(tenantId: string): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = [];
   let lastKey: Record<string, unknown> | undefined;
   do {
     const r = await dynamo.send(
       new ScanCommand({ TableName: LEADS_TABLE, ExclusiveStartKey: lastKey as never }),
     );
-    for (const it of r.Items || []) rows.push(unmarshall(it));
+    for (const it of r.Items || []) {
+      const l = unmarshall(it);
+      if (belongsToTenant(l, tenantId)) rows.push(l);
+    }
     lastKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (lastKey);
   return rows;
@@ -80,10 +95,10 @@ interface SheetSpec {
   rows: Record<string, unknown>[];
 }
 
-/** Especifica el contenido del XLSX según el dataset. */
-async function buildSheet(dataset: string): Promise<SheetSpec> {
+/** Especifica el contenido del XLSX según el dataset, acotado al tenant del job. */
+async function buildSheet(dataset: string, tenantId: string): Promise<SheetSpec> {
   if (dataset === "leads") {
-    const leads = await fetchLeads();
+    const leads = await fetchLeads(tenantId);
     return {
       title: "Leads",
       columns: [
@@ -172,7 +187,9 @@ async function runExport(
   job: ScheduledExport,
 ): Promise<{ ok: boolean; rows: number; messageId?: string; error?: string }> {
   try {
-    const spec = await buildSheet(job.dataset);
+    // Acota el dataset al tenant DUEÑO del job (cierra el leak cross-tenant).
+    // Sin tenantId (jobs legacy) → "default" = tenant fundador (Novasys).
+    const spec = await buildSheet(job.dataset, job.tenantId || "default");
     const xlsx = await buildXlsx(spec);
     const date = nowIso().slice(0, 10);
     const filename = `${job.dataset}-${date}.xlsx`;
