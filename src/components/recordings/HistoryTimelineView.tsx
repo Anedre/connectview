@@ -348,8 +348,29 @@ export function HistoryTimelineView({ phone, name }: { phone: string | null; nam
                     <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>
                       {it.title}
                     </span>
-                    <span className="muted" style={{ fontSize: 10.5, flex: "0 0 auto" }}>
-                      {(it.ts || "").slice(0, 10)}
+                    <span
+                      className="muted"
+                      style={{ fontSize: 10.5, flex: "0 0 auto", textAlign: "right" }}
+                      title={it.ts ? new Date(it.ts).toLocaleString("es-PE") : ""}
+                    >
+                      {(() => {
+                        const t = it.ts ? new Date(it.ts).getTime() : 0;
+                        if (!t || Number.isNaN(t)) return "—";
+                        const min = Math.floor((Date.now() - t) / 60000);
+                        const rel =
+                          min < 1
+                            ? "ahora"
+                            : min < 60
+                              ? `hace ${min} min`
+                              : min < 1440
+                                ? `hace ${Math.floor(min / 60)} h`
+                                : `hace ${Math.floor(min / 1440)} d`;
+                        const dd = new Date(t).toLocaleDateString("es-PE", {
+                          day: "2-digit",
+                          month: "short",
+                        });
+                        return `${dd} · ${rel}`;
+                      })()}
                       {it.src === "sf" ? " · SF" : ""}
                     </span>
                   </div>
