@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Select,
@@ -14,6 +15,42 @@ import { useProgram } from "@/context/ProgramContext";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { useRoles } from "@/hooks/useRoles";
 import { LeadImportModal } from "@/components/leads/LeadImportModal";
+import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
+import { initials } from "@/lib/initials";
+
+interface ProgLead {
+  leadId: string;
+  name?: string;
+  phone: string;
+  stageId?: string;
+  source?: string;
+  montoEstimado?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** "hace 3 d" / "hoy" — fecha relativa compacta, sin dependencias. */
+function ago(iso?: string): string {
+  if (!iso) return "";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(ms)) return "";
+  const d = Math.floor(ms / 86_400_000);
+  if (d <= 0) return "hoy";
+  if (d === 1) return "ayer";
+  if (d < 30) return `hace ${d} d`;
+  const mo = Math.floor(d / 30);
+  return `hace ${mo} mes${mo > 1 ? "es" : ""}`;
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  manual: "Manual",
+  "import-csv": "Import CSV",
+  salesforce: "Salesforce",
+  meta: "Meta Ads",
+  whatsapp: "WhatsApp",
+  webform: "Formulario",
+};
 
 /** Paleta cíclica para pintar las etapas del embudo (mismo espíritu que el board). */
 const STAGE_COLORS = [
@@ -104,6 +141,31 @@ export function ProgramDetailPage() {
   );
   const { tree, docs: taxDocs } = useTaxonomy(program?.taxonomyId);
 
+  // Leads del programa (lista + actividad) — mismo endpoint que el board.
+  const { data: programLeads = [] } = useQuery<ProgLead[]>({
+    queryKey: ["program-leads", programId],
+    queryFn: async () => {
+      const ep = getApiEndpoints();
+      if (!ep?.manageLeads || !programId) return [];
+      const r = await authedFetch(`${ep.manageLeads}?programId=${encodeURIComponent(programId)}`);
+      const d = await r.json();
+      return Array.isArray(d.leads) ? (d.leads as ProgLead[]) : [];
+    },
+    enabled: !!programId,
+    refetchInterval: 30_000,
+  });
+  const recentLeads = useMemo(
+    () =>
+      [...programLeads]
+        .sort((a, b) =>
+          String(b.createdAt || b.updatedAt || "").localeCompare(
+            String(a.createdAt || a.updatedAt || ""),
+          ),
+        )
+        .slice(0, 12),
+    [programLeads],
+  );
+
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Program>>({});
   const [saving, setSaving] = useState(false);
@@ -150,6 +212,17 @@ export function ProgramDetailPage() {
   const activeStages = tree.filter((s) => (byStage[s.id] ?? 0) > 0).length;
   const dleft = daysLeft(program.endDate);
   const st = STATUS_META[program.status] ?? STATUS_META.borrador;
+
+  // Leads cuya etapa (membership) NO pertenece al embudo actual del programa: cuentan
+  // en el total pero no en las barras → se muestran como bucket "otras" para que sume.
+  const treeIds = new Set(tree.map((s) => s.id));
+  const otherCount = Object.entries(byStage).reduce(
+    (sum, [k, v]) => (treeIds.has(k) ? sum : sum + v),
+    0,
+  );
+  const stageLabel = (id?: string) => tree.find((s) => s.id === id)?.label ?? id ?? "—";
+  const leadsGoal = program.kpiTargets?.leadsGoal ?? 0;
+  const goalPct = leadsGoal > 0 ? Math.min(100, Math.round((totalLeads / leadsGoal) * 100)) : 0;
 
   const goBoard = () => {
     setActiveProgram(program.programId);
@@ -341,6 +414,17 @@ export function ProgramDetailPage() {
             })}
           </div>
         )}
+        {otherCount > 0 && (
+          <div
+            className="row gap8"
+            style={{ marginTop: 10, alignItems: "center", flexWrap: "wrap" }}
+          >
+            <Pill tone="outline">{otherCount} en otras etapas</Pill>
+            <span className="dim" style={{ fontSize: 11.5 }}>
+              leads en etapas que no son de este embudo — re-tipifícalos para verlos en las columnas
+            </span>
+          </div>
+        )}
         {canManage && (
           <div
             className="row gap8"
@@ -502,7 +586,7 @@ export function ProgramDetailPage() {
         )}
       </Card>
 
-      {/* Carga de leads */}
+      {/* Leads del programa: meta + acciones de carga + lista */}
       <Card
         title="Leads del programa"
         icon="users"
@@ -513,12 +597,72 @@ export function ProgramDetailPage() {
           </span>
         }
       >
+        {/* Meta de captación (kpiTargets.leadsGoal) */}
+        {(leadsGoal > 0 || editing) && (
+          <div className="col gap6" style={{ marginBottom: 14 }}>
+            <div className="row between" style={{ alignItems: "center" }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>Meta de captación</span>
+              {editing ? (
+                <span className="row gap6" style={{ alignItems: "center", fontSize: 12.5 }}>
+                  <span className="dim">Objetivo:</span>
+                  <input
+                    type="number"
+                    min={0}
+                    style={{ ...inp, width: 110, padding: "5px 8px" }}
+                    value={form.kpiTargets?.leadsGoal ?? ""}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        kpiTargets: {
+                          ...f.kpiTargets,
+                          leadsGoal: Number(e.target.value) || undefined,
+                        },
+                      }))
+                    }
+                    placeholder="ej. 200"
+                  />
+                  <span className="dim">leads</span>
+                </span>
+              ) : (
+                <span className="mono" style={{ fontSize: 12.5 }}>
+                  {totalLeads} / {leadsGoal} ·{" "}
+                  <b style={{ color: goalPct >= 100 ? "var(--green)" : "var(--text-1)" }}>
+                    {goalPct}%
+                  </b>
+                </span>
+              )}
+            </div>
+            {leadsGoal > 0 && (
+              <div
+                style={{
+                  height: 7,
+                  borderRadius: 4,
+                  background: "var(--bg-3, rgba(0,0,0,.06))",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${goalPct}%`,
+                    height: "100%",
+                    background: goalPct >= 100 ? "var(--green)" : "var(--cyan)",
+                    borderRadius: 4,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         <p className="dim" style={{ fontSize: 13, marginTop: 0, marginBottom: 12, maxWidth: 620 }}>
           Carga tu histórico (por ejemplo un CSV que Salesforce no tiene) directamente a este
           programa. <b style={{ color: "var(--text-2)" }}>No se llama a nadie</b>: los leads entran
           al tablero en la etapa que elijas. Si luego quieres contactarlos, crea una campaña.
         </p>
-        <div className="row gap10" style={{ flexWrap: "wrap" }}>
+        <div
+          className="row gap10"
+          style={{ flexWrap: "wrap", marginBottom: recentLeads.length ? 16 : 0 }}
+        >
           {canManage && (
             <Btn variant="primary" icon="upload" onClick={() => setShowImport(true)}>
               Importar CSV a este programa
@@ -533,6 +677,85 @@ export function ProgramDetailPage() {
             </Btn>
           )}
         </div>
+
+        {/* Lista de leads recientes del programa */}
+        {recentLeads.length > 0 && (
+          <div className="col gap6">
+            <div className="row between" style={{ alignItems: "center", marginBottom: 2 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)" }}>
+                Leads recientes
+              </span>
+              {programLeads.length > recentLeads.length && (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={goBoard}
+                  style={{ fontSize: 12 }}
+                >
+                  Ver los {programLeads.length}
+                </button>
+              )}
+            </div>
+            <div
+              className="col"
+              style={{
+                border: "1px solid var(--border-1)",
+                borderRadius: "var(--r-md)",
+                overflow: "hidden",
+              }}
+            >
+              {recentLeads.map((l, i) => (
+                <div
+                  key={l.leadId}
+                  className="row gap10"
+                  style={{
+                    alignItems: "center",
+                    padding: "9px 12px",
+                    borderTop: i ? "1px solid var(--border-1)" : "none",
+                  }}
+                >
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      width: 30,
+                      height: 30,
+                      borderRadius: "50%",
+                      background: "var(--bg-3, var(--bg-2))",
+                      display: "grid",
+                      placeItems: "center",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "var(--text-2)",
+                    }}
+                  >
+                    {initials(l.name || l.phone)}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="trunc" style={{ fontSize: 13, fontWeight: 500 }}>
+                      {l.name || l.phone}
+                    </div>
+                    <div className="dim mono" style={{ fontSize: 11 }}>
+                      {l.phone}
+                    </div>
+                  </div>
+                  <Pill tone="outline">{stageLabel(l.stageId)}</Pill>
+                  <span
+                    className="dim"
+                    style={{ fontSize: 11, width: 74, textAlign: "right", flexShrink: 0 }}
+                  >
+                    {SOURCE_LABEL[l.source || ""] || l.source || "—"}
+                  </span>
+                  <span
+                    className="dim"
+                    style={{ fontSize: 11, width: 64, textAlign: "right", flexShrink: 0 }}
+                  >
+                    {ago(l.createdAt || l.updatedAt)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
 
       <LeadImportModal
