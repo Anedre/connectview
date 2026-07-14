@@ -1,8 +1,6 @@
+import type { CSSProperties } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import {
-  useAllActiveContacts,
-  type ActiveContact,
-} from "@/hooks/useActiveContact";
+import { useAllActiveContacts, type ActiveContact } from "@/hooks/useActiveContact";
 import { useCCP } from "@/hooks/useCCP";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import { Av, Icon, Pill } from "@/components/aria";
@@ -29,7 +27,7 @@ export function IncomingCallOverlay() {
     .filter(
       (c) =>
         c.direction !== "outbound" &&
-        (c.state === "connecting" || c.state === "incoming" || c.state === "ringing")
+        (c.state === "connecting" || c.state === "incoming" || c.state === "ringing"),
     )
     .sort((a, b) => b.lastSeenTs - a.lastSeenTs)[0];
 
@@ -81,12 +79,12 @@ function IncomingCallOverlayBody({ contact }: OverlayBodyProps) {
   const meta: ChannelMeta = isWhatsApp
     ? { icon: "wa", label: "WhatsApp entrante", color: "var(--green)", tone: "green" }
     : isChat
-    ? { icon: "chat", label: "Chat entrante", color: "var(--cyan)", tone: "cyan" }
-    : isEmail
-    ? { icon: "mail", label: "Email entrante", color: "var(--gold)", tone: "gold" }
-    : isTask
-    ? { icon: "check", label: "Tarea entrante", color: "var(--iris)", tone: "iris" }
-    : { icon: "arrowIn", label: "Llamada entrante", color: "var(--green)", tone: "green" };
+      ? { icon: "chat", label: "Chat entrante", color: "var(--cyan)", tone: "cyan" }
+      : isEmail
+        ? { icon: "mail", label: "Email entrante", color: "var(--gold)", tone: "gold" }
+        : isTask
+          ? { icon: "check", label: "Tarea entrante", color: "var(--iris)", tone: "iris" }
+          : { icon: "arrowIn", label: "Llamada entrante", color: "var(--green)", tone: "green" };
 
   const fullName =
     profile?.businessName ||
@@ -96,9 +94,7 @@ function IncomingCallOverlayBody({ contact }: OverlayBodyProps) {
     fullName ||
     contact.customerPhone ||
     (isChat || isEmail || isTask ? "Cliente nuevo" : "Cliente entrante");
-  const callerSub = [contact.customerPhone, contact.queueName]
-    .filter(Boolean)
-    .join(" · ");
+  const callerSub = [contact.customerPhone, contact.queueName].filter(Boolean).join(" · ");
 
   // Screen-pop: motivo / nivel puestos por el flow como atributos del contacto.
   const udepIntent = contact.attributes?.udep_intent;
@@ -111,12 +107,7 @@ function IncomingCallOverlayBody({ contact }: OverlayBodyProps) {
     hablar_con_asesor: "Pide asesor",
   };
   const motivoLabel = udepIntent ? intentLabelMap[udepIntent] || udepIntent : null;
-  const hasChips = !!(
-    profile?.partyType ||
-    profile?.accountNumber ||
-    motivoLabel ||
-    udepNivel
-  );
+  const hasChips = !!(profile?.partyType || profile?.accountNumber || motivoLabel || udepNivel);
 
   const handleAccept = () => {
     // Aceptar ESTE contacto (en multi-contacto podría haber varios en cola).
@@ -127,97 +118,64 @@ function IncomingCallOverlayBody({ contact }: OverlayBodyProps) {
   };
   const handleReject = () => reject(contact.contactId);
 
+  const acceptLabel = isVoice ? "Contestar" : "Aceptar";
+
   return (
     <div
-      className="incoming-overlay"
+      className="incoming-overlay inc-overlay"
       data-debug-component="IncomingCallOverlay"
       style={{ position: "fixed", zIndex: 200 }}
     >
-      <div
-        className="card card--pop ring-pulse"
-        style={{
-          padding: 32,
-          textAlign: "center",
-          maxWidth: 440,
-          width: "100%",
-          margin: "0 20px",
-          borderColor: `color-mix(in srgb, ${meta.color} 45%, var(--border-1))`,
-        }}
-      >
-        <Pill tone={meta.tone} icon={meta.icon} style={{ margin: "0 auto" }}>
+      <div className="inc-card" style={{ "--inc-c": meta.color } as CSSProperties}>
+        <Pill tone={meta.tone} icon={meta.icon} className="inc-chip">
           {meta.label}
           {contact.queueName ? ` · ${contact.queueName}` : ""}
         </Pill>
 
-        <div style={{ margin: "20px auto 14px", width: "fit-content" }}>
-          <Av name={callerName} size={84} radius={26} color={meta.color} />
+        <div className="inc-hero">
+          <span className="inc-ripple" aria-hidden="true" />
+          <span className="inc-ripple" aria-hidden="true" />
+          <span className="inc-ripple" aria-hidden="true" />
+          <Av name={callerName} size={92} radius={30} color={meta.color} />
         </div>
 
-        <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em" }}>
-          {callerName}
-        </div>
-        {callerSub && (
-          <div className="mono dim" style={{ fontSize: 13, marginTop: 4 }}>
-            {callerSub}
-          </div>
-        )}
+        <div className="inc-name">{callerName}</div>
+        {callerSub && <div className="inc-sub mono">{callerSub}</div>}
 
         {hasChips && (
-          <div
-            className="row gap6 wrap"
-            style={{ marginTop: 12, justifyContent: "center" }}
-          >
+          <div className="inc-chips">
             {profile?.partyType && <Pill tone="iris">{profile.partyType}</Pill>}
-            {profile?.accountNumber && (
-              <Pill tone="cyan">{profile.accountNumber}</Pill>
-            )}
+            {profile?.accountNumber && <Pill tone="cyan">{profile.accountNumber}</Pill>}
             {motivoLabel && <Pill tone="gold">{motivoLabel}</Pill>}
             {udepNivel && <Pill tone="cyan">{udepNivel}</Pill>}
           </div>
         )}
 
-        <div
-          className="row gap12"
-          style={{ marginTop: 24, justifyContent: "center" }}
-        >
-          <button
-            type="button"
-            className="btn"
-            onClick={handleReject}
-            title="Rechazar"
-            style={{
-              background: "var(--red)",
-              color: "#fff",
-              height: 52,
-              width: 52,
-              borderRadius: "50%",
-              padding: 0,
-            }}
-          >
-            <Icon
-              name="phone"
-              size={22}
-              weight="fill"
-              style={{ transform: "rotate(135deg)" }}
-            />
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={handleAccept}
-            title="Aceptar"
-            style={{
-              background: meta.color,
-              color: "#fff",
-              height: 52,
-              padding: "0 26px",
-              borderRadius: 99,
-              fontWeight: 750,
-            }}
-          >
-            <Icon name={isVoice ? "phone" : meta.icon} size={20} weight="fill" />
-            {isVoice ? "Contestar" : "Aceptar"}
-          </button>
+        <div className="inc-actions">
+          <div className="inc-action">
+            <button
+              type="button"
+              className="inc-btn inc-btn--reject"
+              onClick={handleReject}
+              title="Rechazar"
+              aria-label="Rechazar"
+            >
+              <Icon name="phone" size={22} weight="fill" style={{ transform: "rotate(135deg)" }} />
+            </button>
+            <span className="inc-action__label">Rechazar</span>
+          </div>
+          <div className="inc-action">
+            <button
+              type="button"
+              className="inc-btn inc-btn--accept"
+              onClick={handleAccept}
+              title={acceptLabel}
+              aria-label={acceptLabel}
+            >
+              <Icon name={isVoice ? "phone" : meta.icon} size={24} weight="fill" />
+            </button>
+            <span className="inc-action__label">{acceptLabel}</span>
+          </div>
         </div>
       </div>
     </div>

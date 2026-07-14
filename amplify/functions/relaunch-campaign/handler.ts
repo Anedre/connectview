@@ -14,6 +14,7 @@ import {
   PutOutboundRequestBatchCommand,
 } from "@aws-sdk/client-connectcampaignsv2";
 import { resolveDynamo } from "../_shared/tenantConnect";
+import { kickDialer } from "../_shared/invokeDialer";
 
 // BYO Data Plane (#46): DDB del tenant (su tabla en su cuenta) primero;
 // fallback a Vox pooled. ConnectCampaignsV2 queda con cred legacy (AWS service
@@ -297,6 +298,11 @@ export const handler: Handler = async (event: any) => {
         console.warn("AWS v2 push after relaunch failed:", err);
       }
     }
+
+    // Arranque rápido: sin esto, los contactos reencolados esperaban hasta el
+    // próximo tick de EventBridge (≤60s). Con el kick, el reintento manual
+    // ("Reintentar ahora" del detalle) marca en segundos. Best-effort.
+    if (!awsCampaignId) await kickDialer();
 
     return {
       statusCode: 200,

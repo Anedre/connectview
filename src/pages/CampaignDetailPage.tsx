@@ -360,6 +360,31 @@ export function CampaignDetailPage() {
     });
   };
 
+  // Reintento MANUAL de los seleccionados: los devuelve a `pending` con
+  // reintento inmediato (relaunch scope:"specific" pone nextRetryAt=now y el
+  // backend patea al dialer) → marcan en segundos, sin esperar los 30 min del
+  // retry automático. Sirve para no_answer/failed y también para adelantar
+  // un pending programado.
+  const handleBulkRetry = async () => {
+    if (!campaignId || selectedRowIds.size === 0) return;
+    const rowIds = Array.from(selectedRowIds).filter((id) => {
+      const row = contacts.find((c) => c.rowId === id);
+      return row && row.status !== "dialing" && row.status !== "connected";
+    });
+    if (rowIds.length === 0) return;
+    try {
+      const res = await mutations.relaunch(campaignId, "specific", rowIds);
+      toast.success(
+        `${res.rowsReset} contacto${res.rowsReset === 1 ? "" : "s"} en cola — marcando ahora`,
+      );
+      setSelectedRowIds(new Set());
+      refresh();
+      refreshContacts();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error reintentando");
+    }
+  };
+
   const handleBulkDelete = async () => {
     if (!campaignId || selectedRowIds.size === 0) return;
     const rowIds = Array.from(selectedRowIds).filter((id) => {
@@ -1109,6 +1134,20 @@ export function CampaignDetailPage() {
               size="sm"
               style={{
                 marginLeft: "auto",
+                color: "var(--green-2)",
+                borderColor: "color-mix(in srgb,var(--green) 40%,var(--border-1))",
+              }}
+              onClick={handleBulkRetry}
+              disabled={!canManage || mutations.pending || lockedRowCount === selectedRowIds.size}
+              title="Vuelve los seleccionados a la cola y marca ahora (sin esperar el reintento automático)"
+            >
+              <Icon.Phone size={13} />
+              Reintentar ahora {selectedRowIds.size - lockedRowCount}
+            </Btn>
+            <Btn
+              variant="ghost"
+              size="sm"
+              style={{
                 color: "var(--red)",
                 borderColor: "color-mix(in srgb,var(--red) 40%,var(--border-1))",
               }}

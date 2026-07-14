@@ -15,6 +15,7 @@ import {
   DescribeQueueCommand,
 } from "@aws-sdk/client-connect";
 import { upsertCachedContact } from "../_shared/recordingsCache";
+import { kickDialer } from "../_shared/invokeDialer";
 
 // BYO Data Plane (#46): module-active. TODO: para multi-tenant real, hacer
 // reverse lookup instanceArn (del evento) → tenantId vía connectview-connections.
@@ -517,9 +518,16 @@ export const handler: EventBridgeHandler<
       };
       // Reintento automático del no_answer (config de la campaña, antes huérfana):
       // re-encola como pending con nextRetryAt futuro. Si re-encoló, terminamos.
-      if (newStatus === "no_answer" && (await maybeScheduleRetry(link, extra))) return;
+      if (newStatus === "no_answer" && (await maybeScheduleRetry(link, extra))) {
+        // La llamada terminó → el agente quedó libre. Kick al dialer para que
+        // marque el siguiente pendiente YA (no en el próximo sub-tick ≤6-12s).
+        await kickDialer();
+        return;
+      }
       await updateCampaignContactStatus(link, newStatus, extra);
       await updateCampaignCounters(link.campaignId, newStatus, link.status);
+      // Idem: agente liberado → siguiente marcado inmediato. Best-effort.
+      await kickDialer();
     }
   } catch (error) {
     if (error instanceof Error && error.name === "ConditionalCheckFailedException") {
