@@ -124,11 +124,15 @@ function isWithinWindow(campaign: Campaign): boolean {
     const fmt = new Intl.DateTimeFormat("en-US", {
       timeZone: campaign.timezone || "America/Lima",
       hour: "2-digit",
-      hour12: false,
+      // BUG medianoche: `hour12:false` en en-US resuelve a hourCycle "h24",
+      // donde las 00:xx se formatean como "24" → `24 < end` fallaba y TODA
+      // campaña quedaba "outside calling window" de 00:00 a 00:59. h23 = "00".
+      hourCycle: "h23",
       weekday: "short",
     });
     const parts = fmt.formatToParts(new Date());
-    const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0");
+    const rawHour = parseInt(parts.find((p) => p.type === "hour")?.value || "0");
+    const hour = rawHour === 24 ? 0 : rawHour; // cinturón por si el runtime ignora h23
     const weekdayStr = parts.find((p) => p.type === "weekday")?.value || "";
     const weekdayMap: Record<string, number> = {
       Sun: 0,
