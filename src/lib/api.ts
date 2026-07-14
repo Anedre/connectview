@@ -212,6 +212,10 @@ interface ApiEndpoints {
    *  reenvía invitación (temporal caducada) o código de reset. Público,
    *  respuesta genérica anti-enumeración. */
   recoverAccess?: string;
+  /** Auditor de pruebas en vivo (audit-log) — recibe errores/logs de frontend
+   *  (cualquier PC) y backend y los sirve al panel /audit. Telemetría temporal
+   *  con TTL 7d; se apaga borrando la función tras la prueba. */
+  auditLog?: string;
 }
 
 let endpoints: ApiEndpoints | null = null;

@@ -14,6 +14,7 @@ import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { emitContactEvent } from "@/lib/contactEvents";
+import { logAudit, setAuditSource } from "@/lib/auditLogger";
 import type { ConnectAgentState, MonitorSession, QuickConnectEntry } from "./ccp/types";
 export type { ConnectAgentState, MonitorSession, QuickConnectEntry };
 
@@ -365,6 +366,9 @@ export function CCPProvider({ children }: { children: ReactNode }) {
         conn.agent((agent: any) => {
           agentRef.current = agent;
           setAgentName(agent.getName());
+          // Auditoría: atribuye los eventos de esta pestaña al agente de Connect
+          // logueado (el "source" que ve el panel /audit en la prueba en vivo).
+          setAuditSource(agent.getName());
           setIsInitialized(true);
 
           // Auto-confirmación del vínculo Vox↔Connect (capa 2): la primera vez
@@ -433,6 +437,9 @@ export function CCPProvider({ children }: { children: ReactNode }) {
                 // PERO: mientras siga bloqueado (Missed/FailedConnect) conservamos
                 // el diagnóstico del softphone — se limpia al volver a Disponible.
                 const blocked = /missed|failedconnect/i.test(st.name);
+                // Auditoría en vivo: registramos el estado de bloqueo (Missed /
+                // FailedConnect) para poder correlacionarlo con la campaña.
+                if (blocked) logAudit("warn", "softphone", "estado " + st.name, { state: st.name });
                 if (st.name !== "Error" && !blocked) setError(null);
               }
             } catch {
@@ -459,6 +466,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
           syncAgentSnapshot();
 
           agent.onStateChange((stateChange: any) => {
+            logAudit("info", "softphone", "stateChange " + stateChange.newState, {});
             setAgentState(stateChange.newState as AgentState);
             // Re-leemos por si los estados recién ahora se poblaron.
             syncAgentSnapshot();
@@ -490,6 +498,7 @@ export function CCPProvider({ children }: { children: ReactNode }) {
             } catch {
               /* noop */
             }
+            logAudit("error", "softphone", "onError " + stateName, { stateName });
             const blocked = /missed|failedconnect/i.test(stateName);
             if (!blocked) setError("Agent connection error");
             setAgentState((stateName || "Error") as AgentState);

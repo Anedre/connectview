@@ -7,6 +7,7 @@ import outputs from "../amplify_outputs.json";
 import App from "./App";
 import { queryClient } from "./lib/queryClient";
 import { installApiAuthInterceptor } from "./lib/apiAuthInterceptor";
+import { initAuditLogger } from "./lib/auditLogger";
 import "./index.css";
 // ARIA design system — imported AFTER index.css so its tokens/classes win the
 // cascade (Tailwind requires @import at top, which would lose ordering).
@@ -19,6 +20,10 @@ import "./styles/motion.css";
 Amplify.configure(outputs);
 // Adjunta el ID token de Cognito a todas las llamadas a nuestra API (tenant scoping).
 installApiAuthInterceptor();
+// Auditor de frontend (prueba en vivo con agentes): captura errores JS, promesas
+// colgadas, console.error/warn y respuestas HTTP >=400 → los envía por batch a la
+// Function URL de auditoría. Best-effort: si no hay endpoint, es no-op silencioso.
+initAuditLogger();
 
 // Sentry: se activa SOLO si hay DSN (VITE_SENTRY_DSN en .env) y es build de
 // producción. En dev no enviamos eventos. Sin DSN, es un no-op (cero impacto).

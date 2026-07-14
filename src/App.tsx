@@ -67,6 +67,7 @@ const AgentePage = lazy(() =>
 const ChartsLabPage = lazy(() =>
   import("@/pages/ChartsLabPage").then((m) => ({ default: m.ChartsLabPage })),
 );
+const AuditPage = lazy(() => import("@/pages/AuditPage").then((m) => ({ default: m.AuditPage })));
 
 // Demos (solo se sirven en DEV o rutas puntuales) → siempre perezosas para que
 // nunca pesen en el bundle de producción.
@@ -652,6 +653,7 @@ function AnimatedRoutes() {
               <Route path="/programs" element={<ProgramsHubPage />} />
               <Route path="/programs/:programId" element={<ProgramDetailPage />} />
               <Route path="/charts-lab" element={<ChartsLabPage />} />
+              <Route path="/audit" element={<AuditPage />} />
               <Route path="/appointments" element={<AppointmentsPage />} />
               <Route path="/bot" element={<FlowBuilderPage />} />
               <Route path="/journeys" element={<JourneysPage />} />
