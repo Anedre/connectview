@@ -25,6 +25,7 @@ import {
   Zap,
   Check,
   ShieldCheck,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -33,7 +34,7 @@ import { useQueues } from "@/hooks/useQueues";
 import { useFlowQueues } from "@/hooks/useFlowQueues";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import { getApiEndpoints } from "@/lib/api";
-import { parseCsvText, parsePhoneList, type ParsedContact } from "@/lib/csvParser";
+import { parseCsvText, parsePhoneList, normalizePhone, type ParsedContact } from "@/lib/csvParser";
 import { WaTemplateConfigurator } from "@/components/whatsapp/WaTemplateConfigurator";
 import { previewSuppression, type BatchSummary } from "@/hooks/useSuppression";
 import { useAuth } from "@/hooks/useAuth";
@@ -176,6 +177,19 @@ function canonicaliseNivel(raw: string): string | null {
   if (NIVEL_ALIAS[v]) return NIVEL_ALIAS[v];
   for (const [re, t] of NIVEL_PREFIX) if (re.test(v)) return t;
   return null;
+}
+
+// Espejo exacto de la validación del backend (create-campaign) → marcamos en
+// rojo lo que se descartaría al lanzar.
+const phoneOk = (p: string) => /^\+\d{8,15}$/.test((p || "").trim());
+
+// Atributos "de sistema" (IDs de export/CRM) que no aportan al operador en la
+// vista previa de audiencia. Se OCULTAN de los chips pero SIGUEN enviándose a
+// Connect al lanzar (por si el ruteo por atributo los usa).
+const NOISE_ATTR =
+  /^(campaign[_\s]?id|lead[_\s]?id|record[_\s]?id|sf[_\s]?id|contact[_\s]?id|external[_\s]?id|id|row|uuid|guid)$/i;
+function shownAttrs(attrs: Record<string, string>): Array<[string, string]> {
+  return Object.entries(attrs || {}).filter(([k]) => !NOISE_ATTR.test(k.trim()));
 }
 
 /* ARIA step header: numbered accent chip + title + optional trailing badge. */
@@ -465,14 +479,39 @@ export function CampaignCreatePage() {
   // the name from a CSV column) — "matchear/personalizar ahí nomas".
   const editContact = (i: number, field: "phone" | "customerName", value: string) =>
     setContacts((cur) => cur.map((c, idx) => (idx === i ? { ...c, [field]: value } : c)));
+  const removeContact = (i: number) => setContacts((cur) => cur.filter((_, idx) => idx !== i));
+  // Al salir del campo teléfono lo re-normalizamos a E.164 (el backend descarta
+  // todo lo que no sea `+` + 8-15 dígitos). Sin esto, editar el número "no se
+  // respeta": se enviaba crudo y se perdía en silencio. Si no es normalizable se
+  // deja tal cual (queda marcado en rojo) para que el usuario lo corrija.
+  const normalizeContactPhone = (i: number) =>
+    setContacts((cur) =>
+      cur.map((c, idx) => {
+        if (idx !== i) return c;
+        const norm = normalizePhone(c.phone, "PE");
+        return norm ? { ...c, phone: norm } : c;
+      }),
+    );
   const applyNameMap = (col: string) => {
     setNameMapCol(col);
     if (!col) return;
+    // Lee de la fila ORIGINAL (todas las columnas), no solo de `attributes`: la
+    // columna auto-detectada como nombre (p.ej. "nombre") se consume como nombre
+    // y NO queda en attributes, por eso no aparecía como opción antes.
     setContacts((cur) =>
-      cur.map((c) => ({ ...c, customerName: c.attributes[col] ?? c.customerName })),
+      cur.map((c) => ({
+        ...c,
+        customerName: c.originalRow?.[col] ?? c.attributes[col] ?? c.customerName,
+      })),
     );
     toast.success(`Nombre tomado de la columna "${col}"`);
   };
+  // Resumen de la audiencia (válidos vs. a revisar) para el encabezado del paso.
+  const audienceStats = useMemo(() => {
+    let valid = 0;
+    for (const c of contacts) if (phoneOk(c.phone)) valid++;
+    return { valid, invalid: contacts.length - valid };
+  }, [contacts]);
 
   const routeCols = useMemo(() => {
     const keys = new Set<string>();
@@ -509,6 +548,22 @@ export function CampaignCreatePage() {
             : null;
 
   const handleCreate = async () => {
+    // Normaliza teléfonos editados a E.164 y detecta los que el backend
+    // descartaría (create-campaign exige `+` + 8-15 dígitos). Antes se enviaban
+    // crudos y se perdían en silencio ("no se respeta la edición").
+    const prepared = contacts.map((c) => ({
+      ...c,
+      phone: normalizePhone(c.phone, "PE") || (c.phone || "").trim(),
+    }));
+    const badCount = prepared.filter((c) => !phoneOk(c.phone)).length;
+    if (badCount > 0) {
+      toast.error(
+        `${badCount} número${badCount === 1 ? "" : "s"} con formato inválido (en rojo). Corrígelo${
+          badCount === 1 ? "" : "s"
+        } antes de lanzar.`,
+      );
+      return;
+    }
     setSubmitting(true);
     try {
       const ep = getApiEndpoints();
@@ -572,7 +627,7 @@ export function CampaignCreatePage() {
         retryNoAnswerMinutes,
         retryMaxAttempts,
         maxContactsPerAgent,
-        contacts: contacts.map((c) => ({
+        contacts: prepared.map((c) => ({
           phone: c.phone,
           customerName: c.customerName,
           attributes: (() => {
@@ -608,6 +663,18 @@ export function CampaignCreatePage() {
   };
 
   const csvCols = Object.keys(contacts[0]?.attributes ?? {});
+  // TODAS las columnas del CSV (fila original completa) — no solo los atributos.
+  // "Nombre desde columna" debe poder tomar el nombre de cualquier columna,
+  // incluida la que el parser ya consumió como nombre/apellido. Unión sobre las
+  // primeras filas porque Papa omite celdas vacías en algunas filas.
+  const allCsvCols = useMemo(() => {
+    const keys = new Set<string>();
+    for (const c of contacts.slice(0, 50)) {
+      Object.keys(c.originalRow ?? {}).forEach((k) => keys.add(k));
+      Object.keys(c.attributes ?? {}).forEach((k) => keys.add(k));
+    }
+    return [...keys];
+  }, [contacts]);
 
   // Acciones del wizard (cancelar / lanzar) → topbar, como el resto de secciones.
   useTopBarActions(
@@ -974,27 +1041,31 @@ export function CampaignCreatePage() {
 
           {contacts.length > 0 && (
             <div style={{ marginTop: 12 }}>
-              <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                <span className="row" style={{ gap: 6, fontSize: 12.5, fontWeight: 600 }}>
-                  <CheckCircle2 size={15} style={{ color: "var(--green)" }} /> {contacts.length}{" "}
-                  contactos
-                  {skipped.length > 0 && (
-                    <span style={{ color: "var(--red-2)", fontSize: 11 }}>
-                      · {skipped.length} descartados
-                    </span>
-                  )}
+              <div className="camp-aud-bar">
+                <span className="camp-count-chip camp-count-chip--ok">
+                  <CheckCircle2 size={13} /> {audienceStats.valid} listos
                 </span>
-                {inputMode === "csv" && csvCols.length > 0 && (
+                {audienceStats.invalid > 0 && (
+                  <span className="camp-count-chip camp-count-chip--bad">
+                    <AlertTriangle size={12} /> {audienceStats.invalid} por revisar
+                  </span>
+                )}
+                {skipped.length > 0 && (
+                  <span className="camp-count-chip camp-count-chip--muted">
+                    {skipped.length} descartados al cargar
+                  </span>
+                )}
+                {inputMode === "csv" && allCsvCols.length > 0 && (
                   <div className="row" style={{ gap: 6, marginLeft: "auto" }}>
                     <span className="muted" style={{ fontSize: 11 }}>
-                      Nombre desde columna:
+                      Nombre desde:
                     </span>
                     <Select value={nameMapCol} onValueChange={(v) => applyNameMap(v || "")}>
-                      <SelectTrigger size="sm" style={{ minWidth: 130 }}>
+                      <SelectTrigger size="sm" style={{ minWidth: 128 }}>
                         <SelectValue placeholder="(elegir)">{nameMapCol || "(elegir)"}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {csvCols.map((c) => (
+                        {allCsvCols.map((c) => (
                           <SelectItem key={c} value={c}>
                             {c}
                           </SelectItem>
@@ -1006,7 +1077,8 @@ export function CampaignCreatePage() {
               </div>
               <LevelDistributionPreview contacts={contacts} />
               <div className="muted" style={{ fontSize: 10.5, margin: "9px 0 5px" }}>
-                ✏️ Edita nombre o teléfono directamente en la tabla antes de lanzar.
+                ✏️ Edita el nombre o el teléfono en la tabla, o quita un contacto con la papelera,
+                antes de lanzar.
               </div>
               <div
                 style={{
@@ -1016,43 +1088,79 @@ export function CampaignCreatePage() {
                   borderRadius: 10,
                 }}
               >
-                <table className="camp-ltable">
+                <table className="camp-ltable camp-atable">
                   <thead>
                     <tr>
-                      <th style={{ width: 40 }}>#</th>
+                      <th style={{ width: 34 }}>#</th>
                       <th>Teléfono</th>
                       <th>Nombre</th>
                       <th>Atributos</th>
+                      <th style={{ width: 44 }} aria-label="Acciones" />
                     </tr>
                   </thead>
                   <tbody>
-                    {contacts.slice(0, 100).map((c, i) => (
-                      <tr key={i}>
-                        <td className="muted">{i + 1}</td>
-                        <td style={{ width: "28%" }}>
-                          <input
-                            className="camp-edit mono"
-                            value={c.phone}
-                            onChange={(e) => editContact(i, "phone", e.target.value)}
-                          />
-                        </td>
-                        <td style={{ width: "32%" }}>
-                          <input
-                            className="camp-edit"
-                            value={c.customerName || ""}
-                            placeholder="—"
-                            onChange={(e) => editContact(i, "customerName", e.target.value)}
-                          />
-                        </td>
-                        <td className="muted" style={{ fontSize: 10.5 }}>
-                          {Object.keys(c.attributes).slice(0, 3).join(", ") || "—"}
-                        </td>
-                      </tr>
-                    ))}
+                    {contacts.slice(0, 100).map((c, i) => {
+                      const attrs = shownAttrs(c.attributes);
+                      return (
+                        <tr key={i} className="camp-crow">
+                          <td className="muted tnum">{i + 1}</td>
+                          <td style={{ width: "27%" }}>
+                            <input
+                              className={`camp-edit mono ${phoneOk(c.phone) ? "" : "camp-edit--bad"}`}
+                              value={c.phone}
+                              onChange={(e) => editContact(i, "phone", e.target.value)}
+                              onBlur={() => normalizeContactPhone(i)}
+                              title={
+                                phoneOk(c.phone)
+                                  ? ""
+                                  : "Número inválido — se descartaría al lanzar. Corrige el formato."
+                              }
+                            />
+                          </td>
+                          <td style={{ width: "30%" }}>
+                            <input
+                              className="camp-edit"
+                              value={c.customerName || ""}
+                              placeholder="Sin nombre"
+                              onChange={(e) => editContact(i, "customerName", e.target.value)}
+                            />
+                          </td>
+                          <td>
+                            {attrs.length > 0 ? (
+                              <div className="camp-attrs">
+                                {attrs.slice(0, 3).map(([k, v]) => (
+                                  <span key={k} className="camp-attr" title={`${k}: ${v}`}>
+                                    {k}
+                                  </span>
+                                ))}
+                                {attrs.length > 3 && (
+                                  <span className="camp-attr camp-attr--more">
+                                    +{attrs.length - 3}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="muted">—</span>
+                            )}
+                          </td>
+                          <td className="camp-actcell">
+                            <button
+                              type="button"
+                              className="camp-del"
+                              onClick={() => removeContact(i)}
+                              title="Quitar de la audiencia"
+                              aria-label={`Quitar ${c.customerName || c.phone}`}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {contacts.length > 100 && (
                       <tr>
                         <td
-                          colSpan={4}
+                          colSpan={5}
                           style={{
                             padding: "7px 10px",
                             textAlign: "center",
@@ -1532,8 +1640,8 @@ export function CampaignCreatePage() {
                         className={`camp-mode ${dialMode === m.value ? "camp-mode--active" : ""}`}
                         onClick={() => setDialMode(m.value)}
                       >
-                        <span style={{ display: "grid", placeItems: "center" }}>
-                          <ModeIcon size={17} />
+                        <span className="camp-mode__ico">
+                          <ModeIcon size={16} />
                         </span>
                         <span style={{ flex: 1, minWidth: 0 }}>
                           <span style={{ display: "block", fontSize: 12.5, fontWeight: 600 }}>

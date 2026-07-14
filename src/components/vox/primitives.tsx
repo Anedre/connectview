@@ -617,6 +617,12 @@ export const Shield = makeIcon(
     <path d="M12 3l8 3v5c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z" />
   </>,
 );
+export const ShieldCheck = makeIcon(
+  <>
+    <path d="M12 3l8 3v5c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z" />
+    <path d="M9 12l2 2 4-4" />
+  </>,
+);
 export const Close = makeIcon(<path d="M6 6l12 12M18 6L6 18" />);
 export const ArrowLeft = makeIcon(<path d="M19 12H5M12 19l-7-7 7-7" />);
 export const Play = makeIcon(<path d="M6 4l14 8-14 8z" />);

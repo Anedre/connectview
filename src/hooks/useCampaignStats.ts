@@ -39,16 +39,17 @@ export interface CampaignStatsData {
     done: number;
     no_answer: number;
     failed: number;
+    /** Pilar 3 — contactos gateados por el motor de supresión (DNC /
+     *  no-tras-conversión / opt-out SF). Opcional: campañas/backends
+     *  antiguos pueden no incluirlo. */
+    suppressed?: number;
   };
   liveContacts: LiveContact[];
   byAgent?: CampaignAgentLive[];
   byQueue?: CampaignQueueLive[];
 }
 
-export function useCampaignStats(
-  campaignId: string | null,
-  refreshIntervalMs = 3000
-) {
+export function useCampaignStats(campaignId: string | null, refreshIntervalMs = 3000) {
   const [data, setData] = useState<CampaignStatsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +60,7 @@ export function useCampaignStats(
     if (!endpoints?.getCampaignStats) return;
     try {
       const r = await fetch(
-        `${endpoints.getCampaignStats}?campaignId=${encodeURIComponent(campaignId)}`
+        `${endpoints.getCampaignStats}?campaignId=${encodeURIComponent(campaignId)}`,
       );
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = await r.json();

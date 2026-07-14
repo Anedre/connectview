@@ -4053,16 +4053,16 @@ textarea:focus {
   text-decoration: none;
 }
 .camp-field {
-  margin-bottom: 14px;
+  margin-bottom: 15px;
 }
 .camp-lbl {
   display: block;
   font-size: 11px;
-  font-weight: 600;
-  color: var(--text-3);
+  font-weight: 650;
+  color: var(--text-2);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  margin-bottom: 5px;
+  margin-bottom: 6px;
 }
 .camp-2col {
   display: grid;
@@ -4074,26 +4074,53 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 10px;
+  gap: 8px;
+  padding: 11px 10px;
   font-size: 13px;
-  font-weight: 600;
-  border-radius: 10px;
+  font-weight: 650;
+  border-radius: 11px;
   border: 1px solid var(--border-1);
   background: var(--bg-2);
   color: var(--text-3);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s,
+    box-shadow 0.15s;
 }
 .camp-chan:hover {
   color: var(--text-1);
+  border-color: var(--border-2);
 }
 .camp-chan--voice {
-  border-color: var(--accent-amber);
-  background: var(--accent-amber-soft);
+  border-color: color-mix(in srgb, var(--accent-amber) 55%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent-amber) 13%, var(--bg-1)),
+    color-mix(in srgb, var(--accent-amber) 6%, var(--bg-1))
+  );
+  color: var(--accent-amber);
+  box-shadow:
+    0 6px 16px -10px color-mix(in srgb, var(--accent-amber) 75%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.camp-chan--voice:hover {
   color: var(--accent-amber);
 }
 .camp-chan--wa {
-  border-color: var(--accent-green);
-  background: var(--accent-green-soft);
+  border-color: color-mix(in srgb, var(--accent-green) 55%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent-green) 13%, var(--bg-1)),
+    color-mix(in srgb, var(--accent-green) 6%, var(--bg-1))
+  );
+  color: var(--accent-green);
+  box-shadow:
+    0 6px 16px -10px color-mix(in srgb, var(--accent-green) 75%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.camp-chan--wa:hover {
   color: var(--accent-green);
 }
 .camp-modes {
@@ -4109,32 +4136,74 @@ textarea:focus {
 .camp-mode {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
+  gap: 10px;
   text-align: left;
-  padding: 10px 11px;
-  border-radius: 10px;
+  padding: 11px 12px;
+  border-radius: 11px;
   border: 1px solid var(--border-1);
   background: var(--bg-2);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    box-shadow 0.15s;
 }
 .camp-mode:hover {
   background: var(--bg-hover);
+  border-color: var(--border-2);
 }
 .camp-mode--active {
   border-color: var(--accent-cyan);
-  background: var(--accent-cyan-soft);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent-cyan) 10%, var(--bg-1)),
+    var(--bg-1)
+  );
+  box-shadow: 0 6px 16px -11px color-mix(in srgb, var(--accent-cyan) 85%, transparent);
+}
+.camp-mode__ico {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  color: var(--text-3);
+  flex: 0 0 auto;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.camp-mode--active .camp-mode__ico {
+  color: var(--accent-cyan);
+  border-color: color-mix(in srgb, var(--accent-cyan) 45%, transparent);
 }
 .camp-adv {
-  border-top: 1px dashed var(--border-1);
-  padding-top: 14px;
-  margin-top: 4px;
+  margin-top: 16px;
+  padding: 14px 14px 3px;
+  border-radius: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
 }
 .camp-adv__title {
-  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text-2);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+}
+.camp-adv__title::before {
+  content: "";
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent-cyan);
+  flex: 0 0 auto;
 }
 .camp-ltable {
   width: 100%;
@@ -4188,6 +4257,144 @@ textarea:focus {
 .camp-ltr--on td:first-child {
   box-shadow: inset 3px 0 0 var(--accent-cyan);
 }
+
+/* ── Tabla de audiencia editable (crear campaña) ── */
+.camp-aud-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.camp-count-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 650;
+  padding: 3px 10px;
+  border-radius: 999px;
+  line-height: 1;
+}
+.camp-count-chip--ok {
+  background: var(--green-soft);
+  color: var(--green-2);
+}
+.camp-count-chip--bad {
+  background: var(--red-soft);
+  color: var(--red-2);
+}
+.camp-count-chip--muted {
+  background: var(--bg-2);
+  color: var(--text-3);
+  border: 1px solid var(--border-1);
+}
+.camp-atable tbody tr.camp-crow {
+  transition: background 0.12s;
+}
+.camp-atable tbody tr.camp-crow:hover {
+  background: var(--bg-hover);
+}
+.camp-attrs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.camp-attr {
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  color: var(--text-2);
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.camp-attr--more {
+  background: transparent;
+  color: var(--text-3);
+  border-style: dashed;
+}
+.camp-actcell {
+  text-align: center;
+  width: 44px;
+}
+.camp-del {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  opacity: 0.35;
+  transition:
+    opacity 0.12s,
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+.camp-crow:hover .camp-del {
+  opacity: 1;
+}
+.camp-del:hover {
+  background: color-mix(in srgb, var(--red, #dc2626) 12%, transparent);
+  color: var(--red-2, #b91c1c);
+  border-color: color-mix(in srgb, var(--red, #dc2626) 30%, transparent);
+}
+.camp-del:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 1px;
+}
+
+/* Menú ⋯ de la tarjeta de campaña (lista) */
+.camp-rowmenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 190px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: 11px;
+  box-shadow: var(--shadow-pop, 0 14px 38px rgba(0, 0, 0, 0.28));
+  padding: 5px;
+  z-index: 60;
+}
+.camp-rowmenu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--text-1);
+  font-size: 12.5px;
+  font-weight: 550;
+  text-align: left;
+  transition: background 0.12s;
+}
+.camp-rowmenu__item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.camp-rowmenu__item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.camp-rowmenu__item--danger {
+  color: var(--red-2, #c0353a);
+}
+.camp-rowmenu__item--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red, #c0353a) 10%, transparent);
+}
 .camp-edit {
   width: 100%;
   padding: 5px 7px;
@@ -4209,6 +4416,265 @@ textarea:focus {
   background: var(--bg-1);
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-cyan) 16%, transparent);
+}
+/* Teléfono editado que el backend descartaría (no es E.164 estricto). */
+.camp-edit--bad {
+  border-color: var(--red, #dc2626);
+  background: color-mix(in srgb, var(--red, #dc2626) 8%, transparent);
+  color: var(--red-2, #b91c1c);
+}
+.camp-edit--bad:focus {
+  border-color: var(--red, #dc2626);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--red, #dc2626) 16%, transparent);
+}
+
+/* ── Campaña — DETALLE premium (cdet-*) ───────────────────────────────────
+   Mismo lenguaje que la creación (.camp-*): paneles contenidos, gradientes
+   sutiles con color-mix, sombras suaves y chips redondeados. Namespaced con
+   `cdet-` para no colisionar; todo por variables de tema → light + dark. */
+
+/* Ritmo vertical entre bloques (antes se tocaban entre sí → denso). */
+.cdet-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---- Hero: identidad + progreso en un solo panel con profundidad ---- */
+.cdet-hero {
+  --_c: var(--accent);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border-1);
+  border-radius: 16px;
+  background:
+    radial-gradient(
+      132% 120% at 100% 0%,
+      color-mix(in srgb, var(--_c) 13%, transparent),
+      transparent 55%
+    ),
+    linear-gradient(180deg, color-mix(in srgb, var(--_c) 6%, var(--bg-1)), var(--bg-1));
+  box-shadow:
+    0 14px 34px -26px color-mix(in srgb, var(--_c) 90%, transparent),
+    var(--sh-1);
+}
+.cdet-hero::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--_c), color-mix(in srgb, var(--_c) 32%, transparent));
+}
+.cdet-hero__id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: 15px 18px 12px;
+}
+.cdet-hero__name {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0;
+  min-width: 0;
+  color: var(--text-1);
+}
+.cdet-hero__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cdet-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--bg-2) 82%, var(--bg-1));
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+.cdet-meta-chip svg {
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+.cdet-hero__desc {
+  padding: 0 18px 4px;
+  font-size: 13px;
+  color: var(--text-2);
+  max-width: 720px;
+}
+.cdet-hero__prog {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 6px 18px 14px;
+}
+.cdet-hero__big {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.cdet-hero__big span {
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.cdet-hero__cap {
+  font-size: 12.5px;
+  color: var(--text-2);
+  margin-top: 3px;
+}
+.cdet-hero__chips {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  text-align: right;
+}
+.cdet-hero__track {
+  height: 10px;
+  margin: 0 18px 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-3) 65%, var(--bg-2));
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.16);
+}
+.cdet-hero__track > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--_c) 72%, transparent), var(--_c));
+  box-shadow: 0 0 12px -2px color-mix(in srgb, var(--_c) 60%, transparent);
+  transition: width 0.4s var(--ease);
+}
+
+/* ---- Tarjetas de conteo (6): panel contenido + estado activo con glow ---- */
+.cdet-tiles {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 1180px) {
+  .cdet-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 620px) {
+  .cdet-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.cdet-tile {
+  --_c: var(--accent);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  text-align: left;
+  padding: 13px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border-1);
+  background: var(--bg-2);
+  cursor: pointer;
+  transition:
+    transform 0.16s var(--ease),
+    border-color 0.16s,
+    box-shadow 0.16s,
+    background 0.16s;
+}
+.cdet-tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    120px 78px at 92% -14%,
+    color-mix(in srgb, var(--_c) 44%, transparent),
+    transparent 70%
+  );
+  opacity: 0.06;
+  transition: opacity 0.16s;
+}
+.cdet-tile:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--_c) 34%, var(--border-2));
+  box-shadow: 0 12px 24px -18px color-mix(in srgb, var(--_c) 85%, transparent);
+}
+.cdet-tile:hover::after {
+  opacity: 0.14;
+}
+.cdet-tile--active {
+  border-color: color-mix(in srgb, var(--_c) 55%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--_c) 12%, var(--bg-1)), var(--bg-1));
+  box-shadow:
+    0 6px 16px -11px color-mix(in srgb, var(--_c) 85%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--_c) 22%, transparent);
+}
+.cdet-tile--active::after {
+  opacity: 0.16;
+}
+.cdet-tile:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--_c) 60%, transparent);
+  outline-offset: 2px;
+}
+.cdet-tile__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.cdet-tile__ico {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--_c);
+  background: color-mix(in srgb, var(--_c) 15%, var(--bg-1));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--_c) 24%, transparent);
+}
+.cdet-tile__label {
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cdet-tile__val {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--_c);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Métricas en vivo: cada visual en su propio panel contenido ---- */
+.cdet-metric {
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  border-radius: 12px;
+  padding: 14px;
+  min-width: 0;
 }
 
 /* Per-chart contextual toggle (Kommo "Comparación/Por canal" style) */

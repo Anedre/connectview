@@ -519,35 +519,146 @@ export function CampaignDetailPage() {
         { key: "done", label: "Completados", Icn: Icon.Check, color: "var(--green)" },
         { key: "no_answer", label: "Sin contestar", Icn: Icon.Phone, color: "var(--gold)" },
         { key: "failed", label: "Fallidos", Icn: Icon.Close, color: "var(--red)" },
+        // Pilar 3 (supresión): contactos gateados por DNC / no-tras-conversión /
+        // opt-out SF. El backend ya devuelve `counts.suppressed`.
+        { key: "suppressed", label: "Suprimidos", Icn: Icon.ShieldCheck, color: "var(--text-3)" },
       ];
 
   return (
-    <div className="page" style={{ maxWidth: 1320 }}>
-      {/* Header de detalle (liviano): back + nombre + estado + meta. Las
-           acciones (editar/clonar/iniciar/pausar/…) las sube HeroBand al topbar
-           — el bloque hero se retiró de todas las secciones. */}
-      <div className="row gap10" style={{ marginBottom: 14, flexWrap: "wrap", minWidth: 0 }}>
-        <Btn
-          variant="ghost"
-          size="sm"
-          icon="chevL"
-          onClick={() => navigate("/campaigns")}
-          title="Volver a campañas"
-        />
-        <h1
-          style={{ fontSize: 21, fontWeight: 800, letterSpacing: "-.02em", margin: 0, minWidth: 0 }}
-        >
-          {c.name}
-        </h1>
-        <Pill tone={CAMPAIGN_STATUS_TONE[c.status] || "outline"} icon="dot">
-          {CAMPAIGN_STATUS_LABEL[c.status] || c.status}
-        </Pill>
-        <span className="dim mono" style={{ fontSize: 12 }}>
-          {c.sourcePhoneNumber} · {isWa ? "WhatsApp" : c.dialMode}
-          {c.createdAt
-            ? ` · creada ${formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}`
-            : ""}
-        </span>
+    <div className="page cdet-stack" style={{ maxWidth: 1320 }}>
+      {/* ── Hero premium: identidad + progreso en un solo panel ──────────
+           Combina el antiguo header liviano y el banner de progreso. Las
+           acciones (editar/clonar/iniciar/pausar/…) las sube HeroBand al
+           topbar; aquí sólo vive la presentación. El acento (--_c) sigue el
+           canal: voz = --accent, WhatsApp = --green. */}
+      <div
+        className="cdet-hero"
+        style={{ ["--_c" as string]: isWa ? "var(--green)" : "var(--accent)" }}
+      >
+        <div className="cdet-hero__id">
+          <Btn
+            variant="ghost"
+            size="sm"
+            icon="chevL"
+            onClick={() => navigate("/campaigns")}
+            title="Volver a campañas"
+          />
+          <h1 className="cdet-hero__name">{c.name}</h1>
+          <Pill tone={CAMPAIGN_STATUS_TONE[c.status] || "outline"} icon="dot">
+            {CAMPAIGN_STATUS_LABEL[c.status] || c.status}
+          </Pill>
+          <span className="cdet-hero__meta">
+            <span className="cdet-meta-chip mono">{c.sourcePhoneNumber}</span>
+            <span className="cdet-meta-chip">
+              {isWa ? (
+                <>
+                  <Icon.WhatsApp size={11} /> WhatsApp
+                </>
+              ) : (
+                c.dialMode
+              )}
+            </span>
+            {c.createdAt && (
+              <span className="cdet-meta-chip">
+                creada {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
+              </span>
+            )}
+          </span>
+        </div>
+
+        {c.description && <div className="cdet-hero__desc">{c.description}</div>}
+
+        <div className="cdet-hero__prog">
+          <div>
+            <div className="cdet-hero__big">
+              <Num value={completed} /> <span>/ {total}</span>
+            </div>
+            <div className="cdet-hero__cap">Contactos procesados · {pct}%</div>
+          </div>
+          <div className="cdet-hero__chips">
+            <div className="row" style={{ gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              {/* Pending — show only when there's something pending. */}
+              {counts.pending > 0 && (
+                <button
+                  className={`chip${filterStatus === "pending" ? " chip--amber" : ""}`}
+                  onClick={() => setFilterStatus(filterStatus === "pending" ? null : "pending")}
+                  style={{
+                    border: "1px solid var(--border-1)",
+                    cursor: "pointer",
+                    background: filterStatus === "pending" ? "var(--gold-soft)" : "transparent",
+                  }}
+                  title="Filtrar pendientes"
+                >
+                  <Icon.Clock size={11} /> {counts.pending} pendientes
+                </button>
+              )}
+              {counts.dialing + counts.connected > 0 && (
+                <span className="chip chip--green">
+                  <span className="dot pulse" />
+                  {counts.dialing + counts.connected} {isWa ? "enviando" : "en vivo"}
+                </span>
+              )}
+              {/* Finished-state outcome chips. Surface only the
+                  non-zero buckets so the user immediately sees the
+                  breakdown without the tiles row showing 1 lonely
+                  pill. Each chip is clickable to filter the table. */}
+              {(c.status === "COMPLETED" || c.status === "CANCELLED") && (
+                <>
+                  {counts.done > 0 && (
+                    <button
+                      className={`chip chip--green`}
+                      onClick={() => setFilterStatus(filterStatus === "done" ? null : "done")}
+                      style={{
+                        cursor: "pointer",
+                        outline: filterStatus === "done" ? "2px solid var(--green)" : "none",
+                      }}
+                      title="Filtrar completados"
+                    >
+                      <Icon.Check size={11} /> {counts.done} completados
+                    </button>
+                  )}
+                  {counts.no_answer > 0 && (
+                    <button
+                      className={`chip chip--amber`}
+                      onClick={() =>
+                        setFilterStatus(filterStatus === "no_answer" ? null : "no_answer")
+                      }
+                      style={{
+                        cursor: "pointer",
+                        outline: filterStatus === "no_answer" ? "2px solid var(--gold)" : "none",
+                      }}
+                      title="Filtrar sin contestar"
+                    >
+                      <Icon.Phone size={11} /> {counts.no_answer} sin contestar
+                    </button>
+                  )}
+                  {counts.failed > 0 && (
+                    <button
+                      className={`chip chip--red`}
+                      onClick={() => setFilterStatus(filterStatus === "failed" ? null : "failed")}
+                      style={{
+                        cursor: "pointer",
+                        outline: filterStatus === "failed" ? "2px solid var(--red)" : "none",
+                      }}
+                      title="Filtrar fallidos"
+                    >
+                      <Icon.Close size={11} /> {counts.failed} fallidos
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+            {c.startedAt && (
+              <div className="muted mono" style={{ fontSize: 11 }}>
+                Iniciada {format(new Date(c.startedAt), "HH:mm")}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="cdet-hero__track">
+          <span style={{ width: `${pct}%` }} />
+        </div>
       </div>
       <HeroBand
         title={
@@ -710,12 +821,6 @@ export function CampaignDetailPage() {
         }
       />
 
-      {c.description && (
-        <div className="muted" style={{ margin: "-8px 0 16px", fontSize: 13 }}>
-          {c.description}
-        </div>
-      )}
-
       {/* ── Aviso de ventana fuera de horario (no está "colgada", solo esperando) ── */}
       {dialingBlocked && (
         <div
@@ -770,126 +875,6 @@ export function CampaignDetailPage() {
           </div>
         </div>
       )}
-
-      {/* ── Progress banner · ARIA accent-bar Card ───────────────── */}
-      <Card
-        className="card__accent-bar"
-        style={{ ["--_c" as string]: isWa ? "var(--green)" : "var(--accent)" }}
-      >
-        <CardBody>
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
-            <div>
-              <div
-                className="tnum"
-                style={{
-                  fontSize: 32,
-                  fontWeight: 800,
-                  letterSpacing: "-0.03em",
-                  lineHeight: 1.1,
-                  color: "var(--text-1)",
-                }}
-              >
-                <Num value={completed} />
-                <span style={{ fontSize: 18, color: "var(--text-3)", fontWeight: 400 }}>
-                  {" "}
-                  / {total}
-                </span>
-              </div>
-              <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
-                Contactos procesados · {pct}%
-              </div>
-            </div>
-            <div style={{ textAlign: "right", fontSize: 12 }}>
-              <div className="row" style={{ gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                {/* Pending — show only when there's something pending. */}
-                {counts.pending > 0 && (
-                  <button
-                    className={`chip${filterStatus === "pending" ? " chip--amber" : ""}`}
-                    onClick={() => setFilterStatus(filterStatus === "pending" ? null : "pending")}
-                    style={{
-                      border: "1px solid var(--border-1)",
-                      cursor: "pointer",
-                      background: filterStatus === "pending" ? "var(--gold-soft)" : "transparent",
-                    }}
-                    title="Filtrar pendientes"
-                  >
-                    <Icon.Clock size={11} /> {counts.pending} pendientes
-                  </button>
-                )}
-                {counts.dialing + counts.connected > 0 && (
-                  <span className="chip chip--green">
-                    <span className="dot pulse" />
-                    {counts.dialing + counts.connected} {isWa ? "enviando" : "en vivo"}
-                  </span>
-                )}
-                {/* Finished-state outcome chips. Surface only the
-                    non-zero buckets so the user immediately sees the
-                    breakdown without the tiles row showing 1 lonely
-                    pill. Each chip is clickable to filter the table. */}
-                {(c.status === "COMPLETED" || c.status === "CANCELLED") && (
-                  <>
-                    {counts.done > 0 && (
-                      <button
-                        className={`chip chip--green`}
-                        onClick={() => setFilterStatus(filterStatus === "done" ? null : "done")}
-                        style={{
-                          cursor: "pointer",
-                          outline: filterStatus === "done" ? "2px solid var(--green)" : "none",
-                        }}
-                        title="Filtrar completados"
-                      >
-                        <Icon.Check size={11} /> {counts.done} completados
-                      </button>
-                    )}
-                    {counts.no_answer > 0 && (
-                      <button
-                        className={`chip chip--amber`}
-                        onClick={() =>
-                          setFilterStatus(filterStatus === "no_answer" ? null : "no_answer")
-                        }
-                        style={{
-                          cursor: "pointer",
-                          outline: filterStatus === "no_answer" ? "2px solid var(--gold)" : "none",
-                        }}
-                        title="Filtrar sin contestar"
-                      >
-                        <Icon.Phone size={11} /> {counts.no_answer} sin contestar
-                      </button>
-                    )}
-                    {counts.failed > 0 && (
-                      <button
-                        className={`chip chip--red`}
-                        onClick={() => setFilterStatus(filterStatus === "failed" ? null : "failed")}
-                        style={{
-                          cursor: "pointer",
-                          outline: filterStatus === "failed" ? "2px solid var(--red)" : "none",
-                        }}
-                        title="Filtrar fallidos"
-                      >
-                        <Icon.Close size={11} /> {counts.failed} fallidos
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-              {c.startedAt && (
-                <div className="muted mono" style={{ fontSize: 11, marginTop: 4 }}>
-                  Iniciada {format(new Date(c.startedAt), "HH:mm")}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="bar" style={{ marginTop: 14, height: 10 }}>
-            <span
-              style={{
-                width: `${pct}%`,
-                background: isWa ? "var(--green)" : "var(--accent)",
-                transition: "width 0.3s ease",
-              }}
-            />
-          </div>
-        </CardBody>
-      </Card>
 
       {/* ── Charts (donut + sparkline + gauge) ───────────────────── */}
       <CampaignCharts
@@ -957,42 +942,26 @@ export function CampaignDetailPage() {
         from only 1 bucket having a non-zero value.
       */}
       {c.status !== "COMPLETED" && c.status !== "CANCELLED" && (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 12,
-          }}
-        >
+        <div className="cdet-tiles">
           {statusCards.map((s) => {
             const active = filterStatus === s.key;
             const Icn = s.Icn;
             return (
               <button
                 key={s.key}
-                className="stat"
+                type="button"
+                className={`cdet-tile${active ? " cdet-tile--active" : ""}`}
                 onClick={() => setFilterStatus(active ? null : s.key)}
-                style={{
-                  ["--_c" as string]: s.color,
-                  cursor: "pointer",
-                  textAlign: "left",
-                  flex: "1 1 160px",
-                  maxWidth: 240,
-                  minWidth: 160,
-                  borderColor: active ? s.color : undefined,
-                  boxShadow: active
-                    ? `0 0 0 3px color-mix(in srgb, ${s.color} 16%, transparent) inset`
-                    : undefined,
-                }}
+                style={{ ["--_c" as string]: s.color }}
                 title={`Filtrar por ${s.label.toLowerCase()}`}
               >
-                <div className="stat__top">
-                  <div className="stat__ico">
+                <div className="cdet-tile__head">
+                  <span className="cdet-tile__ico">
                     <Icn size={15} />
-                  </div>
-                  <div className="stat__label">{s.label}</div>
+                  </span>
+                  <span className="cdet-tile__label">{s.label}</span>
                 </div>
-                <div className="stat__val tnum">{counts[s.key]}</div>
+                <div className="cdet-tile__val">{counts[s.key] ?? 0}</div>
               </button>
             );
           })}

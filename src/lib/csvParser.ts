@@ -50,7 +50,7 @@ function headerMatches(header: string, keywords: string[]): boolean {
 function detectPhoneColumnByValues(
   rows: Record<string, string>[],
   headers: string[],
-  defaultCountry: CountryCode = "PE"
+  defaultCountry: CountryCode = "PE",
 ): string | null {
   const sampleSize = Math.min(5, rows.length);
   let bestHeader: string | null = null;
@@ -75,10 +75,7 @@ function detectPhoneColumnByValues(
   return bestHeader;
 }
 
-function normalizePhone(
-  raw: string,
-  defaultCountry: CountryCode = "PE"
-): string | null {
+export function normalizePhone(raw: string, defaultCountry: CountryCode = "PE"): string | null {
   const trimmed = (raw || "").trim();
   if (!trimmed) return null;
   const parsed = parsePhoneNumberFromString(trimmed, defaultCountry);
@@ -102,7 +99,7 @@ function detectDelimiter(firstLine: string): string {
 
 export async function parseCsvText(
   text: string,
-  defaultCountry: CountryCode = "PE"
+  defaultCountry: CountryCode = "PE",
 ): Promise<CsvParseResult> {
   const firstLine = text.split(/\r?\n/)[0] || "";
   const delimiter = detectDelimiter(firstLine);
@@ -128,8 +125,7 @@ export async function parseCsvText(
 
           const firstNameColumn =
             headers.find((h) => headerMatches(h, FIRST_NAME_KEYWORDS)) || null;
-          const lastNameColumn =
-            headers.find((h) => headerMatches(h, LAST_NAME_KEYWORDS)) || null;
+          const lastNameColumn = headers.find((h) => headerMatches(h, LAST_NAME_KEYWORDS)) || null;
           let nameColumn: string | null = null;
           if (!firstNameColumn && !lastNameColumn) {
             nameColumn = headers.find((h) => headerMatches(h, NAME_KEYWORDS)) || null;
@@ -138,8 +134,8 @@ export async function parseCsvText(
           // Everything else is an attribute column (to be passed to the contact flow).
           const usedColumns = new Set(
             [phoneColumn, nameColumn, firstNameColumn, lastNameColumn].filter(
-              (x): x is string => !!x
-            )
+              (x): x is string => !!x,
+            ),
           );
           const attributeColumns = headers.filter((h) => !usedColumns.has(h));
 
@@ -227,7 +223,7 @@ export async function parseCsvText(
 // Parse a free-form list (newlines / commas) of phone numbers.
 export function parsePhoneList(
   text: string,
-  defaultCountry: CountryCode = "PE"
+  defaultCountry: CountryCode = "PE",
 ): { contacts: ParsedContact[]; skipped: string[] } {
   const tokens = text
     .split(/[\n,;]+/)

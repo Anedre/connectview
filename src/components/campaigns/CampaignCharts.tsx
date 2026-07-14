@@ -102,9 +102,13 @@ export function CampaignCharts({
       return [];
     }
     return [
-      { value: counts.done,      color: "var(--accent-green)", label: isWhatsApp ? "Enviados" : "Completados" },
+      {
+        value: counts.done,
+        color: "var(--accent-green)",
+        label: isWhatsApp ? "Enviados" : "Completados",
+      },
       { value: counts.no_answer, color: "var(--accent-amber)", label: "Sin contestar" },
-      { value: counts.failed,    color: "var(--accent-red)",   label: "Fallidos" },
+      { value: counts.failed, color: "var(--accent-red)", label: "Fallidos" },
     ].filter((s) => s.value > 0);
   }, [counts.done, counts.no_answer, counts.failed, isWhatsApp]);
 
@@ -126,8 +130,8 @@ export function CampaignCharts({
     const end = endedAt
       ? new Date(endedAt).getTime()
       : isFinished && buffer.length > 0
-      ? buffer[buffer.length - 1].ts
-      : Date.now();
+        ? buffer[buffer.length - 1].ts
+        : Date.now();
     const ms = end - start;
     if (ms <= 0) return "0m";
     const minutes = Math.floor(ms / 60_000);
@@ -150,8 +154,7 @@ export function CampaignCharts({
           Métricas en vivo
         </div>
         <span className="card__sub">
-          {buffer.length} muestras · {elapsedLabel}{" "}
-          {isFinished ? "de duración total" : "en curso"}
+          {buffer.length} muestras · {elapsedLabel} {isFinished ? "de duración total" : "en curso"}
         </span>
       </div>
       <CardBody>
@@ -159,13 +162,18 @@ export function CampaignCharts({
           style={{
             display: "grid",
             gridTemplateColumns: "minmax(140px, 1fr) 1fr 1fr",
-            gap: 16,
-            alignItems: "center",
+            gap: 14,
+            alignItems: "stretch",
           }}
         >
           {/* ── Donut: outcomes ─────────────────────────────────── */}
-          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-            <Donut size={108} segments={segments} total={completed} centerLabel={isWhatsApp ? "enviados" : "cerrados"} />
+          <div className="cdet-metric" style={{ display: "flex", gap: 14, alignItems: "center" }}>
+            <Donut
+              size={108}
+              segments={segments}
+              total={completed}
+              centerLabel={isWhatsApp ? "enviados" : "cerrados"}
+            />
             <div className="col" style={{ gap: 4, fontSize: 11 }}>
               {segments.length === 0 ? (
                 <div className="muted">Sin resultados todavía</div>
@@ -198,7 +206,7 @@ export function CampaignCharts({
           </div>
 
           {/* ── Sparkline: progress over time ───────────────────── */}
-          <div style={{ minWidth: 0 }}>
+          <div className="cdet-metric" style={{ minWidth: 0 }}>
             <div
               className="muted"
               style={{
@@ -212,9 +220,6 @@ export function CampaignCharts({
             </div>
             <div
               style={{
-                background: "var(--bg-2)",
-                borderRadius: 8,
-                padding: "12px 14px",
                 position: "relative",
               }}
             >
@@ -266,7 +271,9 @@ export function CampaignCharts({
           </div>
 
           {/* ── Pace gauge ──────────────────────────────────────── */}
-          <Gauge value={pace} eta={etaMinutes} pending={counts.pending} isWhatsApp={isWhatsApp} />
+          <div className="cdet-metric" style={{ display: "flex", justifyContent: "center" }}>
+            <Gauge value={pace} eta={etaMinutes} pending={counts.pending} isWhatsApp={isWhatsApp} />
+          </div>
         </div>
       </CardBody>
     </Card>
@@ -298,14 +305,7 @@ function Donut({
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       {/* Background ring */}
-      <circle
-        cx={cx}
-        cy={cy}
-        r={r}
-        fill="none"
-        stroke="var(--bg-3)"
-        strokeWidth={10}
-      />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--bg-3)" strokeWidth={10} />
       {segments.map((s, i) => {
         const frac = s.value / sum;
         const dash = c * frac;
@@ -385,8 +385,8 @@ function Gauge({
   const r = 60;
   const stroke = 12;
   const cx = w / 2;
-  const cy = r + stroke / 2 + 4;       // arc center (with top padding)
-  const h = cy + stroke / 2 + 4;        // svg height — arc fits perfectly
+  const cy = r + stroke / 2 + 4; // arc center (with top padding)
+  const h = cy + stroke / 2 + 4; // svg height — arc fits perfectly
 
   // Angles: counter-clockwise from 0 (right) to π (left) covers the
   // top half. We rotate so that pct=0 → left end, pct=1 → right end.
@@ -397,21 +397,17 @@ function Gauge({
     y: cy - r * Math.sin(a), // SVG y grows down, so flip sin
   });
   const startPt = polar(Math.PI); // left  (cx - r, cy)
-  const endPt   = polar(0);       // right (cx + r, cy)
-  const valPt   = polar(valueAngle);
+  const endPt = polar(0); // right (cx + r, cy)
+  const valPt = polar(valueAngle);
 
   // Arc going from start to end through the TOP of the circle — that's
   // clockwise in SVG (left → up → right), so sweep-flag = 1.
-  const bgArc  = `M ${startPt.x} ${startPt.y} A ${r} ${r} 0 0 1 ${endPt.x} ${endPt.y}`;
+  const bgArc = `M ${startPt.x} ${startPt.y} A ${r} ${r} 0 0 1 ${endPt.x} ${endPt.y}`;
   const valArc = `M ${startPt.x} ${startPt.y} A ${r} ${r} 0 0 1 ${valPt.x} ${valPt.y}`;
 
   // Color by intensity.
   const color =
-    value < 5
-      ? "var(--accent-amber)"
-      : value < 30
-      ? "var(--accent-cyan)"
-      : "var(--accent-green)";
+    value < 5 ? "var(--accent-amber)" : value < 30 ? "var(--accent-cyan)" : "var(--accent-green)";
 
   // Where to place the numeric label — inside the arc, near the bottom.
   const numY = cy - 12;
@@ -466,15 +462,12 @@ function Gauge({
           {value}
         </text>
       </svg>
-      <div
-        className="muted"
-        style={{ fontSize: 10.5, marginTop: 4, textAlign: "center" }}
-      >
+      <div className="muted" style={{ fontSize: 10.5, marginTop: 4, textAlign: "center" }}>
         {eta !== null
           ? `ETA ${eta} min · ${pending} pendientes`
           : pending > 0
-          ? `${pending} pendientes`
-          : "campaña al día"}
+            ? `${pending} pendientes`
+            : "campaña al día"}
       </div>
     </div>
   );
@@ -545,9 +538,7 @@ function ResponsiveSpark({
     if (!fill || points.length === 0) return "";
     return (
       `M 0 ${VB_H} ` +
-      points
-        .map((p) => `L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
-        .join(" ") +
+      points.map((p) => `L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ") +
       ` L ${VB_W} ${VB_H} Z`
     );
   }, [points, fill, VB_H]);

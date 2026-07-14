@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useCampaigns, type Campaign } from "@/hooks/useCampaigns";
 import { useCampaignMutations } from "@/hooks/useCampaignMutations";
+import { CampaignRowMenu, type RowMenuItem } from "@/components/campaigns/CampaignRowMenu";
+import { getApiEndpoints } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import { NotIntegrated } from "@/components/vox/NotIntegrated";
 import { CampaignBlendBoard } from "@/components/campaigns/CampaignBlendBoard";
@@ -115,8 +117,8 @@ export function CampaignsPage() {
     return list;
   }, [campaigns, activeTab, query]);
 
-  const handleClone = async (e: React.MouseEvent, campaign: Campaign) => {
-    e.stopPropagation();
+  const handleClone = async (campaign: Campaign, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     try {
       const res = await mutations.clone(campaign.campaignId);
       toast.success(`Clonada como "${res.name}"`);
@@ -126,8 +128,8 @@ export function CampaignsPage() {
     }
   };
 
-  const handleRelaunch = async (e: React.MouseEvent, campaign: Campaign) => {
-    e.stopPropagation();
+  const handleRelaunch = async (campaign: Campaign, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (
       !(await confirm({
         title: `¿Relanzar "${campaign.name}" con TODOS los contactos?`,
@@ -143,6 +145,66 @@ export function CampaignsPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error relanzando");
     }
+  };
+
+  // Pausar / reanudar / cancelar desde el menú ⋯ de la tarjeta (mismo endpoint
+  // controlCampaign que usa el detalle). Cancelar pide confirmación.
+  const handleControl = async (campaign: Campaign, action: "pause" | "resume" | "cancel") => {
+    const ep = getApiEndpoints();
+    if (!ep?.controlCampaign) {
+      toast.error("Endpoint no configurado");
+      return;
+    }
+    if (
+      action === "cancel" &&
+      !(await confirm({
+        title: `¿Cancelar "${campaign.name}"?`,
+        description: "Se detiene la marcación; los contactos pendientes no se llamarán.",
+        destructive: true,
+        confirmLabel: "Cancelar campaña",
+      }))
+    )
+      return;
+    try {
+      const r = await fetch(ep.controlCampaign, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId: campaign.campaignId, action }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      toast.success(
+        action === "pause"
+          ? "Campaña pausada"
+          : action === "resume"
+            ? "Campaña reanudada"
+            : "Campaña cancelada",
+      );
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo aplicar la acción");
+    }
+  };
+
+  // Acciones del menú ⋯ según el estado de la campaña.
+  const menuItems = (c: Campaign): RowMenuItem[] => {
+    const items: RowMenuItem[] = [
+      { label: "Abrir detalle", onSelect: () => navigate(`/campaigns/${c.campaignId}`) },
+    ];
+    if (!canManage) return items;
+    if (c.status === "RUNNING")
+      items.push({ label: "Pausar", onSelect: () => handleControl(c, "pause") });
+    if (c.status === "PAUSED")
+      items.push({ label: "Reanudar", onSelect: () => handleControl(c, "resume") });
+    items.push({ label: "Clonar", onSelect: () => handleClone(c) });
+    if (c.status === "COMPLETED" || c.status === "CANCELLED")
+      items.push({ label: "Relanzar (todos)", onSelect: () => handleRelaunch(c) });
+    if (c.status === "RUNNING" || c.status === "PAUSED")
+      items.push({
+        label: "Cancelar campaña",
+        destructive: true,
+        onSelect: () => handleControl(c, "cancel"),
+      });
+    return items;
   };
 
   const totalReached = campaigns.reduce(
@@ -187,9 +249,6 @@ export function CampaignsPage() {
           <div className="row gap10">
             <Btn variant="ghost" size="sm" icon="refresh" onClick={() => refresh()}>
               Actualizar
-            </Btn>
-            <Btn variant="ghost" size="sm" icon="megaphone">
-              Plantillas
             </Btn>
             {canManage && (
               <Btn
@@ -388,33 +447,7 @@ export function CampaignsPage() {
                       <Pill tone={STATUS_TONE[c.status] || "outline"}>
                         {STATUS_LABEL[c.status] || c.status}
                       </Pill>
-                      {canManage && (
-                        <Btn
-                          variant="ghost"
-                          size="sm"
-                          icon="plus"
-                          onClick={(e) => handleClone(e, c)}
-                          disabled={mutations.pending}
-                          title="Clonar"
-                        />
-                      )}
-                      {canManage && isFinished && (
-                        <Btn
-                          variant="ghost"
-                          size="sm"
-                          icon="refresh"
-                          onClick={(e) => handleRelaunch(e, c)}
-                          disabled={mutations.pending}
-                          title="Relanzar"
-                        />
-                      )}
-                      <Btn
-                        variant="ghost"
-                        size="sm"
-                        icon="more"
-                        title="Más"
-                        onClick={(e) => e.stopPropagation()}
-                      />
+                      <CampaignRowMenu items={menuItems(c)} />
                     </div>
                   </div>
 
