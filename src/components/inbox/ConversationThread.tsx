@@ -59,7 +59,35 @@ type WaTemplate = {
   category?: string;
   body?: string;
   bodyText?: string;
+  /** Nº de parámetros {{n}} del cuerpo (lo calcula list-whatsapp-templates). */
+  variableCount?: number;
+  /** Encabezado: texto (puede traer su PROPIO {{1}}) y formato (TEXT | IMAGE | …). */
+  headerText?: string;
+  headerFormat?: string;
 };
+
+/** Cuántos parámetros {{n}} declara un texto de plantilla. Meta exige
+ *  mandarlos EXACTOS — y el header variable cuenta APARTE del body: faltar
+ *  cualquiera responde (#132000) "Number of parameters does not match". */
+function countVars(text: string): number {
+  let max = 0;
+  for (const m of text.matchAll(/\{\{(\d+)\}\}/g)) max = Math.max(max, Number(m[1]));
+  return max;
+}
+
+function tplBodyCount(t: WaTemplate): number {
+  return Math.max(countVars(t.body || t.bodyText || ""), Number(t.variableCount) || 0);
+}
+
+function tplHeaderCount(t: WaTemplate): number {
+  if ((t.headerFormat || "TEXT").toUpperCase() !== "TEXT") return 0;
+  return countVars(t.headerText || "");
+}
+
+/** Texto con las variables sustituidas (preview en vivo del paso 2). */
+function subsVars(text: string, vars: string[]): string {
+  return text.replace(/\{\{(\d+)\}\}/g, (_, n) => vars[Number(n) - 1]?.trim() || `{{${n}}}`);
+}
 
 /** Respuestas rápidas (canned) — al hacer click rellenan el textarea. */
 const QUICK_REPLIES = [
@@ -323,13 +351,46 @@ export function ConversationThread({ conversationId }: { conversationId: string 
       .catch(() => setTemplates([]))
       .finally(() => setTplLoading(false));
   }, [tplOpen]);
-  const sendTpl = async (t: WaTemplate) => {
+  // Paso 2 del picker: plantilla elegida + valores de sus {{n}} (header y
+  // body por separado — Meta los cuenta aparte). Sin esto las plantillas con
+  // parámetros SIEMPRE rebotaban en Meta con (#132000).
+  const [tplSel, setTplSel] = useState<WaTemplate | null>(null);
+  const [tplVars, setTplVars] = useState<string[]>([]);
+  const [tplHeaderVars, setTplHeaderVars] = useState<string[]>([]);
+
+  const pickTpl = (t: WaTemplate) => {
+    const fmt = (t.headerFormat || "TEXT").toUpperCase();
+    if (fmt !== "TEXT" && t.headerText) {
+      // Header multimedia exige adjuntar el medio — ese flujo vive en las
+      // campañas de WhatsApp; mejor un aviso claro que un 400 críptico.
+      toast.error(
+        "Esta plantilla lleva encabezado multimedia — envíala desde una campaña de WhatsApp.",
+      );
+      return;
+    }
+    const nBody = tplBodyCount(t);
+    const nHeader = tplHeaderCount(t);
+    if (nBody + nHeader === 0) {
+      void sendTpl(t, [], []);
+      return;
+    }
+    const name = conversation?.customerName || "";
+    // Prefill: el {{1}} (de header y de body) casi siempre es el nombre.
+    setTplHeaderVars(Array.from({ length: nHeader }, (_, i) => (i === 0 ? name : "")));
+    setTplVars(Array.from({ length: nBody }, (_, i) => (i === 0 ? name : "")));
+    setTplSel(t);
+  };
+
+  const sendTpl = async (t: WaTemplate, headerVars: string[], vars: string[]) => {
     try {
       await sendTemplate.mutateAsync({
         conversationId,
         templateName: t.name,
         language: t.language || "es",
+        headerParams: headerVars.length ? headerVars.map((v) => v.trim()) : undefined,
+        bodyParams: vars.length ? vars.map((v) => v.trim()) : undefined,
       });
+      setTplSel(null);
       setTplOpen(false);
       toast.success("Plantilla enviada");
     } catch (e) {
@@ -1044,15 +1105,92 @@ export function ConversationThread({ conversationId }: { conversationId: string 
         </div>
       </Modal>
 
-      {/* Modal — enviar una plantilla HSM de WhatsApp. */}
+      {/* Modal — enviar una plantilla HSM de WhatsApp. Dos pasos: elegir
+          plantilla → completar sus variables {{n}} (Meta exige el nº exacto
+          de parámetros; sin ellos rebota con #132000). */}
       <Modal
         open={tplOpen}
-        onOpenChange={setTplOpen}
-        title="Enviar plantilla"
+        onOpenChange={(o) => {
+          setTplOpen(o);
+          if (!o) setTplSel(null);
+        }}
+        title={tplSel ? `Enviar "${tplSel.name}"` : "Enviar plantilla"}
         className="max-w-[460px] max-h-[80vh] overflow-y-auto"
       >
         <div className="mt-3">
-          {tplLoading ? (
+          {tplSel ? (
+            <div className="col gap10">
+              <div
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: "var(--r-md)",
+                  border: "1px solid var(--border-1)",
+                  background: "var(--bg-2)",
+                  fontSize: 12.5,
+                  lineHeight: 1.5,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {tplHeaderVars.length > 0 && tplSel.headerText && (
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                    {subsVars(tplSel.headerText, tplHeaderVars)}
+                  </div>
+                )}
+                {subsVars(tplSel.body || tplSel.bodyText || "", tplVars)}
+              </div>
+              {tplHeaderVars.map((v, i) => (
+                <label key={`h${i}`} className="col gap4" style={{ fontSize: 12 }}>
+                  <span className="dim">Encabezado {`{{${i + 1}}}`}</span>
+                  <input
+                    value={v}
+                    onChange={(e) =>
+                      setTplHeaderVars((vs) => vs.map((x, j) => (j === i ? e.target.value : x)))
+                    }
+                    placeholder={i === 0 ? "Nombre del cliente" : "Valor"}
+                    style={LIST_INP}
+                  />
+                </label>
+              ))}
+              {tplVars.map((v, i) => (
+                <label key={i} className="col gap4" style={{ fontSize: 12 }}>
+                  <span className="dim">Variable {`{{${i + 1}}}`}</span>
+                  <input
+                    value={v}
+                    onChange={(e) =>
+                      setTplVars((vs) => vs.map((x, j) => (j === i ? e.target.value : x)))
+                    }
+                    placeholder={i === 0 ? "Nombre del cliente" : "Valor"}
+                    style={LIST_INP}
+                    autoFocus={i === 0}
+                  />
+                </label>
+              ))}
+              <div className="row gap8" style={{ justifyContent: "flex-end", marginTop: 4 }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => setTplSel(null)}
+                >
+                  Volver
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--success btn--sm"
+                  disabled={
+                    sendTemplate.isPending || [...tplHeaderVars, ...tplVars].some((x) => !x.trim())
+                  }
+                  title={
+                    [...tplHeaderVars, ...tplVars].some((x) => !x.trim())
+                      ? "Completa todas las variables de la plantilla"
+                      : ""
+                  }
+                  onClick={() => void sendTpl(tplSel, tplHeaderVars, tplVars)}
+                >
+                  <Icon name="send" size={13} /> Enviar plantilla
+                </button>
+              </div>
+            </div>
+          ) : tplLoading ? (
             <div className="dim" style={{ padding: 20, textAlign: "center", fontSize: 13 }}>
               Cargando plantillas…
             </div>
@@ -1065,37 +1203,45 @@ export function ConversationThread({ conversationId }: { conversationId: string 
             </div>
           ) : (
             <div className="col gap8">
-              {templates.map((t) => (
-                <button
-                  key={t.name + (t.language || "")}
-                  type="button"
-                  onClick={() => sendTpl(t)}
-                  disabled={sendTemplate.isPending}
-                  className="row between"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: "var(--r-md)",
-                    border: "1px solid var(--border-1)",
-                    background: "var(--bg-2)",
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                >
-                  <span style={{ minWidth: 0 }}>
-                    <b style={{ fontSize: 13 }}>{t.name}</b>
-                    <div
-                      className="dim trunc"
-                      style={{ fontSize: 11.5, marginTop: 2, maxWidth: 320 }}
-                    >
-                      {t.body || t.bodyText || t.category || "Plantilla HSM"}
-                    </div>
-                  </span>
-                  <span className="row gap6" style={{ flex: "0 0 auto" }}>
-                    {t.language && <Pill tone="outline">{t.language}</Pill>}
-                    <Icon name="send" size={14} style={{ color: "var(--green)" }} />
-                  </span>
-                </button>
-              ))}
+              {templates.map((t) => {
+                const nVars = tplBodyCount(t) + tplHeaderCount(t);
+                return (
+                  <button
+                    key={t.name + (t.language || "")}
+                    type="button"
+                    onClick={() => pickTpl(t)}
+                    disabled={sendTemplate.isPending}
+                    className="row between"
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: "var(--r-md)",
+                      border: "1px solid var(--border-1)",
+                      background: "var(--bg-2)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span style={{ minWidth: 0 }}>
+                      <b style={{ fontSize: 13 }}>{t.name}</b>
+                      <div
+                        className="dim trunc"
+                        style={{ fontSize: 11.5, marginTop: 2, maxWidth: 320 }}
+                      >
+                        {t.body || t.bodyText || t.category || "Plantilla HSM"}
+                      </div>
+                    </span>
+                    <span className="row gap6" style={{ flex: "0 0 auto" }}>
+                      {nVars > 0 && (
+                        <Pill tone="cyan">
+                          {nVars} {nVars === 1 ? "variable" : "variables"}
+                        </Pill>
+                      )}
+                      {t.language && <Pill tone="outline">{t.language}</Pill>}
+                      <Icon name="send" size={14} style={{ color: "var(--green)" }} />
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

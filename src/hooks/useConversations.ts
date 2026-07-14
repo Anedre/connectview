@@ -210,6 +210,8 @@ export function useConversationActions() {
       templateName: string;
       language: string;
       bodyParams?: string[];
+      /** Variable del encabezado TEXT ({{1}} propio — namespace aparte del body). */
+      headerParams?: string[];
     }) => post({ action: "sendTemplate", ...v }),
     onSuccess: (_d, v) => invalidate(v.conversationId),
   });

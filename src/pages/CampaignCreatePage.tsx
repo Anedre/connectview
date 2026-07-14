@@ -302,7 +302,10 @@ export function CampaignCreatePage() {
   // Solo aplican con ruteo "flow" (el modo por-atributo arma su propio smart
   // flow y es incompatible con el flow directo, v1).
   const [agentRouting, setAgentRouting] = useState<"shared" | "exclusive">("shared");
-  const [directConnect, setDirectConnect] = useState(false);
+  // Directa por DEFECTO: sin esto la espera cae al queue flow default de
+  // Connect ("Thank you for calling…" en inglés + música) — pedido explícito
+  // del admin 2026-07-14: la llamada debe entrar directo con el agente.
+  const [directConnect, setDirectConnect] = useState(true);
   const [autoAccept, setAutoAccept] = useState(false);
 
   // WhatsApp config

@@ -1131,6 +1131,13 @@ export const handler: Handler = async (event: any) => {
         const bodyParams = Array.isArray(body.bodyParams)
           ? (body.bodyParams as unknown[]).map((p) => String(p))
           : [];
+        // Header TEXT con variable ({{1}} propio, namespace SEPARADO del body).
+        // Meta exige el componente header aparte: mandar solo el body en una
+        // plantilla con header variable rebota con (#132000) "Number of
+        // parameters does not match".
+        const headerParams = Array.isArray(body.headerParams)
+          ? (body.headerParams as unknown[]).map((p) => String(p))
+          : [];
         const actor = typeof body.actor === "string" ? body.actor : "agente";
         if (!templateName) return bad(400, "templateName requerido");
         if (!language) return bad(400, "language requerido (ej. es, es_MX, en_US)");
@@ -1139,16 +1146,25 @@ export const handler: Handler = async (event: any) => {
         if (!token || !waPhoneId)
           return bad(400, "WhatsApp (meta) no configurado para este tenant");
 
-        // components solo si hay parámetros de cuerpo.
+        // components solo si hay parámetros (header y/o cuerpo).
         const template: Record<string, unknown> = {
           name: templateName,
           language: { code: language },
         };
-        if (bodyParams.length) {
-          template.components = [
-            { type: "body", parameters: bodyParams.map((t) => ({ type: "text", text: t })) },
-          ];
+        const components: Record<string, unknown>[] = [];
+        if (headerParams.length) {
+          components.push({
+            type: "header",
+            parameters: headerParams.map((t) => ({ type: "text", text: t })),
+          });
         }
+        if (bodyParams.length) {
+          components.push({
+            type: "body",
+            parameters: bodyParams.map((t) => ({ type: "text", text: t })),
+          });
+        }
+        if (components.length) template.components = components;
         try {
           await sendWhatsApp(
             { mode: "meta", metaPhoneNumberId: waPhoneId, tenantId },
@@ -1158,8 +1174,9 @@ export const handler: Handler = async (event: any) => {
           return bad(502, `Meta rechazó el envío: ${e instanceof Error ? e.message : "error"}`);
         }
         // Render legible del saliente: [Plantilla: nombre] + params.
+        const allParams = [...headerParams, ...bodyParams];
         const rendered =
-          `[Plantilla: ${templateName}]` + (bodyParams.length ? ` ${bodyParams.join(" · ")}` : "");
+          `[Plantilla: ${templateName}]` + (allParams.length ? ` ${allParams.join(" · ")}` : "");
         const updated = await appendOutbound(legacyDynamo, conversationId, rendered, actor);
         if (conv.leadId) {
           await appendLeadGolpe(conv.leadId, {
