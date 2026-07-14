@@ -17258,208 +17258,235 @@ select.wf-input {
   --inc-c: var(--green);
   position: relative;
   width: 100%;
-  max-width: 440px;
+  max-width: 380px;
   margin: 0 20px;
-  padding: 28px 32px 24px;
+  padding: 30px 28px 26px;
   text-align: center;
-  border-radius: 22px;
-  border: 1px solid color-mix(in srgb, var(--inc-c) 34%, var(--border-1));
-  background:
-    radial-gradient(
-      120% 90% at 50% -12%,
-      color-mix(in srgb, var(--inc-c) 11%, transparent),
-      transparent 62%
-    ),
-    var(--bg-1);
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid var(--border-1);
+  background: var(--bg-1);
   box-shadow:
-    0 24px 60px -24px color-mix(in srgb, var(--inc-c) 55%, transparent),
-    0 18px 44px -22px rgba(6, 12, 26, 0.45),
-    inset 0 1px 0 color-mix(in srgb, #ffffff 22%, transparent);
+    0 32px 80px -32px rgba(6, 12, 26, 0.55),
+    0 2px 10px rgba(6, 12, 26, 0.07);
   animation: inc-pop-in 0.18s ease-out backwards;
 }
-
-/* Chip del canal — siempre teñido con el acento exacto del canal */
-.inc-card .inc-chip {
-  height: 26px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--inc-c) 12%, var(--bg-2));
-  color: color-mix(in srgb, var(--inc-c) 72%, var(--text-1));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--inc-c) 30%, transparent);
+/* Señal de canal: SOLO una hairline superior degradada (el card queda neutro). */
+.inc-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--inc-c) 28%, var(--inc-c) 72%, transparent);
 }
 
-/* ---- Héroe: avatar + anillos de pulso concéntricos ---- */
+/* Encabezado editorial: dot pulsante + label + cola. */
+.inc-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.inc-head b {
+  color: var(--text-2);
+  font-weight: 700;
+}
+.inc-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--inc-c);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--inc-c) 45%, transparent);
+  animation: inc-dot 1.6s ease-out infinite;
+}
+
+/* ---- Héroe: avatar circular SUAVE (tinte, no bloque sólido) + anillos finos ---- */
 .inc-hero {
   position: relative;
   width: fit-content;
-  margin: 22px auto 16px;
+  margin: 26px auto 0;
   display: grid;
   place-items: center;
 }
-.inc-hero .av {
+.inc-avatar {
   position: relative;
   z-index: 1;
-  box-shadow:
-    0 12px 28px -10px color-mix(in srgb, var(--inc-c) 62%, transparent),
-    0 0 0 5px color-mix(in srgb, var(--inc-c) 14%, transparent);
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 25px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--inc-c) 85%, var(--text-1));
+  background: color-mix(in srgb, var(--inc-c) 11%, var(--bg-1));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--inc-c) 22%, transparent);
 }
-.inc-ripple {
+.inc-ring {
   position: absolute;
   inset: 0;
-  border-radius: 30px; /* eco del squircle del avatar (92px, r30) */
-  border: 2px solid color-mix(in srgb, var(--inc-c) 55%, transparent);
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--inc-c) 40%, transparent);
   opacity: 0;
   pointer-events: none;
-  animation: inc-ripple 2.2s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+  animation: inc-ring 2.4s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
 }
-.inc-ripple:nth-child(2) {
-  animation-delay: 0.55s;
-}
-.inc-ripple:nth-child(3) {
-  animation-delay: 1.1s;
+.inc-ring:nth-child(2) {
+  animation-delay: 0.8s;
 }
 
 /* ---- Identidad ---- */
 .inc-name {
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
+  margin-top: 16px;
+  font-size: 21px;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
   color: var(--text-1);
-}
-.inc-sub {
-  margin-top: 5px;
-  font-size: 12.5px;
-  letter-spacing: 0.01em;
-  color: var(--text-3);
 }
 /* Sin nombre humano: título "Desconocido" discreto y el NÚMERO protagonista. */
 .inc-name--unknown {
   color: var(--text-2);
-  font-weight: 750;
 }
 .inc-phone {
-  margin-top: 6px;
-  font-size: 18px;
+  margin-top: 3px;
+  font-size: 19px;
   font-weight: 650;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   color: var(--text-1);
+  font-variant-numeric: tabular-nums;
 }
-/* Avatar de desconocido: ícono de persona tintado del canal (reemplaza al <Av>
-   que derivaba "iniciales" del teléfono → el bug del "+5"). */
-.inc-avatar-unknown {
-  position: relative;
-  z-index: 1;
-  width: 92px;
-  height: 92px;
-  border-radius: 30px;
-  display: grid;
-  place-items: center;
-  color: var(--inc-c);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--inc-c) 16%, var(--bg-1)),
-    color-mix(in srgb, var(--inc-c) 8%, var(--bg-1))
-  );
-  border: 1px solid color-mix(in srgb, var(--inc-c) 32%, var(--border-1));
-  box-shadow:
-    0 10px 26px -14px color-mix(in srgb, var(--inc-c) 80%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+.inc-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.inc-meta {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+/* Badge único de identidad (Lead conocido / Sin registro) — nada de arcoíris. */
+.inc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  height: 24px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 650;
+}
+.inc-badge--known {
+  background: color-mix(in srgb, var(--green) 9%, transparent);
+  color: var(--green-2, var(--green));
+}
+.inc-badge--known i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+}
+.inc-badge--none {
+  background: var(--bg-2);
+  color: var(--text-3);
+  box-shadow: inset 0 0 0 1px var(--border-1);
+}
+.inc-divider {
+  height: 1px;
+  margin: 22px -28px 0;
+  background: var(--border-1);
 }
 .inc-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   justify-content: center;
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
-/* ---- Acciones ---- */
+/* ---- Acciones: botones gemelos (círculos 56px) + labels sentence-case ---- */
 .inc-actions {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  gap: 24px;
-  margin-top: 26px;
+  gap: 56px;
+  margin-top: 18px;
 }
 .inc-action {
   display: grid;
   justify-items: center;
-  gap: 7px;
+  gap: 8px;
 }
 .inc-action__label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  font-size: 11.5px;
+  font-weight: 600;
   color: var(--text-3);
 }
 .inc-btn {
   position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
   padding: 0;
   cursor: pointer;
-  color: #fff;
   transition:
-    transform 0.16s ease,
-    box-shadow 0.16s ease,
-    filter 0.16s ease;
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    filter 0.15s ease;
 }
 .inc-btn:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--inc-c) 70%, var(--text-1));
   outline-offset: 3px;
 }
 .inc-btn:active {
-  transform: scale(0.95);
+  transform: scale(0.94);
 }
+/* Rechazar: suave por defecto, se llena de rojo al hover. */
 .inc-btn--reject {
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--red) 86%, #fff), var(--red));
-  box-shadow:
-    0 10px 24px -10px color-mix(in srgb, var(--red) 70%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #ffffff 40%, transparent);
+  background: color-mix(in srgb, var(--red) 10%, var(--bg-1));
+  color: var(--red);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 22%, transparent);
 }
 .inc-btn--reject:hover {
-  transform: scale(1.08);
-  box-shadow:
-    0 14px 30px -12px color-mix(in srgb, var(--red) 85%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #ffffff 40%, transparent);
+  background: var(--red);
+  color: #fff;
+  transform: scale(1.05);
+  box-shadow: 0 10px 24px -10px color-mix(in srgb, var(--red) 65%, transparent);
 }
+/* Contestar: sólido del canal con halo que respira. */
 .inc-btn--accept {
-  height: 54px;
-  min-width: 116px;
-  padding: 0 36px;
-  border-radius: 999px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--inc-c) 80%, #fff) 0%,
-    var(--inc-c) 52%,
-    color-mix(in srgb, var(--inc-c) 84%, #000) 100%
-  );
-  box-shadow:
-    0 12px 28px -10px color-mix(in srgb, var(--inc-c) 75%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #ffffff 45%, transparent);
+  background: var(--inc-c);
+  color: #fff;
+  box-shadow: 0 10px 26px -12px color-mix(in srgb, var(--inc-c) 80%, transparent);
 }
-/* Glow pulsante en pseudo para no pelear con el shadow del hover */
 .inc-btn--accept::after {
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: inherit;
+  border-radius: 50%;
   pointer-events: none;
-  animation: inc-glow 1.8s ease-out infinite;
+  animation: inc-halo 2s ease-out infinite;
 }
 .inc-btn--accept:hover {
-  transform: translateY(-2px) scale(1.03);
-  filter: brightness(1.06);
-  box-shadow:
-    0 18px 38px -12px color-mix(in srgb, var(--inc-c) 85%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #ffffff 45%, transparent);
+  transform: scale(1.05);
+  filter: brightness(1.07);
 }
 
 /* ---- Keyframes ---- */
@@ -17481,33 +17508,43 @@ select.wf-input {
     transform: none;
   }
 }
-@keyframes inc-ripple {
+@keyframes inc-ring {
   0% {
     opacity: 0;
-    transform: scale(0.85);
+    transform: scale(1);
   }
-  18% {
-    opacity: 0.8;
+  20% {
+    opacity: 0.75;
   }
   100% {
     opacity: 0;
-    transform: scale(1.65);
+    transform: scale(1.55);
   }
 }
-@keyframes inc-glow {
+@keyframes inc-dot {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--inc-c) 42%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--inc-c) 45%, transparent);
   }
   70%,
   100% {
-    box-shadow: 0 0 0 14px transparent;
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+@keyframes inc-halo {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--inc-c) 38%, transparent);
+  }
+  75%,
+  100% {
+    box-shadow: 0 0 0 13px transparent;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .inc-overlay,
   .inc-card,
-  .inc-ripple,
+  .inc-ring,
+  .inc-dot,
   .inc-btn--accept::after {
     animation: none;
   }

@@ -5,7 +5,7 @@ import { useCCP } from "@/hooks/useCCP";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
-import { Av, Icon, Pill } from "@/components/aria";
+import { Icon, Pill } from "@/components/aria";
 import { useDebugRender } from "@/lib/debugTrace";
 
 /** Vistazo rápido al lead por teléfono (manage-leads ?phone=) mientras timbra:
@@ -43,6 +43,23 @@ const LEAD_SOURCE_LABEL: Record<string, string> = {
   whatsapp: "WhatsApp",
   manual: "Manual",
 };
+
+/** +51943565466 → "+51 943 565 466" (solo E.164 limpios; lo demás tal cual). */
+function prettyPhone(p?: string | null): string {
+  if (!p) return "";
+  const m = p.replace(/\s+/g, "").match(/^(\+\d{1,3})(\d{3})(\d{3})(\d{3,4})$/);
+  return m ? `${m[1]} ${m[2]} ${m[3]} ${m[4]}` : p;
+}
+
+/** Iniciales humanas (máx 2 palabras). JAMÁS de un teléfono (el bug del "+5"). */
+function initialsOf(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() || "")
+    .join("");
+}
 
 /**
  * Global incoming-contact overlay. Subscribed to the active-contact stream
@@ -139,11 +156,14 @@ function IncomingCallOverlayBody({ contact }: OverlayBodyProps) {
   // Mientras el lookup del lead está en vuelo mostramos el número (no un
   // "Desconocido" prematuro que luego parpadee a nombre).
   const callerTitle =
-    fullName || (leadChecked ? "Desconocido" : contact.customerPhone || "Entrante");
-  const showPhoneLine = !fullName && !!contact.customerPhone;
-  const callerSub = fullName
-    ? [contact.customerPhone, contact.queueName].filter(Boolean).join(" · ")
-    : contact.queueName || "";
+    fullName || (leadChecked ? "Desconocido" : prettyPhone(contact.customerPhone) || "Entrante");
+  // Empresa · fuente del lead como línea de texto (nada de arcoíris de chips).
+  const leadMeta = [
+    lead?.company,
+    lead?.source ? LEAD_SOURCE_LABEL[lead.source] || lead.source : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   // Screen-pop: motivo / nivel puestos por el flow como atributos del contacto.
   const udepIntent = contact.attributes?.udep_intent;
@@ -176,52 +196,57 @@ function IncomingCallOverlayBody({ contact }: OverlayBodyProps) {
       style={{ position: "fixed", zIndex: 200 }}
     >
       <div className="inc-card" style={{ "--inc-c": meta.color } as CSSProperties}>
-        <Pill tone={meta.tone} icon={meta.icon} className="inc-chip">
+        {/* Encabezado editorial: dot pulsante + canal + cola (el color del canal
+            vive en el dot y la hairline superior — el card queda neutro). */}
+        <div className="inc-head">
+          <span className="inc-dot" aria-hidden="true" />
           {meta.label}
-          {contact.queueName ? ` · ${contact.queueName}` : ""}
-        </Pill>
+          {contact.queueName && <b>· {contact.queueName}</b>}
+        </div>
 
         <div className="inc-hero">
-          <span className="inc-ripple" aria-hidden="true" />
-          <span className="inc-ripple" aria-hidden="true" />
-          <span className="inc-ripple" aria-hidden="true" />
-          {fullName ? (
-            <Av name={fullName} size={92} radius={30} color={meta.color} />
-          ) : (
-            // Sin nombre humano NO usamos <Av> (derivaba "iniciales" del
-            // teléfono → el "+5"). Ícono de persona con el tinte del canal.
-            <span className="inc-avatar-unknown" aria-hidden="true">
-              <Icon name="user" size={42} weight="duotone" />
-            </span>
-          )}
+          <span className="inc-ring" aria-hidden="true" />
+          <span className="inc-ring" aria-hidden="true" />
+          <span className="inc-avatar" aria-hidden="true">
+            {fullName ? (
+              initialsOf(fullName)
+            ) : (
+              // Sin nombre humano NO derivamos iniciales (el bug del "+5"):
+              // ícono de persona con el tinte suave del canal.
+              <Icon name="user" size={32} weight="duotone" />
+            )}
+          </span>
         </div>
 
         <div className={`inc-name ${fullName ? "" : "inc-name--unknown"}`}>{callerTitle}</div>
-        {showPhoneLine && <div className="inc-phone mono">{contact.customerPhone}</div>}
-        {callerSub && <div className="inc-sub mono">{callerSub}</div>}
+        {fullName
+          ? contact.customerPhone && (
+              <div className="inc-sub">{prettyPhone(contact.customerPhone)}</div>
+            )
+          : contact.customerPhone && (
+              <div className="inc-phone">{prettyPhone(contact.customerPhone)}</div>
+            )}
+        {leadMeta && <div className="inc-meta">{leadMeta}</div>}
 
-        {(lead || (leadChecked && !fullName) || hasChips) && (
+        {lead ? (
+          <span className="inc-badge inc-badge--known">
+            <i aria-hidden="true" />
+            Lead conocido
+          </span>
+        ) : leadChecked && !fullName ? (
+          <span className="inc-badge inc-badge--none">Sin registro</span>
+        ) : null}
+
+        {hasChips && (
           <div className="inc-chips">
-            {lead && (
-              <Pill tone="green" icon="checkCircle">
-                Lead conocido
-              </Pill>
-            )}
-            {lead?.company && (
-              <Pill tone="cyan" icon="building">
-                {lead.company}
-              </Pill>
-            )}
-            {lead?.source && (
-              <Pill tone="gold">{LEAD_SOURCE_LABEL[lead.source] || lead.source}</Pill>
-            )}
-            {leadChecked && !fullName && !lead && <Pill tone="outline">Sin registro</Pill>}
             {profile?.partyType && <Pill tone="iris">{profile.partyType}</Pill>}
             {profile?.accountNumber && <Pill tone="cyan">{profile.accountNumber}</Pill>}
             {motivoLabel && <Pill tone="gold">{motivoLabel}</Pill>}
             {udepNivel && <Pill tone="cyan">{udepNivel}</Pill>}
           </div>
         )}
+
+        <div className="inc-divider" aria-hidden="true" />
 
         <div className="inc-actions">
           <div className="inc-action">
