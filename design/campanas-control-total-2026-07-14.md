@@ -102,3 +102,19 @@ En `startOutbound()` agregar atributos por llamada (solo campañas voz):
 5. Deploy lambdas hand-managed (`deploy-lambda.mjs`) + provision de flows en el tenant de pruebas + E2E con agentes reales.
 
 **Fuera de alcance v1** (anotado): modo `team`, pre-flight de micrófono, feed server-side, eventos BYO multi-tenant.
+
+---
+
+## 4. Estado de implementación (2026-07-14, rama `feat/campanas-control-total`)
+
+**HECHO y verificado:**
+
+- Flows provisionados en la instancia de pruebas: `ARIA-Queue-Silent` = `8d9860aa-ed03-4068-8938-d44061f2b400` (CUSTOMER_QUEUE, creado) y `ARIA-Outbound-Direct` = `e07d1e0d-4e83-4750-a4da-863803017b1a` (reutilizado del difunto ARIA-Smart-Test porque la instancia está EN LA CUOTA de flows ~100 — CreateContactFlow tiró LimitExceeded; hay chip de tarea para archivar basura). IDs guardados en `configJson.contactFlows` de `t_3176…` y `default`.
+- Lambdas deployadas (hand-managed): provision-contact-flows, campaign-dialer, create-campaign, update-campaign, control-campaign, assign-campaign-agents.
+- IAM: `connect:DescribeUser` + `connect:UpdateUserPhoneConfig` agregados al inline `VoxCrmConnectOutbound` de `VoxCrmConnectAccess` (+ managed `connectview-agent-phoneconfig-access` que quedó adjunta al mismo rol). ⚠️ `connectview-campaign-lambda-role` NO los tiene (rol lleno: 10 managed + inline al tope) → el auto-accept NO funciona para campañas legacy (tenantId vacío); todas las campañas recientes llevan tenant real, así que el path vivo está cubierto.
+- E2E verificado en browser (QA admin `anedre12345+qaadmin@gmail.com`, creada por CLI): wizard renderiza "Conexión y exclusividad"; al activar exclusivo/directo el selector de flow se reemplaza por el aviso del flow directo; PATCH de la campaña RUNNING `08fc6d16…` persistió `agentRouting=exclusive, directConnect=true` y el backend re-apuntó `contactFlowId` → ARIA-Outbound-Direct. **Esa campaña de pruebas quedó en exclusivo+directo** (a propósito, para que la siguiente llamada de prueba ejercite el flow).
+- CI: tsc ✔ · eslint ✔ (1 warning preexistente del feed) · vitest 66/66 ✔ · build ✔.
+
+**Gotcha de verificación**: en el Browser pane sin sesión CCP los diálogos base-ui NO cierran (base-ui espera la transición de salida y las transitions/rAF están muertas — mismo artefacto que congela screenshots). No es bug de la app.
+
+**Pendiente**: prueba con llamadas reales (agentes) del modo exclusivo + conexión directa + auto-accept; merge a master al cierre del batch (un deploy Amplify).
