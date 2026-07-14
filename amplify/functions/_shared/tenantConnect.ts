@@ -144,9 +144,19 @@ interface WhatsAppConnConfig {
 interface TenantConfig {
   connect?: ConnectConnConfig;
   whatsapp?: WhatsAppConnConfig;
+  /** IDs de los flows canónicos provisionados por provision-contact-flows. */
+  contactFlows?: {
+    inboundId?: string;
+    outboundId?: string;
+    disconnectId?: string;
+    /** ARIA-Outbound-Direct: saliente sin saludo/música + ruteo exclusivo. */
+    directOutboundId?: string;
+    /** ARIA-Queue-Silent: espera silenciosa (customer queue flow). */
+    silentQueueFlowId?: string;
+  };
 }
 
-async function readTenantConfig(tenantId: string): Promise<TenantConfig | null> {
+export async function readTenantConfig(tenantId: string): Promise<TenantConfig | null> {
   const r = await ddb.send(
     new GetItemCommand({ TableName: CONNECTIONS_TABLE, Key: { tenantId: { S: tenantId } } }),
   );

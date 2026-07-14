@@ -17,6 +17,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { resolveConnect } from "../_shared/tenantConnect";
+import { applyAutoAccept } from "../_shared/campaignAutoAccept";
 
 // BYO Connect + Data Plane (#43+#46): module-active. Los helpers de abajo
 // (getCampaign, deleteAssignments, etc.) leen `connect`/`dynamo`/`instanceId`.
@@ -27,8 +28,7 @@ let dynamo: DynamoDBClient = legacyDynamo;
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 let instanceId = INSTANCE_ID;
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
-const AGENTS_TABLE =
-  process.env.CAMPAIGN_AGENTS_TABLE || "connectview-campaign-agents";
+const AGENTS_TABLE = process.env.CAMPAIGN_AGENTS_TABLE || "connectview-campaign-agents";
 
 interface AssignBody {
   campaignId: string;
@@ -48,6 +48,10 @@ interface AssignBody {
 interface CampaignRow {
   campaignId: string;
   campaignQueueId?: string;
+  status?: string;
+  /** Campaña con "aceptación automática": los agentes agregados en caliente
+   *  quedan auto-contestando y a los removidos se les revierte. */
+  autoAccept?: boolean;
 }
 
 async function getCampaign(campaignId: string): Promise<CampaignRow | null> {
@@ -55,7 +59,7 @@ async function getCampaign(campaignId: string): Promise<CampaignRow | null> {
     new GetItemCommand({
       TableName: CAMPAIGNS_TABLE,
       Key: { campaignId: { S: campaignId } },
-    })
+    }),
   );
   return res.Item ? (unmarshall(res.Item) as CampaignRow) : null;
 }
@@ -66,7 +70,7 @@ async function getUserRoutingProfile(userId: string): Promise<string | null> {
       new DescribeUserCommand({
         InstanceId: instanceId,
         UserId: userId,
-      })
+      }),
     );
     return res.User?.RoutingProfileId || null;
   } catch (err) {
@@ -75,10 +79,7 @@ async function getUserRoutingProfile(userId: string): Promise<string | null> {
   }
 }
 
-async function routingProfileHasQueue(
-  routingProfileId: string,
-  queueId: string
-): Promise<boolean> {
+async function routingProfileHasQueue(routingProfileId: string, queueId: string): Promise<boolean> {
   try {
     let nextToken: string | undefined;
     do {
@@ -88,13 +89,9 @@ async function routingProfileHasQueue(
           RoutingProfileId: routingProfileId,
           NextToken: nextToken,
           MaxResults: 100,
-        })
+        }),
       );
-      if (
-        (res.RoutingProfileQueueConfigSummaryList || []).some(
-          (q) => q.QueueId === queueId
-        )
-      ) {
+      if ((res.RoutingProfileQueueConfigSummaryList || []).some((q) => q.QueueId === queueId)) {
         return true;
       }
       nextToken = res.NextToken;
@@ -110,7 +107,7 @@ async function otherAssignmentsUseSamePair(
   routingProfileId: string,
   queueId: string,
   excludeCampaignId: string,
-  excludeUserId: string
+  excludeUserId: string,
 ): Promise<boolean> {
   // Scan the agents table for any other (routingProfileId, queueId) pair still in use.
   // For small scale (< 10000 assignments) this is fine; for huge scale add a GSI.
@@ -128,7 +125,7 @@ async function otherAssignmentsUseSamePair(
           ":uid": { S: excludeUserId },
         },
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
     if ((res.Count || 0) > 0) return true;
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
@@ -141,7 +138,7 @@ async function associateQueueToRoutingProfile(
   routingProfileId: string,
   queueId: string,
   priority: number,
-  delay: number
+  delay: number,
 ): Promise<void> {
   await connect.send(
     new AssociateRoutingProfileQueuesCommand({
@@ -154,20 +151,20 @@ async function associateQueueToRoutingProfile(
           Delay: delay,
         },
       ],
-    })
+    }),
   );
 }
 
 async function disassociateQueueFromRoutingProfile(
   routingProfileId: string,
-  queueId: string
+  queueId: string,
 ): Promise<void> {
   await connect.send(
     new DisassociateRoutingProfileQueuesCommand({
       InstanceId: instanceId,
       RoutingProfileId: routingProfileId,
       QueueReferences: [{ QueueId: queueId, Channel: "VOICE" }],
-    })
+    }),
   );
 }
 
@@ -225,9 +222,7 @@ export const handler: Handler = async (event: any) => {
         // Per-agent queue resolution: explicit > campaign fallback > error.
         const queueId = queueByUserId[userId] || fallbackQueueId;
         if (!queueId) {
-          results.errors.push(
-            `${userId}: no queue specified and campaign has no fallback queue`
-          );
+          results.errors.push(`${userId}: no queue specified and campaign has no fallback queue`);
           continue;
         }
 
@@ -239,7 +234,7 @@ export const handler: Handler = async (event: any) => {
               campaignId: { S: campaignId },
               userId: { S: userId },
             },
-          })
+          }),
         );
         if (existing.Item) {
           // Already assigned — keep it a no-op, not an error.
@@ -255,18 +250,10 @@ export const handler: Handler = async (event: any) => {
           continue;
         }
 
-        const hasQueue = await routingProfileHasQueue(
-          routingProfileId,
-          queueId
-        );
+        const hasQueue = await routingProfileHasQueue(routingProfileId, queueId);
         let addedQueueToRoutingProfile = false;
         if (!hasQueue) {
-          await associateQueueToRoutingProfile(
-            routingProfileId,
-            queueId,
-            priority,
-            delay
-          );
+          await associateQueueToRoutingProfile(routingProfileId, queueId, priority, delay);
           addedQueueToRoutingProfile = true;
         }
 
@@ -286,14 +273,12 @@ export const handler: Handler = async (event: any) => {
               addedAt: { S: new Date().toISOString() },
               addedBy: { S: body.actor || "system" },
             },
-          })
+          }),
         );
         results.added.push(userId);
         results.assignedQueueByUserId[userId] = queueId;
       } catch (err) {
-        results.errors.push(
-          `add ${userId}: ${err instanceof Error ? err.message : String(err)}`
-        );
+        results.errors.push(`add ${userId}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
@@ -307,7 +292,7 @@ export const handler: Handler = async (event: any) => {
               campaignId: { S: campaignId },
               userId: { S: userId },
             },
-          })
+          }),
         );
         if (!existing.Item) {
           // Nothing to remove — idempotent
@@ -326,7 +311,7 @@ export const handler: Handler = async (event: any) => {
               campaignId: { S: campaignId },
               userId: { S: userId },
             },
-          })
+          }),
         );
 
         // Only remove the queue from the routing profile if:
@@ -337,14 +322,11 @@ export const handler: Handler = async (event: any) => {
             routingProfileId,
             rowQueueId,
             campaignId,
-            userId
+            userId,
           );
           if (!stillNeeded) {
             try {
-              await disassociateQueueFromRoutingProfile(
-                routingProfileId,
-                rowQueueId
-              );
+              await disassociateQueueFromRoutingProfile(routingProfileId, rowQueueId);
             } catch (err) {
               console.warn("disassociate failed:", err);
               // Don't fail the whole request if cleanup fails
@@ -354,8 +336,26 @@ export const handler: Handler = async (event: any) => {
         results.removed.push(userId);
       } catch (err) {
         results.errors.push(
-          `remove ${userId}: ${err instanceof Error ? err.message : String(err)}`
+          `remove ${userId}: ${err instanceof Error ? err.message : String(err)}`,
         );
+      }
+    }
+
+    // ── Auto-accept en caliente (campaña con autoAccept=true) ──────────────
+    // Agregados mientras corre → auto-contestar ON; removidos → OFF. Best-
+    // effort. Caso borde conocido: si el agente está en OTRA campaña activa
+    // con autoAccept, el OFF del remove se lo pisa (documentado en design/).
+    if (campaign.autoAccept === true) {
+      try {
+        const addedOk = results.added.filter((u) => !results.errors.some((e) => e.startsWith(u)));
+        if (campaign.status === "RUNNING" && addedOk.length > 0) {
+          await applyAutoAccept(connect, instanceId, addedOk, true);
+        }
+        if (results.removed.length > 0) {
+          await applyAutoAccept(connect, instanceId, results.removed, false);
+        }
+      } catch (err) {
+        console.warn("autoAccept en assign-campaign-agents falló:", err);
       }
     }
 

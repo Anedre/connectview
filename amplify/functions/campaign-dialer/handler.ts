@@ -15,6 +15,7 @@ import {
 import { getTenantConnect } from "../_shared/tenantConnect";
 import { maskPhone } from "../_shared/maskPhone";
 import { evaluateSend } from "../_shared/suppression";
+import { applyAutoAccept } from "../_shared/campaignAutoAccept";
 
 // BYO Data Plane (#46): DDB module-active igual que Connect. Se resetea por
 // campaña usando getTenantConnect(campaign.tenantId).dynamo. Lambda procesa
@@ -95,6 +96,20 @@ interface Campaign {
   /** Contadores (mantenidos por process-contact-event / wrap-up). Para metas. */
   connectedCount?: number;
   conversionsCount?: number;
+  // ── Control total (2026-07) ──────────────────────────────────────────
+  /** Cola compartida de la campaña (fallback del ruteo dinámico del flow). */
+  campaignQueueId?: string;
+  /** "shared" (default) | "exclusive": exclusive rutea cada llamada a la cola
+   *  PERSONAL del agente del bucket vía atributos que interpreta el flow
+   *  ARIA-Outbound-Direct — nadie más puede contestarla. */
+  agentRouting?: string;
+  /** Conexión directa: sin saludo ni música de espera (flow directo). El
+   *  dialer no lo lee (create/update-campaign ya fijaron contactFlowId al
+   *  flow directo); tipado para consistencia del registro. */
+  directConnect?: boolean;
+  /** Aplicar auto-accept a los agentes asignados (lo gestionan
+   *  control-campaign / assign-campaign-agents, no el dialer). */
+  autoAccept?: boolean;
 }
 
 interface CampaignContact {
@@ -923,6 +938,16 @@ async function startOutbound(campaign: Campaign, contact: CampaignContact): Prom
       ),
     };
 
+    // ── Ruteo del flow directo (ARIA-Outbound-Direct) ────────────────────
+    // Se asignan DESPUÉS del spread para que un CSV con columnas "aria*" no
+    // pueda pisar el ruteo. En "exclusive" la llamada va a la cola PERSONAL
+    // del agente del bucket; fail-open: sin dueño → ruteo compartido normal.
+    const exclusive =
+      (campaign.agentRouting || "shared") === "exclusive" && !!contact.assignedAgentUserId;
+    attributes.ariaRouting = exclusive ? "agent" : "shared";
+    if (exclusive) attributes.ariaAgentId = contact.assignedAgentUserId as string;
+    if (campaign.campaignQueueId) attributes.ariaQueueId = campaign.campaignQueueId;
+
     // If AMD is enabled and we have a dedicated AMD flow, use it in place of
     // the admin-selected flow. The AMD flow runs CheckOutboundCallStatus first
     // and only transfers to the queue on CallAnswered. Voicemails and no-answer
@@ -932,7 +957,11 @@ async function startOutbound(campaign: Campaign, contact: CampaignContact): Prom
     // supported by AWS (only US, MX, BR from us-east-1). So we keep
     // TrafficType=GENERAL (default) + AnswerMachineDetectionConfig on the
     // StartOutboundVoiceContact itself — this DOES work for Peru.
-    const useAmd = AMD_ENABLED && !!AMD_FLOW_ID;
+    // El override de AMD NO aplica a campañas con flujo directo/exclusivo: el
+    // flow AMD transfiere a cola a su manera y se perdería el ruteo por
+    // atributos (exclusividad rota en silencio).
+    const usesDirectFlow = exclusive || campaign.directConnect === true;
+    const useAmd = AMD_ENABLED && !!AMD_FLOW_ID && !usesDirectFlow;
     const contactFlowId = useAmd ? AMD_FLOW_ID : campaign.contactFlowId;
 
     const res = await activeConnect.send(
@@ -1049,8 +1078,8 @@ async function maybeCompleteCampaign(campaign: Campaign): Promise<void> {
     total += r.Count || 0;
   }
   if (total === 0) {
-    await dynamo
-      .send(
+    try {
+      await dynamo.send(
         new UpdateItemCommand({
           TableName: CAMPAIGNS_TABLE,
           Key: { campaignId: { S: campaign.campaignId } },
@@ -1063,10 +1092,38 @@ async function maybeCompleteCampaign(campaign: Campaign): Promise<void> {
             ":now": { S: new Date().toISOString() },
           },
         }),
-      )
-      .catch(() => {
-        /* already not running, ignore */
-      });
+      );
+      // La condición pasó → transición real RUNNING→COMPLETED: revertir el
+      // auto-accept de los agentes (si la campaña lo activó).
+      await revertAutoAcceptOnComplete(campaign);
+    } catch {
+      /* already not running, ignore */
+    }
+  }
+}
+
+/** Campaña completada con autoAccept: revertir el auto-contestar de sus
+ *  agentes para que no siga afectando llamadas fuera de campaña. Best-effort:
+ *  si falla, el admin puede revertirlo quitando/re-agregando agentes. */
+async function revertAutoAcceptOnComplete(campaign: Campaign): Promise<void> {
+  if (campaign.autoAccept !== true) return;
+  try {
+    let client = activeConnect;
+    let iid = activeInstanceId;
+    if (campaign.tenantId) {
+      const tc = await getTenantConnect(campaign.tenantId).catch(() => null);
+      if (tc) {
+        client = tc.client;
+        iid = tc.instanceId;
+      }
+    }
+    const userIds = await getAssignedAgents(campaign.campaignId);
+    if (userIds.length > 0 && iid) {
+      const r = await applyAutoAccept(client, iid, userIds, false);
+      console.log(`autoAccept revertido al completar ${campaign.campaignId}: ok=${r.ok}`);
+    }
+  } catch (err) {
+    console.warn("revertAutoAcceptOnComplete falló:", err);
   }
 }
 
@@ -1082,8 +1139,8 @@ async function forceCompleteCampaign(campaign: Campaign, reason: string): Promis
       /* sin Connect → legacy */
     }
   }
-  await d
-    .send(
+  try {
+    await d.send(
       new UpdateItemCommand({
         TableName: CAMPAIGNS_TABLE,
         Key: { campaignId: { S: campaign.campaignId } },
@@ -1097,10 +1154,11 @@ async function forceCompleteCampaign(campaign: Campaign, reason: string): Promis
           ":r": { S: reason },
         },
       }),
-    )
-    .catch(() => {
-      /* already not running */
-    });
+    );
+    await revertAutoAcceptOnComplete(campaign);
+  } catch {
+    /* already not running */
+  }
 }
 
 /**

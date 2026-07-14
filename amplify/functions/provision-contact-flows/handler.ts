@@ -284,6 +284,206 @@ function buildOutboundFlow(queueId: string): object {
 }
 
 /**
+ * Cola de espera SILENCIOSA (customer queue flow) para el modo "conexión
+ * directa" de campañas: el cliente contesta y NO oye música ni mensajes de
+ * espera. A los 25 s de espera (agente no tomó la llamada) se interrumpe el
+ * silencio, pide disculpas y cuelga → process-contact-event clasifica
+ * no_answer y el retry del dialer redistribuye a otro agente.
+ *
+ * Por qué colgar y no re-encolar: Connect NO permite transferir a otra cola
+ * estándar desde un customer queue flow (TransferContactToQueue no está
+ * soportado ahí; el "Transfer to queue" de queue flows es solo callback).
+ * Por qué 25 s: con interrupción < 20 s los contactos que están siendo
+ * ruteados a un agente activo caen al branch Error (doc AWS de Loop prompts).
+ */
+function buildSilentQueueFlow(): object {
+  return {
+    Version: "2019-10-30",
+    StartAction: "loop",
+    Metadata: {
+      entryPointPosition: { x: 40, y: 40 },
+      ActionMetadata: {
+        loop: { position: { x: 60, y: 60 } },
+        sorry: { position: { x: 280, y: 60 } },
+        end: { position: { x: 500, y: 60 } },
+      },
+      name: "ARIA-Queue-Silent",
+      description:
+        "ARIA · espera silenciosa para conexión directa: sin música; a los 25 s se disculpa y corta (el marcador reintenta con otro agente).",
+      type: "customerQueue",
+      status: "PUBLISHED",
+    },
+    Actions: [
+      {
+        Identifier: "loop",
+        Type: "MessageParticipantIteratively",
+        Parameters: {
+          InterruptFrequencySeconds: "25",
+          Messages: [{ SSML: '<speak><break time="10s"/></speak>' }],
+        },
+        Transitions: {
+          Errors: [{ NextAction: "sorry", ErrorType: "NoMatchingError" }],
+          Conditions: [
+            {
+              NextAction: "sorry",
+              Condition: { Operator: "Equals", Operands: ["MessagesInterrupted"] },
+            },
+          ],
+        },
+      },
+      {
+        Identifier: "sorry",
+        Type: "MessageParticipant",
+        Parameters: {
+          Text: "Disculpa, en este momento no pudimos conectarte con un asesor. Te llamaremos de vuelta en breve.",
+        },
+        Transitions: {
+          NextAction: "end",
+          Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }],
+          Conditions: [],
+        },
+      },
+      { Identifier: "end", Type: "DisconnectParticipant", Parameters: {}, Transitions: {} },
+    ],
+  };
+}
+
+/**
+ * Saliente DIRECTO (campañas con conexión directa y/o ruteo exclusivo):
+ * graba (Contact Lens igual que ARIA-Outbound), SIN saludo, espera silenciosa
+ * (hook CustomerQueue → ARIA-Queue-Silent) y rutea según atributos que pone
+ * el dialer en cada llamada:
+ *   ariaRouting = "agent"  → cola PERSONAL del agente asignado (exclusivo:
+ *                            nadie más puede contestar esa llamada)
+ *   otro / ausente         → cola de la campaña (ariaQueueId) o, si falta,
+ *                            la cola default del tenant (estática).
+ * Cadena de fallbacks: agente inválido → cola dinámica → cola default → fin.
+ */
+function buildDirectOutboundFlow(defaultQueueId: string, silentQueueFlowArn: string): object {
+  return {
+    Version: "2019-10-30",
+    StartAction: "log",
+    Metadata: {
+      entryPointPosition: { x: 20, y: 20 },
+      ActionMetadata: {
+        log: { position: { x: 60, y: 60 } },
+        voice: { position: { x: 200, y: 60 } },
+        lang: { position: { x: 340, y: 60 } },
+        record: { position: { x: 480, y: 60 } },
+        hook: { position: { x: 620, y: 60 } },
+        route: { position: { x: 760, y: 60 } },
+        setagent: { position: { x: 900, y: 160 } },
+        setqdyn: { position: { x: 900, y: 20 } },
+        setqdef: { position: { x: 1040, y: 90 } },
+        xfer: { position: { x: 1180, y: 60 } },
+        end: { position: { x: 1320, y: 60 } },
+      },
+      name: "ARIA-Outbound-Direct",
+      description:
+        "ARIA · saliente directo: sin saludo ni música; ruteo exclusivo por agente (ariaRouting/ariaAgentId) con fallback a la cola de campaña.",
+      type: "contactFlow",
+      status: "PUBLISHED",
+    },
+    Actions: [
+      {
+        Identifier: "log",
+        Type: "UpdateFlowLoggingBehavior",
+        Parameters: { FlowLoggingBehavior: "Enabled" },
+        Transitions: { NextAction: "voice" },
+      },
+      {
+        Identifier: "voice",
+        Type: "UpdateContactTextToSpeechVoice",
+        Parameters: { TextToSpeechVoice: VOICE },
+        Transitions: {
+          NextAction: "lang",
+          Errors: [{ NextAction: "lang", ErrorType: "NoMatchingError" }],
+        },
+      },
+      {
+        Identifier: "lang",
+        Type: "UpdateContactData",
+        Parameters: { LanguageCode: LANG },
+        Transitions: {
+          NextAction: "record",
+          Errors: [{ NextAction: "record", ErrorType: "NoMatchingError" }],
+        },
+      },
+      {
+        Identifier: "record",
+        Type: "UpdateContactRecordingBehavior",
+        Parameters: RECORDING_PARAMS,
+        Transitions: { NextAction: "hook" },
+      },
+      {
+        Identifier: "hook",
+        Type: "UpdateContactEventHooks",
+        Parameters: { EventHooks: { CustomerQueue: silentQueueFlowArn } },
+        Transitions: {
+          NextAction: "route",
+          Errors: [{ NextAction: "route", ErrorType: "NoMatchingError" }],
+        },
+      },
+      {
+        Identifier: "route",
+        Type: "Compare",
+        Parameters: { ComparisonValue: "$.Attributes.ariaRouting" },
+        Transitions: {
+          NextAction: "setqdyn",
+          Conditions: [
+            {
+              Condition: { Operator: "Equals", Operands: ["agent"] },
+              NextAction: "setagent",
+            },
+          ],
+          Errors: [{ NextAction: "setqdyn", ErrorType: "NoMatchingCondition" }],
+        },
+      },
+      {
+        Identifier: "setagent",
+        Type: "UpdateContactTargetQueue",
+        Parameters: { AgentId: "$.Attributes.ariaAgentId" },
+        Transitions: {
+          NextAction: "xfer",
+          Errors: [{ NextAction: "setqdyn", ErrorType: "NoMatchingError" }],
+        },
+      },
+      {
+        Identifier: "setqdyn",
+        Type: "UpdateContactTargetQueue",
+        Parameters: { QueueId: "$.Attributes.ariaQueueId" },
+        Transitions: {
+          NextAction: "xfer",
+          Errors: [{ NextAction: "setqdef", ErrorType: "NoMatchingError" }],
+        },
+      },
+      {
+        Identifier: "setqdef",
+        Type: "UpdateContactTargetQueue",
+        Parameters: { QueueId: defaultQueueId },
+        Transitions: {
+          NextAction: "xfer",
+          Errors: [{ NextAction: "end", ErrorType: "NoMatchingError" }],
+        },
+      },
+      {
+        Identifier: "xfer",
+        Type: "TransferContactToQueue",
+        Parameters: {},
+        Transitions: {
+          NextAction: "end",
+          Errors: [
+            { NextAction: "end", ErrorType: "QueueAtCapacity" },
+            { NextAction: "end", ErrorType: "NoMatchingError" },
+          ],
+        },
+      },
+      { Identifier: "end", Type: "DisconnectParticipant", Parameters: {}, Transitions: {} },
+    ],
+  };
+}
+
+/**
  * Saliente SMART (campañas multi-cola): preámbulo → Compare sobre
  * $.Attributes.<atributo> → una cola por valor (UpdateContactTargetQueue literal,
  * que el parser de get-flow-queues detecta) → transferir. Varias reglas pueden
@@ -446,18 +646,19 @@ async function resolveDefaultQueue(
   );
 }
 
-/** name → contactFlowId de los flows existentes (para decidir create vs update). */
+/** name → {id, arn} de los flows existentes (para decidir create vs update). */
 async function existingFlows(
   client: ConnectClient,
   instanceId: string,
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+): Promise<Map<string, { id: string; arn: string }>> {
+  const map = new Map<string, { id: string; arn: string }>();
   let token: string | undefined;
   do {
     const r = await client.send(
       new ListContactFlowsCommand({ InstanceId: instanceId, NextToken: token, MaxResults: 100 }),
     );
-    for (const f of r.ContactFlowSummaryList || []) if (f.Name && f.Id) map.set(f.Name, f.Id);
+    for (const f of r.ContactFlowSummaryList || [])
+      if (f.Name && f.Id) map.set(f.Name, { id: f.Id, arn: f.Arn || "" });
     token = r.NextToken;
   } while (token);
   return map;
@@ -527,7 +728,7 @@ export const handler = async (event: FnEvent) => {
         buildSmartOutboundFlow(attribute, rules, defaultQueueId, flowName, baseFlowId),
       );
       const existing = await existingFlows(client, instanceId);
-      let flowId = existing.get(flowName);
+      let flowId = existing.get(flowName)?.id;
       let act: "created" | "updated";
       if (flowId) {
         await client.send(
@@ -611,19 +812,26 @@ export const handler = async (event: FnEvent) => {
       });
     }
 
-    const templates = [
-      { name: "ARIA-Disconnect", content: buildDisconnectFlow(farewell) },
-      { name: "ARIA-Inbound", content: buildInboundFlow(queue.id, DEFAULT_GREETING, DEFAULT_BUSY) },
-      { name: "ARIA-Outbound", content: buildOutboundFlow(queue.id) },
-    ];
-
     if (dryRun) {
+      const preview = [
+        { name: "ARIA-Disconnect", content: buildDisconnectFlow(farewell) },
+        {
+          name: "ARIA-Inbound",
+          content: buildInboundFlow(queue.id, DEFAULT_GREETING, DEFAULT_BUSY),
+        },
+        { name: "ARIA-Outbound", content: buildOutboundFlow(queue.id) },
+        { name: "ARIA-Queue-Silent", content: buildSilentQueueFlow() },
+        {
+          name: "ARIA-Outbound-Direct",
+          content: buildDirectOutboundFlow(queue.id, "«arn de ARIA-Queue-Silent»"),
+        },
+      ];
       return resp(200, {
         dryRun: true,
         tenantId,
         instanceId,
         resolvedQueue: queue,
-        flows: templates.map((t) => ({
+        flows: preview.map((t) => ({
           name: t.name,
           actions: (t.content as { Actions?: unknown[] }).Actions?.length || 0,
           contentPreview: JSON.stringify(t.content).slice(0, 240),
@@ -632,34 +840,57 @@ export const handler = async (event: FnEvent) => {
       });
     }
 
-    // Crear o actualizar cada flow.
     const existing = await existingFlows(client, instanceId);
     const result: Record<string, { id: string; action: "created" | "updated" }> = {};
-    for (const t of templates) {
-      const content = JSON.stringify(t.content);
-      const existingId = existing.get(t.name);
-      if (existingId) {
+
+    /** Crea o actualiza un flow por nombre y devuelve {id, arn}. */
+    const upsertFlow = async (
+      name: string,
+      content: object,
+      type: "CONTACT_FLOW" | "CUSTOMER_QUEUE",
+    ): Promise<{ id: string; arn: string }> => {
+      const json = JSON.stringify(content);
+      const prev = existing.get(name);
+      if (prev?.id) {
         await client.send(
           new UpdateContactFlowContentCommand({
             InstanceId: instanceId,
-            ContactFlowId: existingId,
-            Content: content,
+            ContactFlowId: prev.id,
+            Content: json,
           }),
         );
-        result[t.name] = { id: existingId, action: "updated" };
-      } else {
-        const c = await client.send(
-          new CreateContactFlowCommand({
-            InstanceId: instanceId,
-            Name: t.name,
-            Type: "CONTACT_FLOW",
-            Content: content,
-            Description: "Provisionado por ARIA",
-          }),
-        );
-        result[t.name] = { id: c.ContactFlowId || "", action: "created" };
+        result[name] = { id: prev.id, action: "updated" };
+        return prev;
       }
-    }
+      const c = await client.send(
+        new CreateContactFlowCommand({
+          InstanceId: instanceId,
+          Name: name,
+          Type: type,
+          Content: json,
+          Description: "Provisionado por ARIA",
+        }),
+      );
+      const created = { id: c.ContactFlowId || "", arn: c.ContactFlowArn || "" };
+      result[name] = { id: created.id, action: "created" };
+      return created;
+    };
+
+    await upsertFlow("ARIA-Disconnect", buildDisconnectFlow(farewell), "CONTACT_FLOW");
+    await upsertFlow(
+      "ARIA-Inbound",
+      buildInboundFlow(queue.id, DEFAULT_GREETING, DEFAULT_BUSY),
+      "CONTACT_FLOW",
+    );
+    await upsertFlow("ARIA-Outbound", buildOutboundFlow(queue.id), "CONTACT_FLOW");
+    // La cola silenciosa va PRIMERO: el flow directo hornea su ARN en el hook
+    // CustomerQueue (los queue flows no se pueden referenciar dinámicamente).
+    const silent = await upsertFlow("ARIA-Queue-Silent", buildSilentQueueFlow(), "CUSTOMER_QUEUE");
+    await upsertFlow(
+      "ARIA-Outbound-Direct",
+      buildDirectOutboundFlow(queue.id, silent.arn),
+      "CONTACT_FLOW",
+    );
 
     // Guardar en la config del tenant: ids de los flows + la cola principal
     // resuelta (para que el front la muestre y las próximas provisión la respeten).
@@ -668,6 +899,8 @@ export const handler = async (event: FnEvent) => {
         inboundId: result["ARIA-Inbound"]?.id,
         outboundId: result["ARIA-Outbound"]?.id,
         disconnectId: result["ARIA-Disconnect"]?.id,
+        directOutboundId: result["ARIA-Outbound-Direct"]?.id,
+        silentQueueFlowId: result["ARIA-Queue-Silent"]?.id,
         provisionedAt: new Date().toISOString(),
       };
       storedCfg.connect = {

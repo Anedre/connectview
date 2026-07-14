@@ -9,8 +9,8 @@ import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { bulkUpsertProfilesFromCsv } from "../_shared/upsertCustomerProfileFromCsv";
 import { bulkUpsertVoxLeads, setActiveDynamo, getLeadScoresByPhones } from "../_shared/leadSync";
 import { kickDialer } from "../_shared/invokeDialer";
-import { resolveTenantId } from "../_shared/cognitoAuth";
-import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
+import { resolveTenantId, isLegacyTenant } from "../_shared/cognitoAuth";
+import { resolveDynamo, resolveCustomerProfiles, readTenantConfig } from "../_shared/tenantConnect";
 
 // BYO Data Plane (#46): DynamoDB del tenant para campaigns + campaign-contacts
 // + bulkUpsertVoxLeads (vía setActiveDynamo). ConnectCampaignsV2 queda legacy
@@ -72,6 +72,16 @@ interface CreateCampaignBody {
   // the service can handle dialing with AMD. If false, the campaign only
   // lives in our DynamoDB (legacy mode — no AMD).
   useNativeCampaign?: boolean;
+  // ── Control total (2026-07) ────────────────────────────────────────────
+  /** "shared" (default): cualquier agente de la cola contesta. "exclusive":
+   *  cada llamada va SOLO a la cola personal del agente asignado (bucket). */
+  agentRouting?: "shared" | "exclusive";
+  /** Conexión directa: sin saludo ni música de espera. Fuerza el flow
+   *  ARIA-Outbound-Direct provisionado del tenant. */
+  directConnect?: boolean;
+  /** Aplicar auto-accept (contestar solo) a los agentes asignados mientras
+   *  la campaña corre. Lo aplican control-campaign / assign-campaign-agents. */
+  autoAccept?: boolean;
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -155,6 +165,34 @@ export const handler: Handler = async (event: any, context: any) => {
       (context?.invokedFunctionArn as string | undefined)?.split(":")[4] ||
       process.env.AWS_ACCOUNT_ID ||
       "";
+
+    // ── Conexión directa / ruteo exclusivo ────────────────────────────────
+    // El flow lo pone el SISTEMA (ARIA-Outbound-Direct del tenant), no el
+    // admin: ese flow interpreta los atributos ariaRouting/ariaAgentId que el
+    // dialer estampa en cada llamada. Sin flow provisionado → 409 accionable.
+    const agentRouting = body.agentRouting === "exclusive" ? "exclusive" : "shared";
+    const directConnect = body.directConnect === true;
+    const isVoice = (body.campaignType || "voice") === "voice";
+    if (isVoice && (directConnect || agentRouting === "exclusive")) {
+      // Tenant vacío (llamada sin JWT) corre en el Connect legacy — misma
+      // regla que usa el dialer — así que su config es la del registro
+      // "default". Un tenant real sin registro propio => 409 (debe provisionar).
+      const legacyT = !tenantId || isLegacyTenant(tenantId);
+      const cfg = await readTenantConfig(legacyT ? "default" : tenantId);
+      const directId = cfg?.contactFlows?.directOutboundId;
+      if (!directId) {
+        return {
+          statusCode: 409,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            error:
+              "Tu instancia no tiene el flow de conexión directa. Provisiona los flows de ARIA (Configuración → Amazon Connect → Provisionar flows) e intenta de nuevo.",
+          }),
+        };
+      }
+      body.contactFlowId = directId;
+      body.contactFlowName = "ARIA-Outbound-Direct";
+    }
 
     const errors: string[] = [];
     if (!body.name?.trim()) errors.push("name is required");
@@ -266,6 +304,10 @@ export const handler: Handler = async (event: any, context: any) => {
           goalType: { S: body.goalType || "none" },
           goalTarget: { N: String(Math.max(0, Math.round(Number(body.goalTarget) || 0))) },
           conversionsCount: { N: "0" },
+          // Control total (2026-07): modo de ruteo + conexión directa + auto-accept.
+          agentRouting: { S: agentRouting },
+          directConnect: { BOOL: directConnect },
+          autoAccept: { BOOL: body.autoAccept === true },
           status: { S: status },
           createdAt: { S: now },
           createdBy: { S: body.createdBy || "system" },

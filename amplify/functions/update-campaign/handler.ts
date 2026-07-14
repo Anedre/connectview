@@ -1,6 +1,7 @@
 import type { Handler } from "aws-lambda";
 import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
-import { resolveDynamo } from "../_shared/tenantConnect";
+import { resolveDynamo, readTenantConfig } from "../_shared/tenantConnect";
+import { resolveTenantId, isLegacyTenant } from "../_shared/cognitoAuth";
 
 // BYO Data Plane (#46): tenant primero, fallback Vox pooled.
 const legacyDynamo = new DynamoDBClient({});
@@ -31,6 +32,11 @@ interface UpdateBody {
   weight?: number;
   goalType?: "none" | "contacts" | "conversions";
   goalTarget?: number;
+  // Control total (2026-07) — el dialer re-lee estos campos cada tick, así que
+  // el cambio de modo aplica en caliente al siguiente marcado.
+  agentRouting?: "shared" | "exclusive";
+  directConnect?: boolean;
+  autoAccept?: boolean;
 }
 
 // Each editable field → a builder that knows its DynamoDB value type.
@@ -40,7 +46,7 @@ const FIELD_MAP: Record<
   string,
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    toAttrValue: (v: any) => { S?: string; N?: string };
+    toAttrValue: (v: any) => { S?: string; N?: string; BOOL?: boolean };
   }
 > = {
   name: { toAttrValue: (v: string) => ({ S: v }) },
@@ -66,6 +72,12 @@ const FIELD_MAP: Record<
   weight: { toAttrValue: (v: number) => ({ N: String(v) }) },
   goalType: { toAttrValue: (v: string) => ({ S: v }) },
   goalTarget: { toAttrValue: (v: number) => ({ N: String(v) }) },
+  // Control total (2026-07).
+  agentRouting: {
+    toAttrValue: (v: string) => ({ S: v === "exclusive" ? "exclusive" : "shared" }),
+  },
+  directConnect: { toAttrValue: (v: boolean) => ({ BOOL: !!v }) },
+  autoAccept: { toAttrValue: (v: boolean) => ({ BOOL: !!v }) },
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -109,8 +121,36 @@ export const handler: Handler = async (event: any) => {
       };
     }
 
+    // ── Conexión directa / ruteo exclusivo (en caliente) ──────────────────
+    // Si el PATCH activa directConnect o pasa a exclusive, el flow tiene que
+    // ser el ARIA-Outbound-Direct del tenant (es quien interpreta los
+    // atributos de ruteo). Lo resolvemos y lo metemos al PATCH como si el
+    // cliente lo hubiera mandado. Al apagarlo, el admin elige flow en la UI.
+    const turnsDirect = body.directConnect === true || body.agentRouting === "exclusive";
+    if (turnsDirect) {
+      // El dueño manda: el tenantId del REGISTRO de la campaña (la edición
+      // puede llegar sin JWT). Vacío/legacy → config del registro "default",
+      // misma regla que el dialer usa para resolver el Connect.
+      const ownerTenant = current.Item.tenantId?.S || (await resolveTenantId(event?.headers)) || "";
+      const legacyT = !ownerTenant || isLegacyTenant(ownerTenant);
+      const cfg = await readTenantConfig(legacyT ? "default" : ownerTenant);
+      const directId = cfg?.contactFlows?.directOutboundId;
+      if (!directId) {
+        return {
+          statusCode: 409,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            error:
+              "Tu instancia no tiene el flow de conexión directa. Provisiona los flows de ARIA (Configuración → Amazon Connect) e intenta de nuevo.",
+          }),
+        };
+      }
+      body.contactFlowId = directId;
+      body.contactFlowName = "ARIA-Outbound-Direct";
+    }
+
     const setExpressions: string[] = [];
-    const exprVals: Record<string, { S?: string; N?: string }> = {};
+    const exprVals: Record<string, { S?: string; N?: string; BOOL?: boolean }> = {};
     const exprNames: Record<string, string> = {};
 
     for (const [field, val] of Object.entries(body)) {

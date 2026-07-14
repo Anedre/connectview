@@ -15,9 +15,11 @@ import {
   PutOutboundRequestBatchCommand,
 } from "@aws-sdk/client-connectcampaignsv2";
 import { randomUUID } from "node:crypto";
-import { resolveDynamo } from "../_shared/tenantConnect";
-import { resolveTenantId } from "../_shared/cognitoAuth";
+import { ConnectClient, StopContactCommand } from "@aws-sdk/client-connect";
+import { resolveDynamo, getTenantConnect } from "../_shared/tenantConnect";
+import { resolveTenantId, getIdentity } from "../_shared/cognitoAuth";
 import { kickDialer } from "../_shared/invokeDialer";
+import { applyAutoAccept } from "../_shared/campaignAutoAccept";
 
 // BYO Data Plane (#46): DDB del tenant; ConnectCampaignsV2 queda legacy.
 const legacyDynamo = new DynamoDBClient({});
@@ -26,6 +28,10 @@ const campaignsV2 = new ConnectCampaignsV2Client({ maxAttempts: 2 });
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CONTACTS_TABLE = process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE || "connectview-connections";
+const AGENTS_TABLE = process.env.CAMPAIGN_AGENTS_TABLE || "connectview-campaign-agents";
+// Connect legacy (tenant "default"/novasys): getTenantConnect devuelve null ahí.
+const legacyConnect = new ConnectClient({ maxAttempts: 2 });
+const LEGACY_INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 
 const ALLOWED_ACTIONS = new Set([
   "start",
@@ -41,6 +47,10 @@ const ALLOWED_ACTIONS = new Set([
   "set-blend",
   // Pilar 7 — pool global de marcación del tenant (orchestration.maxConcurrentDials).
   "set-pool",
+  // Control total — cuelga TODAS las llamadas vivas de la campaña (StopContact
+  // masivo). Privilegiado (Admins/Supervisors). No cambia el status: el front
+  // lo combina con pause para el "freno de emergencia".
+  "stop-all-calls",
 ]);
 
 interface ContactRow {
@@ -80,6 +90,62 @@ async function queryPendingContacts(campaignId: string): Promise<ContactRow[]> {
     if (!lastKey) break;
   }
   return items;
+}
+
+/** Filas vivas (dialing/connected) con su connectContactId — para StopContact. */
+async function queryLiveContactIds(campaignId: string): Promise<string[]> {
+  const ids: string[] = [];
+  for (const st of ["dialing", "connected"]) {
+    let lastKey: Record<string, unknown> | undefined;
+    for (let i = 0; i < 10; i++) {
+      const res = await dynamo.send(
+        new QueryCommand({
+          TableName: CONTACTS_TABLE,
+          IndexName: "campaignId-status-index",
+          KeyConditionExpression: "campaignId = :cid AND #st = :s",
+          ExpressionAttributeNames: { "#st": "status" },
+          ExpressionAttributeValues: { ":cid": { S: campaignId }, ":s": { S: st } },
+          ExclusiveStartKey: lastKey as never,
+        }),
+      );
+      for (const it of res.Items || []) {
+        const cid = it.connectContactId?.S;
+        if (cid) ids.push(cid);
+      }
+      lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+      if (!lastKey) break;
+    }
+  }
+  return [...new Set(ids)];
+}
+
+/** userIds asignados a la campaña (tabla connectview-campaign-agents). */
+async function listAssignedAgentIds(campaignId: string): Promise<string[]> {
+  const ids: string[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const res = await dynamo.send(
+      new QueryCommand({
+        TableName: AGENTS_TABLE,
+        KeyConditionExpression: "campaignId = :cid",
+        ExpressionAttributeValues: { ":cid": { S: campaignId } },
+        ExclusiveStartKey: lastKey as never,
+      }),
+    );
+    for (const it of res.Items || []) if (it.userId?.S) ids.push(it.userId.S);
+    lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+  return ids;
+}
+
+/** Connect del tenant dueño de la campaña (server-to-server, sin JWT). */
+async function connectForCampaign(
+  tenantId: string | undefined,
+): Promise<{ client: ConnectClient; instanceId: string } | null> {
+  const tc = await getTenantConnect(tenantId || "");
+  if (tc) return { client: tc.client, instanceId: tc.instanceId };
+  if (!LEGACY_INSTANCE_ID) return null;
+  return { client: legacyConnect, instanceId: LEGACY_INSTANCE_ID };
 }
 
 // Push pending contacts into the AWS Outbound Campaigns service.
@@ -328,6 +394,61 @@ export const handler: Handler = async (event: any) => {
       };
     }
 
+    // ── Control total · stop-all-calls: colgar TODAS las llamadas vivas ────
+    // Privilegiado (corta llamadas reales de clientes): mismo gate de grupos
+    // que admin-stop-contact. No toca el status de la campaña — el front lo
+    // combina con "pause" para el freno de emergencia.
+    if (action === "stop-all-calls") {
+      let identity = null;
+      try {
+        identity = await getIdentity(event?.headers);
+      } catch {
+        /* sin token válido → 401 abajo */
+      }
+      if (!identity) {
+        return {
+          statusCode: 401,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "No autorizado" }),
+        };
+      }
+      if (!identity.groups.some((g: string) => g === "Admins" || g === "Supervisors")) {
+        return {
+          statusCode: 403,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Requiere rol Supervisor o Admin" }),
+        };
+      }
+      const conn = await connectForCampaign(campaign.tenantId as string | undefined);
+      if (!conn) {
+        return {
+          statusCode: 409,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "No se pudo resolver el Connect del tenant" }),
+        };
+      }
+      const liveIds = await queryLiveContactIds(campaignId);
+      let stopped = 0;
+      let failed = 0;
+      for (const contactId of liveIds) {
+        try {
+          await conn.client.send(
+            new StopContactCommand({ InstanceId: conn.instanceId, ContactId: contactId }),
+          );
+          stopped++;
+        } catch (err) {
+          // Típico: la llamada ya colgó entre el query y el stop. Contamos y seguimos.
+          console.warn("stop-all-calls: StopContact falló para", contactId, err);
+          failed++;
+        }
+      }
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, live: liveIds.length, stopped, failed }),
+      };
+    }
+
     let newStatus: string;
     const extraSets: Record<string, { S?: string; NULL?: boolean }> = {};
 
@@ -472,6 +593,31 @@ export const handler: Handler = async (event: any) => {
         ExpressionAttributeValues: exprVals,
       }),
     );
+
+    // ── Auto-accept de agentes asignados (campaña con autoAccept=true) ─────
+    // start/resume → activar; cancel → revertir. Best-effort: un agente que
+    // falla queda con timbre manual (status quo) y no frena la campaña.
+    // La completación automática la revierte el dialer (maybeCompleteCampaign).
+    if (
+      campaign.autoAccept === true &&
+      (action === "start" || action === "resume" || action === "cancel")
+    ) {
+      try {
+        const conn = await connectForCampaign(campaign.tenantId as string | undefined);
+        const userIds = await listAssignedAgentIds(campaignId);
+        if (conn && userIds.length > 0) {
+          const r = await applyAutoAccept(
+            conn.client,
+            conn.instanceId,
+            userIds,
+            action !== "cancel",
+          );
+          console.log(`autoAccept(${action}) → ok=${r.ok} failed=${r.failed}`);
+        }
+      } catch (err) {
+        console.warn("autoAccept hook falló:", err);
+      }
+    }
 
     // Disparo inmediato del dialer al arrancar/reanudar → la primera llamada
     // sale en segundos, no en ~60s esperando el próximo tick de EventBridge.
