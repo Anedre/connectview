@@ -107,6 +107,10 @@ interface CampaignContact {
   attempts: number;
   nextRetryAt?: string;
   createdAt?: string;
+  /** Timestamp (ISO) del último intento de marcado. Lo escribe markAsDialing al
+   *  pasar la fila a `dialing`. Los reapers (WhatsApp y voz) lo usan como edad de
+   *  la fila para decidir si está colgada. */
+  lastAttemptAt?: string;
   /** When non-empty, the contact has been pre-assigned to that agent's
    *  bucket. The dialer will only route this contact to that specific
    *  agent — never to anyone else. */
@@ -675,6 +679,98 @@ async function reclaimStaleWhatsAppDialing(campaignId: string): Promise<number> 
   return reclaimed;
 }
 
+// FIX 4: umbral para considerar una fila de VOZ colgada en `dialing`. Ninguna
+// llamada real permanece en `dialing` tanto tiempo (al conectar pasa a
+// `connected`; al no contestar / colgar, process-contact-event la mueve a
+// terminal o a retry). Si sigue en `dialing` pasado el umbral, su evento de
+// Connect se perdió (o linkConnectContact falló y quedó sin connectContactId) →
+// la reciclamos. 10 min por defecto; reutiliza STALE_DIALING_MS si está seteada.
+const STALE_DIALING_MS = Number(process.env.STALE_DIALING_MS) || 10 * 60 * 1000;
+
+/**
+ * FIX 4 — reaper de VOZ, análogo a reclaimStaleWhatsAppDialing. Una fila que se
+ * queda en `dialing` deja `inFlightByAgent>0` de forma permanente para su agente
+ * y ese agente NUNCA vuelve a recibir marcado. Busca filas `dialing` cuya
+ * `lastAttemptAt` sea más vieja que STALE_DIALING_MS y las devuelve a `pending`.
+ * El filtro server-side por `lastAttemptAt` evita traer las llamadas activas
+ * (que son la mayoría de las filas `dialing`), y el ConditionExpression re-valida
+ * status + antigüedad para NO pisar una llamada recién marcada entre el query y
+ * el update (respeta el umbral → no mata llamadas en progreso). Devuelve cuántas
+ * recuperó. Best-effort: cualquier error se loguea y no interrumpe el tick.
+ */
+async function reclaimStaleVoiceDialing(campaignId: string): Promise<number> {
+  const cutoff = new Date(Date.now() - STALE_DIALING_MS).toISOString();
+  let reclaimed = 0;
+  let lastKey: Record<string, unknown> | undefined;
+  try {
+    // Paginado acotado (como listAllPendingForCampaign) por si hay muchas filas
+    // `dialing` activas y las vencidas quedan más allá de la primera página.
+    for (let page = 0; page < 10; page++) {
+      const res = await dynamo.send(
+        new QueryCommand({
+          TableName: CONTACTS_TABLE,
+          IndexName: "campaignId-status-index",
+          KeyConditionExpression: "campaignId = :cid AND #st = :s",
+          ExpressionAttributeNames: { "#st": "status" },
+          ExpressionAttributeValues: {
+            ":cid": { S: campaignId },
+            ":s": { S: "dialing" },
+            ":cutoff": { S: cutoff },
+          },
+          FilterExpression: "attribute_not_exists(lastAttemptAt) OR lastAttemptAt <= :cutoff",
+          ExclusiveStartKey: lastKey as never,
+        }),
+      );
+      const items = (res.Items || []).map((it) => unmarshall(it) as CampaignContact);
+      for (const c of items) {
+        try {
+          await dynamo.send(
+            new UpdateItemCommand({
+              TableName: CONTACTS_TABLE,
+              Key: { campaignId: { S: c.campaignId }, rowId: { S: c.rowId } },
+              UpdateExpression: "SET #st = :pending",
+              // Sigue en `dialing` Y su intento sigue vencido → evita revertir
+              // una llamada re-marcada entre el query y este update.
+              ConditionExpression:
+                "#st = :dialing AND (attribute_not_exists(lastAttemptAt) OR lastAttemptAt <= :cutoff)",
+              ExpressionAttributeNames: { "#st": "status" },
+              ExpressionAttributeValues: {
+                ":pending": { S: "pending" },
+                ":dialing": { S: "dialing" },
+                ":cutoff": { S: cutoff },
+              },
+            }),
+          );
+          // Espejar contadores (dialing→pending), igual que el reaper de WhatsApp.
+          await dynamo
+            .send(
+              new UpdateItemCommand({
+                TableName: CAMPAIGNS_TABLE,
+                Key: { campaignId: { S: campaignId } },
+                UpdateExpression: "ADD dialingCount :neg, pendingCount :one",
+                ExpressionAttributeValues: { ":neg": { N: "-1" }, ":one": { N: "1" } },
+              }),
+            )
+            .catch(() => {
+              /* drift aceptable, la verdad son las filas */
+            });
+          reclaimed++;
+        } catch (e) {
+          // Otro tick/evento la movió primero → ignorar.
+          if (!(e instanceof Error && e.name === "ConditionalCheckFailedException")) throw e;
+        }
+      }
+      lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+      if (!lastKey) break;
+    }
+  } catch (err) {
+    console.error("reclaimStaleVoiceDialing error:", err);
+  }
+  if (reclaimed > 0)
+    console.log(`reclaimed ${reclaimed} stale dialing contacts (voice) for ${campaignId}`);
+  return reclaimed;
+}
+
 /**
  * Procesa una campaña de WhatsApp: envía el template a cada contacto PENDIENTE
  * y lo marca "done". NO usa agentes ni el ciclo de voz (dialing→eventos Connect).
@@ -857,8 +953,12 @@ async function startOutbound(campaign: Campaign, contact: CampaignContact): Prom
     );
     return res.ContactId || null;
   } catch (err) {
+    // FIX 2: propagar la excepción REAL de la API para que el caller la trate
+    // como fallo TERMINAL (markAsFailed). El retorno `null` queda reservado para
+    // "la API respondió sin ContactId" (no se pudo iniciar sin excepción →
+    // transitorio → rollbackToPending, se reintenta).
     console.error("StartOutboundVoiceContact failed:", err);
-    return null;
+    throw err;
   }
 }
 
@@ -876,20 +976,51 @@ async function linkConnectContact(c: CampaignContact, connectContactId: string):
   );
 }
 
+// FIX 2: revierte un intento de marcación que NO llegó a colocar llamada
+// (dialing → pending) para que se reintente en un tick posterior, en vez de
+// morir terminal en `failed`. markAsDialing ya movió la fila a `dialing` (e
+// incrementó dialingCount / decrementó pendingCount); aquí condicionamos a que
+// siga en `dialing` para no pisar un cambio concurrente y espejamos los
+// contadores de vuelta. Best-effort: nunca lanza — si el revert falla, el reaper
+// de voz (FIX 4) recuperará la fila igualmente.
 async function rollbackToPending(c: CampaignContact): Promise<void> {
-  // Decrement attempts in case we want to retry later and cap attempts.
-  await dynamo.send(
-    new UpdateItemCommand({
-      TableName: CONTACTS_TABLE,
-      Key: {
-        campaignId: { S: c.campaignId },
-        rowId: { S: c.rowId },
-      },
-      UpdateExpression: "SET #st = :pending",
-      ExpressionAttributeNames: { "#st": "status" },
-      ExpressionAttributeValues: { ":pending": { S: "pending" } },
-    }),
-  );
+  let reverted = false;
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: CONTACTS_TABLE,
+        Key: {
+          campaignId: { S: c.campaignId },
+          rowId: { S: c.rowId },
+        },
+        UpdateExpression: "SET #st = :pending",
+        ConditionExpression: "#st = :dialing",
+        ExpressionAttributeNames: { "#st": "status" },
+        ExpressionAttributeValues: { ":pending": { S: "pending" }, ":dialing": { S: "dialing" } },
+      }),
+    );
+    reverted = true;
+  } catch (e) {
+    // ConditionalCheckFailed → otro tick/evento ya la movió (no revertimos
+    // contadores). Cualquier otro error → best-effort, el reaper la recupera.
+    if (!(e instanceof Error && e.name === "ConditionalCheckFailedException")) {
+      console.warn("rollbackToPending failed (el reaper la recuperará):", e);
+    }
+  }
+  if (!reverted) return;
+  // Espejar contadores (dialing→pending) que markAsDialing había incrementado.
+  await dynamo
+    .send(
+      new UpdateItemCommand({
+        TableName: CAMPAIGNS_TABLE,
+        Key: { campaignId: { S: c.campaignId } },
+        UpdateExpression: "ADD dialingCount :neg, pendingCount :one",
+        ExpressionAttributeValues: { ":neg": { N: "-1" }, ":one": { N: "1" } },
+      }),
+    )
+    .catch(() => {
+      /* drift aceptable, la verdad son las filas */
+    });
 }
 
 // Check whether any contacts are left for this campaign — if zero pending/dialing/connected,
@@ -1092,17 +1223,82 @@ async function processCampaignWithBuckets(
     // Pilar 3 Fase C: gate de supresión de voz (opt-out/DNC/cuarentena/horario
     // silencioso/no-tras-conversión). Suprimido → terminal, sin marcar.
     if (await voiceSuppressed(campaign, next)) continue;
-    const connectContactId = await startOutbound(campaign, next);
-    if (!connectContactId) {
-      await markAsFailed(next, "StartOutboundVoiceContact returned null");
+    // FIX 2: excepción REAL de la API → markAsFailed (terminal); retorno null sin
+    // excepción ("no se pudo iniciar") → rollbackToPending (vuelve a `pending` y
+    // se reintenta) en vez de morir en `failed`.
+    let connectContactId: string | null = null;
+    try {
+      connectContactId = await startOutbound(campaign, next);
+    } catch (err) {
+      await markAsFailed(next, err instanceof Error ? err.message : "StartOutbound exception");
       continue;
     }
-    await linkConnectContact(next, connectContactId);
+    if (!connectContactId) {
+      await rollbackToPending(next);
+      continue;
+    }
+    // FIX 3: linkConnectContact escribe el connectContactId DESPUÉS de que la
+    // llamada ya salió. Si ese write falla NO abortamos el tick (la llamada ya
+    // está en curso): logueamos y seguimos; el reaper de voz (FIX 4) recuperará
+    // la fila si queda huérfana en `dialing` sin connectContactId.
+    try {
+      await linkConnectContact(next, connectContactId);
+    } catch (err) {
+      console.error("linkConnectContact failed (call already placed):", err);
+    }
     dialedAny = true;
     slotsLeft -= 1;
     // Bump our local counter so a subsequent iteration in this same tick
     // doesn't try to dial again for the same agent.
     inFlightByAgent.set(userId, (inFlightByAgent.get(userId) || 0) + 1);
+  }
+
+  // FIX 5: (variante CONSERVADORA elegida) — devolver al pool los contactos
+  // `pending` que quedaron pre-asignados a agentes que NO están disponibles este
+  // tick y que NO tienen trabajo en vuelo (offline / bloqueados / en otro
+  // contacto). Sin esto, un contacto pre-asignado a un agente ausente queda
+  // atrapado en su bucket y ningún agente libre lo toma. Limpiamos
+  // assignedAgentUserId (→ "") y el refill del próximo tick lo redistribuye a un
+  // agente idle. NO tocamos agentes con inFlight>0 (están trabajando la campaña:
+  // su cola es legítima) para no romper el pacing, ni el modo manual (retornó
+  // antes). Los agentes idle conservan su bucket (lo están marcando).
+  let released = 0;
+  for (const userId of assignedAgentIds) {
+    if (idleSet.has(userId)) continue; // disponible → conserva su bucket
+    if ((inFlightByAgent.get(userId) || 0) > 0) continue; // ocupado/trabajando → conserva
+    const bucket = buckets.get(userId);
+    if (!bucket || bucket.length === 0) continue;
+    for (const c of bucket) {
+      try {
+        await dynamo.send(
+          new UpdateItemCommand({
+            TableName: CONTACTS_TABLE,
+            Key: { campaignId: { S: c.campaignId }, rowId: { S: c.rowId } },
+            UpdateExpression: "SET assignedAgentUserId = :empty",
+            // Solo si sigue `pending` y aún es de este agente → no pisa un dial
+            // ni una reasignación concurrente de otro tick.
+            ConditionExpression: "#st = :pending AND assignedAgentUserId = :uid",
+            ExpressionAttributeNames: { "#st": "status" },
+            ExpressionAttributeValues: {
+              ":empty": { S: "" },
+              ":pending": { S: "pending" },
+              ":uid": { S: userId },
+            },
+          }),
+        );
+        released++;
+      } catch (e) {
+        // Otro tick lo movió/tomó → ignorar; solo avisar errores inesperados.
+        if (!(e instanceof Error && e.name === "ConditionalCheckFailedException")) {
+          console.warn("FIX5 release failed:", e);
+        }
+      }
+    }
+  }
+  if (released > 0) {
+    console.log(
+      `[dialer] ${campaign.campaignId}: FIX5 devolvió ${released} pending de agentes ausentes al pool`,
+    );
   }
 
   // 5. If nothing got dialed and there's nothing left to do, maybe complete.
@@ -1151,18 +1347,31 @@ async function processCampaignLegacy(campaign: Campaign, slotOverride?: number):
     if (!claimed) continue;
     // Pilar 3 Fase C: gate de supresión de voz antes de marcar.
     if (await voiceSuppressed(campaign, contact)) continue;
-    const connectContactId = await startOutbound(campaign, contact);
-    if (!connectContactId) {
-      await markAsFailed(contact, "StartOutboundVoiceContact returned null");
+    // FIX 2: excepción REAL de la API → markAsFailed (terminal); retorno null sin
+    // excepción → rollbackToPending (vuelve a `pending`, se reintenta).
+    let connectContactId: string | null = null;
+    try {
+      connectContactId = await startOutbound(campaign, contact);
+    } catch (err) {
+      await markAsFailed(contact, err instanceof Error ? err.message : "StartOutbound exception");
       continue;
     }
-    await linkConnectContact(contact, connectContactId);
+    if (!connectContactId) {
+      await rollbackToPending(contact);
+      continue;
+    }
+    // FIX 3: no abortar el tick si falla el link del connectContactId (la llamada
+    // ya salió; el reaper de voz la recupera si queda huérfana en `dialing`).
+    try {
+      await linkConnectContact(contact, connectContactId);
+    } catch (err) {
+      console.error("linkConnectContact failed (call already placed):", err);
+    }
     if (campaign.dialMode !== "agentless") {
       slotsRemaining -= 1 / ratio;
     }
     if (slotsRemaining <= 0 && campaign.dialMode !== "agentless") break;
   }
-  void rollbackToPending;
 }
 
 /**
@@ -1321,52 +1530,67 @@ async function dialCycle(): Promise<{
   const slotBudget = await computeSlotBudget(voiceCampaigns);
   let anyPendingLeft = false;
   for (const campaign of campaigns) {
-    if (!isWithinWindow(campaign)) {
-      console.log(`[dialer] ${campaign.campaignId} outside calling window`);
-      continue;
-    }
-    // Pilar 7 — meta alcanzada → completar y saltar (no marca más).
-    if (goalReached(campaign)) {
-      console.log(
-        `[dialer] ${campaign.campaignId} meta alcanzada (${campaign.goalType}=${campaign.goalTarget}) → completar`,
-      );
-      await forceCompleteCampaign(campaign, "goal");
-      continue;
-    }
-    // Resolver el Connect del tenant dueño de esta campaña. Si no hay tenantId
-    // (campañas legacy pre-#43) o no tiene Connect configurado, caemos al
-    // Connect de Vox (transición). Las campañas se procesan SERIALMENTE, así
-    // que mutar las vars module-active aquí es seguro.
-    {
-      const tc = campaign.tenantId ? await getTenantConnect(campaign.tenantId) : null;
-      if (tc) {
-        activeConnect = tc.client;
-        activeInstanceId = tc.instanceId;
-        // #46: tabla de campaigns/campaign-contacts también en cuenta del tenant.
-        dynamo = tc.dynamo;
-      } else {
-        activeConnect = legacyConnect;
-        dynamo = legacyDynamo;
-        activeInstanceId = INSTANCE_ID;
+    // FIX 1: aislar CADA campaña en su propio try/catch. Sin esto, si una campaña
+    // lanzaba (getTenantConnect, getAssignedAgents, listAllPendingForCampaign,
+    // markAsDialing, el reaper, etc.) se abortaba el tick ENTERO y las demás
+    // campañas quedaban sin procesar. Capturamos, logueamos y seguimos con la
+    // siguiente (no re-lanzar).
+    try {
+      if (!isWithinWindow(campaign)) {
+        console.log(`[dialer] ${campaign.campaignId} outside calling window`);
+        continue;
       }
+      // Pilar 7 — meta alcanzada → completar y saltar (no marca más).
+      if (goalReached(campaign)) {
+        console.log(
+          `[dialer] ${campaign.campaignId} meta alcanzada (${campaign.goalType}=${campaign.goalTarget}) → completar`,
+        );
+        await forceCompleteCampaign(campaign, "goal");
+        continue;
+      }
+      // Resolver el Connect del tenant dueño de esta campaña. Si no hay tenantId
+      // (campañas legacy pre-#43) o no tiene Connect configurado, caemos al
+      // Connect de Vox (transición). Las campañas se procesan SERIALMENTE, así
+      // que mutar las vars module-active aquí es seguro.
+      {
+        const tc = campaign.tenantId ? await getTenantConnect(campaign.tenantId) : null;
+        if (tc) {
+          activeConnect = tc.client;
+          activeInstanceId = tc.instanceId;
+          // #46: tabla de campaigns/campaign-contacts también en cuenta del tenant.
+          dynamo = tc.dynamo;
+        } else {
+          activeConnect = legacyConnect;
+          dynamo = legacyDynamo;
+          activeInstanceId = INSTANCE_ID;
+        }
+      }
+      // WhatsApp: ruta dedicada (envía template, sin agentes ni ciclo de voz).
+      if ((campaign.campaignType || "voice").toLowerCase() === "whatsapp") {
+        await processCampaignWhatsApp(campaign);
+        if ((await countPendingContacts(campaign.campaignId)) > 0) anyPendingLeft = true;
+        continue;
+      }
+      // FIX 4: reaper de VOZ — recicla filas colgadas en `dialing` (evento de
+      // Connect perdido o linkConnectContact fallido) ANTES de calcular buckets y
+      // marcar, para liberar el inFlight del agente y redistribuir su bucket este
+      // mismo tick. `dynamo` ya quedó scopeado al tenant dueño (resuelto arriba).
+      await reclaimStaleVoiceDialing(campaign.campaignId);
+      const assignedAgentIds = await getAssignedAgents(campaign.campaignId);
+      const useBuckets = campaign.dialMode !== "agentless" && assignedAgentIds.length > 0;
+      // Pilar 7 — presupuesto de slots de este ciclo (si hubo reparto por peso).
+      const slotOverride = slotBudget.get(campaign.campaignId);
+      if (useBuckets) {
+        await processCampaignWithBuckets(campaign, assignedAgentIds, slotOverride);
+      } else {
+        await processCampaignLegacy(campaign, slotOverride);
+      }
+      const pending = await countPendingContacts(campaign.campaignId);
+      if (pending > 0) anyPendingLeft = true;
+    } catch (err) {
+      // FIX 1: una campaña que falla NO debe frenar a las demás del tick.
+      console.error(`dialCycle: campaña ${campaign.campaignId} falló`, err);
     }
-    // WhatsApp: ruta dedicada (envía template, sin agentes ni ciclo de voz).
-    if ((campaign.campaignType || "voice").toLowerCase() === "whatsapp") {
-      await processCampaignWhatsApp(campaign);
-      if ((await countPendingContacts(campaign.campaignId)) > 0) anyPendingLeft = true;
-      continue;
-    }
-    const assignedAgentIds = await getAssignedAgents(campaign.campaignId);
-    const useBuckets = campaign.dialMode !== "agentless" && assignedAgentIds.length > 0;
-    // Pilar 7 — presupuesto de slots de este ciclo (si hubo reparto por peso).
-    const slotOverride = slotBudget.get(campaign.campaignId);
-    if (useBuckets) {
-      await processCampaignWithBuckets(campaign, assignedAgentIds, slotOverride);
-    } else {
-      await processCampaignLegacy(campaign, slotOverride);
-    }
-    const pending = await countPendingContacts(campaign.campaignId);
-    if (pending > 0) anyPendingLeft = true;
   }
   return { campaignsProcessed: campaigns.length, anyPendingLeft };
 }

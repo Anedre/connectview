@@ -1,9 +1,5 @@
 import type { Handler } from "aws-lambda";
-import {
-  DynamoDBClient,
-  GetItemCommand,
-  QueryCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, GetItemCommand, QueryCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { ConnectClient, ListUsersCommand, DescribeQueueCommand } from "@aws-sdk/client-connect";
 import { resolveConnect } from "../_shared/tenantConnect";
@@ -42,7 +38,7 @@ async function refreshUserCache(): Promise<void> {
           InstanceId: activeInstanceId,
           MaxResults: 100,
           NextToken: nextToken,
-        })
+        }),
       );
       for (const u of res.UserSummaryList ?? []) {
         if (u.Id && u.Username) usernameCache.set(`${activeInstanceId}:${u.Id}`, u.Username);
@@ -70,7 +66,7 @@ async function resolveQueueName(queueId: string): Promise<string> {
   if (queueNameCache.has(key)) return queueNameCache.get(key)!;
   try {
     const r = await connect.send(
-      new DescribeQueueCommand({ InstanceId: activeInstanceId, QueueId: queueId })
+      new DescribeQueueCommand({ InstanceId: activeInstanceId, QueueId: queueId }),
     );
     const name = r.Queue?.Name || queueId;
     queueNameCache.set(key, name);
@@ -105,7 +101,7 @@ export const handler: Handler = async (event: any) => {
       new GetItemCommand({
         TableName: CAMPAIGNS_TABLE,
         Key: { campaignId: { S: campaignId } },
-      })
+      }),
     );
     if (!metaRes.Item) {
       return {
@@ -121,6 +117,8 @@ export const handler: Handler = async (event: any) => {
     const cacheWarm = refreshUserCache();
 
     // Fresh counts from contacts table by status (authoritative, in case counters drift)
+    // Incluye suppressed/skipped/cancelled: antes NO se contaban → esos contactos
+    // "desaparecían" del total del detalle (el desglose no cuadraba con totalContacts).
     const statuses = [
       "pending",
       "dialing",
@@ -128,6 +126,9 @@ export const handler: Handler = async (event: any) => {
       "done",
       "no_answer",
       "failed",
+      "suppressed",
+      "skipped",
+      "cancelled",
     ];
     const freshCounts: Record<string, number> = {};
     const dialingContacts: Array<{
@@ -156,7 +157,7 @@ export const handler: Handler = async (event: any) => {
             },
             Select: st === "dialing" || st === "connected" ? "ALL_PROJECTED_ATTRIBUTES" : "COUNT",
             ExclusiveStartKey: lastKey as never,
-          })
+          }),
         );
         count += r.Count || 0;
         if (st === "dialing" || st === "connected") {
@@ -198,18 +199,21 @@ export const handler: Handler = async (event: any) => {
           TableName: AGENTS_TABLE,
           KeyConditionExpression: "campaignId = :cid",
           ExpressionAttributeValues: { ":cid": { S: campaignId } },
-        })
+        }),
       );
       for (const it of rr.Items || []) {
         const r = unmarshall(it);
-        if (r.userId) roster.push({ userId: r.userId as string, queueId: (r.queueId as string) || "" });
+        if (r.userId)
+          roster.push({ userId: r.userId as string, queueId: (r.queueId as string) || "" });
       }
     } catch (e) {
       console.warn("roster query failed:", e);
     }
     const queueIds = [...new Set(roster.map((r) => r.queueId).filter(Boolean))];
     const queueNames = new Map<string, string>();
-    await Promise.all(queueIds.map(async (qid) => queueNames.set(qid, await resolveQueueName(qid))));
+    await Promise.all(
+      queueIds.map(async (qid) => queueNames.set(qid, await resolveQueueName(qid))),
+    );
     // Contactos en vivo (dialing/connected) agrupados por el agente dueño del bucket.
     const liveByAgent = new Map<string, { dialing: number; connected: number; names: string[] }>();
     for (const lc of dialingContacts) {
@@ -231,16 +235,28 @@ export const handler: Handler = async (event: any) => {
           userId: uid,
           username: resolveAgent(uid) || uid,
           queueId: qid,
-          queueName: queueNames.get(qid) || (qid || "—"),
+          queueName: queueNames.get(qid) || qid || "—",
           dialing: live.dialing,
           connected: live.connected,
           liveNames: live.names.slice(0, 6),
         };
       })
-      .sort((a, b) => b.connected + b.dialing - (a.connected + a.dialing) || a.username.localeCompare(b.username));
-    const queueAgg = new Map<string, { queueName: string; agents: number; dialing: number; connected: number }>();
+      .sort(
+        (a, b) =>
+          b.connected + b.dialing - (a.connected + a.dialing) ||
+          a.username.localeCompare(b.username),
+      );
+    const queueAgg = new Map<
+      string,
+      { queueName: string; agents: number; dialing: number; connected: number }
+    >();
     for (const a of byAgent) {
-      const e = queueAgg.get(a.queueId) || { queueName: a.queueName, agents: 0, dialing: 0, connected: 0 };
+      const e = queueAgg.get(a.queueId) || {
+        queueName: a.queueName,
+        agents: 0,
+        dialing: 0,
+        connected: 0,
+      };
       e.agents++;
       e.dialing += a.dialing;
       e.connected += a.connected;
