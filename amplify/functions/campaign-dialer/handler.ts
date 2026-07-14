@@ -1151,23 +1151,39 @@ async function processCampaignWithBuckets(
   for (const list of buckets.values()) list.sort(byScoreThenCreatedAt);
   unassigned.sort(byScoreThenCreatedAt);
 
-  // 3. Refill each agent's bucket up to maxPerAgent + remember the in-flight
-  //    count so the dial step can reuse it without re-querying.
+  // 3. Refill de buckets en RONDAS (round-robin) + recordar el in-flight para
+  //    que el paso de marcado lo reuse sin re-consultar.
+  //    ANTES se llenaba el bucket del PRIMER agente hasta maxPerAgent y recién
+  //    después el del siguiente: con pocos contactos TODOS caían en un solo
+  //    bucket y la campaña marcaba EN SERIE aunque hubiera N agentes libres
+  //    (el loop de marcado dispara 1 por agente, pero solo un bucket tenía
+  //    contenido). Repartiendo 1-a-1 por turnos, 2 contactos + 2 agentes =
+  //    1 c/u → ambos se marcan en el MISMO tick (timbrado simultáneo real).
   const inFlightByAgent = new Map<string, number>();
+  const needByAgent = new Map<string, number>();
   for (const userId of assignedAgentIds) {
     const inFlight = await countAgentInFlight(campaign.campaignId, userId);
     inFlightByAgent.set(userId, inFlight);
     const bucketSize = buckets.get(userId)?.length || 0;
-    const need = Math.max(0, maxPerAgent - bucketSize - inFlight);
-    if (need <= 0 || unassigned.length === 0) continue;
-    const toClaim = unassigned.splice(0, need);
-    for (const c of toClaim) {
+    needByAgent.set(userId, Math.max(0, maxPerAgent - bucketSize - inFlight));
+  }
+  let dealt = true;
+  while (dealt && unassigned.length > 0) {
+    dealt = false;
+    for (const userId of assignedAgentIds) {
+      if (unassigned.length === 0) break;
+      const need = needByAgent.get(userId) || 0;
+      if (need <= 0) continue;
+      const c = unassigned.shift()!;
       const ok = await assignContactToAgent(c, userId);
       if (ok) {
         c.assignedAgentUserId = userId;
         if (!buckets.has(userId)) buckets.set(userId, []);
         buckets.get(userId)!.push(c);
       }
+      // Consumimos el cupo aunque el claim falle (carrera) para no ciclar.
+      needByAgent.set(userId, need - 1);
+      dealt = true;
     }
   }
 
