@@ -17333,6 +17333,39 @@ select.wf-input {
   letter-spacing: 0.01em;
   color: var(--text-3);
 }
+/* Sin nombre humano: título "Desconocido" discreto y el NÚMERO protagonista. */
+.inc-name--unknown {
+  color: var(--text-2);
+  font-weight: 750;
+}
+.inc-phone {
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--text-1);
+}
+/* Avatar de desconocido: ícono de persona tintado del canal (reemplaza al <Av>
+   que derivaba "iniciales" del teléfono → el bug del "+5"). */
+.inc-avatar-unknown {
+  position: relative;
+  z-index: 1;
+  width: 92px;
+  height: 92px;
+  border-radius: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--inc-c);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--inc-c) 16%, var(--bg-1)),
+    color-mix(in srgb, var(--inc-c) 8%, var(--bg-1))
+  );
+  border: 1px solid color-mix(in srgb, var(--inc-c) 32%, var(--border-1));
+  box-shadow:
+    0 10px 26px -14px color-mix(in srgb, var(--inc-c) 80%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
 .inc-chips {
   display: flex;
   flex-wrap: wrap;

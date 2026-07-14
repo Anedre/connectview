@@ -1,10 +1,48 @@
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAllActiveContacts, type ActiveContact } from "@/hooks/useActiveContact";
 import { useCCP } from "@/hooks/useCCP";
 import { useCustomerProfile } from "@/hooks/useCustomerProfile";
+import { getApiEndpoints } from "@/lib/api";
+import { authedFetch } from "@/lib/authedFetch";
 import { Av, Icon, Pill } from "@/components/aria";
 import { useDebugRender } from "@/lib/debugTrace";
+
+/** Vistazo rápido al lead por teléfono (manage-leads ?phone=) mientras timbra:
+ *  si el número ya es un lead, el pop-up muestra su nombre + "Lead conocido";
+ *  si no hay lead ni perfil, muestra "Desconocido". Best-effort con abort. */
+interface LeadPeek {
+  name?: string;
+  company?: string;
+  source?: string;
+}
+function useLeadPeek(phone: string | null): { lead: LeadPeek | null; checked: boolean } {
+  const [lead, setLead] = useState<LeadPeek | null>(null);
+  const [checked, setChecked] = useState(false);
+  useEffect(() => {
+    if (!phone) return;
+    const ep = getApiEndpoints();
+    if (!ep?.manageLeads) return;
+    const ctrl = new AbortController();
+    authedFetch(`${ep.manageLeads}?phone=${encodeURIComponent(phone)}`, { signal: ctrl.signal })
+      .then((r) => r.json())
+      .then((j) => {
+        setLead(((j.leads || [])[0] as LeadPeek) || null);
+        setChecked(true);
+      })
+      .catch(() => setChecked(true));
+    return () => ctrl.abort();
+  }, [phone]);
+  return { lead, checked: checked || !phone };
+}
+
+const LEAD_SOURCE_LABEL: Record<string, string> = {
+  web_form: "Web",
+  campaign: "Campaña",
+  salesforce: "Salesforce",
+  whatsapp: "WhatsApp",
+  manual: "Manual",
+};
 
 /**
  * Global incoming-contact overlay. Subscribed to the active-contact stream
@@ -58,6 +96,7 @@ interface ChannelMeta {
 function IncomingCallOverlayBody({ contact }: OverlayBodyProps) {
   const { accept, reject } = useCCP();
   const { profile } = useCustomerProfile(contact.customerPhone ?? null);
+  const { lead, checked: leadChecked } = useLeadPeek(contact.customerPhone ?? null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -66,6 +105,7 @@ function IncomingCallOverlayBody({ contact }: OverlayBodyProps) {
     state: contact.state,
     channel: contact.channel,
     hasProfile: !!profile,
+    hasLead: !!lead,
   });
 
   // ─── Canal → meta (icono ARIA + label + color/tono) ───────────
@@ -86,15 +126,24 @@ function IncomingCallOverlayBody({ contact }: OverlayBodyProps) {
           ? { icon: "check", label: "Tarea entrante", color: "var(--iris)", tone: "iris" }
           : { icon: "arrowIn", label: "Llamada entrante", color: "var(--green)", tone: "green" };
 
-  const fullName =
+  // Identidad: lead de ARIA (manage-leads) manda sobre el Customer Profile; si
+  // ninguno tiene nombre, el título es "Desconocido" y el número pasa a ser la
+  // línea protagonista (antes el número hacía de nombre y el avatar mostraba
+  // las "iniciales" del teléfono: el bug del "+5").
+  const profileName =
     profile?.businessName ||
     [profile?.firstName, profile?.lastName].filter(Boolean).join(" ").trim() ||
     null;
-  const callerName =
-    fullName ||
-    contact.customerPhone ||
-    (isChat || isEmail || isTask ? "Cliente nuevo" : "Cliente entrante");
-  const callerSub = [contact.customerPhone, contact.queueName].filter(Boolean).join(" · ");
+  const leadName = (lead?.name || "").trim() || null;
+  const fullName = leadName || profileName;
+  // Mientras el lookup del lead está en vuelo mostramos el número (no un
+  // "Desconocido" prematuro que luego parpadee a nombre).
+  const callerTitle =
+    fullName || (leadChecked ? "Desconocido" : contact.customerPhone || "Entrante");
+  const showPhoneLine = !fullName && !!contact.customerPhone;
+  const callerSub = fullName
+    ? [contact.customerPhone, contact.queueName].filter(Boolean).join(" · ")
+    : contact.queueName || "";
 
   // Screen-pop: motivo / nivel puestos por el flow como atributos del contacto.
   const udepIntent = contact.attributes?.udep_intent;
@@ -136,14 +185,37 @@ function IncomingCallOverlayBody({ contact }: OverlayBodyProps) {
           <span className="inc-ripple" aria-hidden="true" />
           <span className="inc-ripple" aria-hidden="true" />
           <span className="inc-ripple" aria-hidden="true" />
-          <Av name={callerName} size={92} radius={30} color={meta.color} />
+          {fullName ? (
+            <Av name={fullName} size={92} radius={30} color={meta.color} />
+          ) : (
+            // Sin nombre humano NO usamos <Av> (derivaba "iniciales" del
+            // teléfono → el "+5"). Ícono de persona con el tinte del canal.
+            <span className="inc-avatar-unknown" aria-hidden="true">
+              <Icon name="user" size={42} weight="duotone" />
+            </span>
+          )}
         </div>
 
-        <div className="inc-name">{callerName}</div>
+        <div className={`inc-name ${fullName ? "" : "inc-name--unknown"}`}>{callerTitle}</div>
+        {showPhoneLine && <div className="inc-phone mono">{contact.customerPhone}</div>}
         {callerSub && <div className="inc-sub mono">{callerSub}</div>}
 
-        {hasChips && (
+        {(lead || (leadChecked && !fullName) || hasChips) && (
           <div className="inc-chips">
+            {lead && (
+              <Pill tone="green" icon="checkCircle">
+                Lead conocido
+              </Pill>
+            )}
+            {lead?.company && (
+              <Pill tone="cyan" icon="building">
+                {lead.company}
+              </Pill>
+            )}
+            {lead?.source && (
+              <Pill tone="gold">{LEAD_SOURCE_LABEL[lead.source] || lead.source}</Pill>
+            )}
+            {leadChecked && !fullName && !lead && <Pill tone="outline">Sin registro</Pill>}
             {profile?.partyType && <Pill tone="iris">{profile.partyType}</Pill>}
             {profile?.accountNumber && <Pill tone="cyan">{profile.accountNumber}</Pill>}
             {motivoLabel && <Pill tone="gold">{motivoLabel}</Pill>}
