@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { useCampaignAgents } from "@/hooks/useCampaignAgents";
 import { useLiveQueue } from "@/hooks/useLiveQueue";
 import { useFlowQueues } from "@/hooks/useFlowQueues";
+import { useCan } from "@/hooks/usePermissions";
 import { initials } from "@/lib/initials";
 import type { Campaign } from "@/hooks/useCampaigns";
 import { Card, CardBody } from "@/components/vox/primitives";
@@ -29,6 +30,9 @@ interface Props {
 
 export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: Props) {
   const { agents, loading, mutating, assign } = useCampaignAgents(campaign.campaignId, 10000);
+  // Agregar/quitar agentes = gestión de campaña. Antes el panel quedaba
+  // editable para cualquiera que viera la página.
+  const canManage = useCan("manage_campaigns");
   const { data: liveQueue } = useLiveQueue(5000);
   const { confirm, confirmDialog } = useConfirm();
   // Discover which queues THIS campaign's flow actually routes to.
@@ -183,14 +187,32 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
           Agentes asignados
         </div>
         <span className="card__sub">{agents.length} asignados</span>
-        <button
-          className="btn btn--sm"
-          style={{ marginLeft: "auto" }}
-          onClick={() => setPickerOpen(true)}
-          disabled={mutating}
-        >
-          <Icon.Plus size={11} /> Agregar agentes
-        </button>
+        {/* Chips de modo — que se VEA que la asignación es ruteo real. */}
+        {campaign.agentRouting === "exclusive" && (
+          <span className="chip chip--violet" style={{ height: 20, fontSize: 10 }}>
+            <Icon.User size={10} /> Exclusivo por agente
+          </span>
+        )}
+        {campaign.directConnect === true && (
+          <span className="chip chip--cyan" style={{ height: 20, fontSize: 10 }}>
+            Conexión directa
+          </span>
+        )}
+        {campaign.autoAccept === true && (
+          <span className="chip chip--green" style={{ height: 20, fontSize: 10 }}>
+            Auto-contestar
+          </span>
+        )}
+        {canManage && (
+          <button
+            className="btn btn--sm"
+            style={{ marginLeft: "auto" }}
+            onClick={() => setPickerOpen(true)}
+            disabled={mutating}
+          >
+            <Icon.Plus size={11} /> Agregar agentes
+          </button>
+        )}
       </div>
       <CardBody>
         {!campaignQueueId && flowLiteralQueues.length === 0 && (
@@ -413,8 +435,8 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
                   )}
                   <button
                     onClick={() => handleRemove(a.userId, a.username)}
-                    disabled={mutating}
-                    title="Desasignar"
+                    disabled={mutating || !canManage}
+                    title={canManage ? "Desasignar" : "Requiere permiso de gestión de campañas"}
                     style={{
                       width: 20,
                       height: 20,

@@ -6,6 +6,7 @@ import { useCampaignContacts, type CampaignContactRow } from "@/hooks/useCampaig
 import { useCampaignMutations, type RelaunchScope } from "@/hooks/useCampaignMutations";
 import { useCampaignContactMutations } from "@/hooks/useCampaignContactMutations";
 import { useCan } from "@/hooks/usePermissions";
+import { useAdminActions } from "@/hooks/useAdminActions";
 import { useCampaignAgents } from "@/hooks/useCampaignAgents";
 import { useCustomerNamesByPhone } from "@/hooks/useCustomerNamesByPhone";
 import { getApiEndpoints } from "@/lib/api";
@@ -121,6 +122,9 @@ export function CampaignDetailPage() {
   // sin los controles. Configurable en Configuración → Seguridad.
   const canManage = useCan("manage_campaigns");
   const { confirm, confirmDialog } = useConfirm();
+  // Control admin en vivo: colgar una llamada puntual (admin-stop-contact,
+  // backend exige Supervisor/Admin vía JWT).
+  const { stopContact } = useAdminActions();
   // Pull assigned agents so we can resolve user-ids (assignedAgentUserId on
   // the contact row, and any UUID that snuck into agentUsername on legacy
   // rows) into human-readable usernames in the table.
@@ -195,6 +199,58 @@ export function CampaignDetailPage() {
       navigate(`/campaigns/${res.campaignId}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error clonando");
+    }
+  };
+
+  // ── Control admin en vivo ────────────────────────────────────────────────
+  // Freno de emergencia: cuelga TODAS las llamadas vivas (dialing/connected)
+  // de la campaña vía StopContact masivo. No cambia el status — combínalo con
+  // Pausar si además no quieres que salgan nuevas.
+  const handleStopAllCalls = async () => {
+    if (!campaignId) return;
+    const live = (data?.counts.dialing ?? 0) + (data?.counts.connected ?? 0);
+    if (
+      !(await confirm({
+        title: "¿Colgar TODAS las llamadas vivas?",
+        description: `Se cortan ${live} llamada(s) de esta campaña (marcando y conectadas). Las no atendidas reintentan según la política de la campaña.`,
+        destructive: true,
+        confirmLabel: "Colgar todas",
+      }))
+    )
+      return;
+    try {
+      const r = await mutations.stopAllCalls(campaignId);
+      toast.success(
+        `Llamadas detenidas: ${r.stopped}/${r.live}` +
+          (r.failed ? ` · ${r.failed} ya habían terminado` : ""),
+      );
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudieron detener las llamadas");
+    }
+  };
+
+  // Colgar UNA llamada viva desde el feed "En vivo ahora".
+  const handleHangupLive = async (lc: {
+    connectContactId?: string;
+    customerName?: string;
+    phone: string;
+  }) => {
+    if (!lc.connectContactId) return;
+    if (
+      !(await confirm({
+        title: `¿Colgar la llamada de ${lc.customerName || lc.phone}?`,
+        destructive: true,
+        confirmLabel: "Colgar",
+      }))
+    )
+      return;
+    try {
+      await stopContact(lc.connectContactId);
+      toast.success("Llamada colgada");
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo colgar");
     }
   };
 
@@ -806,6 +862,23 @@ export function CampaignDetailPage() {
               )}
               {c.status === "RUNNING" && (
                 <>
+                  {/* Freno de emergencia: cuelga TODAS las llamadas vivas.
+                      Solo voz y solo si hay algo vivo que colgar. */}
+                  {!isWa && (data.counts.dialing ?? 0) + (data.counts.connected ?? 0) > 0 && (
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      icon="missed"
+                      onClick={handleStopAllCalls}
+                      disabled={mutations.pending}
+                      style={{
+                        color: "var(--red)",
+                        borderColor: "color-mix(in srgb,var(--red) 40%,var(--border-1))",
+                      }}
+                    >
+                      Colgar todas
+                    </Btn>
+                  )}
                   <Btn
                     variant="ghost"
                     size="sm"
@@ -831,15 +904,32 @@ export function CampaignDetailPage() {
                 </>
               )}
               {c.status === "PAUSED" && (
-                <Btn
-                  variant="primary"
-                  size="sm"
-                  icon="play"
-                  onClick={() => handleControl("resume")}
-                  disabled={controlling}
-                >
-                  Reanudar
-                </Btn>
+                <>
+                  {!isWa && (data.counts.dialing ?? 0) + (data.counts.connected ?? 0) > 0 && (
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      icon="missed"
+                      onClick={handleStopAllCalls}
+                      disabled={mutations.pending}
+                      style={{
+                        color: "var(--red)",
+                        borderColor: "color-mix(in srgb,var(--red) 40%,var(--border-1))",
+                      }}
+                    >
+                      Colgar todas
+                    </Btn>
+                  )}
+                  <Btn
+                    variant="primary"
+                    size="sm"
+                    icon="play"
+                    onClick={() => handleControl("resume")}
+                    disabled={controlling}
+                  >
+                    Reanudar
+                  </Btn>
+                </>
               )}
             </div>
           )
@@ -1002,6 +1092,9 @@ export function CampaignDetailPage() {
         contacts={contacts}
         resolveAgentLabel={resolveAgentLabel}
         isWhatsApp={isWa}
+        // Colgar una llamada puntual desde "En vivo ahora" (solo admins de
+        // campañas; el backend re-valida el rol vía JWT).
+        onHangup={canManage && !isWa ? handleHangupLive : undefined}
       />
 
       {/* Assigned agents — routing profile auto-configured.

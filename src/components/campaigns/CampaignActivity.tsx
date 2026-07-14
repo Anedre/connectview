@@ -9,6 +9,8 @@ type LiveContact = {
   customerName?: string;
   status: string;
   agentUsername?: string;
+  /** Contacto de Connect de la llamada viva — habilita el "Colgar" admin. */
+  connectContactId?: string;
 };
 
 interface Props {
@@ -17,6 +19,9 @@ interface Props {
   resolveAgentLabel: (raw: string | undefined | null) => string;
   /** WhatsApp: feed de envíos (sin agentes ni "conectado/sin contestar"). */
   isWhatsApp?: boolean;
+  /** Colgar una llamada viva (control admin). Si viene, cada fila de
+   *  "En vivo ahora" con connectContactId muestra el botón Colgar. */
+  onHangup?: (lc: LiveContact) => void | Promise<void>;
 }
 
 interface FeedEvent {
@@ -32,11 +37,11 @@ const TYPE_META: Record<
   FeedEvent["type"],
   { Icn: typeof Icon.Phone; color: string; label: string }
 > = {
-  dialing:   { Icn: Icon.Phone,    color: "var(--accent-cyan)",   label: "Marcando" },
-  connected: { Icn: Icon.PhoneIn,  color: "var(--accent-green)",  label: "Conectado" },
-  done:      { Icn: Icon.Check,    color: "var(--accent-green)",  label: "Completado" },
-  no_answer: { Icn: Icon.Phone,    color: "var(--accent-amber)",  label: "Sin contestar" },
-  failed:    { Icn: Icon.Close,    color: "var(--accent-red)",    label: "Fallido" },
+  dialing: { Icn: Icon.Phone, color: "var(--accent-cyan)", label: "Marcando" },
+  connected: { Icn: Icon.PhoneIn, color: "var(--accent-green)", label: "Conectado" },
+  done: { Icn: Icon.Check, color: "var(--accent-green)", label: "Completado" },
+  no_answer: { Icn: Icon.Phone, color: "var(--accent-amber)", label: "Sin contestar" },
+  failed: { Icn: Icon.Close, color: "var(--accent-red)", label: "Fallido" },
 };
 
 function relativeTime(ts: number): string {
@@ -61,6 +66,7 @@ export function CampaignActivity({
   contacts,
   resolveAgentLabel,
   isWhatsApp,
+  onHangup,
 }: Props) {
   // Etiquetas/íconos del feed según canal (WhatsApp: envío, no marcado).
   const metaFor = (t: FeedEvent["type"]) => {
@@ -103,9 +109,7 @@ export function CampaignActivity({
               type: row.status,
               phone: row.phone,
               customerName: row.customerName,
-              agentUsername: row.agentUsername
-                ? resolveAgentLabel(row.agentUsername)
-                : undefined,
+              agentUsername: row.agentUsername ? resolveAgentLabel(row.agentUsername) : undefined,
             });
           }
         }
@@ -119,6 +123,27 @@ export function CampaignActivity({
         return next.slice(0, 50);
       });
     }
+
+    // ── Paridad: re-atribución tardía ────────────────────────────────────
+    // process-contact-event re-escribe agentUsername con el agente REAL en
+    // CONNECTED_TO_AGENT — a veces un poll DESPUÉS de que ya imprimimos el
+    // evento "Conectado" con el dueño del bucket. Sin esto, el feed queda
+    // diciendo un agente y el Monitoreo otro (feed congelado vs fila viva).
+    // Re-etiquetamos el evento cuyo tipo coincide con el estado ACTUAL de la
+    // fila cuando el username cambió.
+    const byRowId = new Map(contacts.map((r) => [r.rowId, r]));
+    setEvents((curr) => {
+      let changed = false;
+      const next = curr.map((ev) => {
+        const row = byRowId.get(ev.rowId);
+        if (!row || ev.type !== row.status || !row.agentUsername) return ev;
+        const label = resolveAgentLabel(row.agentUsername);
+        if (!label || label === "—" || ev.agentUsername === label) return ev;
+        changed = true;
+        return { ...ev, agentUsername: label };
+      });
+      return changed ? next : curr;
+    });
   }, [contacts, resolveAgentLabel]);
 
   // Per-agent counts. We aggregate over the full contacts list (not
@@ -134,9 +159,7 @@ export function CampaignActivity({
     };
     const map = new Map<string, Stats>();
     for (const row of contacts) {
-      const username = row.agentUsername
-        ? resolveAgentLabel(row.agentUsername)
-        : "";
+      const username = row.agentUsername ? resolveAgentLabel(row.agentUsername) : "";
       if (!username || username === "—") continue;
       let entry = map.get(username);
       if (!entry) {
@@ -178,10 +201,7 @@ export function CampaignActivity({
       <Card>
         <div className="card__head">
           <div className="card__title">
-            <Icon.Activity
-              size={14}
-              style={{ marginRight: 6, verticalAlign: "middle" }}
-            />
+            <Icon.Activity size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
             Actividad en vivo
           </div>
           <span className="card__sub">
@@ -202,8 +222,8 @@ export function CampaignActivity({
                   fontSize: 12.5,
                 }}
               >
-                Aún no hay actividad. {isWhatsApp ? "Los envíos" : "Las llamadas"} y resultados aparecerán
-                aquí en tiempo real.
+                Aún no hay actividad. {isWhatsApp ? "Los envíos" : "Las llamadas"} y resultados
+                aparecerán aquí en tiempo real.
               </div>
             ) : (
               <>
@@ -248,9 +268,7 @@ export function CampaignActivity({
                               flexShrink: 0,
                             }}
                           />
-                          <span
-                            style={{ fontWeight: 500, color: "var(--text-1)" }}
-                          >
+                          <span style={{ fontWeight: 500, color: "var(--text-1)" }}>
                             {lc.customerName || lc.phone}
                           </span>
                           <span className="mono muted" style={{ fontSize: 10.5 }}>
@@ -272,6 +290,23 @@ export function CampaignActivity({
                                   for legacy rows). */}
                               {resolveAgentLabel(lc.agentUsername)}
                             </span>
+                          )}
+                          {onHangup && lc.connectContactId && (
+                            <button
+                              type="button"
+                              className="btn btn--danger btn--sm"
+                              style={{
+                                height: 22,
+                                padding: "0 8px",
+                                fontSize: 10,
+                                marginLeft: lc.agentUsername ? 0 : "auto",
+                                flexShrink: 0,
+                              }}
+                              title="Colgar esta llamada (admin)"
+                              onClick={() => onHangup(lc)}
+                            >
+                              <Icon.Hangup size={10} /> Colgar
+                            </button>
                           )}
                         </div>
                       ))}
@@ -308,10 +343,7 @@ export function CampaignActivity({
                         <Icn size={11} />
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          className="row"
-                          style={{ gap: 6, flexWrap: "wrap" }}
-                        >
+                        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                           <span
                             style={{
                               fontWeight: 500,
@@ -320,23 +352,15 @@ export function CampaignActivity({
                           >
                             {ev.customerName || ev.phone}
                           </span>
-                          <span style={{ color: meta.color, fontSize: 11 }}>
-                            {meta.label}
-                          </span>
+                          <span style={{ color: meta.color, fontSize: 11 }}>{meta.label}</span>
                           {ev.agentUsername && (
-                            <span
-                              className="muted mono"
-                              style={{ fontSize: 10.5 }}
-                            >
+                            <span className="muted mono" style={{ fontSize: 10.5 }}>
                               · {ev.agentUsername}
                             </span>
                           )}
                         </div>
                       </div>
-                      <span
-                        className="muted mono"
-                        style={{ fontSize: 10.5, flexShrink: 0 }}
-                      >
+                      <span className="muted mono" style={{ fontSize: 10.5, flexShrink: 0 }}>
                         {relativeTime(ev.ts)}
                       </span>
                     </div>
@@ -350,46 +374,41 @@ export function CampaignActivity({
 
       {/* ── Agent leaderboard (solo voz: WhatsApp no usa agentes) ── */}
       {!isWhatsApp && (
-      <Card>
-        <div className="card__head">
-          <div className="card__title">
-            <Icon.Users
-              size={14}
-              style={{ marginRight: 6, verticalAlign: "middle" }}
-            />
-            Agentes en esta campaña
+        <Card>
+          <div className="card__head">
+            <div className="card__title">
+              <Icon.Users size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
+              Agentes en esta campaña
+            </div>
+            <span className="card__sub">{agentStats.length} con actividad</span>
           </div>
-          <span className="card__sub">{agentStats.length} con actividad</span>
-        </div>
-        <CardBody flush>
-          <div style={{ maxHeight: 320, overflowY: "auto" }}>
-            {agentStats.length === 0 ? (
-              <div
-                style={{
-                  padding: 32,
-                  textAlign: "center",
-                  color: "var(--text-3)",
-                  fontSize: 12.5,
-                }}
-              >
-                Cuando los agentes empiecen a tomar llamadas verás aquí su
-                rendimiento individual.
-              </div>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead
+          <CardBody flush>
+            <div style={{ maxHeight: 320, overflowY: "auto" }}>
+              {agentStats.length === 0 ? (
+                <div
                   style={{
-                    position: "sticky",
-                    top: 0,
-                    background: "var(--bg-2)",
+                    padding: 32,
+                    textAlign: "center",
+                    color: "var(--text-3)",
+                    fontSize: 12.5,
                   }}
                 >
-                  <tr>
-                    {/* Inconsistencia: mezclaba español ("Agente", "Atend.")
+                  Cuando los agentes empiecen a tomar llamadas verás aquí su rendimiento individual.
+                </div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead
+                    style={{
+                      position: "sticky",
+                      top: 0,
+                      background: "var(--bg-2)",
+                    }}
+                  >
+                    <tr>
+                      {/* Inconsistencia: mezclaba español ("Agente", "Atend.")
                         con inglés ("Done", "NoAns", "Failed"). Unificamos
                         en español corto para alinear con el resto. */}
-                    {["Agente", "Atend.", "Cerrados", "Sin resp.", "Fallidos"].map(
-                      (h, i) => (
+                      {["Agente", "Atend.", "Cerrados", "Sin resp.", "Fallidos"].map((h, i) => (
                         <th
                           key={i}
                           style={{
@@ -405,114 +424,110 @@ export function CampaignActivity({
                         >
                           {h}
                         </th>
-                      )
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {agentStats.map((s, idx) => {
-                    const rate = s.handled
-                      ? Math.round((s.done / s.handled) * 100)
-                      : 0;
-                    return (
-                      <tr
-                        key={s.username}
-                        style={{
-                          borderTop:
-                            idx === 0 ? undefined : "1px solid var(--border-1)",
-                        }}
-                      >
-                        <td style={{ padding: "8px 10px" }}>
-                          <div className="row" style={{ gap: 8 }}>
-                            <div
-                              style={{
-                                display: "grid",
-                                placeItems: "center",
-                                width: 22,
-                                height: 22,
-                                borderRadius: 999,
-                                background: "var(--bg-3)",
-                                fontSize: 10,
-                                fontWeight: 600,
-                                color: "var(--text-2)",
-                              }}
-                            >
-                              {idx + 1}
-                            </div>
-                            <div>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {agentStats.map((s, idx) => {
+                      const rate = s.handled ? Math.round((s.done / s.handled) * 100) : 0;
+                      return (
+                        <tr
+                          key={s.username}
+                          style={{
+                            borderTop: idx === 0 ? undefined : "1px solid var(--border-1)",
+                          }}
+                        >
+                          <td style={{ padding: "8px 10px" }}>
+                            <div className="row" style={{ gap: 8 }}>
                               <div
                                 style={{
-                                  fontSize: 12,
-                                  fontWeight: 500,
-                                  color: "var(--text-1)",
+                                  display: "grid",
+                                  placeItems: "center",
+                                  width: 22,
+                                  height: 22,
+                                  borderRadius: 999,
+                                  background: "var(--bg-3)",
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  color: "var(--text-2)",
                                 }}
                               >
-                                {s.username}
+                                {idx + 1}
                               </div>
-                              <div
-                                className="muted mono"
-                                style={{ fontSize: 10 }}
-                                title="Done / Atendidas — Bug #31: 'conversión' implicaba ventas, ahora es la tasa real de cierres exitosos."
-                              >
-                                {rate}% éxito
+                              <div>
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: 500,
+                                    color: "var(--text-1)",
+                                  }}
+                                >
+                                  {s.username}
+                                </div>
+                                <div
+                                  className="muted mono"
+                                  style={{ fontSize: 10 }}
+                                  title="Done / Atendidas — Bug #31: 'conversión' implicaba ventas, ahora es la tasa real de cierres exitosos."
+                                >
+                                  {rate}% éxito
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </td>
-                        <td
-                          className="mono"
-                          style={{
-                            padding: "8px 10px",
-                            textAlign: "right",
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: "var(--text-1)",
-                          }}
-                        >
-                          {s.handled}
-                        </td>
-                        <td
-                          className="mono"
-                          style={{
-                            padding: "8px 10px",
-                            textAlign: "right",
-                            fontSize: 12.5,
-                            color: "var(--accent-green)",
-                          }}
-                        >
-                          {s.done}
-                        </td>
-                        <td
-                          className="mono"
-                          style={{
-                            padding: "8px 10px",
-                            textAlign: "right",
-                            fontSize: 12.5,
-                            color: "var(--accent-amber)",
-                          }}
-                        >
-                          {s.noAnswer}
-                        </td>
-                        <td
-                          className="mono"
-                          style={{
-                            padding: "8px 10px",
-                            textAlign: "right",
-                            fontSize: 12.5,
-                            color: "var(--accent-red)",
-                          }}
-                        >
-                          {s.failed}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </CardBody>
-      </Card>
+                          </td>
+                          <td
+                            className="mono"
+                            style={{
+                              padding: "8px 10px",
+                              textAlign: "right",
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: "var(--text-1)",
+                            }}
+                          >
+                            {s.handled}
+                          </td>
+                          <td
+                            className="mono"
+                            style={{
+                              padding: "8px 10px",
+                              textAlign: "right",
+                              fontSize: 12.5,
+                              color: "var(--accent-green)",
+                            }}
+                          >
+                            {s.done}
+                          </td>
+                          <td
+                            className="mono"
+                            style={{
+                              padding: "8px 10px",
+                              textAlign: "right",
+                              fontSize: 12.5,
+                              color: "var(--accent-amber)",
+                            }}
+                          >
+                            {s.noAnswer}
+                          </td>
+                          <td
+                            className="mono"
+                            style={{
+                              padding: "8px 10px",
+                              textAlign: "right",
+                              fontSize: 12.5,
+                              color: "var(--accent-red)",
+                            }}
+                          >
+                            {s.failed}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </CardBody>
+        </Card>
       )}
     </div>
   );

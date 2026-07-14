@@ -26,8 +26,12 @@ import {
   Check,
   ShieldCheck,
   Trash2,
+  UserCheck,
+  Headphones,
   type LucideIcon,
 } from "lucide-react";
+import { RadioCards } from "@/components/ui/radio-cards";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useContactFlows, useSourcePhones } from "@/hooks/useContactFlows";
 import { useQueues } from "@/hooks/useQueues";
@@ -294,6 +298,13 @@ export function CampaignCreatePage() {
   const [routeDefaultQueue, setRouteDefaultQueue] = useState("");
   const [routeBaseFlowId, setRouteBaseFlowId] = useState(""); // flow base opcional (saludo/grabación) al que ARIA transfiere tras fijar la cola
 
+  // Control total: ruteo exclusivo por agente + conexión directa + auto-accept.
+  // Solo aplican con ruteo "flow" (el modo por-atributo arma su propio smart
+  // flow y es incompatible con el flow directo, v1).
+  const [agentRouting, setAgentRouting] = useState<"shared" | "exclusive">("shared");
+  const [directConnect, setDirectConnect] = useState(false);
+  const [autoAccept, setAutoAccept] = useState(false);
+
   // WhatsApp config
   const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
   const [waTemplatesLoading, setWaTemplatesLoading] = useState(false);
@@ -520,9 +531,12 @@ export function CampaignCreatePage() {
     return [...keys];
   }, [contacts]);
   const routeRulesClean = routeRules.filter((r) => r.value.trim() && r.queueId);
+  // Con conexión directa / exclusivo, el flow lo pone el backend (ARIA-Outbound-
+  // Direct del tenant) — no hace falta elegir uno.
+  const usesDirectFlow = routingMode === "flow" && (directConnect || agentRouting === "exclusive");
   const routingValid =
     routingMode === "flow"
-      ? !!contactFlowId
+      ? usesDirectFlow || !!contactFlowId
       : !!routeAttr.trim() && routeRulesClean.length > 0 && !!routeDefaultQueue;
 
   const canLaunch =
@@ -627,6 +641,11 @@ export function CampaignCreatePage() {
         retryNoAnswerMinutes,
         retryMaxAttempts,
         maxContactsPerAgent,
+        // Control total — solo con ruteo "flow"; el modo por-atributo arma su
+        // propio smart flow y queda compartido (v1).
+        agentRouting: routingMode === "flow" ? agentRouting : "shared",
+        directConnect: routingMode === "flow" ? directConnect : false,
+        autoAccept: routingMode === "flow" ? autoAccept : false,
         contacts: prepared.map((c) => ({
           phone: c.phone,
           customerName: c.customerName,
@@ -1322,25 +1341,46 @@ export function CampaignCreatePage() {
 
                 {routingMode === "flow" ? (
                   <>
-                    <Select
-                      value={contactFlowId}
-                      onValueChange={(v) => setContactFlowId(v || "")}
-                      disabled={flowsLoading}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Elegir flow">
-                          {flows.find((f) => f.id === contactFlowId)?.name ||
-                            (flowsLoading ? "Cargando…" : "Elegir flow")}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {flows.map((f) => (
-                          <SelectItem key={f.id} value={f.id}>
-                            {f.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {usesDirectFlow ? (
+                      <div
+                        className="row"
+                        style={{
+                          gap: 8,
+                          alignItems: "center",
+                          padding: "9px 11px",
+                          borderRadius: 10,
+                          background: "var(--green-soft, var(--bg-2))",
+                          border: "1px solid var(--border-1)",
+                          fontSize: 11.5,
+                        }}
+                      >
+                        <Check size={13} style={{ color: "var(--accent-green, var(--green-2))" }} />
+                        <span>
+                          ARIA usa su <strong>flow directo</strong> (sin saludo ni música, con
+                          grabación) — no necesitas elegir flow.
+                        </span>
+                      </div>
+                    ) : (
+                      <Select
+                        value={contactFlowId}
+                        onValueChange={(v) => setContactFlowId(v || "")}
+                        disabled={flowsLoading}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Elegir flow">
+                            {flows.find((f) => f.id === contactFlowId)?.name ||
+                              (flowsLoading ? "Cargando…" : "Elegir flow")}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {flows.map((f) => (
+                            <SelectItem key={f.id} value={f.id}>
+                              {f.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                     {!flowsLoading && flows.length === 0 && (
                       <span
                         className="muted"
@@ -1350,7 +1390,8 @@ export function CampaignCreatePage() {
                         <strong>Configuración › Integraciones › Provisionar flows</strong>.
                       </span>
                     )}
-                    {!flowQueuesLoading &&
+                    {!usesDirectFlow &&
+                      !flowQueuesLoading &&
                       flowQueues &&
                       (flowQueues.literalQueues.length > 0 ||
                         flowQueues.dynamicQueues.length > 0) && (
@@ -1384,16 +1425,18 @@ export function CampaignCreatePage() {
                           )}
                         </div>
                       )}
-                    <span
-                      className="muted"
-                      style={{ fontSize: 10.5, display: "block", marginTop: 8, lineHeight: 1.45 }}
-                    >
-                      El flow ya trae su ruteo. Las columnas de tu CSV/leads se envían a Connect
-                      como atributos — asegúrate que tu audiencia tenga la columna que el flow
-                      espera (ej. el Smart usa <span className="mono">udep_nivel</span>). ¿No
-                      coincide? Usa <strong>Por atributo</strong> y ARIA arma el flow a la medida de
-                      tus columnas.
-                    </span>
+                    {!usesDirectFlow && (
+                      <span
+                        className="muted"
+                        style={{ fontSize: 10.5, display: "block", marginTop: 8, lineHeight: 1.45 }}
+                      >
+                        El flow ya trae su ruteo. Las columnas de tu CSV/leads se envían a Connect
+                        como atributos — asegúrate que tu audiencia tenga la columna que el flow
+                        espera (ej. el Smart usa <span className="mono">udep_nivel</span>). ¿No
+                        coincide? Usa <strong>Por atributo</strong> y ARIA arma el flow a la medida
+                        de tus columnas.
+                      </span>
+                    )}
                   </>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1628,6 +1671,66 @@ export function CampaignCreatePage() {
                   </div>
                 )}
               </div>
+
+              {routingMode === "flow" && (
+                <div className="camp-field">
+                  <label className="camp-lbl">Conexión y exclusividad</label>
+                  <RadioCards
+                    value={agentRouting}
+                    onValueChange={(v) => setAgentRouting(v)}
+                    aria-label="Ruteo a agentes"
+                    options={[
+                      {
+                        value: "shared",
+                        label: "Compartido",
+                        description:
+                          "Contesta cualquier agente disponible de la cola. Máxima velocidad de atención.",
+                        icon: <Users size={14} />,
+                      },
+                      {
+                        value: "exclusive",
+                        label: "Exclusivo por agente",
+                        description:
+                          "Cada llamada va SOLO al agente asignado (su cola personal). Si no la toma en 25 s, se corta y se reintenta con otro.",
+                        icon: <UserCheck size={14} />,
+                        color: "var(--accent-iris, var(--accent))",
+                      },
+                    ]}
+                  />
+                  <div
+                    className="row"
+                    style={{ gap: 10, alignItems: "center", marginTop: 10, fontSize: 12 }}
+                  >
+                    <Switch checked={directConnect} onCheckedChange={setDirectConnect} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontWeight: 600 }}>
+                        <Headphones size={12} style={{ verticalAlign: "-2px", marginRight: 5 }} />
+                        Conexión directa
+                      </span>
+                      <span className="muted" style={{ fontSize: 10.5, lineHeight: 1.4 }}>
+                        Sin mensaje de bienvenida ni música de espera: el cliente contesta y habla
+                        con el agente.
+                      </span>
+                    </span>
+                  </div>
+                  <div
+                    className="row"
+                    style={{ gap: 10, alignItems: "center", marginTop: 8, fontSize: 12 }}
+                  >
+                    <Switch checked={autoAccept} onCheckedChange={setAutoAccept} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontWeight: 600 }}>
+                        Auto-contestar en los agentes
+                      </span>
+                      <span className="muted" style={{ fontSize: 10.5, lineHeight: 1.4 }}>
+                        El softphone del agente asignado acepta solo (sin 20 s de timbre). Mientras
+                        la campaña corre también auto-contesta sus llamadas entrantes. Requiere
+                        micrófono habilitado.
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div className="camp-field">
                 <label className="camp-lbl">¿Cómo se marcan los leads?</label>

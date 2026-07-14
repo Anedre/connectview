@@ -46,6 +46,14 @@ export interface Campaign {
   goalType?: string;
   goalTarget?: number;
   conversionsCount?: number;
+  // Control total (2026-07)
+  /** "shared" (default) | "exclusive" — exclusivo: cada llamada va SOLO a la
+   *  cola personal del agente asignado (asignación = ruteo real). */
+  agentRouting?: string;
+  /** Conexión directa: sin saludo ni música de espera (flow ARIA-Outbound-Direct). */
+  directConnect?: boolean;
+  /** Auto-contestar aplicado a los agentes asignados mientras corre. */
+  autoAccept?: boolean;
 }
 
 async function fetchCampaigns(): Promise<Campaign[]> {

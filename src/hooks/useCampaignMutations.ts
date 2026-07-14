@@ -26,6 +26,11 @@ export interface UpdateCampaignInput {
   weight?: number;
   goalType?: "none" | "contacts" | "conversions";
   goalTarget?: number;
+  // Control total (2026-07): ruteo exclusivo + conexión directa + auto-accept.
+  // El dialer re-lee la campaña cada tick → aplican en caliente.
+  agentRouting?: "shared" | "exclusive";
+  directConnect?: boolean;
+  autoAccept?: boolean;
 }
 
 export type RelaunchScope = "all" | "failed" | "specific";
@@ -150,6 +155,24 @@ export function useCampaignMutations() {
     [endpoints?.controlCampaign],
   );
 
+  // Control total — freno de emergencia: cuelga TODAS las llamadas vivas de la
+  // campaña (StopContact masivo, backend exige Supervisor/Admin → Bearer).
+  const stopAllCalls = useCallback(
+    async (campaignId: string) => {
+      if (!endpoints?.controlCampaign) throw new Error("No endpoint");
+      setPending(true);
+      try {
+        return (await postJsonAuthed(endpoints.controlCampaign, {
+          campaignId,
+          action: "stop-all-calls",
+        })) as { live: number; stopped: number; failed: number };
+      } finally {
+        setPending(false);
+      }
+    },
+    [endpoints?.controlCampaign],
+  );
+
   // Pilar 7 — pool global de marcación del tenant (0 = sin tope).
   const setPool = useCallback(
     async (poolMax: number) => {
@@ -167,5 +190,5 @@ export function useCampaignMutations() {
     [endpoints?.controlCampaign],
   );
 
-  return { pending, update, relaunch, clone, setConcurrency, setBlend, setPool };
+  return { pending, update, relaunch, clone, setConcurrency, setBlend, setPool, stopAllCalls };
 }

@@ -19,12 +19,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Save, Search, Check, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  Save,
+  Search,
+  Check,
+  AlertTriangle,
+  Users,
+  UserCheck,
+  Headphones,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useContactFlows, useSourcePhones } from "@/hooks/useContactFlows";
 import { useQueues } from "@/hooks/useQueues";
 import { useFlowQueues } from "@/hooks/useFlowQueues";
 import { useCampaignMutations } from "@/hooks/useCampaignMutations";
+import { RadioCards } from "@/components/ui/radio-cards";
+import { Switch } from "@/components/ui/switch";
 import type { Campaign } from "@/hooks/useCampaigns";
 
 const DIAL_MODES = [
@@ -70,12 +81,14 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
   const [windowEndHour, setWindowEndHour] = useState(18);
   const [retryNoAnswerMinutes, setRetryNoAnswerMinutes] = useState(30);
   const [retryMaxAttempts, setRetryMaxAttempts] = useState(3);
+  // Control total — editable en caliente (el dialer re-lee cada tick).
+  const [agentRouting, setAgentRouting] = useState<"shared" | "exclusive">("shared");
+  const [directConnect, setDirectConnect] = useState(false);
+  const [autoAccept, setAutoAccept] = useState(false);
 
   // Introspect the chosen flow: pulls every queue referenced in its JSON,
   // so we can offer an auto-pick for the admin.
-  const { data: flowQueues, loading: flowQueuesLoading } = useFlowQueues(
-    contactFlowId || null
-  );
+  const { data: flowQueues, loading: flowQueuesLoading } = useFlowQueues(contactFlowId || null);
 
   // When the flow changes and the admin hasn't manually picked a queue,
   // auto-select the primary queue detected in that flow.
@@ -95,8 +108,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
       setSourcePhoneNumber(campaign.sourcePhoneNumber || "");
       setContactFlowId(campaign.contactFlowId || "");
       setCampaignQueueId(
-        (campaign as unknown as { campaignQueueId?: string })
-          .campaignQueueId || ""
+        (campaign as unknown as { campaignQueueId?: string }).campaignQueueId || "",
       );
       setQueueTouched(false);
       setDialMode(campaign.dialMode || "progressive");
@@ -106,6 +118,9 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
       setWindowEndHour(Number(campaign.windowEndHour ?? 18));
       setRetryNoAnswerMinutes(Number(campaign.retryNoAnswerMinutes ?? 30));
       setRetryMaxAttempts(Number(campaign.retryMaxAttempts ?? 3));
+      setAgentRouting(campaign.agentRouting === "exclusive" ? "exclusive" : "shared");
+      setDirectConnect(campaign.directConnect === true);
+      setAutoAccept(campaign.autoAccept === true);
     }
     // Key on campaignId (not the whole object) so parent re-renders from the
     // 3s stats poll don't reset the form — only actual campaign switches do.
@@ -114,8 +129,10 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
 
   if (!campaign) return null;
 
-  const terminalState =
-    campaign.status === "COMPLETED" || campaign.status === "CANCELLED";
+  const terminalState = campaign.status === "COMPLETED" || campaign.status === "CANCELLED";
+
+  const isVoice = (campaign?.campaignType || "voice") !== "whatsapp";
+  const usesDirectFlow = isVoice && (directConnect || agentRouting === "exclusive");
 
   const handleSave = async () => {
     try {
@@ -128,6 +145,9 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
         sourcePhoneNumber,
         contactFlowId,
         contactFlowName: flow?.name,
+        // Control total — con direct/exclusive el backend fija el flow directo
+        // del tenant (pisa contactFlowId), así que da igual lo elegido arriba.
+        ...(isVoice ? { agentRouting, directConnect, autoAccept } : {}),
         campaignQueueId: campaignQueueId || undefined,
         campaignQueueName: queue?.name,
         dialMode: dialMode as "progressive" | "power" | "agentless",
@@ -199,13 +219,15 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
               <Select
                 value={contactFlowId}
                 onValueChange={(v) => setContactFlowId(v || "")}
-                disabled={flowsLoading}
+                disabled={flowsLoading || usesDirectFlow}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Elegir flow">
-                    {flows.find((f) => f.id === contactFlowId)?.name ||
-                      campaign.contactFlowName ||
-                      (flowsLoading ? "Cargando..." : "Elegir flow")}
+                    {usesDirectFlow
+                      ? "ARIA-Outbound-Direct (auto)"
+                      : flows.find((f) => f.id === contactFlowId)?.name ||
+                        campaign.contactFlowName ||
+                        (flowsLoading ? "Cargando..." : "Elegir flow")}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -216,6 +238,11 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
                   ))}
                 </SelectContent>
               </Select>
+              {usesDirectFlow && (
+                <p className="text-xs text-muted-foreground">
+                  Con conexión directa / exclusivo, ARIA usa su flow directo automáticamente.
+                </p>
+              )}
             </div>
           </div>
 
@@ -232,8 +259,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
               <SelectTrigger>
                 <SelectValue placeholder="Opcional — elegir queue">
                   {queues.find((q) => q.id === campaignQueueId)?.name ||
-                    (campaign as unknown as { campaignQueueName?: string })
-                      .campaignQueueName ||
+                    (campaign as unknown as { campaignQueueName?: string }).campaignQueueName ||
                     (queuesLoading ? "Cargando..." : "Opcional — elegir queue")}
                 </SelectValue>
               </SelectTrigger>
@@ -259,8 +285,8 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
                   <strong>{flowQueues.primaryQueue.queueName}</strong>
                   {flowQueues.literalQueues.length > 1 && (
                     <span className="block text-[var(--accent-amber)]">
-                      El flow referencia {flowQueues.literalQueues.length}{" "}
-                      queues. Elegimos la principal — puedes cambiarla.
+                      El flow referencia {flowQueues.literalQueues.length} queues. Elegimos la
+                      principal — puedes cambiarla.
                     </span>
                   )}
                 </span>
@@ -272,8 +298,8 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
                 <p className="flex items-start gap-1.5 text-xs text-[var(--accent-amber)]">
                   <AlertTriangle size={13} className="mt-0.5 shrink-0" />
                   <span>
-                    El flow usa queue dinámica (desde atributos) — elige
-                    manualmente la que quieras usar.
+                    El flow usa queue dinámica (desde atributos) — elige manualmente la que quieras
+                    usar.
                   </span>
                 </p>
               )}
@@ -287,11 +313,61 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
                 </p>
               )}
             <p className="text-xs text-muted-foreground">
-              Esta queue se usará al asignar agentes. El sistema agregará
-              automáticamente esta queue al routing profile de cada agente
-              asignado, y la removerá cuando los desasignes.
+              Esta queue se usará al asignar agentes. El sistema agregará automáticamente esta queue
+              al routing profile de cada agente asignado, y la removerá cuando los desasignes.
             </p>
           </div>
+
+          {/* Control total — ruteo exclusivo + conexión directa + auto-accept.
+              Editable en caliente: el dialer re-lee la campaña cada tick. */}
+          {isVoice && (
+            <div className="space-y-2">
+              <Label>Conexión y exclusividad</Label>
+              <RadioCards
+                value={agentRouting}
+                onValueChange={(v) => setAgentRouting(v)}
+                aria-label="Ruteo a agentes"
+                options={[
+                  {
+                    value: "shared",
+                    label: "Compartido",
+                    description: "Contesta cualquier agente disponible de la cola.",
+                    icon: <Users size={14} />,
+                  },
+                  {
+                    value: "exclusive",
+                    label: "Exclusivo por agente",
+                    description:
+                      "Cada llamada va SOLO al agente asignado. Sin respuesta en 25 s → se reintenta con otro.",
+                    icon: <UserCheck size={14} />,
+                    color: "var(--accent-iris, var(--accent))",
+                  },
+                ]}
+              />
+              <div className="flex items-center gap-2.5 pt-1 text-sm">
+                <Switch checked={directConnect} onCheckedChange={setDirectConnect} />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">
+                    <Headphones size={12} className="mr-1 inline -translate-y-px" />
+                    Conexión directa
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Sin bienvenida ni música de espera.
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5 text-sm">
+                <Switch checked={autoAccept} onCheckedChange={setAutoAccept} />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">Auto-contestar en los agentes</span>
+                  <span className="block text-xs text-muted-foreground">
+                    El softphone del asignado acepta solo; mientras corre la campaña también
+                    auto-contesta sus entrantes. Requiere micrófono OK.
+                  </span>
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* AMD notice — currently blocked for PE */}
           <div className="rounded-lg border border-[var(--accent-amber-soft)] bg-gradient-to-br from-[var(--accent-amber-soft)] to-[var(--accent-amber-soft)] p-3">
@@ -304,9 +380,8 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
                   AMD bloqueado por AWS en Perú
                 </div>
                 <p className="mt-0.5 text-muted-foreground">
-                  AWS solo habilita Answer Machine Detection para destinos
-                  US/MX/BR desde us-east-1. Cuando agreguen Perú se activa
-                  automáticamente.
+                  AWS solo habilita Answer Machine Detection para destinos US/MX/BR desde us-east-1.
+                  Cuando agreguen Perú se activa automáticamente.
                 </p>
               </div>
             </div>
@@ -315,10 +390,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Dial mode</Label>
-              <Select
-                value={dialMode}
-                onValueChange={(v) => setDialMode(v || "progressive")}
-              >
+              <Select value={dialMode} onValueChange={(v) => setDialMode(v || "progressive")}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -345,10 +417,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
 
           <div className="space-y-2">
             <Label>Zona horaria</Label>
-            <Select
-              value={timezone}
-              onValueChange={(v) => setTimezone(v || "America/Lima")}
-            >
+            <Select value={timezone} onValueChange={(v) => setTimezone(v || "America/Lima")}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -370,9 +439,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
                 min={0}
                 max={23}
                 value={windowStartHour}
-                onChange={(e) =>
-                  setWindowStartHour(parseInt(e.target.value) || 0)
-                }
+                onChange={(e) => setWindowStartHour(parseInt(e.target.value) || 0)}
               />
             </div>
             <div className="space-y-2">
@@ -382,9 +449,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
                 min={0}
                 max={23}
                 value={windowEndHour}
-                onChange={(e) =>
-                  setWindowEndHour(parseInt(e.target.value) || 0)
-                }
+                onChange={(e) => setWindowEndHour(parseInt(e.target.value) || 0)}
               />
             </div>
           </div>
@@ -397,9 +462,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
                 min={1}
                 max={1440}
                 value={retryNoAnswerMinutes}
-                onChange={(e) =>
-                  setRetryNoAnswerMinutes(parseInt(e.target.value) || 30)
-                }
+                onChange={(e) => setRetryNoAnswerMinutes(parseInt(e.target.value) || 30)}
               />
             </div>
             <div className="space-y-2">
@@ -409,9 +472,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
                 min={1}
                 max={10}
                 value={retryMaxAttempts}
-                onChange={(e) =>
-                  setRetryMaxAttempts(parseInt(e.target.value) || 3)
-                }
+                onChange={(e) => setRetryMaxAttempts(parseInt(e.target.value) || 3)}
               />
             </div>
           </div>
@@ -421,10 +482,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
           <Button variant="ghost" onClick={onClose}>
             Cancelar
           </Button>
-          <Button
-            onClick={handleSave}
-            disabled={pending || terminalState || !name.trim()}
-          >
+          <Button onClick={handleSave} disabled={pending || terminalState || !name.trim()}>
             {pending ? (
               <>
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />
