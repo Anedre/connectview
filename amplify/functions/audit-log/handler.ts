@@ -20,9 +20,12 @@ import { unmarshall } from "@aws-sdk/util-dynamodb";
  */
 const dynamo = new DynamoDBClient({});
 const TABLE = process.env.AUDIT_TABLE || "connectview-audit";
+// OJO: NO poner Access-Control-Allow-Origin aquí — el CORS lo maneja la
+// Function URL (AllowOrigins=*). Si el handler también lo pone, AWS concatena
+// ambos ("*, https://…") y el navegador rechaza la respuesta. Mismo patrón
+// que el resto de Lambdas con Function URL del proyecto.
 const CORS: Record<string, string> = {
   "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
