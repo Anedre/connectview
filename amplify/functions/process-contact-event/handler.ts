@@ -475,7 +475,9 @@ export const handler: EventBridgeHandler<
       }
       // Materializá el contacto al caché de Grabaciones (#perf Nivel 3 Fase 2) —
       // aparece al instante sin esperar a Customer Profiles. Best-effort.
-      await materializeContact(contactId);
+      // BUG: faltaba el instanceId → el guard `if (!instanceId) return` lo volvía
+      // un no-op silencioso (nunca cacheaba). Se pasa el mismo que usa el enrich.
+      await materializeContact(contactId, detail.instanceArn?.split("/").pop() || "");
     }
 
     // ── 2. Campaign-contact link (if this contact belongs to a campaign) ─
