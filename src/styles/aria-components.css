@@ -1941,6 +1941,7 @@
   color: var(--text-1);
   font-variant-numeric: tabular-nums;
   padding: 0;
+  transition: font-size 0.12s ease;
 }
 .phonepad__num::placeholder {
   color: var(--text-3);
@@ -2032,8 +2033,10 @@
   padding: 8px 0 2px;
 }
 .dkey {
-  width: 70px;
-  height: 70px;
+  width: 100%;
+  max-width: 70px;
+  min-width: 52px;
+  aspect-ratio: 1;
   border-radius: 50%;
   border: 1px solid var(--border-1);
   background: var(--bg-1);
@@ -2161,7 +2164,27 @@
   white-space: nowrap;
 }
 
-/* layout del tab Marcador: teclado + rail de acciones al costado */
+/* layout del tab Marcador: teclado + rail de acciones al costado.
+   Breakpoints por CONTAINER (no viewport): la card vive dentro de un
+   grid 2-col, así que en una laptop 1366px la columna real mide ~500px
+   aunque el viewport diga "escritorio". */
+.dialer-gridwrap {
+  container: dialergrid / inline-size;
+}
+.dialer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@container dialergrid (max-width: 880px) {
+  .dialer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.dialer-splitwrap {
+  container: dialersplit / inline-size;
+}
 .dialer-split {
   display: flex;
   gap: 20px;
@@ -2175,14 +2198,25 @@
   flex: 0 0 238px;
   max-width: 238px;
 }
-@media (max-width: 1160px) {
+/* columna angosta: el rail baja del costado a una cuadrícula 2×2 */
+@container dialersplit (max-width: 600px) {
   .dialer-split {
     flex-direction: column;
+    gap: 16px;
   }
   .dialer-split__rail {
     flex: 1 1 auto;
     max-width: none;
     width: 100%;
+  }
+  .dialer-split__rail .actrail {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 10px;
+  }
+  .dialer-split__rail .actrail__hd,
+  .dialer-split__rail .actrail > .dim {
+    grid-column: 1 / -1;
   }
 }
 

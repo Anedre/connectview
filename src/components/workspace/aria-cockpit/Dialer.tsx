@@ -120,8 +120,7 @@ export function Dialer({
   const isOffline = availability?.offline ?? false;
   const togglePause = availability ? availability.onToggle : () => setPaused((p) => !p);
   const availLabel =
-    availability?.label ??
-    (isPaused ? (isOffline ? "Offline" : "No disponible") : "Disponible");
+    availability?.label ?? (isPaused ? (isOffline ? "Offline" : "No disponible") : "Disponible");
   const availHint =
     availability?.hint ??
     (isPaused
@@ -129,127 +128,145 @@ export function Dialer({
       : "Las llamadas entrantes de la cola suenan automáticamente.");
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
-      <Card title="Iniciar contacto" icon="phone">
-        <div className="cop-tabs">
-          {LEFT_TABS.map(([id, l]) => (
-            <button key={id} type="button" aria-pressed={tab === id} onClick={() => setTab(id)}>
-              {l}
-            </button>
-          ))}
-        </div>
-        {tab === "marcador" && (
-          <div className="dialer-split">
-            <div className="dialer-split__pad">
-              <PhonePad num={num} setNum={setNum} onCall={onCall} recents={recentNumbers} />
-            </div>
-            <div className="dialer-split__rail">
-              {actionsSlot ?? <StartContact onCall={onCall} variant="rail" />}
-            </div>
+    <div className="dialer-gridwrap">
+      <div className="dialer-grid">
+        <Card title="Iniciar contacto" icon="phone">
+          <div className="cop-tabs">
+            {LEFT_TABS.map(([id, l]) => (
+              <button key={id} type="button" aria-pressed={tab === id} onClick={() => setTab(id)}>
+                {l}
+              </button>
+            ))}
           </div>
-        )}
-        {tab === "buscar" && (searchSlot ?? <CustomerSearch onCall={onCall} />)}
-      </Card>
-      <div className="col gap16">
-        <div
-          className="card card__pad"
-          style={{ background: isPaused ? "var(--bg-1)" : "linear-gradient(120deg,var(--green-soft),transparent 70%)" }}
-        >
-          <div className="row between">
-            <div className="row gap10">
-              <span
-                className={"dot" + (isPaused ? "" : " dot--live")}
-                style={isPaused ? { background: isOffline ? "var(--text-3)" : "var(--gold)" } : undefined}
-              />
-              <b style={{ fontSize: 15 }}>{availLabel}</b>
-            </div>
-            <Btn
-              variant={isPaused ? "primary" : "ghost"}
-              size="sm"
-              onClick={togglePause}
-            >
-              {isPaused ? "Reanudar" : "Pausar"}
-            </Btn>
-          </div>
-          <div className="dim" style={{ fontSize: 12.5, marginTop: 6 }}>
-            {availHint}
-          </div>
-        </div>
-        <MissedCalls onCall={onCall} items={missedItems} />
-        <Card
-          title="Siguiente en cola"
-          icon="live"
-          extra={
-            waitingCount > 0 ? (
-              <Pill tone="green" icon="dot">
-                {waitingCount} esperando
-              </Pill>
-            ) : (
-              <Pill tone="outline">Cola vacía</Pill>
-            )
-          }
-        >
-          {queue.length > 0 ? (
-            <div className="col gap8">
-              {queue.map((n) => (
-                <div
-                  key={n.id}
-                  className="row between"
-                  style={{ padding: "10px 12px", borderRadius: "var(--r-sm)", background: "var(--bg-2)" }}
-                >
-                  <span className="row gap10" style={{ minWidth: 0 }}>
-                    <span className={"chdot chdot--" + n.channel} />
-                    <b className="truncate" style={{ fontSize: 13, maxWidth: 150 }}>
-                      {n.label}
-                    </b>
-                    <span className="dim" style={{ fontSize: 11.5 }}>
-                      · {n.sub}
-                    </span>
-                  </span>
-                  <span className="mono dim" style={{ fontSize: 12 }}>
-                    {n.wait}
-                  </span>
+          {tab === "marcador" && (
+            <div className="dialer-splitwrap">
+              <div className="dialer-split">
+                <div className="dialer-split__pad">
+                  <PhonePad num={num} setNum={setNum} onCall={onCall} recents={recentNumbers} />
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="dim" style={{ fontSize: 12.5, padding: "6px 2px", lineHeight: 1.5 }}>
-              No hay contactos esperando en cola ahora mismo. Los entrantes sonarán
-              automáticamente cuando lleguen.
+                <div className="dialer-split__rail">
+                  {actionsSlot ?? <StartContact onCall={onCall} variant="rail" />}
+                </div>
+              </div>
             </div>
           )}
+          {tab === "buscar" && (searchSlot ?? <CustomerSearch onCall={onCall} />)}
         </Card>
-        <MyLeads
-          onCall={(l) => {
-            // Real: onLeadCall(lead). Mock: onCall(phone).
-            if (leadItems && onLeadCall && typeof l !== "string") onLeadCall(l);
-            else if (typeof l === "string") onCall(l);
-          }}
-          items={leadItems}
-          onSkip={onLeadSkip}
-          onReschedule={onLeadReschedule}
-          reschedulePresets={leadReschedulePresets}
-          busyId={leadBusyId}
-        />
-        <button
-          type="button"
-          className="card card__pad"
-          onClick={onTasks}
-          style={{ textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
-        >
-          <div className="tl__ico" style={{ ["--_c" as string]: "var(--coral)" }}>
-            <Icon name="check" size={16} />
-          </div>
-          <div className="grow">
-            <b style={{ fontSize: 13.5 }}>
-              Tienes {tasksCount} {tasksCount === 1 ? "tarea" : "tareas"}
-            </b>
-            <div className="dim" style={{ fontSize: 12 }}>
-              {tasksSubtitle ?? "2 vencen hoy · 1 atrasada"}
+        <div className="col gap16">
+          <div
+            className="card card__pad"
+            style={{
+              background: isPaused
+                ? "var(--bg-1)"
+                : "linear-gradient(120deg,var(--green-soft),transparent 70%)",
+            }}
+          >
+            <div className="row between">
+              <div className="row gap10">
+                <span
+                  className={"dot" + (isPaused ? "" : " dot--live")}
+                  style={
+                    isPaused
+                      ? { background: isOffline ? "var(--text-3)" : "var(--gold)" }
+                      : undefined
+                  }
+                />
+                <b style={{ fontSize: 15 }}>{availLabel}</b>
+              </div>
+              <Btn variant={isPaused ? "primary" : "ghost"} size="sm" onClick={togglePause}>
+                {isPaused ? "Reanudar" : "Pausar"}
+              </Btn>
+            </div>
+            <div className="dim" style={{ fontSize: 12.5, marginTop: 6 }}>
+              {availHint}
             </div>
           </div>
-          <Icon name="chevR" size={16} style={{ color: "var(--text-3)" }} />
-        </button>
+          <MissedCalls onCall={onCall} items={missedItems} />
+          <Card
+            title="Siguiente en cola"
+            icon="live"
+            extra={
+              waitingCount > 0 ? (
+                <Pill tone="green" icon="dot">
+                  {waitingCount} esperando
+                </Pill>
+              ) : (
+                <Pill tone="outline">Cola vacía</Pill>
+              )
+            }
+          >
+            {queue.length > 0 ? (
+              <div className="col gap8">
+                {queue.map((n) => (
+                  <div
+                    key={n.id}
+                    className="row between"
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: "var(--r-sm)",
+                      background: "var(--bg-2)",
+                    }}
+                  >
+                    <span className="row gap10" style={{ minWidth: 0 }}>
+                      <span className={"chdot chdot--" + n.channel} />
+                      <b className="truncate" style={{ fontSize: 13, maxWidth: 150 }}>
+                        {n.label}
+                      </b>
+                      <span className="dim" style={{ fontSize: 11.5 }}>
+                        · {n.sub}
+                      </span>
+                    </span>
+                    <span className="mono dim" style={{ fontSize: 12 }}>
+                      {n.wait}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="dim" style={{ fontSize: 12.5, padding: "6px 2px", lineHeight: 1.5 }}>
+                No hay contactos esperando en cola ahora mismo. Los entrantes sonarán
+                automáticamente cuando lleguen.
+              </div>
+            )}
+          </Card>
+          <MyLeads
+            onCall={(l) => {
+              // Real: onLeadCall(lead). Mock: onCall(phone).
+              if (leadItems && onLeadCall && typeof l !== "string") onLeadCall(l);
+              else if (typeof l === "string") onCall(l);
+            }}
+            items={leadItems}
+            onSkip={onLeadSkip}
+            onReschedule={onLeadReschedule}
+            reschedulePresets={leadReschedulePresets}
+            busyId={leadBusyId}
+          />
+          <button
+            type="button"
+            className="card card__pad"
+            onClick={onTasks}
+            style={{
+              textAlign: "left",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <div className="tl__ico" style={{ ["--_c" as string]: "var(--coral)" }}>
+              <Icon name="check" size={16} />
+            </div>
+            <div className="grow">
+              <b style={{ fontSize: 13.5 }}>
+                Tienes {tasksCount} {tasksCount === 1 ? "tarea" : "tareas"}
+              </b>
+              <div className="dim" style={{ fontSize: 12 }}>
+                {tasksSubtitle ?? "2 vencen hoy · 1 atrasada"}
+              </div>
+            </div>
+            <Icon name="chevR" size={16} style={{ color: "var(--text-3)" }} />
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -14,7 +14,7 @@
    el prefijo del país seleccionado ya viene antepuesto salvo que el
    agente teclee su propio "+".
    ============================================================ */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "@/components/aria";
 import { AG_RECENTS } from "./mockData";
 import PE from "country-flag-icons/react/3x2/PE";
@@ -124,6 +124,33 @@ export function PhonePad({
   const [country, setCountry] = useState<Country>(COUNTRIES[0]);
   const [pickOpen, setPickOpen] = useState(false);
   const pickRef = useRef<HTMLDivElement>(null);
+  const numRef = useRef<HTMLInputElement>(null);
+  const [numFontSize, setNumFontSize] = useState(29);
+
+  // El número NUNCA se corta: 29px de base y se reduce (hasta 16px) cuando
+  // los caracteres ya no caben en el ancho real del input. Dígitos
+  // tabular-nums de Plus Jakarta ≈ 0.626em por carácter → 0.66 deja ~5% de
+  // colchón. Lee valor y ancho del DOM (no del estado) para que el closure
+  // sirva igual desde el observer.
+  const fitNum = () => {
+    const el = numRef.current;
+    if (!el) return;
+    const w = el.clientWidth;
+    if (!w) return;
+    const chars = Math.max(el.value.length, 1);
+    setNumFontSize(Math.max(16, Math.min(29, Math.floor(w / (chars * 0.66)))));
+  };
+
+  // Re-medir en cada tecla (síncrono, antes del paint)…
+  useLayoutEffect(fitNum, [num]);
+  // …y cuando cambia el ancho disponible (resize, sidebar, rail apilado).
+  useEffect(() => {
+    const el = numRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(fitNum);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Cerrar el selector de país al hacer click afuera.
   useEffect(() => {
@@ -203,15 +230,15 @@ export function PhonePad({
           )}
         </div>
         <input
+          ref={numRef}
           className="phonepad__num"
           type="tel"
           inputMode="tel"
           value={num}
           placeholder="Número"
           aria-label="Número a marcar"
-          onChange={(e) =>
-            setNum(() => e.target.value.replace(/[^\d*#+ ]/g, "").slice(0, 18))
-          }
+          style={{ fontSize: numFontSize }}
+          onChange={(e) => setNum(() => e.target.value.replace(/[^\d*#+ ]/g, "").slice(0, 18))}
           onKeyDown={(e) => {
             if (e.key === "Enter" && canCall) onCall(dialTarget);
           }}
@@ -238,10 +265,7 @@ export function PhonePad({
               onClick={() => onCall(r.phone)}
               title={`Marcar a ${r.name || r.phone}`}
             >
-              <span
-                className="drecent__dot"
-                style={{ background: CH_DOT[r.channel || "voz"] }}
-              />
+              <span className="drecent__dot" style={{ background: CH_DOT[r.channel || "voz"] }} />
               <span style={{ minWidth: 0, textAlign: "left", lineHeight: 1.15 }}>
                 <span className="drecent__name">{r.name || r.phone}</span>
                 {r.name && <span className="drecent__num mono">{r.phone}</span>}
