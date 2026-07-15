@@ -2,8 +2,13 @@ import type { Handler } from "aws-lambda";
 import { SocialMessagingClient } from "@aws-sdk/client-socialmessaging";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "node:crypto";
-import { resolveDynamo, resolveWhatsApp } from "../_shared/tenantConnect";
+import { resolveDynamo, resolveWhatsApp, resolveWhatsAppAccounts } from "../_shared/tenantConnect";
 import { sendWhatsApp } from "../_shared/whatsappSend";
+import {
+  routeForAccount,
+  getTemplateDef,
+  buildButtonComponents,
+} from "../_shared/whatsappTemplatesApi";
 import { getIdentity, isLegacyTenant } from "../_shared/cognitoAuth";
 import { evaluateSend } from "../_shared/suppression";
 import { normalizePhone } from "../_shared/phone";
@@ -199,6 +204,33 @@ export const handler: Handler = async (event: any) => {
         text: String(v),
       })),
     });
+  }
+
+  // Botones DINÁMICOS (Flow / URL con sufijo / copiar código): Meta EXIGE su
+  // componente al enviar aunque la plantilla no tenga variables; sin él rechaza
+  // el envío con (#131009) "Components sub_type invalid at index: N". Los
+  // deducimos de la definición de la plantilla (cacheada 5 min por WABA).
+  try {
+    const acc = await resolveWhatsAppAccounts(
+      event?.headers,
+      legacyClient,
+      process.env.WABA_ID || "",
+      effectiveTenantId,
+    );
+    const resolvedRoute = await routeForAccount(acc.accounts, acc.client, acc.tenantId);
+    if (resolvedRoute) {
+      const def = await getTemplateDef(resolvedRoute.route, body.templateName, language);
+      const { components: btnComponents } = buildButtonComponents(def?.buttons, {
+        // Sin conversación a la que correlacionar: el teléfono destino sirve
+        // para casar la respuesta del Flow con este envío.
+        flowToken: toDigits,
+      });
+      components.push(...btnComponents);
+    }
+  } catch (e) {
+    // Sin definición seguimos: si la plantilla necesitaba botones, Meta lo dirá
+    // con detalle (whatsappSend adjunta error_data.details).
+    console.warn("send-whatsapp-template: no se pudo leer la definición:", e);
   }
 
   const whatsappPayload = {

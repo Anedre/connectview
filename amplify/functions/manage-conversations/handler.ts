@@ -21,6 +21,7 @@ import {
 } from "../_shared/conversations";
 import { samePhone } from "../_shared/phone";
 import { sendWhatsApp } from "../_shared/whatsappSend";
+import { getTemplateDef, buildButtonComponents } from "../_shared/whatsappTemplatesApi";
 import { resolveMlSecret, answerQuestion, sendMlMessage } from "../_shared/mercadolibre";
 import {
   normalizeMetaAccounts,
@@ -238,9 +239,12 @@ async function getTenantMeta(tenantId: string): Promise<{
   token?: string;
   pageId?: string;
   waPhoneId?: string;
+  /** WABA del número meta-mode — para leer la definición de las plantillas. */
+  waWabaId?: string;
   accounts: MetaAccount[];
 }> {
   let token: string | undefined, pageId: string | undefined, waPhoneId: string | undefined;
+  let waWabaId: string | undefined;
   let accounts: MetaAccount[] = [];
   try {
     const it = await legacyDynamo.send(
@@ -251,7 +255,10 @@ async function getTenantMeta(tenantId: string): Promise<{
       pageId = cfg.meta?.pageId; // legacy singular (fallback)
       accounts = normalizeMetaAccounts(cfg.meta as MetaConfig);
       // WhatsApp meta-mode: phone_number_id para responder por la Cloud API.
-      if (cfg.whatsapp?.mode === "meta") waPhoneId = cfg.whatsapp?.metaPhoneNumberId;
+      if (cfg.whatsapp?.mode === "meta") {
+        waPhoneId = cfg.whatsapp?.metaPhoneNumberId;
+        waWabaId = cfg.whatsapp?.wabaId;
+      }
     }
   } catch {
     /* */
@@ -270,7 +277,7 @@ async function getTenantMeta(tenantId: string): Promise<{
   } catch {
     /* */
   }
-  return { token, pageId, waPhoneId, accounts };
+  return { token, pageId, waPhoneId, waWabaId, accounts };
 }
 
 /**
@@ -1142,7 +1149,7 @@ export const handler: Handler = async (event: any) => {
         if (!templateName) return bad(400, "templateName requerido");
         if (!language) return bad(400, "language requerido (ej. es, es_MX, en_US)");
 
-        const { token, waPhoneId } = await getTenantMeta(tenantId);
+        const { token, waPhoneId, waWabaId } = await getTenantMeta(tenantId);
         if (!token || !waPhoneId)
           return bad(400, "WhatsApp (meta) no configurado para este tenant");
 
@@ -1164,6 +1171,35 @@ export const handler: Handler = async (event: any) => {
             parameters: bodyParams.map((t) => ({ type: "text", text: t })),
           });
         }
+
+        // Botones DINÁMICOS (Flow / URL con sufijo / copiar código): Meta exige
+        // su componente al enviar aunque la plantilla no tenga variables — si
+        // falta, rechaza el mensaje entero con (#131009) "Components sub_type
+        // invalid at index: N" (así fallaba "cita", que abre un WhatsApp Flow).
+        // Los deducimos de la definición: el agente no tiene por qué saberlo.
+        if (waWabaId) {
+          try {
+            const def = await getTemplateDef(
+              { mode: "meta", wabaId: waWabaId, token, tenantId },
+              templateName,
+              language,
+            );
+            const { components: btnComponents, missing } = buildButtonComponents(def?.buttons, {
+              // flow_token: nos vuelve en el webhook al completar el formulario
+              // → correlaciona la respuesta con esta conversación.
+              flowToken: conversationId,
+              urlParams: body.urlParams as Record<number, string> | undefined,
+              couponCodes: body.couponCodes as Record<number, string> | undefined,
+            });
+            if (missing.length) return bad(400, `No se pudo enviar: ${missing.join("; ")}.`);
+            components.push(...btnComponents);
+          } catch (e) {
+            // Sin definición seguimos: si la plantilla necesitaba botones, Meta
+            // lo dirá con detalle (whatsappSend adjunta error_data.details).
+            console.warn("sendTemplate: no se pudo leer la definición de la plantilla:", e);
+          }
+        }
+
         if (components.length) template.components = components;
         try {
           await sendWhatsApp(

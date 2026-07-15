@@ -90,6 +90,8 @@ export interface TemplateButton {
   text: string;
   url?: string;
   phoneNumber?: string;
+  /** Botón FLOW: id del formulario nativo de Meta que abre. */
+  flowId?: string;
 }
 export interface TemplateBrief {
   name: string;
@@ -129,6 +131,12 @@ export function extractBody(
           ? b.phone_number
           : typeof b.phoneNumber === "string"
             ? b.phoneNumber
+            : undefined,
+      flowId:
+        b.flow_id !== undefined && b.flow_id !== null
+          ? String(b.flow_id)
+          : typeof b.flowId === "string"
+            ? b.flowId
             : undefined,
     }));
   for (const c of def.components || []) {
@@ -282,6 +290,109 @@ export async function listTemplates(
     }
   }
   return out;
+}
+
+// ─────────────────────────── ENVÍO: componentes de botón ────────────────────
+// Cache de definiciones por WABA (contenedor caliente). El envío necesita saber
+// qué botones declara la plantilla; sin cache pegaríamos a Graph en cada HSM.
+const defCache = new Map<string, { at: number; templates: TemplateBrief[] }>();
+const DEF_TTL_MS = 5 * 60 * 1000;
+
+/** Definición (brief) de UNA plantilla por nombre + idioma. Cachea la WABA. */
+export async function getTemplateDef(
+  route: TemplateRoute,
+  name: string,
+  language?: string,
+): Promise<TemplateBrief | null> {
+  const key = `${route.mode}:${route.wabaId}`;
+  const hit = defCache.get(key);
+  let templates: TemplateBrief[];
+  if (hit && Date.now() - hit.at < DEF_TTL_MS) {
+    templates = hit.templates;
+  } else {
+    templates = await listTemplates(route, true);
+    defCache.set(key, { at: Date.now(), templates });
+  }
+  const byName = templates.filter((t) => t.name === name);
+  if (byName.length === 0) return null;
+  // Mismo nombre puede existir en varios idiomas; preferimos el pedido.
+  return (
+    byName.find((t) => (t.language || "").toLowerCase() === (language || "").toLowerCase()) ||
+    byName[0]
+  );
+}
+
+export interface ButtonSendParams {
+  /** Botón FLOW: token de correlación que Meta devuelve en el webhook al
+   *  completarse el formulario. Meta acepta "unused" si no se correlaciona. */
+  flowToken?: string;
+  /** Botón URL con sufijo dinámico ({{1}} en la url), por índice de botón. */
+  urlParams?: Record<number, string>;
+  /** Botón COPY_CODE (cupón), por índice de botón. */
+  couponCodes?: Record<number, string>;
+}
+
+/**
+ * Componentes de BOTÓN que Meta exige al ENVIAR, según lo que la plantilla
+ * declara. Los botones ESTÁTICOS (URL fija, PHONE_NUMBER, QUICK_REPLY) no
+ * llevan componente; los DINÁMICOS sí, y omitirlos hace que Meta rechace el
+ * mensaje entero con:
+ *    (#131009) Parameter value is not valid — Components sub_type invalid at
+ *    index: N and type: 0
+ * (así fallaba la plantilla "cita", que abre un WhatsApp Flow).
+ *
+ * Devuelve también `missing`: botones dinámicos cuyo valor no nos dieron, para
+ * que el caller corte con un error accionable en vez de un 400 de Meta.
+ */
+export function buildButtonComponents(
+  buttons: TemplateButton[] | undefined,
+  opts: ButtonSendParams = {},
+): { components: Array<Record<string, unknown>>; missing: string[] } {
+  const components: Array<Record<string, unknown>> = [];
+  const missing: string[] = [];
+  (buttons || []).forEach((b, index) => {
+    const type = (b.type || "").toUpperCase();
+    if (type === "FLOW") {
+      components.push({
+        type: "button",
+        sub_type: "flow",
+        index: String(index),
+        parameters: [{ type: "action", action: { flow_token: opts.flowToken || "unused" } }],
+      });
+      return;
+    }
+    if (type === "URL" && /\{\{\s*\d+\s*\}\}/.test(b.url || "")) {
+      const v = opts.urlParams?.[index];
+      if (!v) {
+        missing.push(`el botón "${b.text || "URL"}" necesita el valor de su enlace`);
+        return;
+      }
+      components.push({
+        type: "button",
+        sub_type: "url",
+        index: String(index),
+        parameters: [{ type: "text", text: v }],
+      });
+      return;
+    }
+    if (type === "COPY_CODE") {
+      const code = opts.couponCodes?.[index];
+      if (!code) {
+        missing.push(`el botón "${b.text || "Copiar código"}" necesita el código`);
+        return;
+      }
+      components.push({
+        type: "button",
+        sub_type: "copy_code",
+        index: String(index),
+        parameters: [{ type: "coupon_code", coupon_code: code }],
+      });
+      return;
+    }
+    // URL estática · PHONE_NUMBER · QUICK_REPLY → sin componente (Meta los
+    // renderiza desde la plantilla).
+  });
+  return { components, missing };
 }
 
 /** Crea una plantilla (queda PENDING en Meta). `components` = salida de buildTemplateComponents. */
