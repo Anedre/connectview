@@ -382,13 +382,16 @@ export function ConversationThread({ conversationId }: { conversationId: string 
   };
 
   const sendTpl = async (t: WaTemplate, headerVars: string[], vars: string[]) => {
+    // Meta rechaza valores con saltos de línea, tabs o 4+ espacios seguidos
+    // ((#131009) Parameter value is not valid) → colapsamos todo whitespace.
+    const clean = (v: string) => v.replace(/\s+/g, " ").trim();
     try {
       await sendTemplate.mutateAsync({
         conversationId,
         templateName: t.name,
         language: t.language || "es",
-        headerParams: headerVars.length ? headerVars.map((v) => v.trim()) : undefined,
-        bodyParams: vars.length ? vars.map((v) => v.trim()) : undefined,
+        headerParams: headerVars.length ? headerVars.map(clean) : undefined,
+        bodyParams: vars.length ? vars.map(clean) : undefined,
       });
       setTplSel(null);
       setTplOpen(false);
@@ -1140,7 +1143,9 @@ export function ConversationThread({ conversationId }: { conversationId: string 
               </div>
               {tplHeaderVars.map((v, i) => (
                 <label key={`h${i}`} className="col gap4" style={{ fontSize: 12 }}>
-                  <span className="dim">Encabezado {`{{${i + 1}}}`}</span>
+                  <span className="dim">
+                    Encabezado {`{{${i + 1}}}`} · máx. 60 caracteres, sin emojis
+                  </span>
                   <input
                     value={v}
                     onChange={(e) =>
@@ -1148,6 +1153,7 @@ export function ConversationThread({ conversationId }: { conversationId: string 
                     }
                     placeholder={i === 0 ? "Nombre del cliente" : "Valor"}
                     style={LIST_INP}
+                    maxLength={60}
                   />
                 </label>
               ))}

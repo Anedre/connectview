@@ -12,14 +12,8 @@
  * El token de Meta vive en Secrets Manager (`connectview/tenant/<id>/whatsapp`),
  * NUNCA en el cliente.
  */
-import {
-  SocialMessagingClient,
-  SendWhatsAppMessageCommand,
-} from "@aws-sdk/client-socialmessaging";
-import {
-  SecretsManagerClient,
-  GetSecretValueCommand,
-} from "@aws-sdk/client-secrets-manager";
+import { SocialMessagingClient, SendWhatsAppMessageCommand } from "@aws-sdk/client-socialmessaging";
+import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 
 const secrets = new SecretsManagerClient({});
 const META_API_VERSION = process.env.META_API_VERSION || "v20.0";
@@ -41,10 +35,13 @@ async function metaToken(tenantId: string): Promise<string | null> {
   if (hit) return hit;
   try {
     const r = await secrets.send(
-      new GetSecretValueCommand({ SecretId: `connectview/tenant/${tenantId}/whatsapp` })
+      new GetSecretValueCommand({ SecretId: `connectview/tenant/${tenantId}/whatsapp` }),
     );
     const token = JSON.parse(r.SecretString || "{}").token;
-    if (token) { tokenCache.set(tenantId, token); return token; }
+    if (token) {
+      tokenCache.set(tenantId, token);
+      return token;
+    }
   } catch {
     /* sin secret / sin token */
   }
@@ -55,7 +52,7 @@ async function metaToken(tenantId: string): Promise<string | null> {
  *  Devuelve { messageId }. Lanza si falta config/credencial. */
 export async function sendWhatsApp(
   route: WhatsAppRoute,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
 ): Promise<{ messageId?: string }> {
   if (route.mode === "meta") {
     if (!route.metaPhoneNumberId || !route.tenantId) {
@@ -71,13 +68,20 @@ export async function sendWhatsApp(
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      }
+      },
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const j: any = await r.json().catch(() => ({}));
     if (!r.ok) {
-      // SEGURIDAD: nunca loguear el token; solo el mensaje de error de Meta.
-      throw new Error(`Meta send falló (${r.status}): ${j?.error?.message || "error"}`);
+      // SEGURIDAD: nunca loguear el token; solo el error de Meta. Incluimos
+      // error_data.details: sin él "(#131009) Parameter value is not valid"
+      // no dice QUÉ parámetro ni por qué (header muy largo, emoji en header,
+      // saltos de línea, etc.) y es indepurable desde la UI.
+      const details = j?.error?.error_data?.details;
+      throw new Error(
+        `Meta send falló (${r.status}): ${j?.error?.message || "error"}` +
+          (details ? ` — ${details}` : ""),
+      );
     }
     return { messageId: j?.messages?.[0]?.id };
   }
@@ -91,7 +95,7 @@ export async function sendWhatsApp(
       originationPhoneNumberId: route.awsPhoneNumberId,
       metaApiVersion: META_API_VERSION,
       message: new TextEncoder().encode(JSON.stringify(payload)),
-    })
+    }),
   );
   return { messageId: res.messageId };
 }
