@@ -8111,15 +8111,11 @@ textarea.vox-field {
   gap: 0;
   position: relative;
 }
-.tl::before {
-  content: "";
-  position: absolute;
-  left: 11px;
-  top: 6px;
-  bottom: 6px;
-  width: 1px;
-  background: var(--border-1);
-}
+/* El riel del timeline lo dibuja `.tl__item::before` (aria-components) por cada
+   item, y corta en el último. Este riel CONTINUO es el viejo: como es otro
+   selector, no se pisaban → se pintaban las DOS líneas a la vez, a 4px una de
+   otra (left:11px/1px aquí vs left:15px/2px allá). Los 3 consumidores de `.tl`
+   (Cliente360, ContactHistoryPanel, CustomerProfilePanel) usan `.tl__item`. */
 .tl__item {
   display: flex;
   gap: 12px;
@@ -13929,7 +13925,8 @@ textarea.vox-field {
 ):focus-visible {
   outline: none;
   box-shadow: var(--ring);
-  border-radius: var(--radius-1);
+  /* Sin `border-radius`: el halo ya sigue la forma del elemento y forzarlo
+     deformaba lo redondo (`.chip`). Idéntico a `:focus-visible` de aria-base. */
 }
 
 /* ── prefers-reduced-motion global (P12) ──────────────────────

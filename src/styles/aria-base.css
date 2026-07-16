@@ -267,10 +267,15 @@ a {
   background: color-mix(in srgb, var(--accent) 28%, transparent);
   color: var(--text-1);
 }
+/* El halo (`box-shadow`) YA sigue la forma propia del elemento, así que aquí NO
+   se fuerza `border-radius`: hacerlo deformaba todo lo redondo al enfocarlo
+   (un `.chip` píldora pasaba a un rectángulo de 9px, porque esta regla empata
+   en especificidad con `.chip` y carga después). Además `--r-sm` (9px) y el
+   `--radius-1` (6px) de la regla gemela de index.css discrepaban → otro empate
+   resuelto por orden de carga. Ver index.css › "Foco de teclado global". */
 :focus-visible {
   outline: none;
   box-shadow: var(--ring);
-  border-radius: var(--r-sm);
 }
 
 /* scrollbars */
