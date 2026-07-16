@@ -69,7 +69,11 @@ export function ConversationList({
                 onSelect(c.conversationId);
               }
             }}
-            className={"conv" + (active ? " conv--active" : "")}
+            className={
+              "conv" +
+              (active ? " conv--active" : "") +
+              (c.status === "closed" ? " conv--closed" : "")
+            }
             style={
               sla?.level === "breach"
                 ? { boxShadow: "inset 3px 0 0 var(--red)" }
@@ -110,7 +114,10 @@ export function ConversationList({
                 </span>
                 <span className="row gap6" style={{ flex: "0 0 auto", alignItems: "center" }}>
                   {sla && (
-                    <span style={slaChipStyle(sla.level)} title={`Esperando respuesta hace ${fmtWait(sla.mins)}`}>
+                    <span
+                      style={slaChipStyle(sla.level)}
+                      title={`Esperando respuesta hace ${fmtWait(sla.mins)}`}
+                    >
                       ⏱ {fmtWait(sla.mins)}
                     </span>
                   )}
@@ -181,7 +188,7 @@ export function ConversationList({
                       }}
                     />
                   )}
-                  {c.unread > 0 && <span className="sb__count sb__count--accent">{c.unread}</span>}
+                  {c.unread > 0 && <span className="conv__badge">{c.unread}</span>}
                   {c.status === "closed" && (
                     <span style={{ fontSize: 10, color: "var(--text-3)" }} title="Cerrada">
                       ✓

@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Icon, Pill } from "@/components/aria";
+import { Icon } from "@/components/aria";
 import { useConversations, type ConvChannel } from "@/hooks/useConversations";
 import { ConversationList } from "@/components/inbox/ConversationList";
 import { ConversationThread } from "@/components/inbox/ConversationThread";
 import { CustomerContextPanel } from "@/components/inbox/CustomerContextBar";
+import { CH_COLOR } from "@/components/inbox/channelMeta";
 import { slaInfo, slaChipStyle } from "@/components/inbox/sla";
 import { EmptyState, ErrorState } from "@/components/ui/empty-state";
 import { SkeletonList } from "@/components/ui/skeleton";
@@ -130,16 +131,7 @@ export function InboxPage() {
       {/* ── Lista ── */}
       <div className="inbox__list">
         {/* Cabecera del sidebar: título + búsqueda real + filtros por canal. */}
-        <div
-          style={{
-            padding: "14px 15px",
-            borderBottom: "1px solid var(--border-1)",
-            position: "sticky",
-            top: 0,
-            zIndex: 2,
-            background: "var(--bg-1)",
-          }}
-        >
+        <div className="ib-listhead">
           <div className="row between" style={{ marginBottom: 10 }}>
             <b style={{ fontSize: 15 }}>Conversaciones</b>
             <span className="row gap6" style={{ alignItems: "center" }}>
@@ -161,38 +153,39 @@ export function InboxPage() {
             </span>
           </div>
 
-          {/* Búsqueda real (controla q) — estilo sb__search del handoff. */}
-          <label className="sb__search" style={{ margin: 0 }}>
+          {/* Búsqueda real (controla q). */}
+          <label className="ib-search">
             <Icon name="search" size={15} />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Buscar por nombre o mensaje…"
-              style={{
-                flex: 1,
-                minWidth: 0,
-                border: "none",
-                background: "none",
-                outline: "none",
-                fontSize: 13,
-                color: "var(--text-1)",
-                fontFamily: "inherit",
-              }}
             />
           </label>
 
-          {/* Filtros por canal — pills ARIA. */}
-          <div className="row gap6" style={{ marginTop: 10, flexWrap: "wrap" }}>
+          {/* Filtros por canal — chips con punto de marca + conteo. */}
+          <div className="ib-filters">
             {filters.map((f) => {
               const active = filter === f.id;
+              const n =
+                f.id === "all"
+                  ? conversations.length
+                  : conversations.filter((c) => c.channel === f.id).length;
               return (
                 <button
                   key={f.id}
                   type="button"
+                  className={"ib-chan" + (active ? " ib-chan--on" : "")}
                   onClick={() => setFilter(f.id)}
-                  style={{ cursor: "pointer", background: "none", border: "none", padding: 0 }}
                 >
-                  <Pill tone={active ? "accent" : "outline"}>{f.label}</Pill>
+                  {f.id !== "all" && (
+                    <span
+                      className="ib-chan__dot"
+                      style={{ ["--_c" as string]: CH_COLOR[f.id as ConvChannel] }}
+                    />
+                  )}
+                  {f.label}
+                  {n > 0 && <span className="ib-chan__n">{n}</span>}
                 </button>
               );
             })}
@@ -200,35 +193,37 @@ export function InboxPage() {
         </div>
 
         {/* Items */}
-        {loading && conversations.length === 0 ? (
-          <SkeletonList rows={7} />
-        ) : error ? (
-          <ErrorState
-            title="No se pudieron cargar las conversaciones"
-            description={error}
-            onRetry={() => refetch()}
-          />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={<Icon name="chats" />}
-            title={
-              conversations.length === 0
-                ? "Aún no hay conversaciones"
-                : "Nada coincide con el filtro"
-            }
-            description={
-              conversations.length === 0
-                ? "Cuando alguien te escriba por Instagram, Messenger o WhatsApp, aparecerá aquí."
-                : undefined
-            }
-          />
-        ) : (
-          <ConversationList
-            conversations={filtered}
-            selectedId={effectiveId}
-            onSelect={selectConversation}
-          />
-        )}
+        <div className="ib-scroll">
+          {loading && conversations.length === 0 ? (
+            <SkeletonList rows={7} />
+          ) : error ? (
+            <ErrorState
+              title="No se pudieron cargar las conversaciones"
+              description={error}
+              onRetry={() => refetch()}
+            />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={<Icon name="chats" />}
+              title={
+                conversations.length === 0
+                  ? "Aún no hay conversaciones"
+                  : "Nada coincide con el filtro"
+              }
+              description={
+                conversations.length === 0
+                  ? "Cuando alguien te escriba por Instagram, Messenger o WhatsApp, aparecerá aquí."
+                  : undefined
+              }
+            />
+          ) : (
+            <ConversationList
+              conversations={filtered}
+              selectedId={effectiveId}
+              onSelect={selectConversation}
+            />
+          )}
+        </div>
       </div>
 
       {/* ── Hilo ── */}

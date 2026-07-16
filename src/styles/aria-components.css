@@ -1242,12 +1242,15 @@
 /* ============ Inbox / chat ============ */
 .inbox {
   display: grid;
-  grid-template-columns: clamp(260px, 26%, 320px) minmax(0, 1fr) clamp(250px, 24%, 300px);
+  grid-template-columns: clamp(280px, 26%, 344px) minmax(0, 1fr) clamp(260px, 24%, 316px);
   height: calc(100vh - var(--topbar-h));
+  background: var(--bg-0);
 }
 .inbox__list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-right: 1px solid var(--border-1);
-  overflow-y: auto;
   background: var(--bg-1);
 }
 .inbox__thread {
@@ -1264,13 +1267,109 @@
   overflow-x: hidden;
   background: var(--bg-1);
 }
+
+/* — Cabecera del pane de lista: búsqueda + filtros por canal — */
+.ib-listhead {
+  padding: 13px 14px 11px;
+  border-bottom: 1px solid var(--border-1);
+  background: var(--bg-1);
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+}
+.ib-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  color: var(--text-3);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.ib-search:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-1));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.ib-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  outline: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-1);
+}
+.ib-filters {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ib-filters::-webkit-scrollbar {
+  display: none;
+}
+.ib-chan {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border-1);
+  background: var(--bg-1);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 650;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  transition:
+    background 0.14s,
+    border-color 0.14s,
+    color 0.14s;
+}
+.ib-chan:hover {
+  border-color: var(--border-2);
+  background: var(--bg-2);
+}
+.ib-chan--on {
+  background: var(--text-1);
+  color: var(--bg-1);
+  border-color: var(--text-1);
+}
+.ib-chan__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--_c, var(--accent));
+  flex: 0 0 auto;
+}
+.ib-chan__n {
+  font-size: 10.5px;
+  opacity: 0.72;
+  font-variant-numeric: tabular-nums;
+}
+.ib-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* — Tarjeta de conversación — */
 .conv {
   display: flex;
   gap: 11px;
-  padding: 13px 15px;
-  border-bottom: 1px solid var(--border-1);
+  padding: 12px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-1) 55%, transparent);
   cursor: pointer;
-  transition: 0.12s;
+  transition: background 0.13s;
   position: relative;
 }
 .conv:hover {
@@ -1283,10 +1382,18 @@
   content: "";
   position: absolute;
   left: 0;
-  top: 0;
-  bottom: 0;
+  top: 10px;
+  bottom: 10px;
   width: 3px;
+  border-radius: 0 3px 3px 0;
   background: var(--accent);
+}
+.conv--closed {
+  opacity: 0.62;
+}
+.conv--closed:hover,
+.conv--active.conv--closed {
+  opacity: 1;
 }
 .conv__name {
   font-size: 13.5px;
@@ -1299,6 +1406,267 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-top: 2px;
+}
+.conv__badge {
+  min-width: 19px;
+  height: 19px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: inline-grid;
+  place-items: center;
+  font-size: 10.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* — Hilo v2: cabecera + mensajes agrupados + separadores de día — */
+.ib-thread-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 18px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-1);
+  flex: 0 0 auto;
+}
+.ib-msgs {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 18px 26px 14px;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(
+      1100px 420px at 85% -10%,
+      color-mix(in srgb, var(--accent) 4%, transparent),
+      transparent 60%
+    ),
+    var(--bg-0);
+}
+.ib-day {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 10px;
+}
+.ib-day::before,
+.ib-day::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--border-1) 80%, transparent);
+}
+.ib-day span {
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.ib-msg {
+  max-width: min(66%, 560px);
+  padding: 9px 13px;
+  border-radius: 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  position: relative;
+  box-shadow: var(--sh-1);
+  margin-top: 2px;
+}
+.ib-msg--first {
+  margin-top: 10px;
+}
+.ib-msg--in {
+  align-self: flex-start;
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+}
+.ib-msg--out {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+/* Mensajes del bot/IA: misma alineación saliente, tinte iris propio. */
+.ib-msg--bot {
+  background: color-mix(in srgb, var(--iris) 13%, var(--bg-1));
+  border: 1px solid color-mix(in srgb, var(--iris) 30%, transparent);
+  color: var(--text-1);
+}
+/* Solo la última burbuja del grupo lleva la "cola" recortada. */
+.ib-msg--tail.ib-msg--in {
+  border-bottom-left-radius: 5px;
+}
+.ib-msg--tail.ib-msg--out {
+  border-bottom-right-radius: 5px;
+}
+.ib-msg__meta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  opacity: 0.72;
+  margin-top: 4px;
+}
+.ib-who {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-3);
+  margin: 8px 2px 1px;
+}
+.ib-who--out {
+  align-self: flex-end;
+}
+.ib-who--in {
+  align-self: flex-start;
+}
+
+/* — Composer v2: tarjeta elevada con barra de acciones — */
+.ib-composer {
+  flex: 0 0 auto;
+  padding: 8px 18px 14px;
+}
+.ib-compose {
+  background: var(--bg-1);
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  box-shadow: var(--sh-2);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.ib-compose:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-2));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent),
+    var(--sh-2);
+}
+.ib-compose textarea {
+  display: block;
+  width: 100%;
+  resize: none;
+  border: none;
+  background: none;
+  outline: none;
+  padding: 11px 14px 2px;
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-1);
+  max-height: 132px;
+}
+.ib-compose__bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 8px 7px;
+}
+.ib-iconbtn {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition:
+    background 0.13s,
+    color 0.13s;
+}
+.ib-iconbtn:hover {
+  background: var(--bg-2);
+  color: var(--text-1);
+}
+.ib-iconbtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ib-quick {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin-top: 8px;
+}
+.ib-quick::-webkit-scrollbar {
+  display: none;
+}
+.ib-quick button {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  font-family: inherit;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px dashed var(--border-2);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background 0.13s,
+    border-color 0.13s;
+}
+.ib-quick button:hover {
+  border-style: solid;
+  background: var(--bg-2);
+  color: var(--text-1);
+}
+.ib-banner {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border-1);
+  background: var(--bg-1);
+  box-shadow: var(--sh-1);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.ib-banner--gold {
+  border-color: color-mix(in srgb, var(--gold) 35%, transparent);
+  background: color-mix(in srgb, var(--gold) 7%, var(--bg-1));
+}
+
+/* — Panel Cliente 360 — */
+.ib-id {
+  padding: 20px 16px 16px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-1);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--accent) 5%, transparent),
+    transparent
+  );
+}
+.ib-ctxcard {
+  margin: 12px 14px 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border-1);
+  background: var(--bg-0);
+}
+.ib-ctxrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  padding: 6px 0;
+}
+.ib-ctxrow + .ib-ctxrow {
+  border-top: 1px dashed color-mix(in srgb, var(--border-1) 70%, transparent);
 }
 .msgs {
   flex: 1;

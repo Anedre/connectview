@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChannelChip } from "@/components/vox/primitives";
 import { Av, Btn, Icon, Pill } from "@/components/aria";
@@ -49,6 +49,33 @@ function fmtTime(iso?: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Solo la hora (los separadores de día ya dan la fecha). */
+function fmtClock(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/** Etiqueta del separador de día: Hoy / Ayer / "12 de julio". */
+function dayLabel(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return "Hoy";
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return "Ayer";
+  return d.toLocaleDateString([], { day: "numeric", month: "long" });
+}
+
+/** ¿El autor del saliente es el bot/sistema (Agente IA, cierres automáticos)? */
+function isBotAgent(agent?: string): boolean {
+  const a = (agent || "").toLowerCase();
+  return a === "bot" || a === "aria";
 }
 
 /** Plantilla HSM de WhatsApp (shape laxo de list-whatsapp-templates). */
@@ -181,25 +208,39 @@ function AttachmentView({
   );
 }
 
-function Bubble({ m }: { m: ConvMessage }) {
+/** Burbuja v2: agrupada (solo el cierre del grupo lleva cola + hora) y con
+ *  tinte iris propio para lo que envió el bot/sistema. */
+function Bubble({ m, first, tail }: { m: ConvMessage; first: boolean; tail: boolean }) {
   const out = m.direction === "out";
+  const bot = out && isBotAgent(m.agent);
   return (
-    <div className={"msg " + (out ? "msg--out" : "msg--in")}>
-      {m.attachment?.url && <AttachmentView att={m.attachment} out={out} hasText={!!m.text} />}
+    <div
+      className={
+        "ib-msg " +
+        (out ? "ib-msg--out" : "ib-msg--in") +
+        (bot ? " ib-msg--bot" : "") +
+        (first ? " ib-msg--first" : "") +
+        (tail ? " ib-msg--tail" : "")
+      }
+    >
+      {m.attachment?.url && (
+        <AttachmentView att={m.attachment} out={out && !bot} hasText={!!m.text} />
+      )}
       {m.text && <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.text}</div>}
-      <div className="msg__time" style={{ textAlign: "right" }}>
-        {m.agent ? `${m.agent} · ` : ""}
-        {fmtTime(m.ts)}
-        {/* Visto — el cliente leyó este mensaje saliente (read receipt de Meta). */}
-        {out && m.readAt && (
-          <span
-            title={`Visto · ${fmtTime(m.readAt)}`}
-            style={{ marginLeft: 5, color: "var(--cyan)", fontWeight: 700, letterSpacing: "-1px" }}
-          >
-            ✓✓
-          </span>
-        )}
-      </div>
+      {tail && (
+        <div className="ib-msg__meta">
+          {fmtClock(m.ts)}
+          {/* Visto — el cliente leyó este mensaje saliente (read receipt de Meta). */}
+          {out && m.readAt && (
+            <span
+              title={`Visto · ${fmtTime(m.readAt)}`}
+              style={{ fontWeight: 700, letterSpacing: "-1px" }}
+            >
+              ✓✓
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -246,6 +287,11 @@ export function ConversationThread({ conversationId }: { conversationId: string 
     { title: "", description: "" },
   ]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+  // Al vaciar el compositor (enviar / cambiar de chat) el auto-grow vuelve a 1 línea.
+  useEffect(() => {
+    if (!text && taRef.current) taRef.current.style.height = "auto";
+  }, [text]);
   const msgs = conversation?.messages ?? [];
   const isComment = conversation?.channel === "fb_comment";
   const isWhatsApp = conversation?.channel === "whatsapp";
@@ -569,16 +615,7 @@ export function ConversationThread({ conversationId }: { conversationId: string 
   return (
     <>
       {/* Header del hilo */}
-      <div
-        className="row between"
-        style={{
-          gap: 12,
-          padding: "12px 20px",
-          borderBottom: "1px solid var(--border-1)",
-          background: "var(--bg-1)",
-          flex: "0 0 auto",
-        }}
-      >
+      <div className="ib-thread-head">
         <div className="row gap12" style={{ minWidth: 0 }}>
           <span style={{ position: "relative", flex: "0 0 auto" }}>
             <Av name={name} size={40} radius={12} />
@@ -622,15 +659,6 @@ export function ConversationThread({ conversationId }: { conversationId: string 
           <Btn
             variant="ghost"
             size="sm"
-            icon="sparkle"
-            onClick={() => toast("El resumen con IA de esta conversación llega pronto.")}
-            title="Resumen con IA"
-          >
-            Resumen IA
-          </Btn>
-          <Btn
-            variant="ghost"
-            size="sm"
             icon="more"
             title="Más acciones"
             onClick={() => setMenuOpen((v) => !v)}
@@ -658,6 +686,17 @@ export function ConversationThread({ conversationId }: { conversationId: string 
                   gap: 2,
                 }}
               >
+                <button
+                  type="button"
+                  className="row gap8"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    toast("El resumen con IA de esta conversación llega pronto.");
+                  }}
+                  style={menuItemStyle}
+                >
+                  <Icon name="sparkle" size={15} /> Resumen con IA
+                </button>
                 {/* Ownership: tomar (del bot o de la cola) / devolver / traspasar / soltar */}
                 {!closed && !isMine && (assignee === "bot" || !owner || isPrivileged) && (
                   <button
@@ -789,18 +828,57 @@ export function ConversationThread({ conversationId }: { conversationId: string 
         </div>
       </div>
 
-      {/* Mensajes */}
-      <div ref={scrollRef} className="msgs">
+      {/* Mensajes — agrupados por autor consecutivo, con separadores de día. */}
+      <div ref={scrollRef} className="ib-msgs">
         {msgs.length === 0 ? (
           <div className="dim" style={{ margin: "auto", fontSize: 12.5 }}>
             Sin mensajes todavía.
           </div>
         ) : (
-          msgs.map((m) => <Bubble key={m.id} m={m} />)
+          msgs.map((m, i) => {
+            const prev = msgs[i - 1];
+            const next = msgs[i + 1];
+            const curDay = new Date(m.ts).toDateString();
+            const newDay = !prev || new Date(prev.ts).toDateString() !== curDay;
+            // Mismo grupo = misma dirección + mismo autor + menos de 10 min entre sí.
+            const GAP = 10 * 60_000;
+            const sameAuthor = (a?: ConvMessage, b?: ConvMessage) =>
+              !!a && !!b && a.direction === b.direction && (a.agent || "") === (b.agent || "");
+            const gapPrev = prev
+              ? new Date(m.ts).getTime() - new Date(prev.ts).getTime() > GAP
+              : true;
+            const gapNext = next
+              ? new Date(next.ts).getTime() - new Date(m.ts).getTime() > GAP
+              : true;
+            const first = newDay || !sameAuthor(prev, m) || gapPrev;
+            const tail =
+              !next ||
+              !sameAuthor(m, next) ||
+              gapNext ||
+              new Date(next.ts).toDateString() !== curDay;
+            // Quién envió (solo al inicio de un grupo saliente): bot vs agente.
+            const who =
+              m.direction === "out" && first && m.agent
+                ? isBotAgent(m.agent)
+                  ? "Agente IA"
+                  : m.agent
+                : null;
+            return (
+              <Fragment key={m.id}>
+                {newDay && (
+                  <div className="ib-day">
+                    <span>{dayLabel(m.ts)}</span>
+                  </div>
+                )}
+                {who && <div className="ib-who ib-who--out">{who}</div>}
+                <Bubble m={m} first={first} tail={tail} />
+              </Fragment>
+            );
+          })
         )}
         {isTyping && (
           <div
-            className="msg msg--in"
+            className="ib-msg ib-msg--in ib-msg--first ib-msg--tail"
             style={{ width: "fit-content", display: "inline-flex", alignItems: "center" }}
           >
             <span className="typing-dots">
@@ -812,43 +890,43 @@ export function ConversationThread({ conversationId }: { conversationId: string 
         )}
       </div>
 
-      {/* Composer */}
-      <div className="composer" style={{ flex: "0 0 auto" }}>
+      {/* Composer v2 — tarjeta elevada con barra de acciones. */}
+      <div className="ib-composer">
         {templatesOnly ? (
           /* Ventana de 24h vencida o chat cerrado (WhatsApp): solo plantillas. */
-          <div className="col gap10" style={{ padding: "2px 2px" }}>
-            <div className="row gap8" style={{ alignItems: "flex-start" }}>
-              <span
-                className="card__ico"
-                style={{ ["--_c" as string]: "var(--gold)", flex: "0 0 auto" }}
-              >
-                <Icon name="wa" size={15} />
-              </span>
-              <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--text-2)" }}>
+          <div className="ib-banner ib-banner--gold">
+            <span
+              className="card__ico"
+              style={{ ["--_c" as string]: "var(--gold)", flex: "0 0 auto" }}
+            >
+              <Icon name="wa" size={15} />
+            </span>
+            <div className="col gap8" style={{ flex: 1, minWidth: 0 }}>
+              <span>
                 {closed
                   ? "Conversación cerrada. Fuera de la ventana de 24h de WhatsApp solo puedes enviar plantillas aprobadas (promociones, reactivación…)."
                   : "Pasaron más de 24h desde el último mensaje del cliente. Por la política de WhatsApp solo puedes enviar una plantilla aprobada para reabrir la conversación."}
+              </span>
+              <div className="row gap8">
+                <Btn variant="primary" size="sm" icon="fileText" onClick={() => setTplOpen(true)}>
+                  Enviar plantilla
+                </Btn>
+                <Btn variant="soft" size="sm" icon="tag" onClick={() => setTypifyOpen(true)}>
+                  Tipificar
+                </Btn>
               </div>
-            </div>
-            <div className="row gap8">
-              <Btn variant="primary" size="sm" icon="fileText" onClick={() => setTplOpen(true)}>
-                Enviar plantilla
-              </Btn>
-              <Btn variant="soft" size="sm" icon="tag" onClick={() => setTypifyOpen(true)}>
-                Tipificar
-              </Btn>
             </div>
           </div>
         ) : closedBlocked ? (
           /* IG/Messenger cerrado: sin plantillas → reabre solo el cliente. */
-          <div className="row gap8" style={{ alignItems: "flex-start", padding: "2px 2px" }}>
+          <div className="ib-banner">
             <span
               className="card__ico"
               style={{ ["--_c" as string]: "var(--text-3)", flex: "0 0 auto" }}
             >
               <Icon name="checkCircle" size={15} />
             </span>
-            <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--text-2)" }}>
+            <div>
               Conversación cerrada. Se reabrirá automáticamente cuando el cliente vuelva a escribir.
               <button
                 type="button"
@@ -862,40 +940,34 @@ export function ConversationThread({ conversationId }: { conversationId: string 
           </div>
         ) : (
           <>
-            <div className="composer__box" style={{ alignItems: "flex-end" }}>
-              <input
-                ref={fileRef}
-                type="file"
-                hidden
-                accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleAttach(f);
-                  e.target.value = "";
-                }}
-              />
-              <Btn
-                variant="quiet"
-                size="sm"
-                icon="paperclip"
-                title="Adjuntar archivo (imagen, PDF, audio…)"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                style={{ flex: "0 0 auto" }}
-              />
-              {isWhatsApp && (
-                <Btn
-                  variant="quiet"
-                  size="sm"
-                  icon="fileText"
-                  title="Enviar plantilla de WhatsApp"
-                  onClick={() => setTplOpen(true)}
-                  style={{ flex: "0 0 auto" }}
-                />
-              )}
+            {/* Respuestas rápidas — solo con el compositor vacío (menos ruido). */}
+            {!closed && !text && (
+              <div className="ib-quick">
+                {QUICK_REPLIES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      setText(s);
+                      taRef.current?.focus();
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="ib-compose">
               <textarea
+                ref={taRef}
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  // Auto-grow: crece con el contenido hasta el tope del CSS.
+                  e.target.style.height = "auto";
+                  e.target.style.height = Math.min(e.target.scrollHeight, 132) + "px";
+                }}
                 onKeyDown={(e) => {
                   // En comentarios NO auto-enviamos con Enter (evita publicar en
                   // público sin querer); el agente elige público vs privado.
@@ -909,114 +981,112 @@ export function ConversationThread({ conversationId }: { conversationId: string 
                     ? "Reabrir respondiendo…"
                     : isComment
                       ? "Escribe tu respuesta al comentario…"
-                      : "Escribe una respuesta…  (Enter para enviar)"
+                      : "Escribe una respuesta…"
                 }
                 rows={1}
-                style={{
-                  flex: 1,
-                  resize: "none",
-                  maxHeight: 120,
-                  border: "none",
-                  background: "none",
-                  outline: "none",
-                  padding: 0,
-                  fontSize: 14,
-                  color: "var(--text-1)",
-                  fontFamily: "inherit",
-                  lineHeight: 1.4,
-                }}
               />
-              <Btn
-                variant="quiet"
-                size="sm"
-                icon="sparkle"
-                title="Sugerir respuesta con IA (próximamente)"
-                onClick={() => toast("Sugerir respuesta con IA llega pronto.")}
-                style={{ flex: "0 0 auto" }}
-              />
-              {isComment ? (
-                <div className="row gap6" style={{ flex: "0 0 auto" }}>
-                  <Btn
-                    variant="soft"
-                    size="sm"
-                    icon="chat"
-                    onClick={() => runComment("public")}
-                    disabled={replyComment.isPending || !text.trim()}
-                    title="Responder EN PÚBLICO al comentario (visible para todos)"
+              <div className="ib-compose__bar">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  hidden
+                  accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleAttach(f);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  className="ib-iconbtn"
+                  title="Adjuntar archivo (imagen, PDF, audio…)"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                >
+                  <Icon name="paperclip" size={16} />
+                </button>
+                {isWhatsApp && (
+                  <button
+                    type="button"
+                    className="ib-iconbtn"
+                    title="Enviar plantilla de WhatsApp"
+                    onClick={() => setTplOpen(true)}
                   >
-                    {replyComment.isPending ? "…" : "Público"}
-                  </Btn>
-                  <Btn
-                    variant="primary"
-                    size="sm"
-                    icon="send"
-                    onClick={() => runComment("dm")}
-                    disabled={commentToDm.isPending || !text.trim() || conversation.dmSent}
-                    title={
-                      conversation.dmSent
-                        ? "Ya se pasó a privado (Meta permite un solo DM por comentario)"
-                        : "Pasar a privado: enviar un DM al autor del comentario"
-                    }
+                    <Icon name="fileText" size={16} />
+                  </button>
+                )}
+                {isWhatsApp && (
+                  <button
+                    type="button"
+                    className="ib-iconbtn"
+                    title="Enviar un menú de opciones (lista interactiva de WhatsApp)"
+                    onClick={() => setListOpen(true)}
                   >
-                    {commentToDm.isPending ? "…" : conversation.dmSent ? "DM enviado" : "Privado"}
-                  </Btn>
-                </div>
-              ) : (
-                <div className="row gap6" style={{ flex: "0 0 auto" }}>
-                  {isWhatsApp && (
+                    <Icon name="grid" size={16} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="ib-iconbtn"
+                  title="Sugerir respuesta con IA (próximamente)"
+                  onClick={() => toast("Sugerir respuesta con IA llega pronto.")}
+                >
+                  <Icon name="sparkle" size={16} />
+                </button>
+                <span style={{ flex: 1 }} />
+                {isComment ? (
+                  <div className="row gap6" style={{ flex: "0 0 auto" }}>
                     <Btn
                       variant="soft"
                       size="sm"
-                      icon="grid"
-                      onClick={() => setListOpen(true)}
-                      title="Enviar un menú de opciones (lista interactiva de WhatsApp)"
+                      icon="chat"
+                      onClick={() => runComment("public")}
+                      disabled={replyComment.isPending || !text.trim()}
+                      title="Responder EN PÚBLICO al comentario (visible para todos)"
                     >
-                      Lista
+                      {replyComment.isPending ? "…" : "Público"}
                     </Btn>
-                  )}
+                    <Btn
+                      variant="primary"
+                      size="sm"
+                      icon="send"
+                      onClick={() => runComment("dm")}
+                      disabled={commentToDm.isPending || !text.trim() || conversation.dmSent}
+                      title={
+                        conversation.dmSent
+                          ? "Ya se pasó a privado (Meta permite un solo DM por comentario)"
+                          : "Pasar a privado: enviar un DM al autor del comentario"
+                      }
+                    >
+                      {commentToDm.isPending ? "…" : conversation.dmSent ? "DM enviado" : "Privado"}
+                    </Btn>
+                  </div>
+                ) : (
                   <Btn
                     variant="primary"
                     size="sm"
                     icon="send"
                     onClick={send}
                     disabled={reply.isPending || !text.trim()}
-                    title="Enviar"
+                    title="Enviar (Enter)"
                   >
                     {reply.isPending ? "Enviando…" : "Enviar"}
                   </Btn>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
-            {/* Respuestas rápidas — al click rellenan el textarea. */}
-            {!closed && (
-              <div className="row gap8" style={{ marginTop: 9, flexWrap: "wrap" }}>
-                <span className="dim" style={{ fontSize: 11.5 }}>
-                  Respuestas rápidas:
-                </span>
-                {QUICK_REPLIES.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className="pill pill--outline"
-                    style={{ cursor: "pointer" }}
-                    onClick={() => setText(s)}
-                  >
-                    {s}
-                  </button>
-                ))}
+            {/* Nota contextual solo cuando el destino NO es obvio. */}
+            {(isComment || conversation.channel === "mercadolibre") && (
+              <div className="dim" style={{ fontSize: 10.5, marginTop: 6, padding: "0 4px" }}>
+                {isComment
+                  ? "“Público” responde en el hilo del comentario; “Privado” abre un DM al autor (1 vez por comentario, ventana de Meta)."
+                  : conversation.ml?.kind === "question"
+                    ? "La respuesta se publica como respuesta a la pregunta en Mercado Libre."
+                    : "La respuesta se envía por la mensajería post-venta de Mercado Libre."}
               </div>
             )}
-
-            <div className="dim" style={{ fontSize: 10.5, marginTop: 8 }}>
-              {isComment
-                ? "“Público” responde en el hilo del comentario; “Privado” abre un DM al autor (1 vez por comentario, ventana de Meta)."
-                : conversation.channel === "mercadolibre"
-                  ? conversation.ml?.kind === "question"
-                    ? "La respuesta se publica como respuesta a la pregunta en Mercado Libre."
-                    : "La respuesta se envía por la mensajería post-venta de Mercado Libre."
-                  : "La respuesta se envía por la Graph API de Meta al remitente."}
-            </div>
           </>
         )}
       </div>

@@ -4,9 +4,10 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
-import { Btn, Icon, Pill } from "@/components/aria";
+import { Av, Btn, Icon, Pill } from "@/components/aria";
+import { ChannelChip } from "@/components/vox/primitives";
 import { useConversation, useConversationActions } from "@/hooks/useConversations";
-import { CH_LABEL } from "./channelMeta";
+import { CH_LABEL, CH_COLOR, chipType } from "./channelMeta";
 import { ConversationTypifyModal } from "./ConversationTypifyModal";
 
 /**
@@ -79,7 +80,7 @@ const SOURCE_LABEL: Record<string, string> = {
 /** Fila etiqueta → valor del bloque "Contexto del cliente". */
 function ContextRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="row between">
+    <div className="ib-ctxrow">
       <span className="dim">{label}</span>
       {children}
     </div>
@@ -137,12 +138,52 @@ export function CustomerContextPanel({ conversationId }: { conversationId: strin
   const source = lead?.source ? SOURCE_LABEL[lead.source] || lead.source : undefined;
   const hasAnyContext = stage || program || golpes != null || source;
 
+  const displayName =
+    lead?.name || conversation.customerName || conversation.phone || conversation.senderId;
+  const chColor = CH_COLOR[conversation.channel] || "var(--accent)";
+
   return (
     <>
+      {/* ── Identidad del contacto ── */}
+      <div className="ib-id">
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <Av
+            name={displayName}
+            size={56}
+            radius={18}
+            color={`color-mix(in srgb, ${chColor} 16%, transparent)`}
+            style={{ color: chColor }}
+          />
+          <span
+            style={{
+              position: "absolute",
+              right: -5,
+              bottom: -5,
+              transform: "scale(0.8)",
+              transformOrigin: "bottom right",
+            }}
+          >
+            <ChannelChip type={chipType(conversation.channel)} />
+          </span>
+        </div>
+        <div className="trunc" style={{ fontWeight: 750, fontSize: 14.5, marginTop: 10 }}>
+          {displayName}
+        </div>
+        {conversation.phone && (
+          <div className="dim tnum" style={{ fontSize: 12, marginTop: 2 }}>
+            {conversation.phone}
+          </div>
+        )}
+        <div className="row gap6" style={{ justifyContent: "center", marginTop: 9 }}>
+          <Pill tone="outline">{channelLabel}</Pill>
+          <Pill tone={linked ? "green" : "outline"}>{linked ? "Vinculado" : "Sin vincular"}</Pill>
+        </div>
+      </div>
+
       {/* ── Contexto del cliente ── */}
-      <div style={{ padding: "18px 18px 8px" }}>
-        <div className="row" style={{ marginBottom: 14, gap: 7 }}>
-          <b style={{ fontSize: 14 }}>Contexto del cliente</b>
+      <div className="ib-ctxcard">
+        <div className="row" style={{ marginBottom: 6, gap: 7 }}>
+          <b style={{ fontSize: 13 }}>Contexto del cliente</b>
           <span
             className="dim"
             title="Todo el historial cross-canal del contacto, unificado desde tu base de leads (y Salesforce)."
@@ -153,12 +194,7 @@ export function CustomerContextPanel({ conversationId }: { conversationId: strin
         </div>
 
         {linked ? (
-          <div className="col gap10" style={{ fontSize: 13 }}>
-            <ContextRow label="Contacto">
-              <b className="trunc" style={{ maxWidth: 150 }}>
-                {lead?.name || conversation.customerName || conversation.phone || "—"}
-              </b>
-            </ContextRow>
+          <div style={{ fontSize: 13 }}>
             {stage && (
               <ContextRow label="Etapa">
                 <Pill tone="accent">{stage}</Pill>
@@ -169,9 +205,6 @@ export function CustomerContextPanel({ conversationId }: { conversationId: strin
                 <b>{program}</b>
               </ContextRow>
             )}
-            <ContextRow label="Canal principal">
-              <b>{channelLabel}</b>
-            </ContextRow>
             {golpes != null && (
               <ContextRow label="Toques">
                 <b className="tnum" title="Golpes: llamadas + WhatsApp + email + gestiones">
@@ -184,17 +217,12 @@ export function CustomerContextPanel({ conversationId }: { conversationId: strin
                 <b>{source}</b>
               </ContextRow>
             )}
-            {conversation.phone && (
-              <ContextRow label="Teléfono">
-                <b className="tnum">{conversation.phone}</b>
-              </ContextRow>
-            )}
             {!hasAnyContext && (
-              <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+              <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5, padding: "4px 0" }}>
                 Vinculado, pero aún no hay más contexto para este contacto.
               </div>
             )}
-            <div style={{ marginTop: 4 }}>
+            <div style={{ marginTop: 8 }}>
               <Btn
                 variant="quiet"
                 size="sm"
@@ -209,9 +237,6 @@ export function CustomerContextPanel({ conversationId }: { conversationId: strin
           </div>
         ) : (
           <div className="col gap10" style={{ fontSize: 13 }}>
-            <ContextRow label="Canal principal">
-              <b>{channelLabel}</b>
-            </ContextRow>
             {!picking ? (
               <>
                 <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
@@ -324,51 +349,45 @@ export function CustomerContextPanel({ conversationId }: { conversationId: strin
       </div>
 
       {/* ── Sugerencia IA (placeholder honesto: aún no hay backend de sugerencias) ── */}
-      <div style={{ padding: "8px 18px" }}>
-        <div
-          className="tl__note"
-          style={{
-            background: "var(--iris-soft)",
-            border: "1px solid color-mix(in srgb, var(--iris) 22%, transparent)",
-            color: "var(--text-1)",
-          }}
-        >
-          <div className="row gap8" style={{ fontWeight: 700, marginBottom: 4 }}>
-            <Icon name="sparkle" size={15} style={{ color: "var(--iris-2)" }} />
-            Sugerencia IA
-          </div>
-          <span className="dim" style={{ fontSize: 12.5 }}>
-            Las sugerencias contextuales de respuesta llegarán aquí muy pronto.
-          </span>
+      <div className="ib-ctxcard" style={{ background: "var(--iris-soft)" }}>
+        <div className="row gap8" style={{ fontWeight: 700, marginBottom: 4, fontSize: 13 }}>
+          <Icon name="sparkle" size={15} style={{ color: "var(--iris-2)" }} />
+          Sugerencia IA
         </div>
+        <span className="dim" style={{ fontSize: 12.5 }}>
+          Las sugerencias contextuales de respuesta llegarán aquí muy pronto.
+        </span>
       </div>
 
       {/* ── Acciones rápidas ── */}
-      <div style={{ padding: "12px 18px" }}>
+      <div style={{ padding: "14px 14px 18px" }}>
         <div className="eyebrow" style={{ marginBottom: 10 }}>
           Acciones rápidas
         </div>
-        <div className="col gap8">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <Btn
-            variant="ghost"
+            variant="soft"
+            size="sm"
             icon="calendar"
             style={{ justifyContent: "flex-start" }}
             onClick={() => navigate("/appointments")}
           >
-            Agendar llamada
+            Agendar
           </Btn>
           <Btn
-            variant="ghost"
+            variant="soft"
+            size="sm"
             icon="tag"
             style={{ justifyContent: "flex-start" }}
             onClick={() => setTypifyOpen(true)}
           >
-            Tipificar contacto
+            Tipificar
           </Btn>
           <Btn
-            variant="ghost"
+            variant="soft"
+            size="sm"
             icon="userplus"
-            style={{ justifyContent: "flex-start" }}
+            style={{ justifyContent: "flex-start", gridColumn: "1 / -1" }}
             onClick={() => navigate("/leads")}
           >
             Ver ficha completa
