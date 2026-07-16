@@ -13,7 +13,7 @@ import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import { useUsers } from "@/hooks/useUsers";
-import { chipType, CH_LABEL } from "./channelMeta";
+import { chipType, CH_LABEL, displayName } from "./channelMeta";
 import { ConversationTypifyModal } from "./ConversationTypifyModal";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -543,7 +543,7 @@ export function ConversationThread({ conversationId }: { conversationId: string 
     );
   }
 
-  const name = conversation.customerName || conversation.senderId;
+  const name = displayName(conversation);
   const closed = conversation.status === "closed";
   const assignee = conversation.assignee;
   const myEmail = user?.email || user?.userId || "";

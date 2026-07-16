@@ -7,7 +7,7 @@ import { authedFetch } from "@/lib/authedFetch";
 import { Av, Btn, Icon, Pill } from "@/components/aria";
 import { ChannelChip } from "@/components/vox/primitives";
 import { useConversation, useConversationActions } from "@/hooks/useConversations";
-import { CH_LABEL, CH_COLOR, chipType } from "./channelMeta";
+import { CH_LABEL, CH_COLOR, chipType, displayName as convDisplayName } from "./channelMeta";
 import { ConversationTypifyModal } from "./ConversationTypifyModal";
 
 /**
@@ -138,8 +138,9 @@ export function CustomerContextPanel({ conversationId }: { conversationId: strin
   const source = lead?.source ? SOURCE_LABEL[lead.source] || lead.source : undefined;
   const hasAnyContext = stage || program || golpes != null || source;
 
-  const displayName =
-    lead?.name || conversation.customerName || conversation.phone || conversation.senderId;
+  // El nombre del lead vinculado manda; si no, el nombre a mostrar de la
+  // conversación (nunca el ID crudo → teléfono formateado o etiqueta de canal).
+  const displayName = lead?.name || convDisplayName(conversation);
   const chColor = CH_COLOR[conversation.channel] || "var(--accent)";
 
   return (

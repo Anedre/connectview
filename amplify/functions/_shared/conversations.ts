@@ -272,12 +272,24 @@ export async function appendInbound(
     messageId?: string;
     /** Meta multi-cuenta: id de la cuenta receptora (page/ig id = entry.id). */
     metaAccountId?: string;
+    /** Lead ya resuelto por el caller (auto-vínculo). Persiste `conv.leadId`. */
+    leadId?: string;
+  },
+  /** Opcional: resolver el lead por teléfono para AUTO-VINCULAR la conversación
+   *  (persiste `leadId` + `customerName`) sin que el agente lo haga a mano. Solo
+   *  se invoca cuando hay teléfono, aún no hay lead vinculado, y la conversación
+   *  es nueva o el teléfono se acaba de detectar → evita scanear en cada mensaje
+   *  de un número desconocido. El caller inyecta el resolver ya con el dynamo del
+   *  tenant activo (getLeadByPhone), así este módulo no acopla con leadSync. */
+  opts?: {
+    resolveLead?: (phone: string) => Promise<{ leadId?: string; name?: string } | null>;
   },
 ): Promise<Conversation> {
   const now = m.ts || new Date().toISOString();
-  const conv =
-    (await getConversation(dynamo, convId(m.channel, m.senderId))) ||
-    blank(m.channel, m.senderId, now, m.tenantId);
+  const existing = await getConversation(dynamo, convId(m.channel, m.senderId));
+  const isNew = !existing;
+  const conv = existing || blank(m.channel, m.senderId, now, m.tenantId);
+  const hadPhone = !!conv.phone;
   conv.messages = [
     ...(conv.messages || []).slice(-199),
     { id: randomUUID(), direction: "in", text: m.text, ts: now, attachment: m.attachment },
@@ -288,6 +300,7 @@ export async function appendInbound(
   conv.lastMessageAt = now;
   conv.lastMessagePreview = (m.text || "").slice(0, 120) || "[adjunto]";
   if (m.customerName) conv.customerName = m.customerName;
+  if (m.leadId && !conv.leadId) conv.leadId = m.leadId;
   // SEC-C1: persistimos el `tenantId` del webhook receptor (dueño de la fila en
   // la tabla pooled) para que el listado pueda filtrar por tenant. Novasys legacy
   // pasa "" (fila sin dueño) → queda sin `tenantId` y el listado legacy la incluye.
@@ -300,6 +313,27 @@ export async function appendInbound(
   // En WhatsApp el remitente ES el teléfono → identidad directa (auto-vínculo).
   if (m.channel === "whatsapp" && !conv.phone) {
     conv.phone = normalizePhone(m.senderId)?.e164 || `+${m.senderId.replace(/\D/g, "")}`;
+  }
+
+  // ── Auto-vínculo al lead por teléfono ─────────────────────────────────────
+  // Si tenemos teléfono y aún NO hay lead vinculado, resolvemos el lead por su
+  // número y guardamos `leadId` + el `customerName` REAL. Así la bandeja muestra
+  // el NOMBRE del cliente (no el número/ID) y el chat queda ligado al Cliente 360
+  // sin que el agente lo haga a mano. Solo si la conversación es nueva o el
+  // teléfono se acaba de detectar → no scaneamos leads en cada mensaje.
+  const phoneJustAppeared = !hadPhone && !!conv.phone;
+  if (conv.phone && !conv.leadId && opts?.resolveLead && (isNew || phoneJustAppeared)) {
+    try {
+      const lead = await opts.resolveLead(conv.phone);
+      if (lead?.leadId) conv.leadId = lead.leadId;
+      // El nombre del lead solo pisa un `customerName` ausente o que no aporta
+      // (era el senderId crudo). Un nombre real ya resuelto (p.ej. de Graph) gana.
+      if (lead?.name && (!conv.customerName || conv.customerName === m.senderId)) {
+        conv.customerName = lead.name;
+      }
+    } catch {
+      /* best-effort: sin vínculo automático, el agente puede hacerlo a mano */
+    }
   }
   // Regla de negocio: una conversación cerrada SOLO se reabre cuando el cliente
   // escribe. Al reabrir, el bot atiende primero de nuevo (assignee="bot"),

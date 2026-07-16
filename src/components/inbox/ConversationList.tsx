@@ -2,7 +2,7 @@ import { ChannelChip } from "@/components/vox/primitives";
 import { Av } from "@/components/aria";
 import { useConnectAuth } from "@/context/ConnectAuthContext";
 import type { Conversation } from "@/hooks/useConversations";
-import { chipType, CH_COLOR } from "./channelMeta";
+import { chipType, CH_COLOR, displayName } from "./channelMeta";
 import { slaInfo, fmtWait, slaChipStyle } from "./sla";
 
 /** Primer nombre/token corto para el chip de dueño en la lista. */
@@ -53,7 +53,7 @@ export function ConversationList({
   return (
     <>
       {conversations.map((c) => {
-        const name = c.customerName || c.senderId;
+        const name = displayName(c);
         const active = c.conversationId === selectedId;
         const color = CH_COLOR[c.channel] || "var(--accent)";
         const sla = slaInfo(c);

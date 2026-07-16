@@ -397,13 +397,27 @@ async function handleInbound(
   // La tabla `connectview-conversations` es pooled → usamos el dynamo legacy.
   let mirrored: Awaited<ReturnType<typeof appendInbound>> | null = null;
   try {
-    mirrored = await appendInbound(legacyDynamo, {
-      channel: "whatsapp",
-      senderId: from,
-      text,
-      tenantId: t.tenantId,
-      messageId, // id del inbound → para el read-receipt del agente (markRead)
-    });
+    mirrored = await appendInbound(
+      legacyDynamo,
+      {
+        channel: "whatsapp",
+        senderId: from,
+        text,
+        tenantId: t.tenantId,
+        messageId, // id del inbound → para el read-receipt del agente (markRead)
+      },
+      {
+        // Auto-vínculo: resuelve el lead por su teléfono → la bandeja muestra el
+        // NOMBRE del cliente y el chat queda ligado al Cliente 360 sin trabajo
+        // del agente. getLeadByPhone usa el `activeDynamo`, así que activamos el
+        // del tenant justo antes (los STOP/ALTA ya lo hacen en su rama).
+        resolveLead: async (phone) => {
+          setActiveDynamo(dynamo);
+          const lead = await getLeadByPhone(phone);
+          return lead ? { leadId: lead.leadId, name: lead.name } : null;
+        },
+      },
+    );
   } catch (e) {
     console.error("mirror WhatsApp→inbox falló:", e);
   }
