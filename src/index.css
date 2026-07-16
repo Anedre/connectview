@@ -172,12 +172,15 @@ textarea {
     box-shadow 0.16s ease,
     border-color 0.16s ease;
 }
+/* Foco de CUALQUIER campo de la app, en el color de MARCA. Era `--accent-amber`
+   → borde + halo DORADOS en todo input/select/textarea (ajeno al navy/teal de
+   ARIA): era el origen real del "marco dorado" al escribir. */
 input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="file"])):focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: var(--accent-amber);
-  box-shadow: 0 0 0 3px var(--accent-amber-soft);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-1));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 .tb__search input:focus,
 .searchbox input:focus,
@@ -5027,8 +5030,12 @@ textarea:focus {
   box-shadow: none;
   filter: none;
 }
+/* Anillo de foco en el color de MARCA (era `--accent-amber` → dorado en CADA
+   botón al navegar con teclado, ajeno al navy/teal de ARIA; mismo defecto que
+   el `--ring` dorado). Se mantiene el `outline` propio en vez de heredar el
+   halo global porque `.btn` ya declara su `box-shadow` y lo taparía. */
 .btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent-amber) 55%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
   outline-offset: 2px;
 }
 
@@ -5162,8 +5169,8 @@ textarea:focus {
   border-color: var(--border-strong) !important;
 }
 .wa-tmpl :is(input, select, textarea):focus {
-  border-color: var(--accent-amber) !important;
-  box-shadow: 0 0 0 3px var(--accent-amber-soft);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-1)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 .wa-tmpl #wa-editor {
   box-shadow: var(--shadow-card);
@@ -7842,12 +7849,13 @@ textarea:focus {
 .vox-field:hover {
   border-color: var(--border-strong);
 }
+/* Foco en el color de MARCA (era `--accent-amber` → borde + halo dorados). */
 .vox-field:focus,
 .vox-field:focus-visible {
-  border-color: color-mix(in srgb, var(--accent-amber) 55%, var(--border-1));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-1));
   box-shadow:
     inset 0 1px 2px rgba(0, 0, 0, 0.08),
-    0 0 0 3px color-mix(in srgb, var(--accent-amber) 16%, transparent);
+    0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 select.vox-field {
   cursor: pointer;
@@ -14958,11 +14966,12 @@ select.wf-input {
   border-color: var(--border-strong);
   background: var(--bg-2);
 }
+/* Foco en el color de MARCA (era `--gold` → halo dorado, ajeno al navy/teal). */
 .arb-inspect .wf-input:focus,
 .arb-inspect [data-slot="select-trigger"]:focus-visible,
 .arb-inspect [data-slot="select-trigger"][data-popup-open] {
-  border-color: var(--gold);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 22%, transparent);
+  border-color: var(--accent);
+  box-shadow: var(--ring);
   outline: none;
 }
 
