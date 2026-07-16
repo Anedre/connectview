@@ -13807,8 +13807,13 @@ textarea.vox-field {
    Ref: design/02-sistema-de-diseno-premium.md
    ============================================================ */
 :root {
-  /* Foco (P2) — un solo anillo tokenizado */
-  --ring: var(--accent-amber);
+  /* Foco (P2) — `--ring` NO se redefine aquí a propósito: lo declara
+     aria-base.css como SOMBRA completa (`0 0 0 3px …`) y así lo consumen sus 3
+     usuarios (`box-shadow: var(--ring)`). Antes este bloque lo pisaba con
+     `var(--accent-amber)` — un COLOR — y como ambas reglas de foco empatan en
+     especificidad, el ganador dependía del ORDEN DE CARGA: en el build salía el
+     marco DORADO (ajeno al navy de ARIA) y en dev el halo azul. Un token, un
+     significado: sombra. */
   --ring-offset: var(--bg-0);
 
   /* Overlays / modales — unifica las 3 recetas de scrim */
@@ -13891,7 +13896,10 @@ textarea.vox-field {
 
 /* ── Foco de teclado global (P2 · WCAG 2.4.7) ──────────────────
    :where() = especificidad 0 → no pisa estilos existentes y es
-   fácil de sobreescribir por componente. Solo aplica con teclado. */
+   fácil de sobreescribir por componente. Solo aplica con teclado.
+   Dibuja el MISMO anillo que `:focus-visible` de aria-base.css (halo
+   `--ring`): al empatar en especificidad, si dijeran cosas distintas ganaría
+   quien cargue último — y el resultado cambiaría entre dev y el build. */
 :where(
   a[href],
   button,
@@ -13911,8 +13919,8 @@ textarea.vox-field {
   [role="radio"],
   [tabindex]:not([tabindex="-1"])
 ):focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--ring);
   border-radius: var(--radius-1);
 }
 

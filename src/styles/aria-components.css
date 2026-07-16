@@ -1292,7 +1292,6 @@
 }
 .ib-search:focus-within {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border-1));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .ib-search input {
   flex: 1;
@@ -1303,6 +1302,12 @@
   font: inherit;
   font-size: 13px;
   color: var(--text-1);
+}
+/* El campo NO dibuja anillo propio: el contenedor ya marca el foco. Sin esto,
+   el foco global (halo `--ring`) pinta un rectángulo DENTRO de otro. */
+.ib-search input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 .ib-filters {
   display: flex;
@@ -1543,11 +1548,9 @@
     border-color 0.15s,
     box-shadow 0.15s;
 }
+/* Foco discreto: el borde se define un poco más y nada más — sin halo. */
 .ib-compose:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-2));
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent),
-    var(--sh-2);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border-2));
 }
 .ib-compose textarea {
   display: block;
@@ -1562,6 +1565,13 @@
   line-height: 1.5;
   color: var(--text-1);
   max-height: 132px;
+}
+/* El textarea NO dibuja anillo propio: está dentro de la tarjeta, que ya marca
+   el foco. Sin esto, el foco global (halo `--ring`) dibuja un rectángulo dentro
+   de otro — el "marco" que se veía al hacer clic para escribir. */
+.ib-compose textarea:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 .ib-compose__bar {
   display: flex;
