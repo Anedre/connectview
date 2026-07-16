@@ -50,3 +50,10 @@ Tres sabores:
 ## Recomendación
 
 Lo urgente y visible está arreglado. Lo de fondo es que **el sistema depende del orden de carga en vez de declararlo**: mover a `@layer` mataría la clase entera de bug (los empates dejarían de depender del orden). Es un cambio acotado (3 `@layer` + envolver los archivos) pero toca todo → merece su propia sesión con verificación visual página por página.
+
+## Revisión de los pendientes (2026-07-16)
+
+Al evaluarlos para acción:
+
+- **Los 4 "pendientes de decisión" (1-4) son residuo del re-skin ARIA, NO bugs visibles.** El tema muerto de `.hg`, el grid muerto de `.app`/`.app__*`, el borde ámbar de `.btn--primary` y el `.btn--ghost` "invertido" son todos CSS viejo de Vox que el re-skin ARIA (aria-base/aria-components) pisa a propósito. Lo que se RENDERIZA hoy es el look ARIA que el usuario aprobó en toda la sesión — plano/navy sobrio, no gradiente. Cambiar los botones a gradiente iría CONTRA la estética actual aprobada. Conclusión: **no son bugs, no se tocan**; limpiar el código muerto es higiene de bajo valor y no-cero riesgo (el shell `.app` es lo más central) → se deja documentado aquí para una limpieza dedicada futura, no vale el riesgo ahora.
+- **El único de valor real es el `@layer` (punto 5).** Mata la clase entera de bug (empates decididos por orden de carga). Pendiente de decisión del usuario: es un refactor que toca los 5 CSS y requiere verificación página por página.
