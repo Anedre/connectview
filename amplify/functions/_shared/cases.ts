@@ -127,7 +127,11 @@ function addMinutes(iso: string, mins: number): string {
 }
 
 /** Inicializa el SLA de un caso nuevo a partir de la política de su prioridad. */
-function initialSla(priority: CasePriority, createdAt: string, policies?: SlaPolicy[]): CaseSla {
+export function initialSla(
+  priority: CasePriority,
+  createdAt: string,
+  policies?: SlaPolicy[],
+): CaseSla {
   const p =
     policies?.find((x) => x.priority === priority) ??
     ({ priority, ...DEFAULT_SLA[priority] } as SlaPolicy);
@@ -136,6 +140,34 @@ function initialSla(priority: CasePriority, createdAt: string, policies?: SlaPol
     resolutionDueAt: addMinutes(createdAt, p.resolutionMins),
     pausedMs: 0,
   };
+}
+
+/**
+ * Avanza el reloj SLA ante una transición `from → to` (función PURA, testeable):
+ *  · entrar a pending/on_hold → marca `pausedSince` (el reloj de resolución pausa).
+ *  · salir de un estado pausado → acumula el tiempo en `pausedMs`.
+ *  · llegar a solved/closed → registra `resolvedAt`.
+ *  · reabrir → limpia `resolvedAt` (el reloj vuelve a correr).
+ * `now` se inyecta (ISO) para no depender del reloj real en los tests.
+ */
+export function advanceSla(
+  prev: CaseSla | undefined,
+  from: CaseStatus,
+  to: CaseStatus,
+  now: string,
+): CaseSla {
+  const sla: CaseSla = { ...(prev || {}) };
+  if (PAUSED_STATES.has(from) && !PAUSED_STATES.has(to) && sla.pausedSince) {
+    const delta = new Date(now).getTime() - new Date(sla.pausedSince).getTime();
+    sla.pausedMs = (sla.pausedMs || 0) + Math.max(0, delta);
+    sla.pausedSince = undefined;
+  }
+  if (!PAUSED_STATES.has(from) && PAUSED_STATES.has(to)) {
+    sla.pausedSince = now;
+  }
+  if (RESOLVED_STATES.has(to) && !sla.resolvedAt) sla.resolvedAt = now;
+  if (!RESOLVED_STATES.has(to) && sla.resolvedAt) sla.resolvedAt = undefined;
+  return sla;
 }
 
 // ───────────────────────── helpers de tabla ─────────────────────────────────
@@ -333,22 +365,7 @@ export async function transitionCase(
     throw new Error(`transición no permitida: ${c.status} → ${to}`);
   }
   const now = new Date().toISOString();
-  const sla: CaseSla = { ...(c.sla || {}) };
-
-  // Salir de un estado pausado → acumular el tiempo pausado.
-  if (PAUSED_STATES.has(c.status) && !PAUSED_STATES.has(to) && sla.pausedSince) {
-    const delta = new Date(now).getTime() - new Date(sla.pausedSince).getTime();
-    sla.pausedMs = (sla.pausedMs || 0) + Math.max(0, delta);
-    sla.pausedSince = undefined;
-  }
-  // Entrar a un estado pausado → marcar desde cuándo.
-  if (!PAUSED_STATES.has(c.status) && PAUSED_STATES.has(to)) {
-    sla.pausedSince = now;
-  }
-  // Resolver → registrar el instante.
-  if (RESOLVED_STATES.has(to) && !sla.resolvedAt) sla.resolvedAt = now;
-  // Reabrir → limpiar resolvedAt (vuelve a correr el reloj).
-  if (!RESOLVED_STATES.has(to) && sla.resolvedAt) sla.resolvedAt = undefined;
+  const sla = advanceSla(c.sla, c.status, to, now);
 
   const ev: CaseEvent = { ts: now, type: "status_change", from: c.status, to, agent: opts.agent };
   if (opts.note) ev.note = opts.note;
