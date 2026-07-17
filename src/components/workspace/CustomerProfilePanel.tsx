@@ -224,10 +224,29 @@ export function CustomerProfilePanel({
   agentUsername = "",
 }: CustomerProfilePanelProps) {
   const [tab, setTab] = useState<C360Tab>("perfil");
-  const tabbed = !!contactId;
+  // CON contacto activo → las 4 pestañas.
+  // SIN contacto pero CON teléfono (el buscador de Cliente 360 en idle) → Perfil
+  // + Casos: los casos de un cliente se consultan/crean sin estar en llamada (es
+  // como se trabaja soporte). "Historial" ya vive dentro del Perfil y "Notas"
+  // requiere contactId, así que ésas quedan sólo en el modo con contacto.
+  // Sin teléfono ni contacto → sólo el Perfil (con su vacío honesto).
+  const tabbed = !!contactId || !!phone;
 
-  // Sin contacto → comportamiento previo: sólo el Perfil (que a su vez muestra
-  // su propio estado vacío honesto cuando no hay teléfono).
+  const TABS: [C360Tab, string][] = contactId
+    ? [
+        ["perfil", "Perfil"],
+        ["historial", "Historial"],
+        ["notas", "Notas"],
+        ["casos", "Casos"],
+      ]
+    : [
+        ["perfil", "Perfil"],
+        ["casos", "Casos"],
+      ];
+  // Si la pestaña activa no existe en este modo (p.ej. se cayó el contacto
+  // estando en Notas), caemos a Perfil en vez de mostrar un panel vacío.
+  const activeTab: C360Tab = TABS.some(([id]) => id === tab) ? tab : "perfil";
+
   if (!tabbed) {
     return (
       <CustomerProfileContent
@@ -239,25 +258,18 @@ export function CustomerProfilePanel({
     );
   }
 
-  const TABS: [C360Tab, string][] = [
-    ["perfil", "Perfil"],
-    ["historial", "Historial"],
-    ["notas", "Notas"],
-    ["casos", "Casos"],
-  ];
-
   return (
     <div data-debug-component="Cliente360Tabbed">
       <div className="c360-tabs">
         {TABS.map(([id, label]) => (
-          <button key={id} type="button" aria-pressed={tab === id} onClick={() => setTab(id)}>
+          <button key={id} type="button" aria-pressed={activeTab === id} onClick={() => setTab(id)}>
             {label}
           </button>
         ))}
       </div>
 
       {/* Perfil — cuerpo real intacto. */}
-      <div style={{ display: tab === "perfil" ? "block" : "none" }}>
+      <div style={{ display: activeTab === "perfil" ? "block" : "none" }}>
         <CustomerProfileContent
           phone={phone}
           isActive={isActive}
@@ -266,18 +278,20 @@ export function CustomerProfilePanel({
         />
       </div>
 
-      {/* Historial — contactos previos del cliente (panel real). */}
-      <div style={{ display: tab === "historial" ? "block" : "none" }}>
-        <ContactHistoryPanel phone={phone} />
-      </div>
+      {/* Historial + Notas — sólo con contacto activo (Notas requiere contactId). */}
+      {contactId && (
+        <>
+          <div style={{ display: activeTab === "historial" ? "block" : "none" }}>
+            <ContactHistoryPanel phone={phone} />
+          </div>
+          <div style={{ display: activeTab === "notas" ? "block" : "none" }}>
+            <AgentNotesPanel contactId={contactId} agentUsername={agentUsername} />
+          </div>
+        </>
+      )}
 
-      {/* Notas — notas del agente para este contacto (panel real). */}
-      <div style={{ display: tab === "notas" ? "block" : "none" }}>
-        <AgentNotesPanel contactId={contactId ?? null} agentUsername={agentUsername} />
-      </div>
-
-      {/* Casos — Amazon Connect Cases (panel real). */}
-      <div style={{ display: tab === "casos" ? "block" : "none" }}>
+      {/* Casos — primitiva Case/Ticket de ARIA (design/case-primitiva.md). */}
+      <div style={{ display: activeTab === "casos" ? "block" : "none" }}>
         <CasesPanel contactId={contactId ?? null} customerPhone={phone} />
       </div>
     </div>
