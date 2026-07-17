@@ -126,6 +126,11 @@ interface ApiEndpoints {
   uploadConversationMedia?: string;
   // Native appointment scheduling — CRUD over connectview-appointments.
   manageAppointment?: string;
+  // Primitiva Case/Ticket (eje C · design/case-primitiva.md) — CRUD + transiciones
+  // de estado con SLA sobre connectview-cases. Build-ahead: aparece al desplegar
+  // manage-cases (deploy-lambda.mjs). Sin él, el panel de casos degrada a la vista
+  // de deep-link a Amazon Connect Cases.
+  manageCases?: string;
   // Granular RBAC matrix — capability → minimum role. useCan() checks it.
   managePermissions?: string;
   // Visual chat-flow builder (Salesbot equivalent #16) — CRUD over

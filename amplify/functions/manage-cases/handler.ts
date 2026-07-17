@@ -79,6 +79,7 @@ export const handler: Handler = async (event: any) => {
         queueId: params.queueId ? String(params.queueId) : undefined,
         assigneeAgentId: params.assignee ? String(params.assignee) : undefined,
         programId: params.programId ? String(params.programId) : undefined,
+        phone: params.phone ? String(params.phone) : undefined,
         limit: params.limit ? Math.min(1000, Math.max(1, Number(params.limit) || 200)) : undefined,
       });
       return ok({ cases, count: cases.length });

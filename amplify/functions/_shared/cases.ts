@@ -252,6 +252,8 @@ export interface ListCasesOpts {
   queueId?: string;
   assigneeAgentId?: string;
   programId?: string;
+  /** Teléfono del cliente (E.164) — para el panel de casos por-contacto. */
+  phone?: string;
   limit?: number;
 }
 
@@ -283,6 +285,7 @@ export async function listCases(
         if (opts.queueId && row.queueId !== opts.queueId) continue;
         if (opts.assigneeAgentId && row.assigneeAgentId !== opts.assigneeAgentId) continue;
         if (opts.programId && row.programId !== opts.programId) continue;
+        if (opts.phone && row.phone !== opts.phone) continue;
         out.push(row);
       }
       ESK = r.LastEvaluatedKey as Record<string, unknown> | undefined;
