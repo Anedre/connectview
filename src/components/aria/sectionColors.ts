@@ -21,6 +21,7 @@ export const SECTION_COLOR: Record<string, string> = {
   agente: "var(--iris)",
   appointments: "var(--cyan)",
   reports: "var(--accent)",
+  tipificaciones: "var(--gold)",
   recordings: "var(--coral)",
   admin: "var(--accent)",
 };
@@ -39,6 +40,7 @@ const PATH_COLOR: [string, string][] = [
   ["/agente", "var(--iris)"],
   ["/appointments", "var(--cyan)"],
   ["/reports", "var(--accent)"],
+  ["/tipificaciones", "var(--gold)"],
   ["/recordings", "var(--coral)"],
   ["/admin", "var(--accent)"],
 ];

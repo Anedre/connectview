@@ -105,6 +105,11 @@ const CAP_META: Record<string, { label: string; desc: string; icon: React.Elemen
     desc: "Ver el centro de grabaciones.",
     icon: Icon.Disc,
   },
+  view_tipificaciones: {
+    label: "Tipificaciones",
+    desc: "Ver el dashboard de últimas tipificaciones.",
+    icon: Icon.Tag,
+  },
   view_settings: {
     label: "Configuración",
     desc: "Ver Configuración (integraciones, equipo, seguridad).",
@@ -186,6 +191,7 @@ const SECTION_CAPS = [
   "view_agente_ai",
   "view_appointments",
   "view_reports",
+  "view_tipificaciones",
   "view_recordings",
   "view_settings",
 ] as const;

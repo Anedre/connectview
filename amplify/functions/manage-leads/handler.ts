@@ -562,6 +562,38 @@ async function queryMembership(programId: string): Promise<Map<string, string | 
   return m;
 }
 
+/** Todos los memberships (lead↔programa) en un solo scan → Map<leadId,
+ *  Array<{programId, stageId}>>. Para la vista de Tipificaciones (UDEP) en modo
+ *  "todos los programas": resolver la columna Programa y el stacked de
+ *  % estado × programa sin un query por lead. */
+async function allMemberships(): Promise<
+  Map<string, Array<{ programId: string; stageId?: string }>>
+> {
+  const m = new Map<string, Array<{ programId: string; stageId?: string }>>();
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const res = await dynamo.send(
+      new ScanCommand({
+        TableName: MEMBERSHIP,
+        ProjectionExpression: "programId, leadId, stageId",
+        ExclusiveStartKey: lastKey as never,
+      }),
+    );
+    for (const it of res.Items || []) {
+      const r = unmarshall(it);
+      const leadId = String(r.leadId);
+      const arr = m.get(leadId) || [];
+      arr.push({
+        programId: String(r.programId),
+        stageId: r.stageId ? String(r.stageId) : undefined,
+      });
+      m.set(leadId, arr);
+    }
+    lastKey = res.LastEvaluatedKey;
+  } while (lastKey);
+  return m;
+}
+
 /** Pilar 1: set de TODOS los leadId que pertenecen a algún programa (para "Sin programa"). */
 async function scanAssignedLeadIds(): Promise<Set<string>> {
   const s = new Set<string>();
@@ -720,6 +752,80 @@ export const handler: Handler = async (event: any) => {
             byBucket,
             byChannel,
             byStage,
+          },
+        });
+      }
+
+      // Vista "Últimas Tipificaciones" (UDEP · dashboard tipo QuickSight): una
+      // fila por lead con estado/sub-estado/agente/origen/programa + fecha de la
+      // última tipificación (sacada del history). El front agrega los KPIs y
+      // gráficos y filtra en vivo (agente/estado/sub-estado/origen/fecha), por eso
+      // devolvemos las filas crudas. Scope grueso por programa server-side.
+      if (params.report === "typifications") {
+        const TYPE_ROWS_CAP = 5000;
+        const wantProgram =
+          params.programId && params.programId !== "all" && params.programId !== "none"
+            ? String(params.programId)
+            : null;
+        const noneProgram = params.programId === "none";
+
+        let leads = all;
+        let memByLead: Map<string, string | undefined> | null = null;
+        if (wantProgram) {
+          memByLead = await queryMembership(wantProgram);
+          leads = all.filter((l) => memByLead!.has(l.leadId));
+        } else if (noneProgram) {
+          const assigned = await scanAssignedLeadIds();
+          leads = all.filter((l) => !assigned.has(l.leadId));
+        }
+        // programIds por lead (columna Programa + stacked) solo en modo amplio.
+        const allMem = wantProgram ? null : await allMemberships();
+
+        const truncated = leads.length > TYPE_ROWS_CAP;
+        const scoped = leads.slice().sort(byUpdatedDesc).slice(0, TYPE_ROWS_CAP);
+
+        const rows = scoped.map((l) => {
+          const h = Array.isArray(l.history) ? l.history : [];
+          // Última TIPIFICACIÓN real: el evento más reciente con etiqueta de etapa
+          // o de gestión (ignora email_opened / whatsapp_out / etc.). Si el lead
+          // nunca se tipificó (p.ej. "Nuevo Lead" recién importado) queda null,
+          // igual que el QuickSight muestra Fec./Hora Tipificación en null.
+          let typ: LeadHistoryEvent | undefined;
+          for (let i = h.length - 1; i >= 0; i--) {
+            const e = h[i];
+            if (e.stageLabel || e.type === "stage_change" || e.type === "gestion") {
+              typ = e;
+              break;
+            }
+          }
+          const effStageId = wantProgram ? memByLead!.get(l.leadId) || l.stageId : l.stageId;
+          const programIds = wantProgram
+            ? [wantProgram]
+            : (allMem!.get(l.leadId) || []).map((x) => x.programId);
+          return {
+            leadId: l.leadId,
+            phone: l.phone,
+            name: l.name || null,
+            email: l.email || null,
+            source: l.source || null,
+            agent: typ?.agent || l.assignedAgent || null,
+            programIds,
+            stageId: effStageId || null,
+            stageLabel: typ?.stageLabel || null,
+            subStageLabel: typ?.subStageLabel || null,
+            typifiedAt: typ?.ts || null,
+            comments: typ?.notes || typ?.summary || null,
+            createdAt: l.createdAt || null,
+            updatedAt: l.updatedAt || null,
+          };
+        });
+
+        return ok({
+          typifications: {
+            rows,
+            total: leads.length,
+            truncated,
+            generatedAt: new Date().toISOString(),
           },
         });
       }
