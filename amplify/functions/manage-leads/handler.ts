@@ -956,17 +956,32 @@ export const handler: Handler = async (event: any) => {
         if (!Array.isArray(raw) || raw.length === 0)
           return bad(400, "contacts requeridos (array no vacío)");
         if (raw.length > 5000) return bad(400, "Máximo 5000 contactos por lote");
+        const str = (v: unknown): string | undefined => {
+          const s = v == null ? "" : String(v).trim();
+          return s || undefined;
+        };
+        const VALS = new Set(["inicial", "positiva", "negativa", "cierre"]);
         const contacts = (raw as Array<Record<string, unknown>>)
           .map((c) => ({
             phone: String(c.phone ?? "").trim(),
-            customerName:
-              c.name || c.customerName
-                ? String(c.name ?? c.customerName).trim() || undefined
-                : undefined,
+            customerName: str(c.name ?? c.customerName),
             attributes:
               c.attributes && typeof c.attributes === "object"
                 ? (c.attributes as Record<string, string>)
                 : undefined,
+            // Import orgánico: campos por fila mapeados en el wizard del front.
+            email: str(c.email),
+            source: str(c.source),
+            assignedAgent: str(c.assignedAgent),
+            stageId: str(c.stageId),
+            stageLabel: str(c.stageLabel),
+            subStageLabel: str(c.subStageLabel),
+            valoracion: VALS.has(String(c.valoracion))
+              ? (String(c.valoracion) as "inicial" | "positiva" | "negativa" | "cierre")
+              : undefined,
+            comment: str(c.comment),
+            typifiedAt: str(c.typifiedAt),
+            createdAt: str(c.createdAt),
           }))
           .filter((c) => c.phone);
         if (contacts.length === 0) return bad(400, "Ningún contacto con teléfono válido");
