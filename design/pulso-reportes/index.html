@@ -69,6 +69,21 @@ body::before{ /* halo sutil detrás del hero */
 .avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#1d2634,#28324a);
   display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--t2);border:1px solid var(--border-strong)}
 
+/* ---------- tabs (una pregunta por vista, estilo QuickSight) ---------- */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);position:relative;z-index:6;
+  margin-top:6px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{border:0;background:transparent;color:var(--t3);font:inherit;font-size:13.5px;font-weight:600;
+  padding:9px 15px 12px;cursor:pointer;position:relative;white-space:nowrap;
+  border-radius:8px 8px 0 0;transition:color .15s,background .15s}
+.tab:hover{color:var(--t2);background:rgba(255,255,255,.03)}
+.tab.on{color:var(--t1)}
+.tab.on::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;
+  background:var(--accent);box-shadow:0 -2px 14px rgba(53,224,161,.5)}
+.tab-off{display:none!important}
+.span-6{grid-column:span 6}
+@media(max-width:760px){.span-6{grid-column:span 12}}
+
 /* ---------- fila de filtros (única, alcance global) ---------- */
 .filters{
   display:flex;align-items:center;flex-wrap:wrap;gap:12px;
@@ -290,6 +305,17 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
   vertical-align:middle;margin-right:8px;position:relative;top:-1px}
 .mini-meter i{display:block;height:100%;border-radius:3px;background:var(--accent)}
 
+/* detalle (tabla de registros estilo QuickSight) */
+.search{border:1px solid var(--border);background:var(--bg);color:var(--t1);font:inherit;font-size:13px;
+  padding:7px 12px;border-radius:9px;width:min(260px,100%)}
+.search::placeholder{color:var(--t3)}
+.search:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#cardDetalle .tbl th{position:sticky;top:0;background:var(--card);z-index:2}
+.chip-est{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:600;
+  color:var(--t2);background:rgba(255,255,255,.04);border:1px solid var(--border);white-space:nowrap}
+.chip-est.good{color:var(--good);background:rgba(69,206,150,.09);border-color:rgba(69,206,150,.28)}
+.chip-est.bad{color:var(--bad);background:rgba(240,127,127,.07);border-color:rgba(240,127,127,.22)}
+
 /* toast */
 #toast{
   position:fixed;left:50%;bottom:26px;transform:translate(-50%,16px);z-index:60;opacity:0;
@@ -366,6 +392,16 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     <div class="avatar" title="Andre">AA</div>
   </header>
 
+  <!-- ============ TABS: una pregunta por vista (estilo QuickSight) ============ -->
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Secciones del reporte">
+    <button type="button" class="tab on" role="tab" aria-selected="true"  data-tab="resumen">Resumen</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" data-tab="volumen">Volumen</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" data-tab="pipeline">Pipeline</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" data-tab="demanda">Demanda</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" data-tab="equipo">Equipo</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" data-tab="detalle">Detalle</button>
+  </nav>
+
   <!-- ============ FILTROS (una sola fila, alcance global) ============ -->
   <div class="filters" role="group" aria-label="Filtros del reporte">
     <div class="seg" id="segRange" role="group" aria-label="Rango de fechas">
@@ -389,7 +425,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
   <main class="grid">
 
     <!-- HERO -->
-    <section class="card span-5" id="cardHero" style="--d:0ms">
+    <section class="card span-5" id="cardHero" data-tab="resumen" style="--d:0ms">
       <div class="card-b" style="padding:22px 24px 18px">
         <div class="hero-label">Conversaciones gestionadas</div>
         <div class="hero-num" id="heroNum">0</div>
@@ -402,7 +438,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     </section>
 
     <!-- STAT TILES -->
-    <section class="span-7" id="cardKpis" style="display:flex">
+    <section class="span-7" id="cardKpis" data-tab="resumen" style="display:flex">
       <div class="stat-grid" style="flex:1">
         <div class="stat" style="--d:60ms">
           <span class="lb">Tasa de contacto</span>
@@ -428,7 +464,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     </section>
 
     <!-- INSIGHTS -->
-    <section class="insights" id="cardInsights" aria-label="Hallazgos automáticos">
+    <section class="insights" id="cardInsights" data-tab="resumen" aria-label="Hallazgos automáticos">
       <div class="insight" style="--d:240ms">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></div>
         <div><h4>Canal en alza</h4><p id="ins1"></p><a href="#cardTrend">Ver tendencia →</a></div>
@@ -444,7 +480,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     </section>
 
     <!-- TENDENCIA -->
-    <section class="card span-12" id="cardTrend" style="--d:380ms">
+    <section class="card span-8" id="cardTrend" data-tab="volumen" style="--d:60ms">
       <div class="card-h">
         <div class="tt">
           <h3>Volumen por canal</h3>
@@ -463,7 +499,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     </section>
 
     <!-- MIX POR CANAL -->
-    <section class="card span-4" id="cardMix" style="--d:420ms">
+    <section class="card span-4" id="cardMix" data-tab="volumen" style="--d:120ms">
       <div class="card-h">
         <div class="tt"><h3>Mix por canal</h3><p>Participación en el período</p></div>
         <div class="sp"></div>
@@ -478,7 +514,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     </section>
 
     <!-- EMBUDO -->
-    <section class="card span-4" id="cardFunnel" style="--d:460ms">
+    <section class="card span-6" id="cardFunnel" data-tab="pipeline" style="--d:60ms">
       <div class="card-h">
         <div class="tt"><h3>Pipeline de tipificación</h3><p>Del lead nuevo a la matrícula</p></div>
         <div class="sp"></div>
@@ -493,7 +529,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     </section>
 
     <!-- VELOCIDAD -->
-    <section class="card span-4" id="cardSpeed" style="--d:500ms">
+    <section class="card span-6" id="cardSpeed" data-tab="pipeline" style="--d:120ms">
       <div class="card-h">
         <div class="tt"><h3>Velocidad de contacto</h3><p>Speed-to-lead del período</p></div>
       </div>
@@ -522,7 +558,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     </section>
 
     <!-- HEATMAP -->
-    <section class="card span-7" id="cardHeat" style="--d:540ms">
+    <section class="card span-7" id="cardHeat" data-tab="demanda" style="--d:60ms">
       <div class="card-h">
         <div class="tt"><h3>Actividad por hora</h3><p>Conversaciones iniciadas · día × hora</p></div>
         <div class="sp"></div>
@@ -537,7 +573,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     </section>
 
     <!-- TOP PROGRAMAS -->
-    <section class="card span-5" id="cardPrograms" style="--d:580ms">
+    <section class="card span-5" id="cardPrograms" data-tab="demanda" style="--d:120ms">
       <div class="card-h">
         <div class="tt"><h3>Top programas</h3><p>Conversaciones por unidad comercial</p></div>
         <div class="sp"></div>
@@ -552,12 +588,27 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     </section>
 
     <!-- EQUIPO -->
-    <section class="card span-12" id="cardTeam" style="--d:620ms">
+    <section class="card span-12" id="cardTeam" data-tab="equipo" style="--d:60ms">
       <div class="card-h">
         <div class="tt"><h3>Equipo</h3><p>Rendimiento por agente en el período · haz clic en una columna para ordenar</p></div>
       </div>
       <div class="card-b" style="overflow-x:auto">
         <table class="tbl" id="teamTable"></table>
+      </div>
+    </section>
+
+    <!-- DETALLE: registros crudos (el drill-down del QuickSight) -->
+    <section class="card span-12" id="cardDetalle" data-tab="detalle" style="--d:60ms">
+      <div class="card-h">
+        <div class="tt"><h3>Últimas tipificaciones</h3><p>Registros del período · responden al programa y rango globales</p></div>
+        <div class="sp"></div>
+        <input class="search" id="detSearch" type="search" placeholder="Buscar teléfono, agente, estado…" aria-label="Buscar en los registros" />
+      </div>
+      <div class="card-b">
+        <div class="hero-cap" id="detCount" style="margin-bottom:10px"></div>
+        <div style="max-height:520px;overflow:auto;border:1px solid var(--border);border-radius:12px">
+          <table class="tbl" id="detTable"></table>
+        </div>
       </div>
     </section>
 
@@ -667,6 +718,31 @@ const AGENTS = [
   { name: "Ana Castillo",    share: 0.10, tmo: 240, conv: 8.7,  csat: 4.6 },
 ].map(a => ({ ...a, spark: Array.from({ length: 12 }, () => 0.5 + rng()) }));
 
+/* Registros crudos para el tab Detalle (el drill-down del QuickSight) */
+const DET_ORIGENES = ["Facebook", "Instagram", "WhatsApp", "Mercado Libre", "Web"];
+const DET_ESTADOS = [
+  ["Nuevo lead", 0.22], ["Gestionado", 0.17], ["Contactado", 0.16], ["Interesado", 0.10],
+  ["Cita agendada", 0.08], ["Matriculado", 0.06], ["No interesado", 0.13], ["No contactado", 0.08],
+];
+const fDet = new Intl.DateTimeFormat("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" });
+const RECORDS = Array.from({ length: 48 }, () => {
+  const dOff = Math.floor(rng() * 90);
+  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - dOff);
+  const dig = "9" + String(Math.floor(rng() * 1e8)).padStart(8, "0");
+  let acc = 0, estado = DET_ESTADOS[0][0];
+  const roll = rng();
+  for (const [nm, w] of DET_ESTADOS) { acc += w; if (roll <= acc) { estado = nm; break; } }
+  return {
+    phone: `+51 ${dig.slice(0, 3)} ${dig.slice(3, 6)} ${dig.slice(6)}`,
+    dOff, fecha: fDet.format(d),
+    hora: `${String(8 + Math.floor(rng() * 13)).padStart(2, "0")}:${String(Math.floor(rng() * 60)).padStart(2, "0")}`,
+    origen: DET_ORIGENES[Math.floor(rng() * DET_ORIGENES.length)],
+    programa: PROGRAMS[Math.floor(rng() * PROGRAMS.length)].name,
+    agente: AGENTS[Math.floor(rng() * AGENTS.length)].name,
+    estado,
+  };
+}).sort((a, b) => a.dOff - b.dOff);
+
 /* ============================================================
    Estado global — los filtros scope-an TODO lo de abajo
    ============================================================ */
@@ -675,12 +751,14 @@ const state = {
   channels: new Set(CH.map(c => c.id)),
   program: "",
   compare: true,
+  tab: "resumen",
 };
 
 /* ============================================================
    Utilidades
    ============================================================ */
 const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
 const NS = "http://www.w3.org/2000/svg";
 const fmt = n => Math.round(n).toLocaleString("es-PE");
 const fmtPct = (x, d = 1) => (x * 100).toLocaleString("es-PE", { maximumFractionDigits: d, minimumFractionDigits: 0 }) + " %";
@@ -1430,7 +1508,48 @@ function render() {
   const peak = renderHeat(cur);
   renderPrograms(cur, prev);
   renderTeam(cur);
+  renderDetalle();
   renderInsights(cur, prev, peak);
+}
+
+/* ============================================================
+   Detalle — tabla de registros con buscador (estilo QuickSight)
+   ============================================================ */
+function renderDetalle() {
+  const q = ($("#detSearch").value || "").trim().toLowerCase();
+  const progName = state.program ? PROGRAMS.find(p => p.id === state.program).name : null;
+  const rows = RECORDS
+    .filter(r => r.dOff < state.range)
+    .filter(r => !progName || r.programa === progName)
+    .filter(r => !q || `${r.phone} ${r.agente} ${r.programa} ${r.origen} ${r.estado}`.toLowerCase().includes(q));
+  $("#detCount").textContent = `${rows.length} registros en los últimos ${state.range} días · datos simulados`;
+  const t = $("#detTable");
+  t.textContent = "";
+  const hr = t.createTHead().insertRow();
+  ["Teléfono", "Fecha", "Hora", "Origen", "Programa", "Agente", "Estado"].forEach(c => {
+    const th = document.createElement("th"); th.textContent = c; hr.appendChild(th);
+  });
+  const tb = t.createTBody();
+  if (!rows.length) {
+    const tr = tb.insertRow(); const td = tr.insertCell();
+    td.colSpan = 7; td.className = "empty"; td.textContent = "Sin registros con ese criterio";
+    return;
+  }
+  for (const r of rows) {
+    const tr = tb.insertRow();
+    const c0 = tr.insertCell(); c0.textContent = r.phone; c0.className = "strong";
+    c0.style.fontVariantNumeric = "tabular-nums"; c0.style.whiteSpace = "nowrap";
+    const c1 = tr.insertCell(); c1.textContent = r.fecha; c1.className = "num";
+    const c2 = tr.insertCell(); c2.textContent = r.hora; c2.className = "num";
+    tr.insertCell().textContent = r.origen;
+    tr.insertCell().textContent = r.programa;
+    tr.insertCell().textContent = r.agente;
+    const ce = tr.insertCell();
+    const chip = document.createElement("span");
+    chip.className = "chip-est" + (r.estado === "Matriculado" ? " good" : r.estado.startsWith("No ") ? " bad" : "");
+    chip.textContent = r.estado;
+    ce.appendChild(chip);
+  }
 }
 
 /* ============================================================
@@ -1496,6 +1615,32 @@ $("#btnExport").addEventListener("click", () => {
   toast(`CSV descargado · ${cur.length} filas del período actual`);
 });
 /* ============================================================
+   Tabs — una pregunta por vista; los filtros aplican a TODAS
+   ============================================================ */
+function setTab(t) {
+  state.tab = t;
+  for (const b of $$("#tabs .tab")) {
+    const on = b.dataset.tab === t;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", String(on));
+  }
+  for (const s of $$("main.grid > [data-tab]")) s.classList.toggle("tab-off", s.dataset.tab !== t);
+  if (booted) render(); // re-mide los charts que acaban de hacerse visibles
+}
+$("#tabs").addEventListener("click", e => {
+  const b = e.target.closest(".tab");
+  if (b && b.dataset.tab !== state.tab) setTab(b.dataset.tab);
+});
+/* los hallazgos saltan al tab donde vive su evidencia */
+for (const a of $$(".insight a")) {
+  a.addEventListener("click", e => {
+    const sec = document.getElementById(a.getAttribute("href").slice(1));
+    if (sec?.dataset.tab && sec.dataset.tab !== state.tab) { e.preventDefault(); setTab(sec.dataset.tab); }
+  });
+}
+$("#detSearch").addEventListener("input", renderDetalle);
+
+/* ============================================================
    Modo recorrido — carrusel deslizante (presentación / TV).
    Mueve los cards reales a los slides; los charts se re-dibujan
    al nuevo tamaño porque los builders buscan por id. El canvas
@@ -1521,6 +1666,7 @@ function openCar() {
   if (carOpen) return;
   carOpen = true;
   gridOrder = [...document.querySelector("main.grid").children];
+  for (const s of $$("main.grid > [data-tab]")) s.classList.remove("tab-off"); // el recorrido pasea por TODO
   carTrack.textContent = ""; carDots.textContent = "";
   SLIDE_DEFS.forEach(([id, title], i) => {
     const slide = div("car-slide", carTrack);
@@ -1550,7 +1696,7 @@ function closeCar() {
   car.classList.remove("open");
   car.setAttribute("aria-hidden", "true");
   document.body.style.overflow = "";
-  render();
+  setTab(state.tab); // re-aplica la vista activa y re-dibuja
   $("#btnTour").focus();
 }
 function goCar(i, manual) {
@@ -1596,7 +1742,7 @@ function boot(motionOk) {
   booted = true;
   ANIM = motionOk && !reduced;
   if (!ANIM) document.documentElement.classList.add("no-anim");
-  render();
+  setTab(state.tab);
 }
 requestAnimationFrame(() => boot(true));
 setTimeout(() => boot(false), 300);

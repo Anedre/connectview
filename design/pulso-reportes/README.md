@@ -35,6 +35,14 @@ Sirve como north-star para reconstruir `/reports`.
    alcance y un solo encoding. Nada de ejes duales.
 4. **Los hallazgos venden la IA**: la franja "ARIA detectó" convierte datos en
    acciones (es lo que Chattigo/QuickSight no hacen).
+5. **Una pregunta por vista (lección QuickSight, v2):** el contenido vive en 6
+   tabs enfocados — Resumen · Volumen · Pipeline · Demanda · Equipo · Detalle —
+   con 2-3 visuales máximo por tab, para que nada ensucie la pantalla. Los
+   filtros globales gobiernan TODOS los tabs (mismo slice en todas las vistas).
+   "Detalle" replica el drill-down del QuickSight de UDEP: tabla de registros
+   crudos (teléfono, fecha, origen, programa, agente, estado como chip) con
+   buscador, alimentada por los mismos filtros. El Recorrido ignora los tabs:
+   pasea por los 10 módulos y al salir restaura la vista activa.
 
 ## 3. Paleta propia (tema "ink" oscuro + menta eléctrica)
 
