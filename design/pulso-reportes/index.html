@@ -304,6 +304,42 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 
 :where(button,a,select,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
 
+/* ---------- modo recorrido (carrusel deslizante) ---------- */
+#carousel{position:fixed;inset:0;z-index:40;background:var(--bg);display:none;flex-direction:column;outline:none}
+#carousel.open{display:flex}
+#carousel::before{content:"";position:absolute;inset:0 0 auto 0;height:420px;pointer-events:none;
+  background:radial-gradient(640px 280px at 50% -80px, rgba(53,224,161,.06), transparent 70%)}
+.car-head{display:flex;align-items:center;gap:16px;padding:13px 26px;border-bottom:1px solid var(--border);position:relative;z-index:2}
+.car-title{font-size:13px;color:var(--t3);font-weight:600}
+.car-track{flex:1;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;position:relative;z-index:1}
+.car-track::-webkit-scrollbar{display:none}
+.car-slide{flex:0 0 100%;min-width:100%;scroll-snap-align:center;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:18px;padding:26px 84px 64px;overflow:hidden}
+.car-cap{font-size:clamp(19px,2.6vw,27px);font-weight:700;letter-spacing:-.015em;text-align:center}
+.car-slide > section{width:min(1080px,100%);max-height:100%;overflow:auto;animation:none}
+.car-slide > section.card{box-shadow:var(--shadow),0 0 90px rgba(53,224,161,.05)}
+.car-slide > #cardHero{width:min(720px,100%)}
+.car-slide > #cardHero .hero-num{font-size:clamp(56px,8vw,84px)}
+.car-slide > #cardKpis{width:min(900px,100%)}
+.car-slide .stat{animation:none}
+.car-slide .stat .val{font-size:33px}
+.car-slide > #cardInsights{display:grid;grid-template-columns:1fr;width:min(760px,100%);gap:16px}
+.car-slide .insight{animation:none}
+.car-slide .insight p{font-size:15px}
+.car-slide .card-h .tt h3{font-size:18px}
+#carousel #trendChart{height:min(50vh,440px)!important}
+#carousel #heroSpark{height:110px!important}
+#carousel .hm-c,#carousel .hm-day{height:30px}
+.car-arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:46px;height:46px;border-radius:50%;
+  border:1px solid var(--border-strong);background:rgba(21,27,38,.82);backdrop-filter:blur(6px);color:var(--t1);
+  font-size:26px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0 0 4px;transition:background .15s,border-color .15s}
+.car-arrow:hover{background:var(--card2);border-color:rgba(255,255,255,.25)}
+.car-arrow.left{left:20px}.car-arrow.right{right:20px}
+.car-dots{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:3;display:flex;gap:8px}
+.car-dot{width:8px;height:8px;border-radius:999px;border:0;background:rgba(255,255,255,.18);cursor:pointer;padding:0;transition:all .25s}
+.car-dot:hover{background:rgba(255,255,255,.42)}
+.car-dot.on{width:22px;background:var(--accent)}
+
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
@@ -319,6 +355,10 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     <div class="wordmark">PULSO<span class="pulse" aria-hidden="true"></span></div>
     <div class="tagline">Centro de reportes · concepto de diseño</div>
     <div class="sp"></div>
+    <button class="btn" id="btnTour" type="button" title="Recorrido slide por slide (modo presentación / TV)">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="M21 8v8"/><path d="M9 9.5v5l4.5-2.5z"/></svg>
+      Recorrido
+    </button>
     <button class="btn" id="btnExport" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
       Exportar CSV
@@ -349,7 +389,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
   <main class="grid">
 
     <!-- HERO -->
-    <section class="card span-5" style="--d:0ms">
+    <section class="card span-5" id="cardHero" style="--d:0ms">
       <div class="card-b" style="padding:22px 24px 18px">
         <div class="hero-label">Conversaciones gestionadas</div>
         <div class="hero-num" id="heroNum">0</div>
@@ -362,7 +402,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     </section>
 
     <!-- STAT TILES -->
-    <section class="span-7" style="display:flex">
+    <section class="span-7" id="cardKpis" style="display:flex">
       <div class="stat-grid" style="flex:1">
         <div class="stat" style="--d:60ms">
           <span class="lb">Tasa de contacto</span>
@@ -388,7 +428,7 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     </section>
 
     <!-- INSIGHTS -->
-    <section class="insights" aria-label="Hallazgos automáticos">
+    <section class="insights" id="cardInsights" aria-label="Hallazgos automáticos">
       <div class="insight" style="--d:240ms">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></div>
         <div><h4>Canal en alza</h4><p id="ins1"></p><a href="#cardTrend">Ver tendencia →</a></div>
@@ -528,6 +568,25 @@ html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!impor
     <span class="dotsep">·</span><span>datos simulados con fines de diseño</span>
     <span class="dotsep">·</span><span>paleta validada (CVD ΔE mín 10.5 · contraste ≥ 3:1)</span>
   </footer>
+</div>
+
+<!-- ============ MODO RECORRIDO (carrusel deslizante) ============ -->
+<div id="carousel" role="dialog" aria-modal="true" aria-label="Recorrido del reporte" aria-hidden="true" tabindex="-1">
+  <div class="car-head">
+    <div class="wordmark" style="font-size:15px">PULSO<span style="width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block"></span></div>
+    <div class="car-title" id="carTitle"></div>
+    <div class="sp"></div>
+    <label class="switch" title="Avance automático cada 8 s (modo TV)">
+      <input type="checkbox" id="carAuto" />
+      <span class="tr" aria-hidden="true"></span>
+      <span class="lb">Auto</span>
+    </label>
+    <button class="btn" id="carClose" type="button">Salir · Esc</button>
+  </div>
+  <div class="car-track" id="carTrack"></div>
+  <button class="car-arrow left" id="carPrev" type="button" aria-label="Slide anterior">‹</button>
+  <button class="car-arrow right" id="carNext" type="button" aria-label="Slide siguiente">›</button>
+  <div class="car-dots" id="carDots" aria-label="Progreso del recorrido"></div>
 </div>
 
 <div id="tip" role="status" aria-hidden="true"></div>
@@ -923,7 +982,8 @@ function renderMix(cur) {
     .filter(p => p.v > 0);
   if (!parts.length) { div("empty", host, "Sin canales activos"); return; }
 
-  const S = 216, cx = S / 2, cy = S / 2, r1 = 100, r0 = 66;
+  const S = Math.round(Math.min(264, Math.max(196, (host.clientWidth || 430) * 0.42)));
+  const cx = S / 2, cy = S / 2, r1 = Math.round(S * 0.462), r0 = Math.round(S * 0.305);
   const box = document.createElement("div");
   box.style.cssText = "position:relative;flex:0 0 auto";
   const svg = el("svg", { viewBox: `0 0 ${S} ${S}`, width: S, height: S }, box);
@@ -1435,6 +1495,95 @@ $("#btnExport").addEventListener("click", () => {
   a.click(); URL.revokeObjectURL(a.href);
   toast(`CSV descargado · ${cur.length} filas del período actual`);
 });
+/* ============================================================
+   Modo recorrido — carrusel deslizante (presentación / TV).
+   Mueve los cards reales a los slides; los charts se re-dibujan
+   al nuevo tamaño porque los builders buscan por id. El canvas
+   sigue siendo la vista por defecto: el carrusel es narrativa,
+   no navegación primaria.
+   ============================================================ */
+const SLIDE_DEFS = [
+  ["cardHero",     "El período de un vistazo"],
+  ["cardKpis",     "Indicadores clave"],
+  ["cardInsights", "Lo que ARIA detectó"],
+  ["cardTrend",    "¿Cómo evoluciona el volumen?"],
+  ["cardMix",      "¿De dónde llegan las conversaciones?"],
+  ["cardFunnel",   "¿Cuánto avanza el pipeline?"],
+  ["cardSpeed",    "¿Qué tan rápido respondemos?"],
+  ["cardHeat",     "¿Cuándo llega la demanda?"],
+  ["cardPrograms", "¿Qué programas jalan más?"],
+  ["cardTeam",     "¿Cómo rinde el equipo?"],
+];
+const car = $("#carousel"), carTrack = $("#carTrack"), carDots = $("#carDots");
+let carOpen = false, carIdx = 0, gridOrder = null, autoT = null;
+
+function openCar() {
+  if (carOpen) return;
+  carOpen = true;
+  gridOrder = [...document.querySelector("main.grid").children];
+  carTrack.textContent = ""; carDots.textContent = "";
+  SLIDE_DEFS.forEach(([id, title], i) => {
+    const slide = div("car-slide", carTrack);
+    div("car-cap", slide, title);
+    slide.appendChild(document.getElementById(id));
+    const dot = document.createElement("button");
+    dot.type = "button"; dot.className = "car-dot";
+    dot.setAttribute("aria-label", `Ir a: ${title}`);
+    dot.addEventListener("click", () => goCar(i, true));
+    carDots.appendChild(dot);
+  });
+  car.classList.add("open");
+  car.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  carIdx = 0; carTrack.scrollLeft = 0;
+  render();      // re-dibuja los charts al tamaño de slide
+  updateCar();
+  car.focus();
+}
+function closeCar() {
+  if (!carOpen) return;
+  carOpen = false;
+  clearTimeout(autoT);
+  $("#carAuto").checked = false;
+  const grid = document.querySelector("main.grid");
+  gridOrder.forEach(n => grid.appendChild(n)); // restaura el orden original
+  car.classList.remove("open");
+  car.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+  render();
+  $("#btnTour").focus();
+}
+function goCar(i, manual) {
+  carIdx = (i + SLIDE_DEFS.length) % SLIDE_DEFS.length;
+  carTrack.scrollTo({ left: carIdx * carTrack.clientWidth, behavior: ANIM ? "smooth" : "auto" });
+  updateCar();
+  if (manual) resetAuto();
+}
+function updateCar() {
+  [...carDots.children].forEach((d, i) => d.classList.toggle("on", i === carIdx));
+  $("#carTitle").textContent =
+    `${carIdx + 1} / ${SLIDE_DEFS.length} · ${SLIDE_DEFS[carIdx][1]} — últimos ${state.range} días`;
+}
+function resetAuto() {
+  clearTimeout(autoT);
+  if ($("#carAuto").checked) autoT = setTimeout(() => { goCar(carIdx + 1); resetAuto(); }, 8000);
+}
+carTrack.addEventListener("scroll", () => {
+  const i = Math.round(carTrack.scrollLeft / Math.max(1, carTrack.clientWidth));
+  if (i !== carIdx && i >= 0 && i < SLIDE_DEFS.length) { carIdx = i; updateCar(); }
+}, { passive: true });
+$("#btnTour").addEventListener("click", openCar);
+$("#carClose").addEventListener("click", closeCar);
+$("#carPrev").addEventListener("click", () => goCar(carIdx - 1, true));
+$("#carNext").addEventListener("click", () => goCar(carIdx + 1, true));
+$("#carAuto").addEventListener("change", resetAuto);
+addEventListener("keydown", e => {
+  if (!carOpen) return;
+  if (e.key === "ArrowRight") goCar(carIdx + 1, true);
+  else if (e.key === "ArrowLeft") goCar(carIdx - 1, true);
+  else if (e.key === "Escape") closeCar();
+});
+
 /* re-render suave al redimensionar (los SVG se recalculan al ancho real) */
 let rzT;
 addEventListener("resize", () => { clearTimeout(rzT); rzT = setTimeout(render, 160); });

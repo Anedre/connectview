@@ -95,6 +95,12 @@ El orden de apilado del área/dona ES este orden de slots.
 - Crosshair en tendencia; hover/foco con tooltip en dona, embudo, heatmap, barras.
 - Sort del leaderboard; toggle gráfico↔tabla por card; export CSV real del slice.
 - Hallazgos calculados del dataset (canal top, pico horario) con anchors a la evidencia.
+- **Modo recorrido (carrusel deslizante)**: botón "Recorrido" → los mismos cards se
+  vuelven slides a pantalla completa (scroll-snap + flechas + puntos + ← → + Esc),
+  con avance automático cada 8 s para modo TV/wallboard. Decisión de diseño: el
+  carrusel es **narrativa** (reunión semanal, pantalla del piso), nunca la
+  navegación primaria — el canvas escaneable sigue siendo el default. Los charts
+  se re-dibujan al tamaño del slide y el DOM se restaura al salir.
 
 ## 6. Plan de port a ARIA (cuando se apruebe la dirección)
 
