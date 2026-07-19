@@ -30,7 +30,7 @@ import { useTaxonomy } from "@/hooks/useTaxonomy";
 import type { Valoracion } from "@/lib/dispositions";
 import { EChart, useChartTokens } from "@/components/charts/EChart";
 import { Kpi, KpiRow, Funnel, BarList } from "@/components/reports/kit";
-import { HeroBand, Btn } from "@/components/aria";
+import { Btn } from "@/components/aria";
 import {
   Table,
   TableBody,
@@ -41,7 +41,8 @@ import {
 } from "@/components/ui/table";
 
 /**
- * TipificacionesPage — el REPORTE analítico de tipificación/pipeline de ARIA. No
+ * TipificacionesReport — el REPORTE analítico de tipificación/pipeline de ARIA,
+ * montado como el tab "Pipeline" de /reports (antes página suelta /tipificaciones). No
  * es una réplica de ningún BI externo: son métricas y gráficos nativos que se
  * alimentan solos de la data operativa (agentes tipificando, campañas, Meta Lead
  * Ads, import). Diferenciadores sobre un dashboard estático: insights narrados,
@@ -271,7 +272,7 @@ function DateInput({
   );
 }
 
-export function TipificacionesPage() {
+export function TipificacionesReport() {
   const { activeProgramId, activeProgram, programs } = useProgram();
   const { tree } = useTaxonomy(activeProgram?.taxonomyId);
   const ep = getApiEndpoints();
@@ -668,30 +669,29 @@ export function TipificacionesPage() {
       : "Todos los programas";
 
   return (
-    <div className="page" style={{ maxWidth: 1440 }}>
-      <HeroBand
-        title="Tipificaciones"
-        chip={
-          <>
+    <div>
+      <div
+        className="row between"
+        style={{ alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}
+      >
+        <div className="row gap8" style={{ alignItems: "center" }}>
+          <span style={{ fontSize: 14, fontWeight: 800 }}>Pipeline de tipificación</span>
+          <span className="chip" style={{ fontSize: 11.5 }}>
             {scopeLabel} · {M.total} leads
-          </>
-        }
-        chipIcon="chart"
-        chipTone="var(--gold)"
-        right={
-          <div className="row gap10" style={{ alignItems: "center" }}>
-            {data?.generatedAt && (
-              <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-                Actualizado {fmtTime(data.generatedAt)}
-              </span>
-            )}
-            <Btn variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
-              <ArrowClockwise size={15} weight="bold" style={{ marginRight: 6 }} />
-              {isFetching ? "Actualizando…" : "Actualizar"}
-            </Btn>
-          </div>
-        }
-      />
+          </span>
+        </div>
+        <div className="row gap10" style={{ alignItems: "center" }}>
+          {data?.generatedAt && (
+            <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+              Actualizado {fmtTime(data.generatedAt)}
+            </span>
+          )}
+          <Btn variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
+            <ArrowClockwise size={15} weight="bold" style={{ marginRight: 6 }} />
+            {isFetching ? "Actualizando…" : "Actualizar"}
+          </Btn>
+        </div>
+      </div>
 
       <div
         style={{

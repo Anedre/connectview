@@ -46,7 +46,6 @@ const DEFAULT_MATRIX: Record<string, string> = {
   view_agente_ai: "Admins",
   view_appointments: "Admins",
   view_reports: "Supervisors",
-  view_tipificaciones: "Supervisors",
   view_recordings: "Supervisors",
   view_settings: "Admins",
   // ── Acciones (dentro de cada sección) ──────────────────────────────────

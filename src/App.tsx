@@ -36,9 +36,6 @@ const ProgramDetailPage = lazy(() =>
 const ReportsPage = lazy(() =>
   import("@/pages/ReportsPage").then((m) => ({ default: m.ReportsPage })),
 );
-const TipificacionesPage = lazy(() =>
-  import("@/pages/TipificacionesPage").then((m) => ({ default: m.TipificacionesPage })),
-);
 const RecordingsPage = lazy(() =>
   import("@/pages/RecordingsPage").then((m) => ({ default: m.RecordingsPage })),
 );
@@ -649,7 +646,6 @@ function AnimatedRoutes() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/agent" element={<AgentDesktopPage />} />
               <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/tipificaciones" element={<TipificacionesPage />} />
               <Route path="/recordings" element={<RecordingsPage />} />
               <Route path="/admin" element={<AdminPage />} />
               <Route path="/leads" element={<LeadsPage />} />

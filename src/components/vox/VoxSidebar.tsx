@@ -13,7 +13,6 @@ import {
   Sparkle,
   CalendarDots,
   ChartBar,
-  Tag,
   Disc,
   Gear,
   MagnifyingGlass,
@@ -147,14 +146,6 @@ const NAV: NavEntry[] = [
     label: "Reportes",
     icon: ChartBar,
     cap: "view_reports",
-    minRole: "Supervisors",
-  },
-  {
-    id: "tipificaciones",
-    path: "/tipificaciones",
-    label: "Tipificaciones",
-    icon: Tag,
-    cap: "view_tipificaciones",
     minRole: "Supervisors",
   },
   {

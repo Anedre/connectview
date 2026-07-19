@@ -15,7 +15,7 @@ import { SentimentChart } from "@/components/reports/SentimentChart";
 import { AgentPerformanceReport } from "@/components/reports/AgentPerformanceReport";
 import { HsmOutboundReport } from "@/components/reports/HsmOutboundReport";
 import { WhatsAppAnalyticsPanel } from "@/components/reports/WhatsAppAnalyticsPanel";
-import { ProgramReport } from "@/components/reports/ProgramReport";
+import { TipificacionesReport } from "@/components/reports/TipificacionesReport";
 import { BotAnalyticsReport } from "@/components/reports/BotAnalyticsReport";
 import { ContactsTable } from "@/components/reports/ContactsTable";
 import { FeatureNotice } from "@/components/vox/FeatureNotice";
@@ -201,10 +201,10 @@ const REPORT_TABS: { id: ReportTab; label: string; icon: IconName; color: string
     },
     {
       id: "crecimiento",
-      label: "Crecimiento",
+      label: "Pipeline",
       icon: "trending",
       color: "var(--green)",
-      hint: "Embudo y conversión por programa, y atribución de los golpes al cierre.",
+      hint: "Embudo, conversión, origen, agente, tendencia y velocidad de gestión de los leads.",
     },
     {
       id: "whatsapp",
@@ -610,13 +610,13 @@ export function ReportsPage() {
         </>
       )}
 
-      {/* ── CRECIMIENTO · leads (Pilar 1 + Pilar 2) ──
-          ProgramReport ya incluye embudo + conversión por golpes + golpes por canal
-          + golpes al cierre, así que el AttributionReport (subconjunto, mismo fetch)
-          se eliminó para no duplicar la data ni el request. */}
+      {/* ── PIPELINE · leads/tipificación ──
+          El dashboard analítico de tipificación (antes página suelta /tipificaciones):
+          KPIs + insights narrados + embudo + %estado×programa + origen + agente +
+          tendencia + heatmap + velocidad. Todo desde manage-leads report=typifications. */}
       {tab === "crecimiento" && (
         <div style={{ marginBottom: 16 }}>
-          <ProgramReport />
+          <TipificacionesReport />
         </div>
       )}
 
