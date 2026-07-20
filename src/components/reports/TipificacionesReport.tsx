@@ -22,7 +22,6 @@ import {
   TrendUp,
   Lightning,
   CaretDown,
-  MagnifyingGlass,
   DownloadSimple,
 } from "@phosphor-icons/react";
 import {
@@ -41,6 +40,7 @@ import { useTaxonomy } from "@/hooks/useTaxonomy";
 import type { Valoracion } from "@/lib/dispositions";
 import { EChart, useChartTokens, type ChartTokens } from "@/components/charts/EChart";
 import { DateRangePicker, type DateRange } from "@/components/reports/DateRangePicker";
+import { Autocomplete, type AutoOption } from "@/components/reports/Autocomplete";
 import { downloadCsv, downloadXlsx, type Column } from "@/lib/reportExport";
 import { Kpi, KpiRow, Funnel, BarList } from "@/components/reports/kit";
 import { Btn } from "@/components/aria";
@@ -479,61 +479,6 @@ function FilterSelect({
   );
 }
 
-/** Consulta por teléfono o nombre — equivalente al tab "Consulta teléfono" del BI de origen. */
-function SearchInput({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label
-      style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: "1 1 190px" }}
-    >
-      <span
-        style={{
-          fontSize: 10.5,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: ".04em",
-          color: "var(--text-3)",
-        }}
-      >
-        {label}
-      </span>
-      <span style={{ position: "relative", display: "flex", alignItems: "center" }}>
-        <MagnifyingGlass
-          size={14}
-          weight="bold"
-          style={{ position: "absolute", left: 10, color: "var(--text-3)", pointerEvents: "none" }}
-        />
-        <input
-          type="search"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          style={{
-            height: 34,
-            width: "100%",
-            borderRadius: 9,
-            border: "1px solid var(--border-1)",
-            background: "var(--bg-2)",
-            color: "var(--text-1)",
-            padding: "0 10px 0 30px",
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        />
-      </span>
-    </label>
-  );
-}
-
 export function TipificacionesReport() {
   const { activeProgramId, activeProgram, programs } = useProgram();
   const { tree } = useTaxonomy(activeProgram?.taxonomyId);
@@ -630,6 +575,22 @@ export function TipificacionesReport() {
 
   const agentOpts = useMemo(() => uniqueSorted(rows.map((r) => r.agent)), [rows]);
   const sourceOpts = useMemo(() => uniqueSorted(rows.map((r) => r.source)), [rows]);
+  // Sugerencias del autocomplete "consulta teléfono/nombre": un lead por teléfono
+  // (dedup), etiquetado con nombre o estado. Orden = más recientes primero, para
+  // que "lo básico" (input vacío) muestre lo último gestionado.
+  const queryOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: AutoOption[] = [];
+    for (const r of [...rows].sort((a, b) =>
+      (b.updatedAt || "").localeCompare(a.updatedAt || ""),
+    )) {
+      if (!r.phone || seen.has(r.phone)) continue;
+      seen.add(r.phone);
+      out.push({ value: r.phone, label: r.phone, sub: r.name || stageLabel(r.stageId) });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, stageMeta]);
   // Orígenes por volumen del scope completo (NO responde a filtros): fija qué
   // entidades reciben hue en la dona — los grandes con color, la cola a "Otros".
   const sourcesByVolume = useMemo(() => {
@@ -1097,10 +1058,12 @@ export function TipificacionesReport() {
         }}
       >
         <div className="row wrap" style={{ gap: 12, alignItems: "flex-end" }}>
-          <SearchInput
+          <Autocomplete
             label="Consulta teléfono / nombre"
             value={fQuery}
             onChange={setFQuery}
+            options={queryOptions}
+            matchDigits
             placeholder="Ej. 953730189 o Karina"
           />
           <FilterSelect
