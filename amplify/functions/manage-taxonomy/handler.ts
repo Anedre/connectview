@@ -9,6 +9,7 @@ import {
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { randomUUID } from "node:crypto";
 import { resolveDynamo } from "../_shared/tenantConnect";
+import { requireCapability } from "../_shared/rbac";
 
 /**
  * manage-taxonomy — the single source of truth for disposition trees
@@ -152,6 +153,14 @@ export const handler: Handler = async (event: any) => {
   const method =
     event.requestContext?.http?.method || event.httpMethod || "GET";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
+
+  // SEC — RBAC server-side: EDITAR la taxonomía (POST upsert / DELETE) exige
+  // `edit_taxonomy` (config de admin). GET queda abierto: cada canal la LEE en el
+  // wrap-up (los agentes tipifican). Function URL auth=NONE → se valida aquí.
+  if (method === "POST" || method === "DELETE") {
+    const gate = await requireCapability(event?.headers, "edit_taxonomy");
+    if (!gate.ok) return gate.response;
+  }
 
   // BYO Data Plane (#46): tenant primero, fallback Vox.
   ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));

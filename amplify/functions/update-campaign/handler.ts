@@ -1,6 +1,7 @@
 import type { Handler } from "aws-lambda";
 import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
 import { resolveDynamo } from "../_shared/tenantConnect";
+import { requireCapability } from "../_shared/rbac";
 
 // BYO Data Plane (#46): tenant primero, fallback Vox pooled.
 const legacyDynamo = new DynamoDBClient({});
@@ -71,6 +72,11 @@ const FIELD_MAP: Record<
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // SEC — RBAC server-side: editar una campaña exige `manage_campaigns`. El
+    // Function URL es auth=NONE → sin esto cualquier autenticado podía reescribir
+    // la config de una campaña (número origen, flujo, cola, ritmo…).
+    const gate = await requireCapability(event?.headers, "manage_campaigns");
+    if (!gate.ok) return gate.response;
     // BYO Data Plane (#46): tenant primero, fallback Vox.
     ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
     const body: UpdateBody = JSON.parse(event.body || "{}");

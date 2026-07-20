@@ -2,13 +2,19 @@ import type { Handler } from "aws-lambda";
 import { DynamoDBClient, GetItemCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { getIdentity } from "../_shared/cognitoAuth";
+// DEFAULT_MATRIX + ROLES viven en _shared/rbac.ts: son la ÚNICA fuente de verdad
+// que comparten este editor y el gate server-side (requireCapability), para que
+// el default del backend y el de la UI no puedan derivar.
+import { DEFAULT_MATRIX, ROLES } from "../_shared/rbac";
 
 /**
  * manage-permissions — granular RBAC matrix (roadmap #28). Maps each
  * capability to the minimum role allowed (Admins|Supervisors|Agents).
  * Single config doc (configId="default"). The frontend's useCan(capability)
  * checks the signed-in user's role against this matrix, so admins can
- * re-scope who does what without a deploy.
+ * re-scope who does what without a deploy. El mismo doc lo consume el gate
+ * server-side (`requireCapability`) para enforce los `manage_*` en los
+ * Function URLs (auth=NONE).
  *
  * GET  → { matrix }
  * POST { matrix } → save
@@ -16,25 +22,6 @@ import { getIdentity } from "../_shared/cognitoAuth";
 const dynamo = new DynamoDBClient({});
 const TABLE = process.env.PERMISSIONS_TABLE || "connectview-permissions";
 const CORS = { "Content-Type": "application/json" };
-const ROLES = new Set(["Admins", "Supervisors", "Agents"]);
-
-// Default matrix — sensible starting scopes. The editor can change these.
-const DEFAULT_MATRIX: Record<string, string> = {
-  manage_campaigns: "Admins",
-  manage_leads: "Admins",
-  manage_appointments: "Admins",
-  edit_taxonomy: "Admins",
-  manage_catalogs: "Admins",
-  manage_suppression: "Admins",
-  manage_users: "Admins",
-  view_audit: "Admins",
-  monitor_agents: "Supervisors",
-  view_reports: "Supervisors",
-  view_live_queue: "Supervisors",
-  // R29 — Copilot desactivable por rol. "Agents" = abierto a todos (comportamiento
-  // actual); un admin puede subir el mínimo a Supervisors/Admins para restringirlo.
-  use_copilot: "Agents",
-};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {

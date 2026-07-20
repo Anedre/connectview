@@ -9,6 +9,7 @@ import {
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { randomUUID } from "node:crypto";
 import { resolveDynamo } from "../_shared/tenantConnect";
+import { requireCapability } from "../_shared/rbac";
 
 // BYO Data Plane (#46): tenant primero, fallback Vox pooled.
 const legacyDynamo = new DynamoDBClient({});
@@ -55,6 +56,10 @@ async function listContacts(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // SEC — RBAC server-side: clonar una campaña (crea una nueva DRAFT) exige
+    // `manage_campaigns`. Function URL auth=NONE.
+    const gate = await requireCapability(event?.headers, "manage_campaigns");
+    if (!gate.ok) return gate.response;
     // BYO Data Plane (#46): tenant primero, fallback Vox.
     ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
     const body: CloneBody = JSON.parse(event.body || "{}");

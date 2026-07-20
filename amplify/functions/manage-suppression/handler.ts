@@ -1,7 +1,8 @@
 import type { Handler } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { resolveDynamo } from "../_shared/tenantConnect";
-import { getIdentity, resolveTenantId } from "../_shared/cognitoAuth";
+import { resolveTenantId } from "../_shared/cognitoAuth";
+import { requireCapability } from "../_shared/rbac";
 import {
   evaluateBatch,
   getRules,
@@ -54,19 +55,13 @@ export const handler: Handler = async (event: any) => {
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
   const params = event.queryStringParameters || {};
 
-  // SEC-A5: gate de rol. La lista Do-Not-Contact es compliance (Meta) y su edición
-  // bloquea/desbloquea el contacto de un número → operación privilegiada. Antes sólo
-  // había aislamiento por-tenant: cualquier usuario autenticado del tenant podía ver
-  // y tocar la DNC. Ahora exigimos el grupo Cognito "Admins" (mismo patrón que
-  // list-users/manage-connections). El Function URL es auth=NONE → validamos aquí.
-  let identity;
-  try {
-    identity = await getIdentity(event?.headers);
-  } catch {
-    return bad(401, "no autenticado");
-  }
-  if (!identity?.groups?.includes("Admins"))
-    return bad(403, "Solo un Admin puede gestionar la supresión.");
+  // SEC-A5 (RBAC matriz): la lista Do-Not-Contact es compliance (Meta) y su edición
+  // bloquea/desbloquea el contacto de un número → operación privilegiada. Antes se
+  // hardcodeaba el grupo Cognito "Admins"; ahora el rol mínimo sale de la matriz
+  // por-tenant (cap `manage_suppression`, default Admins) para ser consistente con
+  // Configuración → Seguridad. El Function URL es auth=NONE → validamos aquí.
+  const gate = await requireCapability(event?.headers, "manage_suppression");
+  if (!gate.ok) return gate.response;
 
   // BYO Data Plane: tenant primero, fallback a Vox pooled.
   ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));

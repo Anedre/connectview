@@ -29,6 +29,7 @@ import {
 import { normalizePhone, samePhone } from "../_shared/phone";
 import { setActiveTenant } from "../_shared/salesforceClient";
 import { resolveTenantId } from "../_shared/cognitoAuth";
+import { requireCapability } from "../_shared/rbac";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
 import { fireAutomation } from "../_shared/automationHook";
 import { evaluateLeadFilter, type SegmentDef } from "../_shared/leadFilter";
@@ -592,6 +593,15 @@ export const handler: Handler = async (event: any) => {
   }
   const method = event.requestContext?.http?.method || event.httpMethod || "GET";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
+  // SEC — RBAC server-side: las ESCRITURAS del embudo (upsert/move/applyTag/
+  // assignProgram/import/reset/segmentos/journeys/pushSf/delete) exigen
+  // `manage_leads`. El front ya lo gatea con useCan (agente = tablero solo-lectura);
+  // acá lo enforce porque el Function URL es auth=NONE. GET queda abierto (los
+  // agentes VEN el tablero y sus reportes). El rol mínimo sale de la matriz por-tenant.
+  if (method === "POST" || method === "DELETE") {
+    const gate = await requireCapability(event?.headers, "manage_leads");
+    if (!gate.ok) return gate.response;
+  }
   // Tenant del JWT → propagateById/propagateLead pegan al SF del cliente
   // (vía salesforceClient.setActiveTenant → soql/insertSObject/updateSObject).
   // Sin tenant configurado SF → fallback JWT bearer legacy.
