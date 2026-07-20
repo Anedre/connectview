@@ -207,9 +207,12 @@ function MonthGrid({
 export function DateRangePicker({
   value,
   onChange,
+  align = "left",
 }: {
   value: DateRange;
   onChange: (r: DateRange) => void;
+  /** Borde del botón al que se ancla el popover (usa "right" cerca del borde derecho). */
+  align?: "left" | "right";
 }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState(() => addMonths(value.end, -1));
@@ -278,7 +281,7 @@ export function DateRangePicker({
             style={{
               position: "absolute",
               top: "calc(100% + 6px)",
-              left: 0,
+              ...(align === "right" ? { right: 0 } : { left: 0 }),
               zIndex: 61,
               background: "var(--bg-1)",
               border: "1px solid var(--border-2)",

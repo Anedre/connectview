@@ -1,0 +1,1751 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PULSO · Concepto de Reportes</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="%230A0D12"/><path d="M6 18 L11 18 L13.5 10 L17 24 L19.5 15 L21.5 18 L26 18" stroke="%2335E0A1" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>' />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   PULSO — concepto de página de reportes (independiente de ARIA)
+   Tema propio: "ink" oscuro + menta eléctrica.
+   Paleta categórica validada (dataviz six-checks, modo dark,
+   superficie #10141B): CVD ΔE mín 10.5 · visión normal mín 21.5.
+   ============================================================ */
+:root{
+  --bg:#0A0D12;
+  --card:#10141B;
+  --card2:#151B26;
+  --border:rgba(255,255,255,.07);
+  --border-strong:rgba(255,255,255,.13);
+  --t1:#F2F5FA;          /* tinta primaria   16.9:1 */
+  --t2:#A9B4C6;          /* tinta secundaria  8.8:1 */
+  --t3:#7C8798;          /* tinta muted/ejes  5.1:1 */
+  --grid:#1E242E;        /* gridline hairline */
+  --axis:#2E3646;        /* línea base */
+  /* series — el color sigue al canal, nunca a su rango */
+  --wa:#23A878; --voz:#6D80F2; --ml:#BD8412; --ig:#DA5A9E; --msgr:#3093D8;
+  --accent:#35E0A1;      /* acento de producto (hero, focus, sparklines) */
+  --accent-dim:#173327;  /* track del meter (mismo ramp) */
+  --good:#45CE96; --bad:#F07F7F; --warn:#FAB219;
+  --r-lg:18px; --r-md:12px; --r-sm:8px;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+  --font:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{color-scheme:dark}
+body{
+  background:var(--bg);color:var(--t1);font-family:var(--font);
+  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;
+  min-height:100vh;position:relative;
+}
+body::before{ /* halo sutil detrás del hero */
+  content:"";position:absolute;inset:0 0 auto 0;height:520px;pointer-events:none;
+  background:
+    radial-gradient(640px 300px at 22% -60px, rgba(53,224,161,.075), transparent 70%),
+    radial-gradient(520px 260px at 78% -80px, rgba(109,128,242,.055), transparent 70%);
+}
+.wrap{max-width:1440px;margin:0 auto;padding:0 28px 56px;position:relative}
+
+/* ---------- topbar ---------- */
+.topbar{display:flex;align-items:center;gap:18px;padding:20px 0 6px}
+.wordmark{font-family:"Space Grotesk",var(--font);font-weight:700;font-size:21px;
+  letter-spacing:.14em;display:flex;align-items:center;gap:9px;color:var(--t1)}
+.wordmark .pulse{width:9px;height:9px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 0 rgba(53,224,161,.5);animation:pulse 2.6s ease-out 5}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(53,224,161,.45)}70%{box-shadow:0 0 0 9px rgba(53,224,161,0)}100%{box-shadow:0 0 0 0 rgba(53,224,161,0)}}
+.topbar .tagline{color:var(--t3);font-size:13px;border-left:1px solid var(--border-strong);padding-left:18px}
+.topbar .sp{flex:1}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border-strong);
+  background:var(--card);color:var(--t1);font:inherit;font-weight:600;font-size:13px;
+  padding:8px 14px;border-radius:10px;cursor:pointer;transition:background .15s,border-color .15s;
+}
+.btn:hover{background:var(--card2);border-color:rgba(255,255,255,.2)}
+.btn svg{width:15px;height:15px;stroke:var(--t2)}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#1d2634,#28324a);
+  display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--t2);border:1px solid var(--border-strong)}
+
+/* ---------- tabs (una pregunta por vista, estilo QuickSight) ---------- */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);position:relative;z-index:6;
+  margin-top:6px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{border:0;background:transparent;color:var(--t3);font:inherit;font-size:13.5px;font-weight:600;
+  padding:9px 15px 12px;cursor:pointer;position:relative;white-space:nowrap;
+  border-radius:8px 8px 0 0;transition:color .15s,background .15s}
+.tab:hover{color:var(--t2);background:rgba(255,255,255,.03)}
+.tab.on{color:var(--t1)}
+.tab.on::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;
+  background:var(--accent);box-shadow:0 -2px 14px rgba(53,224,161,.5)}
+.tab-off{display:none!important}
+.span-6{grid-column:span 6}
+@media(max-width:760px){.span-6{grid-column:span 12}}
+
+/* ---------- fila de filtros (única, alcance global) ---------- */
+.filters{
+  display:flex;align-items:center;flex-wrap:wrap;gap:12px;
+  padding:14px 0 22px;position:relative;z-index:5;
+}
+.seg{display:flex;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px}
+.seg button{
+  border:0;background:transparent;color:var(--t3);font:inherit;font-size:13px;font-weight:600;
+  padding:6px 13px;border-radius:8px;cursor:pointer;transition:color .15s,background .15s;
+}
+.seg button:hover{color:var(--t2)}
+.seg button[aria-pressed="true"]{background:var(--card2);color:var(--t1);
+  box-shadow:inset 0 0 0 1px var(--border-strong)}
+.chip{
+  display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);
+  background:var(--card);color:var(--t2);font:inherit;font-size:12.5px;font-weight:600;
+  padding:6px 12px;border-radius:999px;cursor:pointer;transition:all .15s;
+}
+.chip .sw{width:9px;height:9px;border-radius:3px;background:var(--c,#fff);opacity:.35;transition:opacity .15s}
+.chip[aria-pressed="true"]{color:var(--t1);border-color:var(--border-strong)}
+.chip[aria-pressed="true"] .sw{opacity:1}
+.chip:hover{border-color:rgba(255,255,255,.2)}
+.select{
+  appearance:none;border:1px solid var(--border);background:var(--card);color:var(--t2);
+  font:inherit;font-size:13px;font-weight:600;padding:7px 32px 7px 12px;border-radius:10px;cursor:pointer;
+  background-image:url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="%237C8798" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>');
+  background-repeat:no-repeat;background-position:right 12px center;
+}
+.switch{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none}
+.switch .tr{width:34px;height:19px;border-radius:999px;background:var(--card2);
+  border:1px solid var(--border-strong);position:relative;transition:background .18s}
+.switch .tr::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;
+  background:var(--t3);transition:transform .18s,background .18s}
+.switch input{position:absolute;opacity:0;pointer-events:none}
+.switch input:checked + .tr{background:var(--accent-dim)}
+.switch input:checked + .tr::after{transform:translateX(15px);background:var(--accent)}
+.switch .lb{font-size:12.5px;font-weight:600;color:var(--t2)}
+.filters .scope{margin-left:auto;color:var(--t3);font-size:12px}
+
+/* ---------- grid & cards ---------- */
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+.card{
+  grid-column:span 12;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--r-lg);box-shadow:var(--shadow);position:relative;overflow:hidden;
+  animation:rise .5s cubic-bezier(.2,.7,.3,1) both;animation-delay:var(--d,0ms);
+}
+.card::before{ /* highlight superior sutil */
+  content:"";position:absolute;inset:0 0 auto 0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.10),transparent);
+}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.card-h{display:flex;align-items:flex-start;gap:12px;padding:18px 20px 4px}
+.card-h .tt h3{font-size:15px;font-weight:700;letter-spacing:-.01em}
+.card-h .tt p{font-size:12.5px;color:var(--t3);margin-top:2px}
+.card-h .sp{flex:1}
+.iconbtn{
+  border:1px solid transparent;background:transparent;color:var(--t3);width:30px;height:30px;
+  border-radius:8px;cursor:pointer;display:grid;place-items:center;transition:all .15s;
+}
+.iconbtn:hover{background:var(--card2);color:var(--t2);border-color:var(--border)}
+.iconbtn[aria-pressed="true"]{background:var(--accent-dim);color:var(--accent);border-color:rgba(53,224,161,.25)}
+.iconbtn svg{width:15px;height:15px}
+.card-b{padding:14px 20px 20px}
+.span-4{grid-column:span 4}.span-5{grid-column:span 5}.span-7{grid-column:span 7}.span-8{grid-column:span 8}.span-12{grid-column:span 12}
+@media(max-width:1100px){.span-4{grid-column:span 6}.span-5,.span-7{grid-column:span 12}.span-8{grid-column:span 12}}
+@media(max-width:760px){.span-4{grid-column:span 12}.filters .scope{display:none}.topbar .tagline{display:none}}
+
+/* ---------- hero + stats ---------- */
+.hero-label{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--t3)}
+.hero-num{font-size:54px;font-weight:700;letter-spacing:-.03em;line-height:1.05;margin:6px 0 2px}
+.hero-cap{font-size:12.5px;color:var(--t3)}
+.delta{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:700}
+.delta.good{color:var(--good)}.delta.bad{color:var(--bad)}.delta.neutral{color:var(--t3)}
+.delta .tri{font-size:10px}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;height:100%}
+@media(max-width:760px){.stat-grid{grid-template-columns:1fr}}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);
+  box-shadow:var(--shadow);padding:16px 18px;display:flex;flex-direction:column;gap:2px;
+  animation:rise .5s cubic-bezier(.2,.7,.3,1) both;animation-delay:var(--d,0ms);position:relative;overflow:hidden}
+.stat::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.10),transparent)}
+.stat .lb{font-size:12px;font-weight:600;color:var(--t3)}
+.stat .val{font-size:27px;font-weight:700;letter-spacing:-.02em;margin-top:3px}
+.stat .foot{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-top:6px}
+.stat .foot svg{flex:0 0 auto}
+
+/* ---------- insights ---------- */
+.insights{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;grid-column:span 12}
+@media(max-width:1100px){.insights{grid-template-columns:1fr}}
+.insight{
+  border:1px solid rgba(53,224,161,.16);background:linear-gradient(180deg,rgba(53,224,161,.05),rgba(53,224,161,.015)),var(--card);
+  border-radius:var(--r-lg);padding:14px 16px;display:flex;gap:12px;align-items:flex-start;
+  animation:rise .5s cubic-bezier(.2,.7,.3,1) both;animation-delay:var(--d,0ms);
+}
+.insight .ic{flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:var(--accent-dim);
+  display:grid;place-items:center}
+.insight .ic svg{width:16px;height:16px;stroke:var(--accent)}
+.insight h4{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);margin-bottom:3px}
+.insight p{font-size:13px;color:var(--t2)}
+.insight p b{color:var(--t1);font-weight:700}
+.insight a{color:var(--t3);font-size:12px;font-weight:600;text-decoration:none;display:inline-block;margin-top:6px}
+.insight a:hover{color:var(--accent)}
+
+/* ---------- leyenda ---------- */
+.legend{display:flex;flex-wrap:wrap;gap:14px;padding:2px 0 10px}
+.legend .it{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--t2);font-weight:600}
+.legend .sw{width:10px;height:10px;border-radius:3px}
+.legend .ln{width:14px;height:0;border-top:2px solid var(--t3)}
+.legend .muted{color:var(--t3)}
+
+/* ---------- charts genéricos ---------- */
+.chart{position:relative}
+.chart svg{display:block;width:100%}
+.chart svg text{font-family:var(--font)}
+.axis-lb{fill:var(--t3);font-size:11px;font-variant-numeric:tabular-nums}
+.empty{color:var(--t3);font-size:13px;padding:30px 0;text-align:center}
+
+/* tooltip singleton */
+#tip{
+  position:fixed;z-index:50;pointer-events:none;opacity:0;transition:opacity .12s;
+  background:rgba(16,20,27,.92);backdrop-filter:blur(8px);border:1px solid var(--border-strong);
+  border-radius:12px;padding:10px 12px;box-shadow:0 12px 32px rgba(0,0,0,.5);min-width:150px;max-width:260px;
+}
+#tip.on{opacity:1}
+#tip .tip-title{font-size:11.5px;font-weight:700;color:var(--t3);letter-spacing:.04em;
+  text-transform:uppercase;margin-bottom:6px}
+#tip .tip-row{display:flex;align-items:center;gap:8px;padding:2px 0;font-size:12.5px}
+#tip .tip-key{width:12px;height:0;border-top:3px solid var(--k,#fff);border-radius:2px;flex:0 0 auto}
+#tip .tip-name{color:var(--t2);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tip .tip-val{color:var(--t1);font-weight:700;font-variant-numeric:tabular-nums}
+#tip .tip-total{border-top:1px solid var(--border);margin-top:5px;padding-top:5px}
+
+/* dona */
+.donut-wrap{display:flex;align-items:center;gap:22px}
+.donut-side{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px}
+.donut-side .row{display:flex;align-items:center;gap:9px;font-size:12.5px;padding:3px 6px;margin:0 -6px;
+  border-radius:8px;cursor:default;transition:background .12s}
+.donut-side .row:hover{background:var(--card2)}
+.donut-side .sw{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+.donut-side .nm{color:var(--t2);flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.donut-side .vv{color:var(--t1);font-weight:700;font-variant-numeric:tabular-nums}
+.donut-side .pp{color:var(--t3);font-variant-numeric:tabular-nums;width:44px;text-align:right}
+.donut-c{transition:opacity .15s}
+.arc{transition:transform .18s cubic-bezier(.2,.7,.3,1),opacity .3s;transform-origin:center;cursor:default}
+.arc:hover,.arc.hl{transform:scale(1.035)}
+
+/* embudo */
+.fn-row{display:grid;grid-template-columns:132px 1fr 84px;align-items:center;gap:12px;min-height:34px}
+.fn-lb{font-size:12.5px;font-weight:600;color:var(--t2);text-align:right}
+.fn-bar-w{position:relative;height:26px}
+.fn-bar{height:100%;border-radius:0 4px 4px 0;min-width:6px;cursor:default;outline-offset:2px;
+  transition:width .7s cubic-bezier(.2,.7,.3,1),filter .12s}
+.fn-bar:hover,.fn-bar:focus-visible{filter:brightness(1.18)}
+.fn-val{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.fn-step{grid-column:2/4;font-size:11.5px;color:var(--t3);padding:1px 0 3px;display:flex;gap:5px;align-items:center}
+.fn-step b{color:var(--t2);font-variant-numeric:tabular-nums}
+
+/* meter / velocidad */
+.speed-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.speed-num{font-size:40px;font-weight:700;letter-spacing:-.02em;line-height:1.05}
+.speed-num small{font-size:17px;color:var(--t2);font-weight:600;margin-left:2px}
+.meter{margin-top:16px}
+.meter .mrow{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:7px}
+.meter .mrow .a{color:var(--t2);font-weight:600}
+.meter .mrow .b{font-weight:700;font-variant-numeric:tabular-nums}
+.meter .track{height:10px;border-radius:999px;background:var(--accent-dim);position:relative}
+.meter .fill{height:100%;border-radius:999px;transition:width .8s cubic-bezier(.2,.7,.3,1)}
+.meter .goal{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--t2);border-radius:2px}
+.meter .goal-lb{position:absolute;top:-22px;transform:translateX(-50%);font-size:10.5px;color:var(--t3);white-space:nowrap}
+.mstatus{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t2);margin-top:9px}
+.mstatus svg{width:13px;height:13px;flex:0 0 auto}
+.speed-note{margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:12.5px;color:var(--t3)}
+.speed-note b{color:var(--t1)}
+
+/* heatmap */
+.hm{display:grid;grid-template-columns:36px 1fr;gap:8px}
+.hm-rows{display:flex;flex-direction:column;gap:3px}
+.hm-day{height:24px;display:flex;align-items:center;font-size:11px;color:var(--t3);font-weight:600}
+.hm-grid{display:flex;flex-direction:column;gap:3px}
+.hm-r{display:grid;grid-template-columns:repeat(14,1fr);gap:3px}
+.hm-c{height:24px;border-radius:5px;cursor:default;outline-offset:1px;
+  animation:cellin .4s ease both;animation-delay:var(--d,0ms);transition:box-shadow .1s}
+.hm-c:hover,.hm-c:focus-visible{box-shadow:0 0 0 1.5px var(--accent) inset}
+@keyframes cellin{from{opacity:0}to{opacity:1}}
+.hm-foot{display:flex;align-items:center;margin-top:9px;grid-column:2}
+.hm-hours{display:grid;grid-template-columns:repeat(14,1fr);flex:1;font-size:10.5px;color:var(--t3);font-variant-numeric:tabular-nums}
+.hm-hours span:nth-child(odd){visibility:visible}
+.hm-scale{display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--t3)}
+.hm-scale .bar{width:96px;height:8px;border-radius:4px}
+
+/* barras programas */
+.pg-row{display:grid;grid-template-columns:150px 1fr;align-items:center;gap:12px;min-height:36px}
+.pg-lb{font-size:12.5px;font-weight:600;color:var(--t2);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg-track{display:flex;align-items:center;gap:10px;min-width:0}
+.pg-bar{height:22px;background:var(--wa);border-radius:0 4px 4px 0;min-width:4px;cursor:default;outline-offset:2px;
+  transition:width .7s cubic-bezier(.2,.7,.3,1),filter .12s}
+.pg-bar:hover,.pg-bar:focus-visible{filter:brightness(1.18)}
+.pg-val{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pg-delta{font-size:11.5px;font-weight:700;white-space:nowrap}
+
+/* tabla (twin accesible + leaderboard) */
+table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{
+  text-align:left;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--t3);padding:8px 10px;border-bottom:1px solid var(--border-strong);white-space:nowrap;
+}
+.tbl th.num,.tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--t2)}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tbody tr{transition:background .12s}
+.tbl tbody tr:hover{background:var(--card2)}
+.tbl td.strong{color:var(--t1);font-weight:600}
+.tbl th.sortable{cursor:pointer;user-select:none}
+.tbl th.sortable:hover{color:var(--t2)}
+.tbl th .arr{font-size:9px;margin-left:4px;color:var(--accent)}
+.avatar-s{width:28px;height:28px;border-radius:50%;display:inline-grid;place-items:center;
+  font-size:10.5px;font-weight:700;color:var(--t1);margin-right:10px;vertical-align:middle;border:1px solid var(--border-strong)}
+.mini-meter{display:inline-block;width:62px;height:6px;border-radius:3px;background:var(--accent-dim);
+  vertical-align:middle;margin-right:8px;position:relative;top:-1px}
+.mini-meter i{display:block;height:100%;border-radius:3px;background:var(--accent)}
+
+/* detalle (tabla de registros estilo QuickSight) */
+.search{border:1px solid var(--border);background:var(--bg);color:var(--t1);font:inherit;font-size:13px;
+  padding:7px 12px;border-radius:9px;width:min(260px,100%)}
+.search::placeholder{color:var(--t3)}
+.search:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#cardDetalle .tbl th{position:sticky;top:0;background:var(--card);z-index:2}
+.chip-est{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:600;
+  color:var(--t2);background:rgba(255,255,255,.04);border:1px solid var(--border);white-space:nowrap}
+.chip-est.good{color:var(--good);background:rgba(69,206,150,.09);border-color:rgba(69,206,150,.28)}
+.chip-est.bad{color:var(--bad);background:rgba(240,127,127,.07);border-color:rgba(240,127,127,.22)}
+
+/* toast */
+#toast{
+  position:fixed;left:50%;bottom:26px;transform:translate(-50%,16px);z-index:60;opacity:0;
+  background:var(--card2);border:1px solid var(--border-strong);border-radius:12px;
+  padding:11px 18px;font-size:13px;font-weight:600;color:var(--t1);box-shadow:0 16px 40px rgba(0,0,0,.55);
+  transition:opacity .2s,transform .2s;pointer-events:none;
+}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+.foot-note{margin-top:26px;color:var(--t3);font-size:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.foot-note .dotsep{opacity:.5}
+
+:where(button,a,select,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+/* ---------- modo recorrido (carrusel deslizante) ---------- */
+#carousel{position:fixed;inset:0;z-index:40;background:var(--bg);display:none;flex-direction:column;outline:none}
+#carousel.open{display:flex}
+#carousel::before{content:"";position:absolute;inset:0 0 auto 0;height:420px;pointer-events:none;
+  background:radial-gradient(640px 280px at 50% -80px, rgba(53,224,161,.06), transparent 70%)}
+.car-head{display:flex;align-items:center;gap:16px;padding:13px 26px;border-bottom:1px solid var(--border);position:relative;z-index:2}
+.car-title{font-size:13px;color:var(--t3);font-weight:600}
+.car-track{flex:1;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;position:relative;z-index:1}
+.car-track::-webkit-scrollbar{display:none}
+.car-slide{flex:0 0 100%;min-width:100%;scroll-snap-align:center;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:18px;padding:26px 84px 64px;overflow:hidden}
+.car-cap{font-size:clamp(19px,2.6vw,27px);font-weight:700;letter-spacing:-.015em;text-align:center}
+.car-slide > section{width:min(1080px,100%);max-height:100%;overflow:auto;animation:none}
+.car-slide > section.card{box-shadow:var(--shadow),0 0 90px rgba(53,224,161,.05)}
+.car-slide > #cardHero{width:min(720px,100%)}
+.car-slide > #cardHero .hero-num{font-size:clamp(56px,8vw,84px)}
+.car-slide > #cardKpis{width:min(900px,100%)}
+.car-slide .stat{animation:none}
+.car-slide .stat .val{font-size:33px}
+.car-slide > #cardInsights{display:grid;grid-template-columns:1fr;width:min(760px,100%);gap:16px}
+.car-slide .insight{animation:none}
+.car-slide .insight p{font-size:15px}
+.car-slide .card-h .tt h3{font-size:18px}
+#carousel #trendChart{height:min(50vh,440px)!important}
+#carousel #heroSpark{height:110px!important}
+#carousel .hm-c,#carousel .hm-day{height:30px}
+.car-arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:46px;height:46px;border-radius:50%;
+  border:1px solid var(--border-strong);background:rgba(21,27,38,.82);backdrop-filter:blur(6px);color:var(--t1);
+  font-size:26px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0 0 4px;transition:background .15s,border-color .15s}
+.car-arrow:hover{background:var(--card2);border-color:rgba(255,255,255,.25)}
+.car-arrow.left{left:20px}.car-arrow.right{right:20px}
+.car-dots{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:3;display:flex;gap:8px}
+.car-dot{width:8px;height:8px;border-radius:999px;border:0;background:rgba(255,255,255,.18);cursor:pointer;padding:0;transition:all .25s}
+.car-dot:hover{background:rgba(255,255,255,.42)}
+.car-dot.on{width:22px;background:var(--accent)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+/* fallback: pestañas throttled sin rAF → página estática, nunca vacía */
+html.no-anim *,html.no-anim *::before,html.no-anim *::after{animation:none!important;transition:none!important}
+</style>
+</head>
+<body data-palette="#23A878,#6D80F2,#BD8412,#DA5A9E,#3093D8">
+<div class="wrap">
+
+  <!-- ================= TOPBAR ================= -->
+  <header class="topbar">
+    <div class="wordmark">PULSO<span class="pulse" aria-hidden="true"></span></div>
+    <div class="tagline">Centro de reportes · concepto de diseño</div>
+    <div class="sp"></div>
+    <button class="btn" id="btnTour" type="button" title="Recorrido slide por slide (modo presentación / TV)">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="M21 8v8"/><path d="M9 9.5v5l4.5-2.5z"/></svg>
+      Recorrido
+    </button>
+    <button class="btn" id="btnExport" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      Exportar CSV
+    </button>
+    <div class="avatar" title="Andre">AA</div>
+  </header>
+
+  <!-- ============ TABS: una pregunta por vista (estilo QuickSight) ============ -->
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Secciones del reporte">
+    <button type="button" class="tab on" role="tab" aria-selected="true"  data-tab="resumen">Resumen</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" data-tab="volumen">Volumen</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" data-tab="pipeline">Pipeline</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" data-tab="demanda">Demanda</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" data-tab="equipo">Equipo</button>
+    <button type="button" class="tab" role="tab" aria-selected="false" data-tab="detalle">Detalle</button>
+  </nav>
+
+  <!-- ============ FILTROS (una sola fila, alcance global) ============ -->
+  <div class="filters" role="group" aria-label="Filtros del reporte">
+    <div class="seg" id="segRange" role="group" aria-label="Rango de fechas">
+      <button type="button" data-range="7"  aria-pressed="false">7 días</button>
+      <button type="button" data-range="30" aria-pressed="true">30 días</button>
+      <button type="button" data-range="90" aria-pressed="false">90 días</button>
+    </div>
+    <div id="chChips" style="display:flex;gap:8px;flex-wrap:wrap" role="group" aria-label="Canales"></div>
+    <select class="select" id="selProgram" aria-label="Programa">
+      <option value="">Todos los programas</option>
+    </select>
+    <label class="switch">
+      <input type="checkbox" id="cmpToggle" checked />
+      <span class="tr" aria-hidden="true"></span>
+      <span class="lb">vs período anterior</span>
+    </label>
+    <div class="scope">Todos los números responden a este filtro</div>
+  </div>
+
+  <!-- ================= GRID ================= -->
+  <main class="grid">
+
+    <!-- HERO -->
+    <section class="card span-5" id="cardHero" data-tab="resumen" style="--d:0ms">
+      <div class="card-b" style="padding:22px 24px 18px">
+        <div class="hero-label">Conversaciones gestionadas</div>
+        <div class="hero-num" id="heroNum">0</div>
+        <div style="display:flex;align-items:center;gap:10px;margin:2px 0 14px">
+          <span class="delta" id="heroDelta"></span>
+          <span class="hero-cap" id="heroCap"></span>
+        </div>
+        <div class="chart" id="heroSpark" style="height:74px"></div>
+      </div>
+    </section>
+
+    <!-- STAT TILES -->
+    <section class="span-7" id="cardKpis" data-tab="resumen" style="display:flex">
+      <div class="stat-grid" style="flex:1">
+        <div class="stat" style="--d:60ms">
+          <span class="lb">Tasa de contacto</span>
+          <span class="val" id="kContacto">—</span>
+          <div class="foot"><span class="delta" id="dContacto"></span><span id="sContacto"></span></div>
+        </div>
+        <div class="stat" style="--d:110ms">
+          <span class="lb">Primera respuesta (mediana)</span>
+          <span class="val" id="kRespuesta">—</span>
+          <div class="foot"><span class="delta" id="dRespuesta"></span><span id="sRespuesta"></span></div>
+        </div>
+        <div class="stat" style="--d:160ms">
+          <span class="lb">Matrículas del período</span>
+          <span class="val" id="kMatriculas">—</span>
+          <div class="foot"><span class="delta" id="dMatriculas"></span><span id="sMatriculas"></span></div>
+        </div>
+        <div class="stat" style="--d:210ms">
+          <span class="lb">CSAT promedio</span>
+          <span class="val" id="kCsat">—</span>
+          <div class="foot"><span class="delta" id="dCsat"></span><span id="sCsat"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INSIGHTS -->
+    <section class="insights" id="cardInsights" data-tab="resumen" aria-label="Hallazgos automáticos">
+      <div class="insight" style="--d:240ms">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></div>
+        <div><h4>Canal en alza</h4><p id="ins1"></p><a href="#cardTrend">Ver tendencia →</a></div>
+      </div>
+      <div class="insight" style="--d:290ms">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+        <div><h4>Pico de demanda</h4><p id="ins2"></p><a href="#cardHeat">Ver actividad →</a></div>
+      </div>
+      <div class="insight" style="--d:340ms">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
+        <div><h4>Velocidad que convierte</h4><p id="ins3"></p><a href="#cardSpeed">Ver velocidad →</a></div>
+      </div>
+    </section>
+
+    <!-- TENDENCIA -->
+    <section class="card span-8" id="cardTrend" data-tab="volumen" style="--d:60ms">
+      <div class="card-h">
+        <div class="tt">
+          <h3>Volumen por canal</h3>
+          <p id="trendSub">Conversaciones diarias, apiladas por canal</p>
+        </div>
+        <div class="sp"></div>
+        <button class="iconbtn" type="button" data-table="trend" aria-pressed="false" title="Ver como tabla" aria-label="Alternar tabla de datos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h18M3 10h18M3 15h18M3 20h18"/></svg>
+        </button>
+      </div>
+      <div class="card-b">
+        <div class="legend" id="trendLegend"></div>
+        <div class="chart" id="trendChart" style="height:336px"></div>
+        <div id="trendTable" hidden></div>
+      </div>
+    </section>
+
+    <!-- MIX POR CANAL -->
+    <section class="card span-4" id="cardMix" data-tab="volumen" style="--d:120ms">
+      <div class="card-h">
+        <div class="tt"><h3>Mix por canal</h3><p>Participación en el período</p></div>
+        <div class="sp"></div>
+        <button class="iconbtn" type="button" data-table="mix" aria-pressed="false" title="Ver como tabla" aria-label="Alternar tabla de datos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h18M3 10h18M3 15h18M3 20h18"/></svg>
+        </button>
+      </div>
+      <div class="card-b">
+        <div class="donut-wrap" id="mixChart"></div>
+        <div id="mixTable" hidden></div>
+      </div>
+    </section>
+
+    <!-- EMBUDO -->
+    <section class="card span-6" id="cardFunnel" data-tab="pipeline" style="--d:60ms">
+      <div class="card-h">
+        <div class="tt"><h3>Pipeline de tipificación</h3><p>Del lead nuevo a la matrícula</p></div>
+        <div class="sp"></div>
+        <button class="iconbtn" type="button" data-table="funnel" aria-pressed="false" title="Ver como tabla" aria-label="Alternar tabla de datos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h18M3 10h18M3 15h18M3 20h18"/></svg>
+        </button>
+      </div>
+      <div class="card-b">
+        <div id="funnelChart" style="display:flex;flex-direction:column;gap:2px"></div>
+        <div id="funnelTable" hidden></div>
+      </div>
+    </section>
+
+    <!-- VELOCIDAD -->
+    <section class="card span-6" id="cardSpeed" data-tab="pipeline" style="--d:120ms">
+      <div class="card-h">
+        <div class="tt"><h3>Velocidad de contacto</h3><p>Speed-to-lead del período</p></div>
+      </div>
+      <div class="card-b">
+        <div class="speed-top">
+          <div>
+            <div class="hero-label" style="font-size:11px">Mediana al primer contacto</div>
+            <div class="speed-num" id="spdNum">—</div>
+            <span class="delta" id="spdDelta"></span>
+          </div>
+          <div style="text-align:right">
+            <div class="hero-label" style="font-size:11px">P90</div>
+            <div style="font-size:19px;font-weight:700;margin-top:4px" id="spdP90">—</div>
+          </div>
+        </div>
+        <div class="meter">
+          <div class="mrow"><span class="a">Contactados en &lt; 5 min</span><span class="b" id="mtVal">—</span></div>
+          <div class="track">
+            <div class="fill" id="mtFill" style="width:0%"></div>
+            <div class="goal" id="mtGoal"><span class="goal-lb">Meta 80 %</span></div>
+          </div>
+          <div class="mstatus" id="mtStatus"></div>
+        </div>
+        <p class="speed-note">Los leads contactados en menos de 5 minutos convierten <b>×3.1</b> más que el resto (últimos 90 días).</p>
+      </div>
+    </section>
+
+    <!-- HEATMAP -->
+    <section class="card span-7" id="cardHeat" data-tab="demanda" style="--d:60ms">
+      <div class="card-h">
+        <div class="tt"><h3>Actividad por hora</h3><p>Conversaciones iniciadas · día × hora</p></div>
+        <div class="sp"></div>
+        <button class="iconbtn" type="button" data-table="heat" aria-pressed="false" title="Ver como tabla" aria-label="Alternar tabla de datos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h18M3 10h18M3 15h18M3 20h18"/></svg>
+        </button>
+      </div>
+      <div class="card-b">
+        <div id="heatChart"></div>
+        <div id="heatTable" hidden></div>
+      </div>
+    </section>
+
+    <!-- TOP PROGRAMAS -->
+    <section class="card span-5" id="cardPrograms" data-tab="demanda" style="--d:120ms">
+      <div class="card-h">
+        <div class="tt"><h3>Top programas</h3><p>Conversaciones por unidad comercial</p></div>
+        <div class="sp"></div>
+        <button class="iconbtn" type="button" data-table="programs" aria-pressed="false" title="Ver como tabla" aria-label="Alternar tabla de datos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h18M3 10h18M3 15h18M3 20h18"/></svg>
+        </button>
+      </div>
+      <div class="card-b">
+        <div id="programsChart" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div id="programsTable" hidden></div>
+      </div>
+    </section>
+
+    <!-- EQUIPO -->
+    <section class="card span-12" id="cardTeam" data-tab="equipo" style="--d:60ms">
+      <div class="card-h">
+        <div class="tt"><h3>Equipo</h3><p>Rendimiento por agente en el período · haz clic en una columna para ordenar</p></div>
+      </div>
+      <div class="card-b" style="overflow-x:auto">
+        <table class="tbl" id="teamTable"></table>
+      </div>
+    </section>
+
+    <!-- DETALLE: registros crudos (el drill-down del QuickSight) -->
+    <section class="card span-12" id="cardDetalle" data-tab="detalle" style="--d:60ms">
+      <div class="card-h">
+        <div class="tt"><h3>Últimas tipificaciones</h3><p>Registros del período · responden al programa y rango globales</p></div>
+        <div class="sp"></div>
+        <input class="search" id="detSearch" type="search" placeholder="Buscar teléfono, agente, estado…" aria-label="Buscar en los registros" />
+      </div>
+      <div class="card-b">
+        <div class="hero-cap" id="detCount" style="margin-bottom:10px"></div>
+        <div style="max-height:520px;overflow:auto;border:1px solid var(--border);border-radius:12px">
+          <table class="tbl" id="detTable"></table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="foot-note">
+    <span><b style="color:var(--t2)">PULSO</b> — concepto de página de reportes para ARIA</span>
+    <span class="dotsep">·</span><span>datos simulados con fines de diseño</span>
+    <span class="dotsep">·</span><span>paleta validada (CVD ΔE mín 10.5 · contraste ≥ 3:1)</span>
+  </footer>
+</div>
+
+<!-- ============ MODO RECORRIDO (carrusel deslizante) ============ -->
+<div id="carousel" role="dialog" aria-modal="true" aria-label="Recorrido del reporte" aria-hidden="true" tabindex="-1">
+  <div class="car-head">
+    <div class="wordmark" style="font-size:15px">PULSO<span style="width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block"></span></div>
+    <div class="car-title" id="carTitle"></div>
+    <div class="sp"></div>
+    <label class="switch" title="Avance automático cada 8 s (modo TV)">
+      <input type="checkbox" id="carAuto" />
+      <span class="tr" aria-hidden="true"></span>
+      <span class="lb">Auto</span>
+    </label>
+    <button class="btn" id="carClose" type="button">Salir · Esc</button>
+  </div>
+  <div class="car-track" id="carTrack"></div>
+  <button class="car-arrow left" id="carPrev" type="button" aria-label="Slide anterior">‹</button>
+  <button class="car-arrow right" id="carNext" type="button" aria-label="Slide siguiente">›</button>
+  <div class="car-dots" id="carDots" aria-label="Progreso del recorrido"></div>
+</div>
+
+<div id="tip" role="status" aria-hidden="true"></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   PULSO · datos simulados con PRNG sembrado (mismo render siempre)
+   ============================================================ */
+const seed = 20260719;
+const rng = (() => { let a = seed; return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();
+
+/* Canales — orden de slots = orden de apilado validado (adyacencias seguras) */
+const CH = [
+  { id: "wa",   name: "WhatsApp",      color: "#23A878", base: 300, trend: 0.9 },
+  { id: "voz",  name: "Voz",           color: "#6D80F2", base: 205, trend: 0.1 },
+  { id: "ml",   name: "Mercado Libre", color: "#BD8412", base: 58,  trend: 0.3 },
+  { id: "ig",   name: "Instagram",     color: "#DA5A9E", base: 92,  trend: 0.75 },
+  { id: "msgr", name: "Messenger",     color: "#3093D8", base: 66,  trend: -0.2 },
+];
+const FUNNEL_RAMP = ["#1E5A43", "#257656", "#2D9269", "#37AE7D", "#45CE96"]; // ordinal validada
+const SEQ = ["#123126", "#174633", "#1D5C41", "#24734F", "#2C8B5F", "#37A473", "#45CE96"]; // secuencial (heatmap)
+const PROGRAMS = [
+  { id: "adm", name: "Administración",  share: 0.27 },
+  { id: "der", name: "Derecho",         share: 0.22 },
+  { id: "ind", name: "Ing. Industrial", share: 0.19 },
+  { id: "mkt", name: "Marketing",       share: 0.17 },
+  { id: "con", name: "Contabilidad",    share: 0.15 },
+];
+const WK = [0.32, 1.02, 1.08, 1.0, 0.97, 0.9, 0.5]; // dom..sáb
+
+/* 180 días (90 actuales + 90 previos para comparar) */
+const DAYS = (() => {
+  const out = [];
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const fD = new Intl.DateTimeFormat("es-PE", { day: "numeric", month: "short" });
+  const fW = new Intl.DateTimeFormat("es-PE", { weekday: "short", day: "numeric", month: "short" });
+  for (let i = 179; i >= 0; i--) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    const t = (179 - i) / 179;
+    const by = {};
+    for (const c of CH) {
+      const v = c.base * WK[d.getDay()] * (1 + c.trend * t) * (0.88 + rng() * 0.24);
+      by[c.id] = Math.round(v);
+    }
+    out.push({ date: d, label: fD.format(d), full: fW.format(d), by });
+  }
+  return out;
+})();
+
+/* Matriz de pesos día×hora para el heatmap (7 filas Lun..Dom × 14 horas 8..21) */
+const HOURS = Array.from({ length: 14 }, (_, i) => 8 + i);
+const HM_W = (() => {
+  const rows = [];
+  for (let dw = 0; dw < 7; dw++) { // 0=Lun .. 6=Dom
+    const day = WK[(dw + 1) % 7];
+    rows.push(HOURS.map(h => {
+      let w = 0.55;
+      if (h >= 9 && h <= 12) w = 1.25 + (h === 11 ? 0.45 : 0);
+      else if (h >= 15 && h <= 18) w = 1.05 + (h === 17 ? 0.25 : 0);
+      else if (h >= 13 && h <= 14) w = 0.8;
+      if (dw === 4 && h >= 9 && h <= 12) w *= 1.12; // viernes fuerte
+      return w * day * (0.9 + rng() * 0.2);
+    }));
+  }
+  return rows;
+})();
+const DAY_NAMES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+const AGENTS = [
+  { name: "Valeria Quispe",  share: 0.19, tmo: 252, conv: 15.2, csat: 4.8 },
+  { name: "Jorge Huamán",    share: 0.17, tmo: 231, conv: 13.4, csat: 4.6 },
+  { name: "Lucía Paredes",   share: 0.16, tmo: 274, conv: 12.1, csat: 4.7 },
+  { name: "Diego Torres",    share: 0.14, tmo: 246, conv: 11.8, csat: 4.4 },
+  { name: "María Fernández", share: 0.13, tmo: 289, conv: 10.6, csat: 4.5 },
+  { name: "Carlos Rojas",    share: 0.11, tmo: 262, conv: 9.3,  csat: 4.3 },
+  { name: "Ana Castillo",    share: 0.10, tmo: 240, conv: 8.7,  csat: 4.6 },
+].map(a => ({ ...a, spark: Array.from({ length: 12 }, () => 0.5 + rng()) }));
+
+/* Registros crudos para el tab Detalle (el drill-down del QuickSight) */
+const DET_ORIGENES = ["Facebook", "Instagram", "WhatsApp", "Mercado Libre", "Web"];
+const DET_ESTADOS = [
+  ["Nuevo lead", 0.22], ["Gestionado", 0.17], ["Contactado", 0.16], ["Interesado", 0.10],
+  ["Cita agendada", 0.08], ["Matriculado", 0.06], ["No interesado", 0.13], ["No contactado", 0.08],
+];
+const fDet = new Intl.DateTimeFormat("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" });
+const RECORDS = Array.from({ length: 48 }, () => {
+  const dOff = Math.floor(rng() * 90);
+  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - dOff);
+  const dig = "9" + String(Math.floor(rng() * 1e8)).padStart(8, "0");
+  let acc = 0, estado = DET_ESTADOS[0][0];
+  const roll = rng();
+  for (const [nm, w] of DET_ESTADOS) { acc += w; if (roll <= acc) { estado = nm; break; } }
+  return {
+    phone: `+51 ${dig.slice(0, 3)} ${dig.slice(3, 6)} ${dig.slice(6)}`,
+    dOff, fecha: fDet.format(d),
+    hora: `${String(8 + Math.floor(rng() * 13)).padStart(2, "0")}:${String(Math.floor(rng() * 60)).padStart(2, "0")}`,
+    origen: DET_ORIGENES[Math.floor(rng() * DET_ORIGENES.length)],
+    programa: PROGRAMS[Math.floor(rng() * PROGRAMS.length)].name,
+    agente: AGENTS[Math.floor(rng() * AGENTS.length)].name,
+    estado,
+  };
+}).sort((a, b) => a.dOff - b.dOff);
+
+/* ============================================================
+   Estado global — los filtros scope-an TODO lo de abajo
+   ============================================================ */
+const state = {
+  range: 30,
+  channels: new Set(CH.map(c => c.id)),
+  program: "",
+  compare: true,
+  tab: "resumen",
+};
+
+/* ============================================================
+   Utilidades
+   ============================================================ */
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const NS = "http://www.w3.org/2000/svg";
+const fmt = n => Math.round(n).toLocaleString("es-PE");
+const fmtPct = (x, d = 1) => (x * 100).toLocaleString("es-PE", { maximumFractionDigits: d, minimumFractionDigits: 0 }) + " %";
+const fmt1 = x => x.toLocaleString("es-PE", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+const el = (tag, attrs = {}, parent) => {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+};
+const div = (cls, parent, text) => {
+  const e = document.createElement("div");
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+};
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let ANIM = true; // se resuelve en boot(): false si rAF no corre (pestaña throttled) o reduced-motion
+
+function niceMax(v) {
+  if (v <= 0) return 10;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * p >= v) return m * p;
+  return 10 * p;
+}
+function programFactor() {
+  if (!state.program) return 1;
+  const p = PROGRAMS.find(p => p.id === state.program);
+  return p ? p.share : 1;
+}
+function slice() {
+  const n = state.range, f = programFactor();
+  const cur = DAYS.slice(180 - n).map(d => scaleDay(d, f));
+  const prev = DAYS.slice(180 - 2 * n, 180 - n).map(d => scaleDay(d, f));
+  return { cur, prev };
+}
+function scaleDay(d, f) {
+  const by = {};
+  let total = 0;
+  for (const c of CH) {
+    const v = state.channels.has(c.id) ? Math.round(d.by[c.id] * f) : 0;
+    by[c.id] = v; total += v;
+  }
+  return { ...d, by, total };
+}
+const sum = arr => arr.reduce((a, b) => a + b, 0);
+const totalOf = days => sum(days.map(d => d.total));
+
+/* Delta chip: dir=+1 subir es bueno · dir=-1 subir es malo */
+function setDelta(node, cur, prev, dir = 1, fmtFn = null, suffix = " vs anterior") {
+  node.textContent = "";
+  if (!prev) { node.className = "delta neutral"; node.textContent = "—"; return; }
+  const rel = (cur - prev) / prev;
+  const up = rel >= 0;
+  const good = dir === 1 ? up : !up;
+  node.className = "delta " + (Math.abs(rel) < 0.002 ? "neutral" : good ? "good" : "bad");
+  const tri = document.createElement("span"); tri.className = "tri"; tri.textContent = up ? "▲" : "▼";
+  node.appendChild(tri);
+  node.appendChild(document.createTextNode(
+    (fmtFn ? fmtFn(Math.abs(cur - prev)) : fmtPct(Math.abs(rel))) + suffix
+  ));
+}
+
+/* Count-up con rAF (salta al final con reduced motion) */
+const cuPrev = new Map();
+function countUp(node, value, fmtFn = fmt) {
+  const from = cuPrev.get(node) ?? 0;
+  cuPrev.set(node, value);
+  node.textContent = fmtFn(value); // el valor final SIEMPRE queda pintado
+  if (!ANIM || Math.abs(value - from) < 1e-9) return;
+  const t0 = performance.now(), dur = 700;
+  const tick = now => {
+    const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+    node.textContent = fmtFn(from + (value - from) * e);
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/* ============================================================
+   Tooltip singleton (crosshair + por-marca) — solo textContent
+   ============================================================ */
+const tip = $("#tip");
+function tipShow(x, y, title, rows, totalRow) {
+  tip.textContent = "";
+  if (title) div("tip-title", tip, title);
+  for (const r of rows) {
+    const row = div("tip-row", tip);
+    const key = div("tip-key", row); key.style.setProperty("--k", r.color || "transparent");
+    if (!r.color) key.style.visibility = "hidden";
+    div("tip-name", row, r.name);
+    div("tip-val", row, r.value);
+  }
+  if (totalRow) {
+    const row = div("tip-row tip-total", tip);
+    const key = div("tip-key", row); key.style.visibility = "hidden";
+    div("tip-name", row, totalRow.name);
+    div("tip-val", row, totalRow.value);
+  }
+  tip.classList.add("on");
+  tip.setAttribute("aria-hidden", "false");
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let px = x + 14, py = y - h - 10;
+  if (px + w > innerWidth - 10) px = x - w - 14;
+  if (py < 8) py = y + 16;
+  tip.style.left = px + "px"; tip.style.top = py + "px";
+}
+function tipHide() { tip.classList.remove("on"); tip.setAttribute("aria-hidden", "true"); }
+addEventListener("scroll", tipHide, { passive: true });
+addEventListener("keydown", e => { if (e.key === "Escape") tipHide(); });
+
+/* Tooltip también en foco de teclado (mismo contenido que hover) */
+function bindFocusTip(node, fn) {
+  node.addEventListener("focus", () => { const r = node.getBoundingClientRect(); fn(r.left + r.width / 2, r.top); });
+  node.addEventListener("blur", tipHide);
+}
+
+/* ============================================================
+   Toast
+   ============================================================ */
+let toastT;
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 2600);
+}
+
+/* ============================================================
+   Sparkline (stat tiles + hero) — 1 serie en acento, wash 10 %
+   ============================================================ */
+function sparkline(node, pts, { w = null, h = null, color = "#35E0A1", area = true } = {}) {
+  node.textContent = "";
+  const W = w ?? node.clientWidth ?? 120, H = h ?? node.clientHeight ?? 40;
+  if (!W) return;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H }, node);
+  const mn = Math.min(...pts), mx = Math.max(...pts), pad = 4;
+  const X = i => pad + i * (W - 2 * pad) / (pts.length - 1);
+  const Y = v => H - pad - (mx === mn ? 0.5 : (v - mn) / (mx - mn)) * (H - 2 * pad);
+  const line = pts.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+  if (area) el("path", { d: `${line}L${X(pts.length - 1)},${H - 1}L${X(0)},${H - 1}Z`, fill: color, opacity: .1 }, svg);
+  const p = el("path", { d: line, fill: "none", stroke: color, "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round" }, svg);
+  if (ANIM) {
+    const len = p.getTotalLength();
+    p.style.strokeDasharray = len; p.style.strokeDashoffset = len;
+    p.style.transition = "stroke-dashoffset .9s cubic-bezier(.2,.7,.3,1)";
+    requestAnimationFrame(() => requestAnimationFrame(() => { p.style.strokeDashoffset = "0"; }));
+  }
+  el("circle", { cx: X(pts.length - 1), cy: Y(pts.at(-1)), r: 3.5, fill: color, stroke: "#10141B", "stroke-width": 2 }, svg);
+}
+
+/* ============================================================
+   Área apilada (tendencia) — crosshair, tooltip, línea previa
+   ============================================================ */
+function renderTrend(cur, prev) {
+  const host = $("#trendChart");
+  host.textContent = "";
+  const W = host.clientWidth || 1100, H = host.clientHeight || 336;
+  const m = { t: 14, r: 14, b: 30, l: 48 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const N = cur.length;
+  const active = CH.filter(c => state.channels.has(c.id));
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H }, host);
+
+  /* escala */
+  const totalMax = Math.max(...cur.map(d => d.total), state.compare ? Math.max(...prev.map(d => d.total)) : 0);
+  const yMax = niceMax(totalMax * 1.05);
+  const X = i => m.l + (N === 1 ? pw / 2 : i * pw / (N - 1));
+  const Y = v => m.t + ph - (v / yMax) * ph;
+
+  /* grid horizontal — hairlines sólidas, recesivas */
+  const ticks = 4;
+  for (let t = 0; t <= ticks; t++) {
+    const v = yMax * t / ticks, y = Y(v);
+    el("line", { x1: m.l, x2: W - m.r, y1: y, y2: y, stroke: t === 0 ? "var(--axis)" : "var(--grid)", "stroke-width": 1 }, svg);
+    if (t > 0) el("text", { x: m.l - 8, y: y + 4, "text-anchor": "end", class: "axis-lb" }, svg).textContent = fmt(v);
+  }
+  /* etiquetas X */
+  const step = N <= 8 ? 1 : N <= 35 ? 5 : 13;
+  cur.forEach((d, i) => {
+    if (i % step === 0 || i === N - 1) {
+      el("text", { x: X(i), y: H - 8, "text-anchor": "middle", class: "axis-lb" }, svg).textContent = d.label;
+    }
+  });
+
+  /* bandas apiladas: fill 22 % + gap 2px color superficie + borde 2px color serie */
+  const cums = []; // cums[k][i] = acumulado hasta la serie k
+  let base = new Array(N).fill(0);
+  const gAreas = el("g", {}, svg), gGaps = el("g", {}, svg), gLines = el("g", {}, svg);
+  active.forEach((c, k) => {
+    const top = cur.map((d, i) => base[i] + d.by[c.id]);
+    const lineUp = top.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    const lineDn = [...base].reverse().map((v, i) => `L${X(N - 1 - i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    el("path", { d: lineUp + lineDn + "Z", fill: c.color, opacity: .22 }, gAreas);
+    el("path", { d: lineUp, fill: "none", stroke: "var(--card)", "stroke-width": 4 }, gGaps);
+    el("path", { d: lineUp, fill: "none", stroke: c.color, "stroke-width": 2, "stroke-linejoin": "round" }, gLines);
+    cums.push(top); base = top;
+  });
+
+  /* comparación: total del período anterior (gris de-énfasis, sólido) */
+  if (state.compare && prev.length) {
+    const Np = prev.length;
+    const d = prev.map((p, i) => `${i ? "L" : "M"}${(m.l + (Np === 1 ? pw / 2 : i * pw / (Np - 1))).toFixed(1)},${Y(p.total).toFixed(1)}`).join("");
+    el("path", { d, fill: "none", stroke: "#66738A", "stroke-width": 1.5, opacity: .85 }, svg);
+  }
+
+  if (ANIM) { /* revelado del gráfico */
+    const clip = el("clipPath", { id: "trendClip" }, svg);
+    const cr = el("rect", { x: m.l, y: 0, width: 0, height: H }, clip);
+    for (const g of [gAreas, gGaps, gLines]) g.setAttribute("clip-path", "url(#trendClip)");
+    cr.style.transition = "width .9s cubic-bezier(.2,.7,.3,1)";
+    requestAnimationFrame(() => requestAnimationFrame(() => cr.setAttribute("width", pw + m.r)));
+    setTimeout(() => { for (const g of [gAreas, gGaps, gLines]) g.removeAttribute("clip-path"); }, 1000);
+  }
+
+  /* crosshair + dots + tooltip (una lectura por X, todas las series) */
+  const cross = el("g", { style: "display:none" }, svg);
+  const vline = el("line", { y1: m.t, y2: m.t + ph, stroke: "#38445A", "stroke-width": 1 }, cross);
+  const dots = active.map(c => el("circle", { r: 4.5, fill: c.color, stroke: "var(--card)", "stroke-width": 2 }, cross));
+  const hit = el("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" }, svg);
+  hit.style.cursor = "crosshair";
+  hit.addEventListener("pointermove", e => {
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) * (W / r.width);
+    const i = Math.max(0, Math.min(N - 1, Math.round((px - m.l) / (pw / (N - 1 || 1)))));
+    cross.style.display = "";
+    const x = X(i);
+    vline.setAttribute("x1", x); vline.setAttribute("x2", x);
+    active.forEach((c, k) => { dots[k].setAttribute("cx", x); dots[k].setAttribute("cy", Y(cums[k][i])); });
+    const rows = [...active].reverse().map(c => ({ color: c.color, name: c.name, value: fmt(cur[i].by[c.id]) }));
+    if (state.compare && prev[i]) rows.push({ color: "#66738A", name: "Período anterior", value: fmt(prev[i].total) });
+    tipShow(e.clientX, e.clientY, cur[i].full, rows, { name: "Total", value: fmt(cur[i].total) });
+  });
+  hit.addEventListener("pointerleave", () => { cross.style.display = "none"; tipHide(); });
+
+  /* leyenda (identidad, siempre presente con ≥2 series) */
+  const lg = $("#trendLegend");
+  lg.textContent = "";
+  for (const c of active) {
+    const it = div("it", lg);
+    const sw = div("sw", it); sw.style.background = c.color;
+    it.appendChild(document.createTextNode(c.name));
+  }
+  if (state.compare) {
+    const it = div("it muted", lg);
+    div("ln", it);
+    it.appendChild(document.createTextNode("Período anterior (total)"));
+  }
+  $("#trendSub").textContent = `Conversaciones diarias, apiladas por canal · últimos ${state.range} días`;
+
+  /* twin de tabla */
+  buildTrendTable(cur);
+}
+
+function buildTrendTable(cur) {
+  const host = $("#trendTable");
+  host.textContent = "";
+  const t = document.createElement("table"); t.className = "tbl";
+  const trh = t.createTHead().insertRow();
+  const cols = ["Fecha", ...CH.filter(c => state.channels.has(c.id)).map(c => c.name), "Total"];
+  cols.forEach((c, i) => {
+    const th = document.createElement("th"); th.textContent = c;
+    if (i > 0) th.className = "num";
+    trh.appendChild(th);
+  });
+  const tb = t.createTBody();
+  /* 7d → diario; 30/90 → agregado semanal para que la tabla sea legible */
+  const weekly = state.range > 7;
+  const rows = [];
+  if (!weekly) {
+    for (const d of cur) rows.push({ label: d.full, by: d.by, total: d.total });
+  } else {
+    for (let i = 0; i < cur.length; i += 7) {
+      const chunk = cur.slice(i, i + 7);
+      const by = {};
+      for (const c of CH) by[c.id] = sum(chunk.map(d => d.by[c.id]));
+      rows.push({ label: "Sem. del " + chunk[0].label, by, total: sum(chunk.map(d => d.total)) });
+    }
+  }
+  for (const r of rows) {
+    const tr = tb.insertRow();
+    const td0 = tr.insertCell(); td0.textContent = r.label; td0.className = "strong";
+    for (const c of CH.filter(c => state.channels.has(c.id))) {
+      const td = tr.insertCell(); td.textContent = fmt(r.by[c.id]); td.className = "num";
+    }
+    const tdT = tr.insertCell(); tdT.textContent = fmt(r.total); tdT.className = "num strong";
+  }
+  host.appendChild(t);
+}
+
+/* ============================================================
+   Dona (mix por canal) — gaps de superficie, hover, centro vivo
+   ============================================================ */
+function renderMix(cur) {
+  const host = $("#mixChart");
+  host.textContent = "";
+  const total = totalOf(cur);
+  const parts = CH.filter(c => state.channels.has(c.id))
+    .map(c => ({ ...c, v: sum(cur.map(d => d.by[c.id])) }))
+    .filter(p => p.v > 0);
+  if (!parts.length) { div("empty", host, "Sin canales activos"); return; }
+
+  const S = Math.round(Math.min(264, Math.max(196, (host.clientWidth || 430) * 0.42)));
+  const cx = S / 2, cy = S / 2, r1 = Math.round(S * 0.462), r0 = Math.round(S * 0.305);
+  const box = document.createElement("div");
+  box.style.cssText = "position:relative;flex:0 0 auto";
+  const svg = el("svg", { viewBox: `0 0 ${S} ${S}`, width: S, height: S }, box);
+  const center = document.createElement("div");
+  center.style.cssText = "position:absolute;inset:0;display:grid;place-items:center;text-align:center;pointer-events:none";
+  const cVal = div("", center); cVal.style.cssText = "font-size:25px;font-weight:700;letter-spacing:-.02em";
+  const cLb = div("", center); cLb.style.cssText = "font-size:11px;color:var(--t3);margin-top:1px";
+  const cWrap = document.createElement("div"); cWrap.append(cVal, cLb); center.appendChild(cWrap);
+  box.appendChild(center);
+  const setCenter = (v, l) => { cVal.textContent = v; cLb.textContent = l; };
+  setCenter(fmt(total), "conversaciones");
+
+  const pad = 2.5 / r1; // gap ≈2.5px en color de superficie (vía padAngle)
+  let a = -Math.PI / 2;
+  const arcs = [];
+  const biggest = parts.reduce((m, p) => p.v > m.v ? p : m, parts[0]);
+  parts.forEach((p, idx) => {
+    const frac = p.v / total, a0 = a + pad / 2, a1 = a + frac * 2 * Math.PI - pad / 2;
+    a += frac * 2 * Math.PI;
+    if (a1 <= a0) return;
+    const large = (a1 - a0) > Math.PI ? 1 : 0;
+    const P = (rr, ang) => `${(cx + rr * Math.cos(ang)).toFixed(2)},${(cy + rr * Math.sin(ang)).toFixed(2)}`;
+    const d = `M${P(r1, a0)} A${r1},${r1} 0 ${large} 1 ${P(r1, a1)} L${P(r0, a1)} A${r0},${r0} 0 ${large} 0 ${P(r0, a0)} Z`;
+    const path = el("path", { d, fill: p.color, class: "arc", tabindex: 0, role: "img",
+      "aria-label": `${p.name}: ${fmt(p.v)} conversaciones, ${fmtPct(frac)}` }, svg);
+    if (ANIM) { path.style.opacity = "0"; setTimeout(() => path.style.opacity = "1", 80 + idx * 70); }
+    const show = (x, y) => {
+      tipShow(x, y, "Mix por canal", [{ color: p.color, name: p.name, value: fmt(p.v) }],
+        { name: "Participación", value: fmtPct(frac) });
+      setCenter(fmt(p.v), p.name);
+    };
+    path.addEventListener("pointermove", e => show(e.clientX, e.clientY));
+    path.addEventListener("pointerleave", () => { tipHide(); setCenter(fmt(total), "conversaciones"); });
+    bindFocusTip(path, show);
+    path.addEventListener("blur", () => setCenter(fmt(total), "conversaciones"));
+    arcs.push({ p, path });
+    /* etiqueta directa SOLO en el segmento mayor */
+    if (p === biggest) {
+      const mid = (a0 + a1) / 2, lr = r0 + (r1 - r0) / 2;
+      const tx = el("text", { x: cx + lr * Math.cos(mid), y: cy + lr * Math.sin(mid) + 4,
+        "text-anchor": "middle", "font-size": "12.5", "font-weight": "800",
+        fill: "#FFFFFF" }, svg);
+      tx.textContent = fmtPct(frac, 0);
+      tx.style.pointerEvents = "none";
+    }
+  });
+
+  /* lista lateral: leyenda + valores (tabla-resumen del twin) */
+  const side = div("donut-side");
+  for (const p of parts) {
+    const row = div("row", side);
+    const sw = div("sw", row); sw.style.background = p.color;
+    div("nm", row, p.name);
+    div("vv", row, fmt(p.v));
+    div("pp", row, fmtPct(p.v / total, 0));
+    const arc = arcs.find(a => a.p === p);
+    row.addEventListener("pointerenter", () => { arc?.path.classList.add("hl"); setCenter(fmt(p.v), p.name); });
+    row.addEventListener("pointerleave", () => { arc?.path.classList.remove("hl"); setCenter(fmt(total), "conversaciones"); });
+  }
+  host.append(box, side);
+
+  /* twin tabla */
+  const th = $("#mixTable"); th.textContent = "";
+  const t = document.createElement("table"); t.className = "tbl";
+  const hr = t.createTHead().insertRow();
+  ["Canal", "Conversaciones", "Participación"].forEach((c, i) => {
+    const cell = document.createElement("th"); cell.textContent = c; if (i) cell.className = "num"; hr.appendChild(cell);
+  });
+  const tb = t.createTBody();
+  for (const p of parts) {
+    const tr = tb.insertRow();
+    const a = tr.insertCell(); a.textContent = p.name; a.className = "strong";
+    const b = tr.insertCell(); b.textContent = fmt(p.v); b.className = "num";
+    const c = tr.insertCell(); c.textContent = fmtPct(p.v / total); c.className = "num";
+  }
+  th.appendChild(t);
+}
+
+/* ============================================================
+   Embudo de tipificación — rampa ordinal, valores fuera de barra
+   ============================================================ */
+function renderFunnel(cur, prev) {
+  const host = $("#funnelChart");
+  host.textContent = "";
+  const total = totalOf(cur);
+  const stages = funnelFrom(total);
+  const prevStages = funnelFrom(totalOf(prev));
+  const max = stages[0].v || 1;
+
+  stages.forEach((s, i) => {
+    if (i > 0) {
+      const conv = stages[i - 1].v ? s.v / stages[i - 1].v : 0;
+      const st = div("fn-step");
+      st.append("▾ "); const b = document.createElement("b"); b.textContent = fmtPct(conv, 0); st.append(b, " avanza");
+      const wrap = div("fn-row"); wrap.appendChild(document.createElement("span")); wrap.appendChild(st);
+      host.appendChild(wrap);
+    }
+    const row = div("fn-row", host);
+    div("fn-lb", row, s.name);
+    const bw = div("fn-bar-w", row);
+    const bar = div("fn-bar", bw);
+    bar.style.background = FUNNEL_RAMP[i];
+    bar.style.width = "0%";
+    bar.tabIndex = 0;
+    bar.setAttribute("role", "img");
+    bar.setAttribute("aria-label", `${s.name}: ${fmt(s.v)} (${fmtPct(s.v / max)} de los leads)`);
+    const bw2 = Math.max(4, s.v / max * 100) + "%";
+    if (ANIM) requestAnimationFrame(() => requestAnimationFrame(() => bar.style.width = bw2));
+    else bar.style.width = bw2;
+    div("fn-val", row, fmt(s.v));
+    const show = (x, y) => tipShow(x, y, s.name,
+      [{ color: FUNNEL_RAMP[i], name: "En el período", value: fmt(s.v) },
+       { color: null, name: "Sobre leads nuevos", value: fmtPct(s.v / max) },
+       ...(i > 0 ? [{ color: null, name: "Desde etapa previa", value: fmtPct(stages[i - 1].v ? s.v / stages[i - 1].v : 0) }] : [])],
+      state.compare ? { name: "Período anterior", value: fmt(prevStages[i].v) } : null);
+    bar.addEventListener("pointermove", e => show(e.clientX, e.clientY));
+    bar.addEventListener("pointerleave", tipHide);
+    bindFocusTip(bar, show);
+  });
+
+  /* twin tabla */
+  const th = $("#funnelTable"); th.textContent = "";
+  const t = document.createElement("table"); t.className = "tbl";
+  const hr = t.createTHead().insertRow();
+  ["Etapa", "Volumen", "% de leads", "Conv. desde previa"].forEach((c, i) => {
+    const cell = document.createElement("th"); cell.textContent = c; if (i) cell.className = "num"; hr.appendChild(cell);
+  });
+  const tb = t.createTBody();
+  stages.forEach((s, i) => {
+    const tr = tb.insertRow();
+    const a = tr.insertCell(); a.textContent = s.name; a.className = "strong";
+    const b = tr.insertCell(); b.textContent = fmt(s.v); b.className = "num";
+    const c = tr.insertCell(); c.textContent = fmtPct(s.v / max); c.className = "num";
+    const d = tr.insertCell(); d.textContent = i ? fmtPct(stages[i - 1].v ? s.v / stages[i - 1].v : 0) : "—"; d.className = "num";
+  });
+  th.appendChild(t);
+  return stages;
+}
+function funnelFrom(total) {
+  const leads = Math.round(total * 0.46);
+  const names = ["Leads nuevos", "Contactados", "Interesados", "Cita agendada", "Matriculados"];
+  const ratios = [1, 0.62, 0.44, 0.52, 0.57];
+  const out = []; let v = leads;
+  names.forEach((n, i) => { v = i ? Math.round(v * ratios[i]) : leads; out.push({ name: n, v }); });
+  return out;
+}
+
+/* ============================================================
+   Velocidad de contacto — stat + meter con meta
+   ============================================================ */
+function renderSpeed(cur, prev) {
+  const f = state.range / 30;
+  const p50 = 4.2 * (1 + (f - 1) * 0.06), p50prev = 5.0 * (1 + (f - 1) * 0.06);
+  const p90 = 18 * (1 + (f - 1) * 0.04);
+  const under5 = 0.68, goal = 0.8;
+  $("#spdNum").textContent = "";
+  $("#spdNum").append(fmt1(p50)); const sm = document.createElement("small"); sm.textContent = "min"; $("#spdNum").appendChild(sm);
+  setDelta($("#spdDelta"), p50, p50prev, -1, v => fmt1(v) + " min");
+  $("#spdP90").textContent = fmt1(p90) + " min";
+  $("#mtVal").textContent = fmtPct(under5, 0);
+  const fill = $("#mtFill");
+  const sev = under5 >= goal ? "var(--accent)" : under5 >= goal * 0.7 ? "var(--warn)" : "#EC835A";
+  fill.style.background = sev;
+  if (ANIM) requestAnimationFrame(() => requestAnimationFrame(() => fill.style.width = under5 * 100 + "%"));
+  else fill.style.width = under5 * 100 + "%";
+  $("#mtGoal").style.left = goal * 100 + "%";
+  const st = $("#mtStatus"); st.textContent = "";
+  const ok = under5 >= goal;
+  const icon = document.createElementNS(NS, "svg");
+  icon.setAttribute("viewBox", "0 0 24 24"); icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", ok ? "var(--good)" : "var(--warn)");
+  icon.setAttribute("stroke-width", "2.4"); icon.setAttribute("stroke-linecap", "round"); icon.setAttribute("stroke-linejoin", "round");
+  el("path", { d: ok ? "M4 12l5 5L20 6" : "M12 3 2 20h20L12 3zm0 7v4m0 3.5v.5" }, icon);
+  st.appendChild(icon);
+  st.appendChild(document.createTextNode(ok ? "Meta cumplida" : `A ${fmtPct(goal - under5, 0)} de la meta — refuerza la primera línea`));
+}
+
+/* ============================================================
+   Heatmap día×hora — rampa secuencial + leyenda de escala
+   ============================================================ */
+function renderHeat(cur) {
+  const host = $("#heatChart");
+  host.textContent = "";
+  const total = totalOf(cur);
+  const wSum = sum(HM_W.flat());
+  const vals = HM_W.map(row => row.map(w => Math.round(total * 0.55 * w / wSum)));
+  const vMax = Math.max(...vals.flat()) || 1;
+
+  const hm = div("hm", host);
+  const days = div("hm-rows", hm);
+  DAY_NAMES.forEach(d => div("hm-day", days, d));
+  const grid = div("hm-grid", hm);
+  let peak = { v: -1, d: 0, h: 0 };
+  vals.forEach((row, di) => {
+    const r = div("hm-r", grid);
+    row.forEach((v, hi) => {
+      if (v > peak.v) peak = { v, d: di, h: HOURS[hi] };
+      const c = div("hm-c", r);
+      const idx = Math.min(SEQ.length - 1, Math.floor(v / vMax * (SEQ.length - 0.001)));
+      c.style.background = SEQ[idx];
+      c.style.setProperty("--d", (di * 14 + hi) * 6 + "ms");
+      c.tabIndex = 0;
+      c.setAttribute("role", "img");
+      c.setAttribute("aria-label", `${DAY_NAMES[di]} ${HOURS[hi]}:00 — ${fmt(v)} conversaciones`);
+      const show = (x, y) => tipShow(x, y, `${DAY_NAMES[di]} · ${HOURS[hi]}:00`,
+        [{ color: SEQ[Math.max(idx, 2)], name: "Conversaciones", value: fmt(v) }]);
+      c.addEventListener("pointermove", e => show(e.clientX, e.clientY));
+      c.addEventListener("pointerleave", tipHide);
+      bindFocusTip(c, show);
+    });
+  });
+  /* pie: horas + escala */
+  const foot = div("hm-foot", host);
+  foot.style.cssText += ";display:flex;gap:14px;align-items:center;margin-top:9px;padding-left:44px";
+  const hrs = div("hm-hours", foot);
+  HOURS.forEach(h => { const s = document.createElement("span"); s.textContent = h % 2 === 0 ? h + ":00" : ""; hrs.appendChild(s); });
+  const sc = div("hm-scale", foot);
+  sc.append("menos");
+  const bar = div("bar", sc);
+  bar.style.background = `linear-gradient(90deg, ${SEQ[0]}, ${SEQ[3]}, ${SEQ[6]})`;
+  sc.append("más");
+
+  /* twin tabla (franjas) */
+  const th = $("#heatTable"); th.textContent = "";
+  const t = document.createElement("table"); t.className = "tbl";
+  const hr2 = t.createTHead().insertRow();
+  ["Día", "Mañana 8–12", "Mediodía 12–15", "Tarde 15–18", "Noche 18–21", "Total"].forEach((c, i) => {
+    const cell = document.createElement("th"); cell.textContent = c; if (i) cell.className = "num"; hr2.appendChild(cell);
+  });
+  const tb = t.createTBody();
+  const bands = [[8, 12], [12, 15], [15, 18], [18, 21]];
+  vals.forEach((row, di) => {
+    const tr = tb.insertRow();
+    const a = tr.insertCell(); a.textContent = DAY_NAMES[di]; a.className = "strong";
+    let tot = 0;
+    for (const [h0, h1] of bands) {
+      const v = sum(row.filter((_, hi) => HOURS[hi] >= h0 && HOURS[hi] < h1)); tot += v;
+      const td = tr.insertCell(); td.textContent = fmt(v); td.className = "num";
+    }
+    const td = tr.insertCell(); td.textContent = fmt(tot); td.className = "num strong";
+  });
+  th.appendChild(t);
+  return peak;
+}
+
+/* ============================================================
+   Top programas — barras nominales (una serie → un solo color)
+   ============================================================ */
+function renderPrograms(cur, prev) {
+  const host = $("#programsChart");
+  host.textContent = "";
+  const total = totalOf(cur), prevTotal = totalOf(prev);
+  const rows = PROGRAMS.map((p, i) => ({
+    ...p,
+    v: Math.round(total * p.share * (0.94 + (i % 3) * 0.05)),
+    pv: Math.round(prevTotal * p.share * (0.99 - (i % 2) * 0.07)),
+  })).sort((a, b) => b.v - a.v);
+  const max = rows[0]?.v || 1;
+
+  for (const r of rows) {
+    const row = div("pg-row", host);
+    div("pg-lb", row, r.name);
+    const tr = div("pg-track", row);
+    const bar = div("pg-bar", tr);
+    bar.style.width = "0%";
+    bar.tabIndex = 0;
+    bar.setAttribute("role", "img");
+    bar.setAttribute("aria-label", `${r.name}: ${fmt(r.v)} conversaciones`);
+    const bw3 = (r.v / max * 78) + "%";
+    if (ANIM) requestAnimationFrame(() => requestAnimationFrame(() => bar.style.width = bw3));
+    else bar.style.width = bw3;
+    div("pg-val", tr, fmt(r.v));
+    const dl = div("pg-delta", tr);
+    const rel = r.pv ? (r.v - r.pv) / r.pv : 0;
+    dl.textContent = (rel >= 0 ? "▲ " : "▼ ") + fmtPct(Math.abs(rel), 0);
+    dl.style.color = rel >= 0 ? "var(--good)" : "var(--bad)";
+    const show = (x, y) => tipShow(x, y, r.name,
+      [{ color: "var(--wa)", name: "Conversaciones", value: fmt(r.v) },
+       { color: null, name: "Participación", value: fmtPct(r.v / total) }],
+      state.compare ? { name: "Período anterior", value: fmt(r.pv) } : null);
+    bar.addEventListener("pointermove", e => show(e.clientX, e.clientY));
+    bar.addEventListener("pointerleave", tipHide);
+    bindFocusTip(bar, show);
+  }
+
+  /* twin tabla */
+  const th = $("#programsTable"); th.textContent = "";
+  const t = document.createElement("table"); t.className = "tbl";
+  const hr = t.createTHead().insertRow();
+  ["Programa", "Conversaciones", "Participación", "Δ vs anterior"].forEach((c, i) => {
+    const cell = document.createElement("th"); cell.textContent = c; if (i) cell.className = "num"; hr.appendChild(cell);
+  });
+  const tb = t.createTBody();
+  for (const r of rows) {
+    const tr = tb.insertRow();
+    const a = tr.insertCell(); a.textContent = r.name; a.className = "strong";
+    const b = tr.insertCell(); b.textContent = fmt(r.v); b.className = "num";
+    const c = tr.insertCell(); c.textContent = fmtPct(r.v / total); c.className = "num";
+    const d = tr.insertCell(); d.textContent = (r.v >= r.pv ? "+" : "−") + fmtPct(Math.abs(r.pv ? (r.v - r.pv) / r.pv : 0)); d.className = "num";
+  }
+  th.appendChild(t);
+}
+
+/* ============================================================
+   Equipo — leaderboard ordenable
+   ============================================================ */
+const teamSort = { key: "convs", dir: -1 };
+function renderTeam(cur) {
+  const total = totalOf(cur);
+  const rows = AGENTS.map(a => ({
+    ...a,
+    convs: Math.round(total * a.share * 0.92),
+  }));
+  const key = teamSort.key, dir = teamSort.dir;
+  rows.sort((a, b) => {
+    const cmp = typeof a[key] === "string" ? a[key].localeCompare(b[key], "es") : a[key] - b[key];
+    return cmp * dir; // dir -1 = descendente (coincide con la flecha ▼)
+  });
+
+  const t = $("#teamTable");
+  t.textContent = "";
+  const cols = [
+    { k: "name",  lb: "Agente",         num: false },
+    { k: "convs", lb: "Conversaciones", num: true },
+    { k: "tmo",   lb: "TMO",            num: true },
+    { k: "conv",  lb: "Conversión",     num: true },
+    { k: "csat",  lb: "CSAT",           num: true },
+    { k: null,    lb: "Tendencia",      num: false },
+  ];
+  const hr = t.createTHead().insertRow();
+  for (const c of cols) {
+    const th = document.createElement("th");
+    th.textContent = c.lb;
+    if (c.num) th.classList.add("num");
+    if (c.k) {
+      th.classList.add("sortable");
+      th.setAttribute("role", "button"); th.tabIndex = 0;
+      if (teamSort.key === c.k) {
+        const a = document.createElement("span"); a.className = "arr";
+        a.textContent = teamSort.dir === -1 ? "▼" : "▲"; th.appendChild(a);
+      }
+      const doSort = () => {
+        if (teamSort.key === c.k) teamSort.dir *= -1; else { teamSort.key = c.k; teamSort.dir = -1; }
+        renderTeam(cur);
+      };
+      th.addEventListener("click", doSort);
+      th.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); doSort(); } });
+    }
+    hr.appendChild(th);
+  }
+  const AV = ["rgba(109,128,242,.20)", "rgba(53,224,161,.16)", "rgba(48,147,216,.18)"];
+  const tb = t.createTBody();
+  rows.forEach((a, i) => {
+    const tr = tb.insertRow();
+    const c0 = tr.insertCell();
+    const av = document.createElement("span"); av.className = "avatar-s";
+    av.style.background = AV[i % AV.length];
+    av.textContent = a.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
+    c0.append(av, a.name); c0.className = "strong"; c0.style.whiteSpace = "nowrap";
+    const c1 = tr.insertCell(); c1.textContent = fmt(a.convs); c1.className = "num strong";
+    const c2 = tr.insertCell(); c2.textContent = Math.floor(a.tmo / 60) + ":" + String(a.tmo % 60).padStart(2, "0") + " min"; c2.className = "num";
+    const c3 = tr.insertCell(); c3.className = "num";
+    const mm = document.createElement("span"); mm.className = "mini-meter";
+    const fi = document.createElement("i"); fi.style.width = Math.min(100, a.conv / 16 * 100) + "%"; mm.appendChild(fi);
+    c3.append(mm, fmt1(a.conv) + " %");
+    const c4 = tr.insertCell(); c4.textContent = fmt1(a.csat); c4.className = "num";
+    const c5 = tr.insertCell();
+    const sp = document.createElement("div"); sp.style.cssText = "width:76px;height:22px"; c5.appendChild(sp);
+    sparkline(sp, a.spark, { w: 76, h: 22, color: "#35E0A1", area: false });
+  });
+}
+
+/* ============================================================
+   KPIs + insights
+   ============================================================ */
+function renderKpis(cur, prev) {
+  const total = totalOf(cur), prevTotal = totalOf(prev);
+  countUp($("#heroNum"), total);
+  setDelta($("#heroDelta"), total, prevTotal, 1);
+  $("#heroCap").textContent = `últimos ${state.range} días · ${state.program ? PROGRAMS.find(p => p.id === state.program).name : "todos los programas"}`;
+  const heroPts = [];
+  const bins = 12, per = Math.max(1, Math.floor(cur.length / bins));
+  for (let i = 0; i < cur.length; i += per) heroPts.push(sum(cur.slice(i, i + per).map(d => d.total)));
+  sparkline($("#heroSpark"), heroPts.slice(0, 12), { color: "#35E0A1" });
+
+  /* funnel-derived */
+  const st = funnelFrom(total), stP = funnelFrom(prevTotal);
+  const contacto = st[0].v ? st[1].v / st[0].v : 0;
+  const contactoP = 0.598; // simulado: el período previo contactaba menos
+  countUp($("#kContacto"), contacto, v => fmtPct(v));
+  setDelta($("#dContacto"), contacto, contactoP, 1, v => fmtPct(v, 1).replace(" %", " pts"));
+  sparkline($("#sContacto"), [58, 59, 61, 60, 62, 61, 63, 62, 64, 63, 62, contacto * 100], { w: 92, h: 30 });
+
+  const resp = 41 + (state.range - 30) * 0.05, respP = 47;
+  countUp($("#kRespuesta"), resp, v => Math.round(v) + " s");
+  setDelta($("#dRespuesta"), resp, respP, -1, v => Math.round(v) + " s");
+  sparkline($("#sRespuesta"), [52, 50, 51, 49, 47, 48, 46, 44, 45, 43, 42, resp], { w: 92, h: 30 });
+
+  const mat = st[4].v, matP = stP[4].v;
+  countUp($("#kMatriculas"), mat);
+  setDelta($("#dMatriculas"), mat, matP, 1);
+  sparkline($("#sMatriculas"), [0.72, 0.75, 0.71, 0.8, 0.78, 0.85, 0.83, 0.9, 0.88, 0.95, 0.93, 1].map(x => x * mat), { w: 92, h: 30 });
+
+  const csat = 4.6, csatP = 4.4;
+  countUp($("#kCsat"), csat, v => fmt1(v) + " / 5");
+  setDelta($("#dCsat"), csat, csatP, 1, v => fmt1(v) + " pts");
+  sparkline($("#sCsat"), [4.2, 4.3, 4.25, 4.4, 4.35, 4.45, 4.4, 4.5, 4.55, 4.5, 4.58, csat], { w: 92, h: 30 });
+}
+
+function renderInsights(cur, prev, peak) {
+  /* canal con mayor crecimiento real del dataset */
+  let best = null;
+  for (const c of CH.filter(c => state.channels.has(c.id))) {
+    const v = sum(cur.map(d => d.by[c.id])), pv = sum(prev.map(d => d.by[c.id]));
+    if (!pv) continue;
+    const rel = (v - pv) / pv;
+    if (!best || rel > best.rel) best = { c, rel, v };
+  }
+  const i1 = $("#ins1"); i1.textContent = "";
+  if (best) {
+    const b = document.createElement("b"); b.textContent = best.c.name;
+    i1.append(b, ` creció ${fmtPct(Math.abs(best.rel))} vs el período anterior y ya representa ${fmt(best.v)} conversaciones.`);
+  } else i1.textContent = "Activa al menos un canal para detectar tendencias.";
+
+  const i2 = $("#ins2"); i2.textContent = "";
+  const b2 = document.createElement("b"); b2.textContent = `${DAY_NAMES[peak.d]} ${peak.h}:00`;
+  i2.append("El pico de demanda es el ", b2, `. Refuerza ese turno con 2 agentes para no perder leads.`);
+
+  const i3 = $("#ins3"); i3.textContent = "";
+  const b3 = document.createElement("b"); b3.textContent = "68 %";
+  i3.append("Hoy solo el ", b3, " de los leads se contacta en menos de 5 minutos. Subir a la meta (80 %) proyecta +12 % de matrículas.");
+}
+
+/* ============================================================
+   Render maestro — un solo slice para toda la página
+   ============================================================ */
+function render() {
+  const { cur, prev } = slice();
+  renderKpis(cur, prev);
+  renderTrend(cur, prev);
+  renderMix(cur);
+  renderFunnel(cur, prev);
+  renderSpeed(cur, prev);
+  const peak = renderHeat(cur);
+  renderPrograms(cur, prev);
+  renderTeam(cur);
+  renderDetalle();
+  renderInsights(cur, prev, peak);
+}
+
+/* ============================================================
+   Detalle — tabla de registros con buscador (estilo QuickSight)
+   ============================================================ */
+function renderDetalle() {
+  const q = ($("#detSearch").value || "").trim().toLowerCase();
+  const progName = state.program ? PROGRAMS.find(p => p.id === state.program).name : null;
+  const rows = RECORDS
+    .filter(r => r.dOff < state.range)
+    .filter(r => !progName || r.programa === progName)
+    .filter(r => !q || `${r.phone} ${r.agente} ${r.programa} ${r.origen} ${r.estado}`.toLowerCase().includes(q));
+  $("#detCount").textContent = `${rows.length} registros en los últimos ${state.range} días · datos simulados`;
+  const t = $("#detTable");
+  t.textContent = "";
+  const hr = t.createTHead().insertRow();
+  ["Teléfono", "Fecha", "Hora", "Origen", "Programa", "Agente", "Estado"].forEach(c => {
+    const th = document.createElement("th"); th.textContent = c; hr.appendChild(th);
+  });
+  const tb = t.createTBody();
+  if (!rows.length) {
+    const tr = tb.insertRow(); const td = tr.insertCell();
+    td.colSpan = 7; td.className = "empty"; td.textContent = "Sin registros con ese criterio";
+    return;
+  }
+  for (const r of rows) {
+    const tr = tb.insertRow();
+    const c0 = tr.insertCell(); c0.textContent = r.phone; c0.className = "strong";
+    c0.style.fontVariantNumeric = "tabular-nums"; c0.style.whiteSpace = "nowrap";
+    const c1 = tr.insertCell(); c1.textContent = r.fecha; c1.className = "num";
+    const c2 = tr.insertCell(); c2.textContent = r.hora; c2.className = "num";
+    tr.insertCell().textContent = r.origen;
+    tr.insertCell().textContent = r.programa;
+    tr.insertCell().textContent = r.agente;
+    const ce = tr.insertCell();
+    const chip = document.createElement("span");
+    chip.className = "chip-est" + (r.estado === "Matriculado" ? " good" : r.estado.startsWith("No ") ? " bad" : "");
+    chip.textContent = r.estado;
+    ce.appendChild(chip);
+  }
+}
+
+/* ============================================================
+   Controles
+   ============================================================ */
+/* rango */
+$("#segRange").addEventListener("click", e => {
+  const b = e.target.closest("button[data-range]");
+  if (!b) return;
+  state.range = +b.dataset.range;
+  for (const x of $("#segRange").querySelectorAll("button")) x.setAttribute("aria-pressed", x === b ? "true" : "false");
+  render();
+});
+/* chips de canal (leyenda-filtro global; el color sigue al canal) */
+const chipsHost = $("#chChips");
+for (const c of CH) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.dataset.ch = c.id;
+  b.setAttribute("aria-pressed", "true");
+  const sw = document.createElement("span"); sw.className = "sw"; sw.style.setProperty("--c", c.color);
+  b.append(sw, c.name);
+  b.addEventListener("click", () => {
+    const on = state.channels.has(c.id);
+    if (on && state.channels.size === 1) { toast("Mantén al menos un canal activo"); return; }
+    on ? state.channels.delete(c.id) : state.channels.add(c.id);
+    b.setAttribute("aria-pressed", String(!on));
+    render();
+  });
+  chipsHost.appendChild(b);
+}
+/* programa */
+const selP = $("#selProgram");
+for (const p of PROGRAMS) {
+  const o = document.createElement("option"); o.value = p.id; o.textContent = p.name; selP.appendChild(o);
+}
+selP.addEventListener("change", () => { state.program = selP.value; render(); });
+/* comparación */
+$("#cmpToggle").addEventListener("change", e => { state.compare = e.target.checked; render(); });
+/* toggles chart↔tabla */
+for (const btn of document.querySelectorAll("[data-table]")) {
+  btn.addEventListener("click", () => {
+    const k = btn.dataset.table;
+    const chart = $("#" + k + "Chart"), table = $("#" + k + "Table");
+    const showTable = table.hidden;
+    table.hidden = !showTable;
+    if (k === "trend") { $("#trendChart").hidden = showTable; $("#trendLegend").hidden = showTable; }
+    else chart.hidden = showTable;
+    btn.setAttribute("aria-pressed", String(showTable));
+    btn.title = showTable ? "Ver como gráfico" : "Ver como tabla";
+  });
+}
+/* export CSV del slice actual */
+$("#btnExport").addEventListener("click", () => {
+  const { cur } = slice();
+  const act = CH.filter(c => state.channels.has(c.id));
+  const head = ["Fecha", ...act.map(c => c.name), "Total"].join(";");
+  const lines = cur.map(d => [d.label, ...act.map(c => d.by[c.id]), d.total].join(";"));
+  const csv = "﻿" + [head, ...lines].join("\n"); // BOM para Excel
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  a.download = `pulso-tendencia-${state.range}d.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast(`CSV descargado · ${cur.length} filas del período actual`);
+});
+/* ============================================================
+   Tabs — una pregunta por vista; los filtros aplican a TODAS
+   ============================================================ */
+function setTab(t) {
+  state.tab = t;
+  for (const b of $$("#tabs .tab")) {
+    const on = b.dataset.tab === t;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", String(on));
+  }
+  for (const s of $$("main.grid > [data-tab]")) s.classList.toggle("tab-off", s.dataset.tab !== t);
+  if (booted) render(); // re-mide los charts que acaban de hacerse visibles
+}
+$("#tabs").addEventListener("click", e => {
+  const b = e.target.closest(".tab");
+  if (b && b.dataset.tab !== state.tab) setTab(b.dataset.tab);
+});
+/* los hallazgos saltan al tab donde vive su evidencia */
+for (const a of $$(".insight a")) {
+  a.addEventListener("click", e => {
+    const sec = document.getElementById(a.getAttribute("href").slice(1));
+    if (sec?.dataset.tab && sec.dataset.tab !== state.tab) { e.preventDefault(); setTab(sec.dataset.tab); }
+  });
+}
+$("#detSearch").addEventListener("input", renderDetalle);
+
+/* ============================================================
+   Modo recorrido — carrusel deslizante (presentación / TV).
+   Mueve los cards reales a los slides; los charts se re-dibujan
+   al nuevo tamaño porque los builders buscan por id. El canvas
+   sigue siendo la vista por defecto: el carrusel es narrativa,
+   no navegación primaria.
+   ============================================================ */
+const SLIDE_DEFS = [
+  ["cardHero",     "El período de un vistazo"],
+  ["cardKpis",     "Indicadores clave"],
+  ["cardInsights", "Lo que ARIA detectó"],
+  ["cardTrend",    "¿Cómo evoluciona el volumen?"],
+  ["cardMix",      "¿De dónde llegan las conversaciones?"],
+  ["cardFunnel",   "¿Cuánto avanza el pipeline?"],
+  ["cardSpeed",    "¿Qué tan rápido respondemos?"],
+  ["cardHeat",     "¿Cuándo llega la demanda?"],
+  ["cardPrograms", "¿Qué programas jalan más?"],
+  ["cardTeam",     "¿Cómo rinde el equipo?"],
+];
+const car = $("#carousel"), carTrack = $("#carTrack"), carDots = $("#carDots");
+let carOpen = false, carIdx = 0, gridOrder = null, autoT = null;
+
+function openCar() {
+  if (carOpen) return;
+  carOpen = true;
+  gridOrder = [...document.querySelector("main.grid").children];
+  for (const s of $$("main.grid > [data-tab]")) s.classList.remove("tab-off"); // el recorrido pasea por TODO
+  carTrack.textContent = ""; carDots.textContent = "";
+  SLIDE_DEFS.forEach(([id, title], i) => {
+    const slide = div("car-slide", carTrack);
+    div("car-cap", slide, title);
+    slide.appendChild(document.getElementById(id));
+    const dot = document.createElement("button");
+    dot.type = "button"; dot.className = "car-dot";
+    dot.setAttribute("aria-label", `Ir a: ${title}`);
+    dot.addEventListener("click", () => goCar(i, true));
+    carDots.appendChild(dot);
+  });
+  car.classList.add("open");
+  car.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  carIdx = 0; carTrack.scrollLeft = 0;
+  render();      // re-dibuja los charts al tamaño de slide
+  updateCar();
+  car.focus();
+}
+function closeCar() {
+  if (!carOpen) return;
+  carOpen = false;
+  clearTimeout(autoT);
+  $("#carAuto").checked = false;
+  const grid = document.querySelector("main.grid");
+  gridOrder.forEach(n => grid.appendChild(n)); // restaura el orden original
+  car.classList.remove("open");
+  car.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+  setTab(state.tab); // re-aplica la vista activa y re-dibuja
+  $("#btnTour").focus();
+}
+function goCar(i, manual) {
+  carIdx = (i + SLIDE_DEFS.length) % SLIDE_DEFS.length;
+  carTrack.scrollTo({ left: carIdx * carTrack.clientWidth, behavior: ANIM ? "smooth" : "auto" });
+  updateCar();
+  if (manual) resetAuto();
+}
+function updateCar() {
+  [...carDots.children].forEach((d, i) => d.classList.toggle("on", i === carIdx));
+  $("#carTitle").textContent =
+    `${carIdx + 1} / ${SLIDE_DEFS.length} · ${SLIDE_DEFS[carIdx][1]} — últimos ${state.range} días`;
+}
+function resetAuto() {
+  clearTimeout(autoT);
+  if ($("#carAuto").checked) autoT = setTimeout(() => { goCar(carIdx + 1); resetAuto(); }, 8000);
+}
+carTrack.addEventListener("scroll", () => {
+  const i = Math.round(carTrack.scrollLeft / Math.max(1, carTrack.clientWidth));
+  if (i !== carIdx && i >= 0 && i < SLIDE_DEFS.length) { carIdx = i; updateCar(); }
+}, { passive: true });
+$("#btnTour").addEventListener("click", openCar);
+$("#carClose").addEventListener("click", closeCar);
+$("#carPrev").addEventListener("click", () => goCar(carIdx - 1, true));
+$("#carNext").addEventListener("click", () => goCar(carIdx + 1, true));
+$("#carAuto").addEventListener("change", resetAuto);
+addEventListener("keydown", e => {
+  if (!carOpen) return;
+  if (e.key === "ArrowRight") goCar(carIdx + 1, true);
+  else if (e.key === "ArrowLeft") goCar(carIdx - 1, true);
+  else if (e.key === "Escape") closeCar();
+});
+
+/* re-render suave al redimensionar (los SVG se recalculan al ancho real) */
+let rzT;
+addEventListener("resize", () => { clearTimeout(rzT); rzT = setTimeout(render, 160); });
+
+/* Arranque con sonda de rAF: si el navegador no entrega frames (pestaña
+   en segundo plano / throttled), se renderiza estático — nunca vacío. */
+let booted = false;
+function boot(motionOk) {
+  if (booted) return;
+  booted = true;
+  ANIM = motionOk && !reduced;
+  if (!ANIM) document.documentElement.classList.add("no-anim");
+  setTab(state.tab);
+}
+requestAnimationFrame(() => boot(true));
+setTimeout(() => boot(false), 300);
+</script>
+</body>
+</html>

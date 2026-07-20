@@ -1,8 +1,10 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Btn } from "@/components/aria";
 import { DateRangePicker, type DateRange } from "@/components/reports/DateRangePicker";
+import { Autocomplete, type AutoOption } from "@/components/reports/Autocomplete";
 import type { ContactFilters as FilterType } from "@/types/monitoring";
 import { useQueues } from "@/hooks/useQueues";
+import { useUsers } from "@/hooks/useUsers";
 
 /**
  * ContactFilters — la barra de control ÚNICA de Reportes (premium, lenguaje ARIA).
@@ -57,6 +59,19 @@ export function ContactFilters({ range, onRangeChange, onSearch, loading }: Cont
 
   // Bug #14 — colas reales de listQueues (antes hardcodeadas a las demo de Connect).
   const { queues } = useQueues();
+  // Agentes reales de Connect → sugerencias del autocomplete de "Agente".
+  const { users } = useUsers();
+  const agentOptions = useMemo<AutoOption[]>(
+    () =>
+      users
+        .map((u) => ({
+          value: u.username,
+          label: u.username,
+          sub: [u.firstName, u.lastName].filter(Boolean).join(" ") || undefined,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [users],
+  );
 
   const handleSearch = () => {
     onSearch({
@@ -85,15 +100,18 @@ export function ContactFilters({ range, onRangeChange, onSearch, loading }: Cont
         <DateRangePicker value={range} onChange={onRangeChange} />
       </Field>
 
-      <Field label="Agente">
-        <input
-          placeholder="Username del agente"
+      <div style={{ width: 190 }}>
+        <Autocomplete
+          label="Agente"
           value={agent}
-          onChange={(e) => setAgent(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          style={{ ...fieldStyle, width: 170 }}
+          onChange={setAgent}
+          options={agentOptions}
+          placeholder="Username del agente"
+          flex="1 1 auto"
+          height={38}
+          onEnter={handleSearch}
         />
-      </Field>
+      </div>
 
       <Field label="Cola">
         <select

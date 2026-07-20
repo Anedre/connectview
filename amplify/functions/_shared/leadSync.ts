@@ -200,6 +200,9 @@ interface Lead {
   company?: string;
   stageId?: string;
   source?: string;
+  /** Import orgánico / SF: agente asignado (string libre). Lo leen la vista de
+   *  Tipificaciones y el filtro por agente. */
+  assignedAgent?: string;
   sfLeadId?: string;
   attributes?: Record<string, string>;
   history?: LeadHistoryEvent[];
@@ -1022,6 +1025,23 @@ export interface BulkLeadContact {
   phone: string;
   customerName?: string;
   attributes?: Record<string, string>;
+  // ── Import orgánico (CSV rico → tipificación coherente) ──────────────────
+  // Campos opcionales por fila: si vienen (del wizard de mapeo del front) pisan
+  // los globales y siembran un evento de history con la tipificación, para que la
+  // vista de Tipificaciones muestre estado/sub-estado/agente/comentario/fecha
+  // cuadrados. Ausentes ⇒ comportamiento clásico (campaña / import básico).
+  email?: string;
+  source?: string;
+  assignedAgent?: string;
+  stageId?: string;
+  stageLabel?: string;
+  subStageLabel?: string;
+  valoracion?: "inicial" | "positiva" | "negativa" | "cierre";
+  comment?: string;
+  /** Fecha/hora ISO de la tipificación (del CSV). Ancla el ts del evento y el updatedAt. */
+  typifiedAt?: string;
+  /** Fecha/hora ISO de carga (del CSV). Preserva el createdAt histórico. */
+  createdAt?: string;
 }
 
 /**
@@ -1085,25 +1105,57 @@ export async function bulkUpsertVoxLeads(
     }
     seen.add(key);
     const prev = byPhone.get(key) || null;
+    // Import orgánico: los campos por fila (del CSV mapeado) pisan los globales.
+    const rowStage = c.stageId || prev?.stageId || opts.stageId;
+    const rowSource = c.source || prev?.source || source;
+    const rowAgent = c.assignedAgent || prev?.assignedAgent;
+    const rowCreated = c.createdAt || prev?.createdAt || now;
+    // Semilla de tipificación: solo si la fila trae un estado YA tipificado (no el
+    // inicial) o una fecha de tipificación explícita → un evento con fecha, agente,
+    // sub-estado y comentario, para que la vista de Tipificaciones cuadre. Se evita
+    // duplicar en re-imports: solo si el lead es nuevo o cambió de etapa.
+    const isTypified = !!c.typifiedAt || (!!c.stageId && c.valoracion !== "inicial");
+    const typedTs = c.typifiedAt || (isTypified ? rowCreated : undefined);
+    let history = prev?.history;
+    if (isTypified && typedTs && (!prev || prev.stageId !== rowStage)) {
+      const ev: LeadHistoryEvent = {
+        ts: typedTs,
+        type: "stage_change",
+        ...(rowStage ? { stageId: rowStage } : {}),
+        ...(c.stageLabel ? { stageLabel: c.stageLabel } : {}),
+        ...(c.subStageLabel ? { subStageLabel: c.subStageLabel } : {}),
+        ...(c.valoracion ? { valoracion: c.valoracion } : {}),
+        ...(rowAgent ? { agent: rowAgent } : {}),
+        ...(c.comment ? { notes: c.comment } : {}),
+        summary: `Importado — ${c.stageLabel || rowStage || "tipificación"}${
+          c.subStageLabel ? ` · ${c.subStageLabel}` : ""
+        }`,
+        ...(opts.programId ? { programId: opts.programId } : {}),
+      };
+      history = [...(prev?.history || []), ev];
+    }
     const merged: Lead = {
       leadId: prev?.leadId || randomUUID(),
       phone,
       name: (c.customerName || "").trim() || prev?.name,
-      email: pickAttr(c.attributes, EMAIL_KEYS) ?? prev?.email,
+      email: c.email || pickAttr(c.attributes, EMAIL_KEYS) || prev?.email,
       company: pickAttr(c.attributes, COMPANY_KEYS) ?? prev?.company,
       // Import puro: los NUEVOS entran en la etapa inicial elegida; a los existentes
-      // no se les pisa su etapa global (pueden estar avanzados en otro programa).
-      stageId: prev?.stageId ?? opts.stageId,
-      source: prev?.source || source,
+      // no se les pisa su etapa global. Import orgánico: `c.stageId` por fila manda.
+      stageId: rowStage,
+      source: rowSource,
+      ...(rowAgent ? { assignedAgent: rowAgent } : {}),
       sfLeadId: prev?.sfLeadId,
+      ...(history ? { history } : {}),
       attributes:
         c.attributes || prev?.attributes
           ? { ...(prev?.attributes || {}), ...(c.attributes || {}) }
           : undefined,
       // SEC-A1: dueño de la fila; preserva el previo si ahora no hay tenant resuelto.
       tenantId: tenantId ?? prev?.tenantId,
-      createdAt: prev?.createdAt || now,
-      updatedAt: now,
+      createdAt: rowCreated,
+      // Coherencia: el updatedAt = la última tipificación → orden "últimas tipif." real.
+      updatedAt: typedTs || prev?.updatedAt || rowCreated || now,
     };
     items.push(merged);
     if (prev) summary.updated++;
@@ -1140,7 +1192,9 @@ export async function bulkUpsertVoxLeads(
         await upsertLeadProgramMembership(
           it.leadId,
           pid,
-          opts.stageId || it.stageId,
+          // Import orgánico: la etapa por-fila manda (la membership es la que lee la
+          // vista al scopear por programa); cae a la global solo si la fila no trajo.
+          it.stageId || opts.stageId,
           it.source,
         ).catch(() => {});
       }

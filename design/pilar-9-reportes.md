@@ -23,6 +23,10 @@ difirió de Pilar 1. El set final se define con Adriana (R20).
   **embudo por etapa** (color por valoración) + conversión por # de golpes +
   mezcla de canales.
 - Verificado: consolidado 37 leads / 8%; al scopear baja a 2 leads con su embudo.
+- **Superseded:** `ProgramReport.tsx` se eliminó al integrar el dashboard de
+  tipificaciones como tab "Pipeline" (`TipificacionesReport.tsx`), que absorbió
+  sus métricas de esfuerzo (fila "Conversión por # de golpes" + "Golpes por
+  canal" + promedios al cierre, vía `?report=attribution`).
 
 ### Fase B — Reporte del Agente IA — HECHO + verificado (commit `e59bb36`)
 

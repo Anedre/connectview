@@ -14,6 +14,13 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "--host", "--port", "5174"],
       "port": 5174
+    },
+    {
+      "name": "pulso",
+      "autoPort": false,
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["design/pulso-reportes/serve.mjs"],
+      "port": 4517
     }
   ]
 }
