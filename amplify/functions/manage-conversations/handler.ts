@@ -173,9 +173,34 @@ async function sweepInactive(conversations: Conversation[], tenantId: string): P
   if (!expired.length) return;
   await Promise.all(
     expired.map(async (c) => {
-      // Aviso de cortesía ANTES de cerrar (best-effort; solo canales con envío y
-      // si está habilitado). Va dentro de la ventana de 24h; si el canal lo
-      // rechaza, se ignora. NO debe romper el cierre.
+      // CERRAR PRIMERO con el `updatedAt` del scan (aún válido). Antes la cortesía
+      // iba primero y su appendOutbound tocaba `updatedAt` → la condición del
+      // cierre SIEMPRE fallaba → nunca cerraba → reenviaba la cortesía cada sweep.
+      // El aviso va DESPUÉS, solo si el cierre persistió (si un inbound la
+      // reactivó entre el scan y ahora, la condición falla y no cerramos).
+      let didClose = false;
+      try {
+        const done = await closeConversation(
+          legacyDynamo,
+          c.conversationId,
+          "inactivity",
+          c.updatedAt,
+        );
+        didClose = !!done;
+      } catch (e) {
+        console.warn("sweepInactive: cierre no persistió", c.conversationId, (e as Error).message);
+      }
+      if (!didClose) return; // reactivada (o error): NO cerrar en la lista ni avisar
+      // Refleja el cierre en el item de la lista (se devuelve ya cerrado).
+      c.status = "closed";
+      c.closedReason = "inactivity";
+      c.closedAt = nowIso;
+      c.assignee = "bot";
+      c.ownerAgentId = undefined;
+      c.ownerAgentName = undefined;
+      // Aviso de cortesía DESPUÉS del cierre (best-effort; solo canales con envío
+      // y si está habilitado). Dentro de la ventana de 24h; si el canal lo rechaza
+      // se ignora. NO debe romper nada (ya está cerrada).
       if (COURTESY_ENABLED) {
         try {
           await sendCourtesyMessage(tenantId, c, COURTESY_MSG);
@@ -187,21 +212,6 @@ async function sweepInactive(conversations: Conversation[], tenantId: string): P
             (e as Error).message,
           );
         }
-      }
-      // Muta el item de la lista (se devuelve ya cerrado) …
-      c.status = "closed";
-      c.closedReason = "inactivity";
-      c.closedAt = nowIso;
-      c.assignee = "bot";
-      c.ownerAgentId = undefined;
-      c.ownerAgentName = undefined;
-      // … y persiste el cierre UNIFICADO (suelta el dueño → reabre limpio con bot).
-      try {
-        // BUG-A2: cierre condicional a que no se haya reactivado entre el scan y
-        // ahora (pasa el updatedAt visto → si un inbound la tocó, no la cierra).
-        await closeConversation(legacyDynamo, c.conversationId, "inactivity", c.updatedAt);
-      } catch (e) {
-        console.warn("sweepInactive: cierre no persistió", c.conversationId, (e as Error).message);
       }
     }),
   );
@@ -592,6 +602,25 @@ async function reapInactiveConversations(): Promise<{ scanned: number; closed: n
   let closed = 0;
   await Promise.all(
     expired.map(async (c) => {
+      // BUG-A2/loop: CERRAR PRIMERO, con el `updatedAt` del scan (aún válido). Si
+      // un inbound la tocó entre el scan y ahora, la condición falla y NO cerramos.
+      // (Antes la cortesía iba primero y su appendOutbound tocaba `updatedAt` →
+      // la condición SIEMPRE fallaba → nunca cerraba → reenviaba la cortesía cada
+      // tick. La cortesía va DESPUÉS, solo si el cierre persistió.)
+      let didClose = false;
+      try {
+        const done = await closeConversation(
+          legacyDynamo,
+          c.conversationId,
+          "inactivity",
+          c.updatedAt,
+        );
+        didClose = !!done;
+      } catch (e) {
+        console.warn("reaper: cierre no persistió", c.conversationId, (e as Error).message);
+      }
+      if (!didClose) return; // reactivada (o error): NO enviar el aviso de cierre
+      closed++;
       if (COURTESY_ENABLED && c.tenantId) {
         try {
           await sendCourtesyMessage(c.tenantId, c, COURTESY_MSG);
@@ -599,14 +628,6 @@ async function reapInactiveConversations(): Promise<{ scanned: number; closed: n
         } catch (e) {
           console.warn("reaper: cortesía no enviada", c.conversationId, (e as Error).message);
         }
-      }
-      try {
-        // BUG-A2: cierre condicional a que no se haya reactivado entre el scan y
-        // ahora (pasa el updatedAt visto → si un inbound la tocó, no la cierra).
-        await closeConversation(legacyDynamo, c.conversationId, "inactivity", c.updatedAt);
-        closed++;
-      } catch (e) {
-        console.warn("reaper: cierre no persistió", c.conversationId, (e as Error).message);
       }
     }),
   );
