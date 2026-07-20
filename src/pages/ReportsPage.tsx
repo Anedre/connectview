@@ -433,9 +433,10 @@ export function ReportsPage() {
         </div>
       )}
 
-      {/* El hero Resumen acompaña a Operación y Pipeline; en WhatsApp/Agente IA/
-          Descargas sus métricas de llamadas no aplican y solo meten ruido. */}
-      {(tab === "operacion" || tab === "crecimiento") && (
+      {/* El hero Resumen es del contact center (contactos/AHT/sentiment de
+          llamadas): solo aplica a Operación. En Pipeline chocaría con los KPIs
+          de leads (otro dominio, otros números); ese tab trae su propio resumen. */}
+      {tab === "operacion" && (
         <ReportsHero
           kpis={kpis}
           prevKpis={prevKpis}
