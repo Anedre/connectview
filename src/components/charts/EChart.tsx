@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 // PERF-A2 · echarts SELECTIVO: en vez de `echarts-for-react` (que arrastra TODO
 // echarts, ~330KB gz), importamos el core tree-shakeable y registramos SOLO lo
 // que la app usa realmente. El wrapper liviano vive en `echarts-for-react/lib/core`.
@@ -170,11 +170,28 @@ interface EChartProps {
   className?: string;
 }
 
+// La fuente de la app (Plus Jakarta) NO llega sola al SVG de ECharts: sin
+// textStyle.fontFamily todo texto de chart cae a la sans-serif genérica del
+// renderer y se ve "de otra familia". La resolvemos una vez del body computado.
+let APP_FONT: string | null = null;
+function appFont(): string {
+  if (APP_FONT) return APP_FONT;
+  if (typeof document === "undefined") return "system-ui, sans-serif";
+  APP_FONT = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
+  return APP_FONT;
+}
+
 export function EChart({ option, height = 300, className }: EChartProps) {
+  // Memoizado por referencia de `option`: con notMerge, un objeto nuevo por
+  // render dispararía setOption y reiniciaría las animaciones de entrada.
+  const merged = useMemo<EChartsOption>(
+    () => ({ textStyle: { fontFamily: appFont() }, ...option }),
+    [option],
+  );
   return (
     <ReactEChartsCore
       echarts={echarts}
-      option={option}
+      option={merged}
       style={{ height, width: "100%" }}
       opts={{ renderer: "svg" }}
       notMerge
