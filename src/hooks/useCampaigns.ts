@@ -28,6 +28,10 @@ export interface Campaign {
    *  pool. */
   maxContactsPerAgent?: number;
   status: "DRAFT" | "RUNNING" | "PAUSED" | "COMPLETED" | "CANCELLED";
+  /** Programa (unidad comercial) al que pertenece la campaña. Se elige al crear
+   *  y propaga la membership a los leads; aquí alimenta el badge + filtro por
+   *  programa de la lista. Vacío/undefined = "Sin programa". */
+  programId?: string;
   createdAt: string;
   createdBy?: string;
   startedAt?: string | null;
