@@ -542,9 +542,15 @@ export function CampaignCreatePage() {
       ? usesDirectFlow || !!contactFlowId
       : !!routeAttr.trim() && routeRulesClean.length > 0 && !!routeDefaultQueue;
 
+  // El programa es OBLIGATORIO cuando hay programas para elegir: sin él la
+  // campaña no se puede filtrar por programa (ni sus leads heredan la unidad
+  // comercial). Solo se relaja si el tenant aún no creó ningún programa.
+  const activePrograms = programs.filter((p) => p.status !== "archivado");
+  const programRequired = activePrograms.length > 0;
   const canLaunch =
     name.trim().length > 0 &&
     contacts.length > 0 &&
+    (!programRequired || !!programId) &&
     (campaignType === "whatsapp"
       ? !!waTemplateName && waVarColumns.every((c) => !!c && c !== "lit:")
       : !!sourcePhoneNumber && routingValid);
@@ -552,17 +558,19 @@ export function CampaignCreatePage() {
     ? "nombre"
     : contacts.length === 0
       ? "audiencia (contactos)"
-      : campaignType === "whatsapp"
-        ? !waTemplateName
-          ? "plantilla"
-          : "mapear variables"
-        : !sourcePhoneNumber
-          ? "número saliente"
-          : !routingValid
-            ? routingMode === "flow"
-              ? "contact flow"
-              : "ruteo (atributo → cola)"
-            : null;
+      : programRequired && !programId
+        ? "programa"
+        : campaignType === "whatsapp"
+          ? !waTemplateName
+            ? "plantilla"
+            : "mapear variables"
+          : !sourcePhoneNumber
+            ? "número saliente"
+            : !routingValid
+              ? routingMode === "flow"
+                ? "contact flow"
+                : "ruteo (atributo → cola)"
+              : null;
 
   const handleCreate = async () => {
     // Normaliza teléfonos editados a E.164 y detecta los que el backend
@@ -1233,33 +1241,44 @@ export function CampaignCreatePage() {
             />
           </div>
 
-          {programs.filter((p) => p.status !== "archivado").length > 0 && (
+          {activePrograms.length > 0 && (
             <div className="camp-field">
-              <label className="camp-lbl">Programa</label>
+              <label className="camp-lbl">
+                Programa <span style={{ color: "var(--red)" }}>*</span>
+              </label>
               <Select
-                value={programId || "none"}
+                value={programId || ""}
                 onValueChange={(v) => setProgramId(v && v !== "none" ? v : "")}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin programa">
+                <SelectTrigger
+                  style={
+                    !programId
+                      ? { borderColor: "color-mix(in srgb, var(--gold) 55%, var(--border-2))" }
+                      : undefined
+                  }
+                >
+                  <SelectValue placeholder="Elige un programa…">
                     {(v: string) =>
                       !v || v === "none"
-                        ? "Sin programa"
-                        : (programs.find((p) => p.programId === v)?.name ?? "Sin programa")
+                        ? "Elige un programa…"
+                        : (programs.find((p) => p.programId === v)?.name ?? "Elige un programa…")
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Sin programa</SelectItem>
-                  {programs
-                    .filter((p) => p.status !== "archivado")
-                    .map((p) => (
-                      <SelectItem key={p.programId} value={p.programId}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
+                  {activePrograms.map((p) => (
+                    <SelectItem key={p.programId} value={p.programId}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {!programId && (
+                <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>
+                  Toda campaña pertenece a un programa — así se filtra y sus leads heredan la unidad
+                  comercial.
+                </div>
+              )}
             </div>
           )}
 
