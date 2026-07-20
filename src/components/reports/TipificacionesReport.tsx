@@ -14,6 +14,7 @@ import {
   TrendUp,
   Lightning,
   CaretDown,
+  MagnifyingGlass,
 } from "@phosphor-icons/react";
 import {
   type ColumnDef,
@@ -299,6 +300,61 @@ function DateInput({
   );
 }
 
+/** Consulta por teléfono o nombre — equivalente al tab "Consulta teléfono" del BI de origen. */
+function SearchInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label
+      style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: "1 1 190px" }}
+    >
+      <span
+        style={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: ".04em",
+          color: "var(--text-3)",
+        }}
+      >
+        {label}
+      </span>
+      <span style={{ position: "relative", display: "flex", alignItems: "center" }}>
+        <MagnifyingGlass
+          size={14}
+          weight="bold"
+          style={{ position: "absolute", left: 10, color: "var(--text-3)", pointerEvents: "none" }}
+        />
+        <input
+          type="search"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          style={{
+            height: 34,
+            width: "100%",
+            borderRadius: 9,
+            border: "1px solid var(--border-1)",
+            background: "var(--bg-2)",
+            color: "var(--text-1)",
+            padding: "0 10px 0 30px",
+            fontSize: 13,
+            fontWeight: 600,
+          }}
+        />
+      </span>
+    </label>
+  );
+}
+
 export function TipificacionesReport() {
   const { activeProgramId, activeProgram, programs } = useProgram();
   const { tree } = useTaxonomy(activeProgram?.taxonomyId);
@@ -372,13 +428,16 @@ export function TipificacionesReport() {
   // ── Filtros ────────────────────────────────────────────────────────────────
   const [fAgent, setFAgent] = useState("all");
   const [fStage, setFStage] = useState("all");
+  const [fSubStage, setFSubStage] = useState("all");
   const [fSource, setFSource] = useState("all");
   const [fFrom, setFFrom] = useState("");
   const [fTo, setFTo] = useState("");
+  const [fQuery, setFQuery] = useState("");
   const [showDetail, setShowDetail] = useState(false);
 
   const agentOpts = useMemo(() => uniqueSorted(rows.map((r) => r.agent)), [rows]);
   const sourceOpts = useMemo(() => uniqueSorted(rows.map((r) => r.source)), [rows]);
+  const subStageOpts = useMemo(() => uniqueSorted(rows.map((r) => r.subStageLabel)), [rows]);
   const stageOpts = useMemo(() => {
     const present = new Set(rows.map((r) => r.stageId).filter((s): s is string => !!s));
     const known = tree.filter((s) => present.has(s.id)).map((s) => ({ id: s.id, label: s.label }));
@@ -394,6 +453,7 @@ export function TipificacionesReport() {
       rows.filter((r) => {
         if (fAgent !== "all" && (r.agent || "") !== fAgent) return false;
         if (fStage !== "all" && (r.stageId || "") !== fStage) return false;
+        if (fSubStage !== "all" && (r.subStageLabel || "") !== fSubStage) return false;
         if (fSource !== "all" && (r.source || "") !== fSource) return false;
         if (fFrom || fTo) {
           const d = (r.typifiedAt || r.createdAt || "").slice(0, 10);
@@ -401,17 +461,34 @@ export function TipificacionesReport() {
           if (fFrom && d < fFrom) return false;
           if (fTo && d > fTo) return false;
         }
+        if (fQuery.trim()) {
+          const q = fQuery.trim().toLowerCase();
+          const qDigits = q.replace(/\D+/g, "");
+          const phoneHit =
+            qDigits.length > 0 && (r.phone || "").replace(/\D+/g, "").includes(qDigits);
+          const nameHit = (r.name || "").toLowerCase().includes(q);
+          if (!phoneHit && !nameHit) return false;
+        }
         return true;
       }),
-    [rows, fAgent, fStage, fSource, fFrom, fTo],
+    [rows, fAgent, fStage, fSubStage, fSource, fFrom, fTo, fQuery],
   );
-  const anyFilter = fAgent !== "all" || fStage !== "all" || fSource !== "all" || !!fFrom || !!fTo;
+  const anyFilter =
+    fAgent !== "all" ||
+    fStage !== "all" ||
+    fSubStage !== "all" ||
+    fSource !== "all" ||
+    !!fFrom ||
+    !!fTo ||
+    !!fQuery.trim();
   const clearFilters = () => {
     setFAgent("all");
     setFStage("all");
+    setFSubStage("all");
     setFSource("all");
     setFFrom("");
     setFTo("");
+    setFQuery("");
   };
 
   // ── Métricas (todo derivado de las filas) ───────────────────────────────────
@@ -644,7 +721,7 @@ export function TipificacionesReport() {
   }, [M]);
 
   // ── Tabla de detalle (colapsable) ───────────────────────────────────────────
-  const [sorting, setSorting] = useState<SortingState>([{ id: "updatedAt", desc: true }]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: "fecCarga", desc: true }]);
   const columns = useMemo<ColumnDef<TypRow>[]>(
     () => [
       {
@@ -654,7 +731,23 @@ export function TipificacionesReport() {
           <span style={{ fontWeight: 600 }}>{getValue<string>() || "—"}</span>
         ),
       },
+      {
+        id: "fecCarga",
+        accessorFn: (r) => r.createdAt || "",
+        header: "Fec. Carga",
+        cell: ({ row }) =>
+          `${fmtDate(row.original.createdAt)} ${row.original.createdAt ? fmtTime(row.original.createdAt) : ""}`.trim(),
+      },
       { id: "origen", accessorFn: (r) => sourceLabel(r.source), header: "Origen" },
+      ...(activeProgramId === "all"
+        ? [
+            {
+              id: "programa",
+              accessorFn: (r) => r.programIds.map(programLabel).join(", ") || "—",
+              header: "Programa",
+            } satisfies ColumnDef<TypRow>,
+          ]
+        : []),
       { id: "agente", accessorFn: (r) => r.agent || "—", header: "Agente" },
       {
         id: "estado",
@@ -692,13 +785,34 @@ export function TipificacionesReport() {
           `${fmtDate(row.original.typifiedAt)} ${row.original.typifiedAt ? fmtTime(row.original.typifiedAt) : ""}`.trim(),
       },
       {
-        accessorKey: "updatedAt",
-        header: "Actualizado",
-        cell: ({ getValue }) => fmtDate(getValue<string>() || null),
+        id: "comentarios",
+        accessorFn: (r) => r.comments || "",
+        header: "Comentarios",
+        cell: ({ getValue }) => {
+          const c = getValue<string>();
+          return c ? (
+            <span
+              title={c}
+              style={{
+                display: "inline-block",
+                maxWidth: 220,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                verticalAlign: "bottom",
+                color: "var(--text-2)",
+              }}
+            >
+              {c}
+            </span>
+          ) : (
+            "—"
+          );
+        },
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stageMeta],
+    [stageMeta, activeProgramId, programMap],
   );
   const table = useReactTable({
     data: filtered,
@@ -750,6 +864,12 @@ export function TipificacionesReport() {
         }}
       >
         <div className="row wrap" style={{ gap: 12, alignItems: "flex-end" }}>
+          <SearchInput
+            label="Consulta teléfono / nombre"
+            value={fQuery}
+            onChange={setFQuery}
+            placeholder="Ej. 953730189 o Karina"
+          />
           <FilterSelect
             label="Agente"
             value={fAgent}
@@ -768,6 +888,19 @@ export function TipificacionesReport() {
               ...stageOpts.map((s) => ({ value: s.id, label: s.label })),
             ]}
           />
+          {(subStageOpts.length > 0 || fSubStage !== "all") && (
+            <FilterSelect
+              label="Sub. Estado"
+              value={fSubStage}
+              onChange={setFSubStage}
+              options={[
+                { value: "all", label: "Todo" },
+                ...uniqueSorted([...subStageOpts, fSubStage === "all" ? null : fSubStage]).map(
+                  (s) => ({ value: s, label: s }),
+                ),
+              ]}
+            />
+          )}
           <FilterSelect
             label="Origen"
             value={fSource}
