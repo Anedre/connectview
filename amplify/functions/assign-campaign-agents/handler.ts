@@ -18,6 +18,7 @@ import {
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { resolveConnect } from "../_shared/tenantConnect";
 import { applyAutoAccept } from "../_shared/campaignAutoAccept";
+import { requireCapability } from "../_shared/rbac";
 
 // BYO Connect + Data Plane (#43+#46): module-active. Los helpers de abajo
 // (getCampaign, deleteAssignments, etc.) leen `connect`/`dynamo`/`instanceId`.
@@ -171,6 +172,11 @@ async function disassociateQueueFromRoutingProfile(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // SEC — RBAC server-side: asignar/quitar agentes a una campaña (toca los
+    // routing profiles + colas de Connect) exige `manage_campaigns`. Function URL
+    // auth=NONE → sin esto cualquier autenticado podía re-rutear agentes.
+    const gate = await requireCapability(event?.headers, "manage_campaigns");
+    if (!gate.ok) return gate.response;
     // BYO Connect + Data Plane: setea connect/instanceId/dynamo en un trip.
     {
       const r = await resolveConnect(event?.headers, legacyConnect, INSTANCE_ID);

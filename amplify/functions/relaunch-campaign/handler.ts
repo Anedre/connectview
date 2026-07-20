@@ -15,6 +15,7 @@ import {
 } from "@aws-sdk/client-connectcampaignsv2";
 import { resolveDynamo } from "../_shared/tenantConnect";
 import { kickDialer } from "../_shared/invokeDialer";
+import { requireCapability } from "../_shared/rbac";
 
 // BYO Data Plane (#46): DDB del tenant (su tabla en su cuenta) primero;
 // fallback a Vox pooled. ConnectCampaignsV2 queda con cred legacy (AWS service
@@ -157,6 +158,10 @@ async function listContacts(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // SEC — RBAC server-side: relanzar (resetea contactos a pending y vuelve a
+    // marcar) exige `manage_campaigns`. Function URL auth=NONE.
+    const gate = await requireCapability(event?.headers, "manage_campaigns");
+    if (!gate.ok) return gate.response;
     // BYO Data Plane (#46): tenant primero, fallback Vox.
     ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
     const body: RelaunchBody = JSON.parse(event.body || "{}");

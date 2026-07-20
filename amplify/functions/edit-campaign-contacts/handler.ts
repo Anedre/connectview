@@ -16,6 +16,7 @@ import { CustomerProfilesClient } from "@aws-sdk/client-customer-profiles";
 import { bulkUpsertProfilesFromCsv } from "../_shared/upsertCustomerProfileFromCsv";
 import { bulkUpsertVoxLeads, setActiveDynamo } from "../_shared/leadSync";
 import { resolveDynamo, resolveCustomerProfiles } from "../_shared/tenantConnect";
+import { requireCapability } from "../_shared/rbac";
 
 // BYO Data Plane (#46): DDB del tenant + leadSync writes. CampaignsV2 legacy.
 const legacyDynamo = new DynamoDBClient({});
@@ -676,6 +677,20 @@ async function handleManualReschedule(body: ManualReschedulePayload) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // SEC — RBAC server-side: las ediciones de la LISTA de contactos (add/delete/
+    // update) son de admin → exigen `manage_campaigns`. Las acciones manual-* son
+    // del AGENTE (preview/manual dialing, con su propio guard por-agente) y NO se
+    // gatean acá para no romper el marcador manual. Function URL auth=NONE.
+    let peekAction: string | undefined;
+    try {
+      peekAction = JSON.parse(event.body || "{}").action;
+    } catch {
+      /* body inválido → cae al 400 de más abajo tras resolver */
+    }
+    if (peekAction === "add" || peekAction === "delete" || peekAction === "update") {
+      const gate = await requireCapability(event?.headers, "manage_campaigns");
+      if (!gate.ok) return gate.response;
+    }
     // BYO Data Plane (#46): tenant primero, fallback Vox pooled.
     {
       const r = await resolveDynamo(event?.headers, legacyDynamo);

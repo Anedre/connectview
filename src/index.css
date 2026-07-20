@@ -4584,6 +4584,8 @@ textarea:focus {
 .cdet-tile {
   --_c: var(--accent);
   position: relative;
+  /* clip-ok: el overflow recorta el glow del ::after (inset:0, no sobresale);
+     ningún hijo sale del tile, el translateY del :hover mueve el tile entero. */
   overflow: hidden;
   display: flex;
   flex-direction: column;

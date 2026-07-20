@@ -2,13 +2,19 @@ import type { Handler } from "aws-lambda";
 import { DynamoDBClient, GetItemCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { getIdentity } from "../_shared/cognitoAuth";
+// DEFAULT_MATRIX + ROLES viven en _shared/rbac.ts: son la ÚNICA fuente de verdad
+// que comparten este editor y el gate server-side (requireCapability), para que
+// el default del backend y el de la UI no puedan derivar.
+import { DEFAULT_MATRIX, ROLES } from "../_shared/rbac";
 
 /**
  * manage-permissions — granular RBAC matrix (roadmap #28). Maps each
  * capability to the minimum role allowed (Admins|Supervisors|Agents).
  * Single config doc (configId="default"). The frontend's useCan(capability)
  * checks the signed-in user's role against this matrix, so admins can
- * re-scope who does what without a deploy.
+ * re-scope who does what without a deploy. El mismo doc lo consume el gate
+ * server-side (`requireCapability`) para enforce los `manage_*` en los
+ * Function URLs (auth=NONE).
  *
  * GET  → { matrix }
  * POST { matrix } → save
@@ -16,52 +22,6 @@ import { getIdentity } from "../_shared/cognitoAuth";
 const dynamo = new DynamoDBClient({});
 const TABLE = process.env.PERMISSIONS_TABLE || "connectview-permissions";
 const CORS = { "Content-Type": "application/json" };
-const ROLES = new Set(["Admins", "Supervisors", "Agents"]);
-
-// Default matrix — sensible starting scopes. The editor can change these.
-//
-// Dos familias de capacidades:
-//  · view_*  → VISIBILIDAD de cada sección del menú lateral. El VoxSidebar las
-//    lee (vía useCan/matrix) para decidir qué secciones aparecen por rol. Antes
-//    el gate del menú estaba HARDCODEADO en el código (minRole), desconectado de
-//    esta matriz — por eso editar Seguridad "no hacía nada". Ahora la matriz es
-//    la fuente de verdad: cambiar aquí re-escala el menú EN VIVO, sin deploy.
-//  · manage_*/edit_*/monitor_*/view_audit → ACCIONES dentro de una sección
-//    (crear/editar/lanzar), independientes de solo poder verla.
-const DEFAULT_MATRIX: Record<string, string> = {
-  // ── Acceso a secciones (menú lateral) ──────────────────────────────────
-  view_home: "Agents",
-  view_agent_desktop: "Agents",
-  view_inbox: "Agents",
-  view_live_queue: "Supervisors",
-  view_programs: "Supervisors",
-  view_leads: "Admins",
-  // Campañas visibles para Supervisores: su monitoreo en vivo (contactos en
-  // vuelo por cola/agente) es tarea natural del supervisor. Crear/editar/lanzar
-  // sigue gobernado aparte por `manage_campaigns` (Admins).
-  view_campaigns: "Supervisors",
-  view_bots: "Admins",
-  view_journeys: "Admins",
-  view_automations: "Admins",
-  view_agente_ai: "Admins",
-  view_appointments: "Admins",
-  view_reports: "Supervisors",
-  view_recordings: "Supervisors",
-  view_settings: "Admins",
-  // ── Acciones (dentro de cada sección) ──────────────────────────────────
-  manage_campaigns: "Admins",
-  manage_leads: "Admins",
-  manage_appointments: "Admins",
-  edit_taxonomy: "Admins",
-  manage_catalogs: "Admins",
-  manage_suppression: "Admins",
-  manage_users: "Admins",
-  view_audit: "Admins",
-  monitor_agents: "Supervisors",
-  // R29 — Copilot desactivable por rol. "Agents" = abierto a todos (comportamiento
-  // actual); un admin puede subir el mínimo a Supervisors/Admins para restringirlo.
-  use_copilot: "Agents",
-};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {

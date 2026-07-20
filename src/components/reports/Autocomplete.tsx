@@ -51,7 +51,7 @@ export function Autocomplete({
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLLabelElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const suggestions = useMemo(() => {

@@ -11,6 +11,7 @@ import { bulkUpsertVoxLeads, setActiveDynamo, getLeadScoresByPhones } from "../_
 import { kickDialer } from "../_shared/invokeDialer";
 import { resolveTenantId, isLegacyTenant } from "../_shared/cognitoAuth";
 import { resolveDynamo, resolveCustomerProfiles, readTenantConfig } from "../_shared/tenantConnect";
+import { requireCapability } from "../_shared/rbac";
 
 // BYO Data Plane (#46): DynamoDB del tenant para campaigns + campaign-contacts
 // + bulkUpsertVoxLeads (vía setActiveDynamo). ConnectCampaignsV2 queda legacy
@@ -148,6 +149,12 @@ async function createNativeCampaign(params: {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any, context: any) => {
   try {
+    // SEC — RBAC server-side: crear campañas exige `manage_campaigns`. El front ya
+    // lo gatea con useCan("manage_campaigns"), pero el Function URL es auth=NONE →
+    // sin esto cualquier usuario autenticado (Agente/Supervisor) podía crear campañas
+    // invocando la URL directo. El rol mínimo sale de la matriz por-tenant (Seguridad).
+    const gate = await requireCapability(event?.headers, "manage_campaigns");
+    if (!gate.ok) return gate.response;
     // Resolvemos el tenantId del JWT del usuario que crea la campaña. Lo
     // guardamos en el registro para que campaign-dialer (disparado por
     // EventBridge SIN token) sepa contra qué Connect tiene que pegar.

@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 import { ConnectClient, StopContactCommand } from "@aws-sdk/client-connect";
 import { resolveDynamo, getTenantConnect } from "../_shared/tenantConnect";
 import { resolveTenantId, getIdentity } from "../_shared/cognitoAuth";
+import { requireCapability } from "../_shared/rbac";
 import { kickDialer } from "../_shared/invokeDialer";
 import { applyAutoAccept } from "../_shared/campaignAutoAccept";
 
@@ -232,6 +233,12 @@ async function pushContactsToAws(awsCampaignId: string, contacts: ContactRow[]):
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
   try {
+    // SEC — RBAC server-side: controlar campañas (start/pause/resume/cancel +
+    // tuning en vivo set-concurrency/blend/pool) exige `manage_campaigns`. El
+    // Function URL es auth=NONE → sin esto cualquier autenticado podía pausar o
+    // cancelar campañas del tenant. Supervisor = solo monitoreo (GET stats).
+    const gate = await requireCapability(event?.headers, "manage_campaigns");
+    if (!gate.ok) return gate.response;
     // BYO Data Plane (#46): tenant primero, fallback Vox.
     ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
     const body = JSON.parse(event.body || "{}");

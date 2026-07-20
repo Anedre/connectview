@@ -9,6 +9,7 @@ import {
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { randomUUID } from "node:crypto";
 import { resolveDynamo } from "../_shared/tenantConnect";
+import { requireCapability } from "../_shared/rbac";
 
 /**
  * manage-catalog — Custom Lists / Catálogos (roadmap #30). Arbitrary lookup
@@ -72,6 +73,14 @@ export const handler: Handler = async (event: any) => {
   const method = event.requestContext?.http?.method || event.httpMethod || "GET";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
   const params = event.queryStringParameters || {};
+
+  // SEC — RBAC server-side: EDITAR catálogos (POST upsert / DELETE) exige
+  // `manage_catalogs` (config de admin). GET queda abierto: leads/bot/scripts los
+  // LEEN. Function URL auth=NONE → se valida aquí.
+  if (method === "POST" || method === "DELETE") {
+    const gate = await requireCapability(event?.headers, "manage_catalogs");
+    if (!gate.ok) return gate.response;
+  }
 
   // BYO Data Plane (#46): tenant primero, fallback a Vox pooled.
   ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
