@@ -613,7 +613,8 @@ export function ReportsPage() {
       {/* ── PIPELINE · leads/tipificación ──
           El dashboard analítico de tipificación (antes página suelta /tipificaciones):
           KPIs + insights narrados + embudo + %estado×programa + origen + agente +
-          tendencia + heatmap + velocidad. Todo desde manage-leads report=typifications. */}
+          tendencia + heatmap + velocidad + esfuerzo (golpes). Todo desde
+          manage-leads (report=typifications + report=attribution). */}
       {tab === "crecimiento" && (
         <div style={{ marginBottom: 16 }}>
           <TipificacionesReport />

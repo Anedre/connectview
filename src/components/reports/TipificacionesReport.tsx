@@ -51,6 +51,8 @@ import {
  * Datos: manage-leads ?report=typifications[&programId=] (una fila por lead). El
  * scope de programa lo da el switcher global; los filtros finos y TODA la
  * agregación (KPIs, embudo, origen, agente, tendencia, heatmap) se computan aquí.
+ * Los paneles de ESFUERZO (golpes) usan ?report=attribution — agregado
+ * server-side, portados del viejo ProgramReport (tab "Crecimiento").
  */
 
 interface TypRow {
@@ -75,6 +77,20 @@ interface TypResp {
   total: number;
   truncated: boolean;
   generatedAt: string;
+}
+
+/** Payload de manage-leads ?report=attribution (Pilar 2 · golpes→conversión). */
+interface Attribution {
+  totalLeads: number;
+  converted: number;
+  conversionRate: number;
+  avgGolpes: number;
+  avgGolpesToClose: number;
+  avgDaysToClose: number;
+  totalGolpes: number;
+  byBucket: Array<{ label: string; leads: number; converted: number; rate: number }>;
+  byChannel: Record<string, number>;
+  byStage: Record<string, number>;
 }
 
 const STAGE_PALETTE = [
@@ -108,6 +124,14 @@ const sourceLabel = (s?: string | null): string => (s ? SOURCE_LABEL[s] || s : "
 const NONE_PROGRAM = "__none__";
 const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
+/** Colores de canal para "Golpes por canal" (heredados de ProgramReport). */
+const CH_COLORS: Record<string, string> = {
+  Llamada: "var(--cyan)",
+  WhatsApp: "var(--green)",
+  Correo: "var(--gold)",
+  Chat: "var(--coral)",
+};
+
 function prettyStage(id: string): string {
   return id
     .replace(/[_-]+/g, " ")
@@ -134,6 +158,9 @@ function fmtDur(ms: number): string {
   if (h < 1) return `${Math.round(ms / 60_000)} min`;
   if (h < 48) return `${h.toFixed(1)} h`;
   return `${(h / 24).toFixed(1)} d`;
+}
+function fmt1(n: number): string {
+  return (Math.round(n * 10) / 10).toString();
 }
 
 function Panel({
@@ -292,6 +319,26 @@ export function TipificacionesReport() {
     },
   });
   const rows: TypRow[] = useMemo(() => data?.rows ?? [], [data]);
+
+  // Esfuerzo (golpes): segundo fetch a ?report=attribution con el MISMO scope de
+  // programa del switcher. El backend solo sabe scopear attribution con un
+  // programId real ("all"/"none" → global), así que con "Sin programa" activo NO
+  // se consulta ni se pinta la fila (mostraría data global bajo un scope que no
+  // corresponde). Agregado server-side: ignora los filtros locales de arriba.
+  const attrScoped = !!activeProgramId && activeProgramId !== "all" && activeProgramId !== "none";
+  const { data: attr } = useQuery<Attribution | undefined>({
+    queryKey: ["attribution", activeProgramId],
+    enabled: !!ep?.manageLeads && activeProgramId !== "none",
+    refetchInterval: 45_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const url = `${ep!.manageLeads}?report=attribution${attrScoped ? `&programId=${encodeURIComponent(activeProgramId)}` : ""}`;
+      const r = await authedFetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as { attribution?: Attribution };
+      return j.attribution;
+    },
+  });
 
   const stageMeta = useMemo(() => {
     const m = new Map<
@@ -960,6 +1007,11 @@ export function TipificacionesReport() {
             </Panel>
           </div>
 
+          {/* Esfuerzo de contacto (?report=attribution) — portado del viejo
+              ProgramReport: cuánto trabajo cuesta convertir. Oculto con scope
+              "Sin programa" (attribution no sabe scopear a leads sin programa). */}
+          {attr && attr.totalLeads > 0 && <EffortRow attr={attr} anyFilter={anyFilter} />}
+
           {/* Heatmap día × hora */}
           <Panel title="Mapa de calor · gestión por día y hora">
             <Heatmap heat={M.heat} max={M.heatMax} />
@@ -1343,6 +1395,127 @@ function TrendPanel({ data }: { data: Array<[string, number]> }) {
     ],
   };
   return <EChart option={option} height={230} />;
+}
+
+/**
+ * Fila "Esfuerzo de contacto": conversión por # de golpes + golpes por canal +
+ * promedios al cierre (manage-leads ?report=attribution, fusiona WhatsApp HSM
+ * por teléfono). Agregado server-side de TODO el programa: no responde a los
+ * filtros locales, por eso el aviso cuando hay filtros activos.
+ */
+function EffortRow({ attr, anyFilter }: { attr: Attribution; anyFilter: boolean }) {
+  const channels = Object.entries(attr.byChannel).sort((a, b) => b[1] - a[1]);
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+        gap: 16,
+      }}
+    >
+      <Panel
+        title="Conversión por # de golpes"
+        right={
+          anyFilter ? (
+            <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+              programa completo · ignora los filtros
+            </span>
+          ) : undefined
+        }
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: 10,
+            marginBottom: 14,
+          }}
+        >
+          <EffortStat color="var(--cyan)" value={fmt1(attr.avgGolpes)} label="golpes por lead" />
+          <EffortStat
+            color="var(--iris)"
+            value={attr.avgGolpesToClose ? fmt1(attr.avgGolpesToClose) : "—"}
+            label="golpes al cierre"
+          />
+          <EffortStat
+            color="var(--gold)"
+            value={attr.avgDaysToClose ? String(Math.round(attr.avgDaysToClose)) : "—"}
+            label="días al cierre"
+          />
+        </div>
+        <BarList
+          color="var(--green)"
+          max={100}
+          rows={attr.byBucket.map((b) => ({
+            label: `${b.label} golpes`,
+            value: Math.round(b.rate * 100),
+            valueLabel: `${Math.round(b.rate * 100)}%`,
+            hint: `${b.converted}/${b.leads} leads`,
+          }))}
+        />
+      </Panel>
+      <Panel
+        title="Golpes por canal"
+        right={
+          <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+            {attr.totalGolpes} golpes en total
+          </span>
+        }
+      >
+        {channels.length === 0 ? (
+          <div style={{ color: "var(--text-3)", fontSize: 13 }}>Sin golpes registrados.</div>
+        ) : (
+          <BarList
+            rows={channels.map(([ch, n]) => ({
+              label: ch,
+              value: n,
+              color: CH_COLORS[ch] || "var(--text-3)",
+            }))}
+          />
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+/** Stat compacto (valor + caption) para los promedios de la fila de esfuerzo. */
+function EffortStat({ value, label, color }: { value: string; label: string; color: string }) {
+  return (
+    <div
+      style={{
+        borderRadius: 10,
+        border: "1px solid var(--border-1)",
+        borderLeft: `3px solid ${color}`,
+        background: `color-mix(in srgb, ${color} 5%, var(--bg-2))`,
+        padding: "9px 11px",
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 19,
+          fontWeight: 800,
+          fontVariantNumeric: "tabular-nums",
+          letterSpacing: "-.01em",
+          color: "var(--text-1)",
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: ".04em",
+          color: "var(--text-3)",
+          marginTop: 2,
+        }}
+      >
+        {label}
+      </div>
+    </div>
+  );
 }
 
 /** Mapa de calor día × hora (CSS grid). */

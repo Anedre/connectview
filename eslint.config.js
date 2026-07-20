@@ -12,6 +12,7 @@ export default defineConfig([globalIgnores([
   'dist',
   'dist-lambda',       // bundles de Lambda (build output)
   '.amplify',          // artefactos generados por ampx
+  '.claude',           // worktrees de sesiones (traen sus propios dist-*)
   'coverage',
   'playwright-report',
   'test-results',
