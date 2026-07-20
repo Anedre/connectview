@@ -16,6 +16,7 @@ import {
 } from "@aws-sdk/client-connect";
 import { upsertCachedContact } from "../_shared/recordingsCache";
 import { kickDialer } from "../_shared/invokeDialer";
+import { planLeadStamp } from "../_shared/leadStamp";
 
 // BYO Data Plane (#46): module-active. TODO: para multi-tenant real, hacer
 // reverse lookup instanceArn (del evento) → tenantId vía connectview-connections.
@@ -31,6 +32,11 @@ const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 const CAMPAIGN_CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 const CONNECT_INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
+// Estampado del agente sobre el lead (Pipeline de /reports). Defaults en código
+// para que un deploy por deploy-lambda.mjs (que NO toca env vars) funcione igual;
+// backend.ts también los setea para el deploy Amplify (sin drift).
+const LEADS_TABLE = process.env.LEADS_TABLE || "connectview-leads";
+const LEADS_PHONE_INDEX = process.env.LEADS_PHONE_INDEX || "phone-index";
 
 // Username cache (Lambda warm container scope). Maps user UUID → username.
 // DescribeUser is cheap but we still cache to avoid calling it for every
@@ -136,8 +142,71 @@ async function materializeContact(contactId: string, instanceId: string): Promis
       customerEndpoint: phone,
       hasRecording: (c.Recordings?.length || 0) > 0,
     });
+    // Estampado en tiempo real del agente de Connect sobre el lead que comparte
+    // teléfono (Pipeline de /reports · "quién atendió la llamada"). Reusa el phone
+    // + agentUsername ya resueltos de este DescribeContact. Best-effort propio: no
+    // bloquea el caché de Grabaciones ni el procesamiento del evento.
+    await stampCallAgentOnLead(phone, agentUsername);
   } catch (err) {
     console.warn("materializeContact failed:", (err as Error)?.message || err);
+  }
+}
+
+/**
+ * Escribe el agente de Connect que atendió la llamada sobre el lead del mismo
+ * teléfono (connectview-leads.assignedAgent), que el tab Pipeline de /reports lee
+ * como fallback de "agente" (report=typifications: `typ?.agent || l.assignedAgent`).
+ *
+ * · Busca el lead por teléfono vía el GSI `phone-index` (E.164 y dígitos, para
+ *   tolerar "+51999…" vs "51999…"). Sin GSI esto sería un scan de toda la tabla.
+ * · UpdateItem condicional: solo escribe si el lead existe y el agente CAMBIA
+ *   (anti-churn — un mismo agente que vuelve a llamar no reescribe ni flota el
+ *   lead). Bumpea updatedAt como cualquier otro toque.
+ * · NO es retroactivo: solo se llena con llamadas nuevas. Si no hay lead con ese
+ *   teléfono (aún no importado), no hace nada. TODO best-effort: cualquier fallo
+ *   se loguea y se traga (no romper el procesamiento del evento de contacto).
+ */
+async function stampCallAgentOnLead(phone: string, agentUsername: string): Promise<void> {
+  const plan = planLeadStamp({ phone, agentUsername });
+  if (!plan) return;
+  try {
+    let leadId = "";
+    for (const cand of plan.phoneCandidates) {
+      const res = await dynamo.send(
+        new QueryCommand({
+          TableName: LEADS_TABLE,
+          IndexName: LEADS_PHONE_INDEX,
+          KeyConditionExpression: "#ph = :p",
+          ExpressionAttributeNames: { "#ph": "phone" },
+          ExpressionAttributeValues: { ":p": { S: cand } },
+          Limit: 1,
+        }),
+      );
+      const hit = res.Items?.[0];
+      if (hit?.leadId?.S) {
+        leadId = hit.leadId.S;
+        break;
+      }
+    }
+    if (!leadId) return; // ningún lead con ese teléfono → nada que estampar
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: { leadId: { S: leadId } },
+        UpdateExpression: "SET assignedAgent = :a, updatedAt = :now",
+        ConditionExpression:
+          "attribute_exists(leadId) AND (attribute_not_exists(assignedAgent) OR assignedAgent <> :a)",
+        ExpressionAttributeValues: {
+          ":a": { S: plan.agent },
+          ":now": { S: new Date().toISOString() },
+        },
+      }),
+    );
+    console.log(`[stamp] lead ${leadId} assignedAgent → ${plan.agent}`);
+  } catch (err) {
+    // El agente ya estaba estampado (condición falló) → no-op esperado.
+    if (err instanceof Error && err.name === "ConditionalCheckFailedException") return;
+    console.warn("stampCallAgentOnLead failed:", (err as Error)?.message || err);
   }
 }
 

@@ -29,6 +29,11 @@ const REGION = "us-east-1";
 // Fixed table name to avoid circular cross-stack references
 const CONTACTS_TABLE_NAME = "connectview-contacts";
 const CUSTOMER_PROFILES_DOMAIN = "amazon-connect-novasys";
+// connectview-leads: tabla hand-managed (NO la crea este stack; vive fuera de
+// Amplify, como el resto de connectview-*). process-contact-event solo la LEE por
+// el GSI phone-index y le estampa el agente (assignedAgent) al cerrar una llamada.
+const LEADS_TABLE_NAME = "connectview-leads";
+const LEADS_PHONE_INDEX = "phone-index";
 
 // Config de save-agent-notes (follow-up tasks + hook de automatizaciones).
 // Estaban seteadas por CLI → el próximo `ampx` deploy las borraba (drift). Ahora
@@ -166,8 +171,28 @@ processEventLambda.addToRolePolicy(
     resources: [enrichLambda.functionArn],
   }),
 );
+// Estampado del agente sobre el lead (Pipeline de /reports · "quién atendió la
+// llamada"): leer el GSI phone-index y actualizar connectview-leads.assignedAgent.
+// La tabla es hand-managed (fuera de Amplify) → se referencia por ARN, sin grant
+// cross-stack. Ver [[reference_new_lambda_iam]]: acá NO aplica el rol del tenant
+// (VoxCrmConnectAccess) porque este Lambda escribe con su PROPIO rol de ejecución.
+const leadsTableArn = `arn:aws:dynamodb:${REGION}:${ACCOUNT_ID}:table/${LEADS_TABLE_NAME}`;
+processEventLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: ["dynamodb:Query"],
+    resources: [`${leadsTableArn}/index/${LEADS_PHONE_INDEX}`],
+  }),
+);
+processEventLambda.addToRolePolicy(
+  new iam.PolicyStatement({
+    actions: ["dynamodb:UpdateItem", "dynamodb:GetItem"],
+    resources: [leadsTableArn],
+  }),
+);
 asFunction(processEventLambda).addEnvironment("CONTACTS_TABLE_NAME", CONTACTS_TABLE_NAME);
 asFunction(processEventLambda).addEnvironment("ENRICH_FUNCTION_NAME", enrichLambda.functionName);
+asFunction(processEventLambda).addEnvironment("LEADS_TABLE", LEADS_TABLE_NAME);
+asFunction(processEventLambda).addEnvironment("LEADS_PHONE_INDEX", LEADS_PHONE_INDEX);
 
 // Add EventBridge target (this creates a cross-ref but only DataStack → function, not circular)
 connectEventRule.addTarget(new targets.LambdaFunction(processEventLambda));
