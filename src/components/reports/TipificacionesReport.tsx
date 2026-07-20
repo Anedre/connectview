@@ -23,12 +23,14 @@ import {
   Lightning,
   CaretDown,
   MagnifyingGlass,
+  DownloadSimple,
 } from "@phosphor-icons/react";
 import {
   type ColumnDef,
   type SortingState,
   flexRender,
   getCoreRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
@@ -38,6 +40,8 @@ import { useProgram } from "@/context/ProgramContext";
 import { useTaxonomy } from "@/hooks/useTaxonomy";
 import type { Valoracion } from "@/lib/dispositions";
 import { EChart, useChartTokens, type ChartTokens } from "@/components/charts/EChart";
+import { DateRangePicker, type DateRange } from "@/components/reports/DateRangePicker";
+import { downloadCsv, downloadXlsx, type Column } from "@/lib/reportExport";
 import { Kpi, KpiRow, Funnel, BarList } from "@/components/reports/kit";
 import { Btn } from "@/components/aria";
 import {
@@ -475,49 +479,6 @@ function FilterSelect({
   );
 }
 
-function DateInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <label
-      style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: "0 1 140px" }}
-    >
-      <span
-        style={{
-          fontSize: 10.5,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: ".04em",
-          color: "var(--text-3)",
-        }}
-      >
-        {label}
-      </span>
-      <input
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          height: 34,
-          borderRadius: 9,
-          border: "1px solid var(--border-1)",
-          background: "var(--bg-2)",
-          color: "var(--text-1)",
-          padding: "0 10px",
-          fontSize: 13,
-          fontWeight: 600,
-        }}
-      />
-    </label>
-  );
-}
-
 /** Consulta por teléfono o nombre — equivalente al tab "Consulta teléfono" del BI de origen. */
 function SearchInput({
   label,
@@ -660,10 +621,12 @@ export function TipificacionesReport() {
   const [fStage, setFStage] = useState("all");
   const [fSubStage, setFSubStage] = useState("all");
   const [fSource, setFSource] = useState("all");
-  const [fFrom, setFFrom] = useState("");
-  const [fTo, setFTo] = useState("");
+  // Rango de fechas con el picker premium (presets + doble calendario), no los
+  // inputs nativos del navegador. null = sin filtro de fechas.
+  const [fRange, setFRange] = useState<DateRange | null>(null);
+  const fFrom = fRange ? format(fRange.start, "yyyy-MM-dd") : "";
+  const fTo = fRange ? format(fRange.end, "yyyy-MM-dd") : "";
   const [fQuery, setFQuery] = useState("");
-  const [showDetail, setShowDetail] = useState(false);
 
   const agentOpts = useMemo(() => uniqueSorted(rows.map((r) => r.agent)), [rows]);
   const sourceOpts = useMemo(() => uniqueSorted(rows.map((r) => r.source)), [rows]);
@@ -725,8 +688,7 @@ export function TipificacionesReport() {
     setFStage("all");
     setFSubStage("all");
     setFSource("all");
-    setFFrom("");
-    setFTo("");
+    setFRange(null);
     setFQuery("");
   };
 
@@ -1053,14 +1015,46 @@ export function TipificacionesReport() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [stageMeta, activeProgramId, programMap],
   );
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 25 });
   const table = useReactTable({
     data: filtered,
     columns,
-    state: { sorting },
+    state: { sorting, pagination },
     onSortingChange: setSorting,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   });
+
+  // Export de la tabla (CSV/XLSX) — respeta filtros y orden visibles.
+  const exportTable = (kind: "csv" | "xlsx") => {
+    const cols: Column[] = [
+      { key: "phone", label: "Teléfono" },
+      { key: "fecCarga", label: "Fec. Carga" },
+      { key: "origen", label: "Origen" },
+      ...(activeProgramId === "all" ? [{ key: "programa", label: "Programa" }] : []),
+      { key: "agente", label: "Agente" },
+      { key: "estado", label: "Estado" },
+      { key: "sub", label: "Sub. Estado" },
+      { key: "fecTip", label: "Fec. Tipificación" },
+      { key: "comentarios", label: "Comentarios" },
+    ];
+    const rows = table.getSortedRowModel().rows.map(({ original: r }) => ({
+      phone: r.phone || "",
+      fecCarga: r.createdAt ? `${fmtDate(r.createdAt)} ${fmtTime(r.createdAt)}` : "",
+      origen: sourceLabel(r.source),
+      programa: r.programIds.map(programLabel).join(" | "),
+      agente: r.agent || "",
+      estado: r.stageId ? stageLabel(r.stageId) : "",
+      sub: r.subStageLabel || "",
+      fecTip: r.typifiedAt ? `${fmtDate(r.typifiedAt)} ${fmtTime(r.typifiedAt)}` : "",
+      comentarios: r.comments || "",
+    }));
+    const name = `tipificaciones-${(activeProgram?.code || activeProgram?.name || "todos").toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}`;
+    if (kind === "csv") downloadCsv(name, cols, rows);
+    else void downloadXlsx(name, "Tipificaciones", cols, rows);
+  };
 
   const scopeLabel = activeProgram
     ? activeProgram.name
@@ -1149,8 +1143,30 @@ export function TipificacionesReport() {
               ...sourceOpts.map((s) => ({ value: s, label: sourceLabel(s) })),
             ]}
           />
-          <DateInput label="Desde" value={fFrom} onChange={setFFrom} />
-          <DateInput label="Hasta" value={fTo} onChange={setFTo} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "0 0 auto" }}>
+            <span
+              style={{
+                fontSize: 10.5,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: ".04em",
+                color: "var(--text-3)",
+              }}
+            >
+              Fec. Tipificación
+            </span>
+            <DateRangePicker
+              align="right"
+              value={
+                fRange ?? {
+                  start: new Date(Date.now() - 29 * 86_400_000),
+                  end: new Date(),
+                  label: "Todas las fechas",
+                }
+              }
+              onChange={setFRange}
+            />
+          </div>
           {anyFilter && (
             <Btn variant="ghost" size="sm" onClick={clearFilters}>
               Limpiar
@@ -1408,7 +1424,7 @@ export function TipificacionesReport() {
             ]}
           />
 
-          {/* Detalle colapsable */}
+          {/* Detalle SIEMPRE visible (estilo BI): paginado, espaciado y exportable. */}
           <div
             style={{
               background: "var(--bg-1)",
@@ -1417,19 +1433,9 @@ export function TipificacionesReport() {
               overflow: "hidden",
             }}
           >
-            <button
-              type="button"
-              onClick={() => setShowDetail((v) => !v)}
-              className="row between"
-              style={{
-                width: "100%",
-                alignItems: "center",
-                padding: "14px 18px",
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                color: "var(--text-1)",
-              }}
+            <div
+              className="row between wrap"
+              style={{ alignItems: "center", padding: "14px 18px", gap: 10 }}
             >
               <span
                 style={{
@@ -1440,65 +1446,141 @@ export function TipificacionesReport() {
                   color: "var(--text-2)",
                 }}
               >
-                Detalle de tipificaciones · {filtered.length} filas
+                Detalle de tipificaciones
+                <span className="chip" style={{ marginLeft: 10, fontSize: 11 }}>
+                  {filtered.length} filas
+                </span>
               </span>
-              <CaretDown
-                size={16}
-                style={{
-                  transform: showDetail ? "rotate(180deg)" : "none",
-                  transition: "transform .2s",
-                  color: "var(--text-3)",
-                }}
-              />
-            </button>
-            {showDetail && (
-              <div style={{ padding: "0 18px 18px", overflowX: "auto" }}>
-                <Table>
-                  <TableHeader>
-                    {table.getHeaderGroups().map((hg) => (
-                      <TableRow key={hg.id}>
-                        {hg.headers.map((header) => {
-                          const canSort = header.column.getCanSort();
-                          const sorted = header.column.getIsSorted();
-                          return (
-                            <TableHead
-                              key={header.id}
-                              onClick={
-                                canSort ? header.column.getToggleSortingHandler() : undefined
-                              }
-                              style={{
-                                cursor: canSort ? "pointer" : "default",
-                                userSelect: "none",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              <span
-                                style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-                              >
-                                {flexRender(header.column.columnDef.header, header.getContext())}
-                                {canSort && (sorted === "asc" ? "▲" : sorted === "desc" ? "▼" : "")}
+              <div className="row gap8" style={{ alignItems: "center" }}>
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  disabled={filtered.length === 0}
+                  onClick={() => exportTable("csv")}
+                  title="Descargar la tabla filtrada como CSV"
+                >
+                  <DownloadSimple size={14} weight="bold" style={{ marginRight: 6 }} />
+                  CSV
+                </Btn>
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  disabled={filtered.length === 0}
+                  onClick={() => exportTable("xlsx")}
+                  title="Descargar la tabla filtrada como Excel"
+                >
+                  <DownloadSimple size={14} weight="bold" style={{ marginRight: 6 }} />
+                  Excel
+                </Btn>
+              </div>
+            </div>
+            <div style={{ padding: "0 18px 6px", overflowX: "auto" }}>
+              <Table>
+                <TableHeader>
+                  {table.getHeaderGroups().map((hg) => (
+                    <TableRow key={hg.id}>
+                      {hg.headers.map((header) => {
+                        const canSort = header.column.getCanSort();
+                        const sorted = header.column.getIsSorted();
+                        return (
+                          <TableHead
+                            key={header.id}
+                            onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                            style={{
+                              cursor: canSort ? "pointer" : "default",
+                              userSelect: "none",
+                              whiteSpace: "nowrap",
+                              padding: "10px 14px",
+                            }}
+                          >
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                              {flexRender(header.column.columnDef.header, header.getContext())}
+                              <span style={{ fontSize: 9, opacity: sorted ? 1 : 0.35 }}>
+                                {sorted === "asc"
+                                  ? "▲"
+                                  : sorted === "desc"
+                                    ? "▼"
+                                    : canSort
+                                      ? "⇅"
+                                      : ""}
                               </span>
-                            </TableHead>
-                          );
-                        })}
-                      </TableRow>
-                    ))}
-                  </TableHeader>
-                  <TableBody>
-                    {table
-                      .getRowModel()
-                      .rows.slice(0, 500)
-                      .map((row) => (
-                        <TableRow key={row.id}>
-                          {row.getVisibleCells().map((cell) => (
-                            <TableCell key={cell.id} style={{ whiteSpace: "nowrap" }}>
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </TableCell>
-                          ))}
-                        </TableRow>
+                            </span>
+                          </TableHead>
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {table.getRowModel().rows.map((row, ri) => (
+                    <TableRow
+                      key={row.id}
+                      style={{
+                        background:
+                          ri % 2 ? "color-mix(in srgb, var(--bg-2) 55%, transparent)" : undefined,
+                      }}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell
+                          key={cell.id}
+                          style={{ whiteSpace: "nowrap", padding: "11px 14px" }}
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
                       ))}
-                  </TableBody>
-                </Table>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {table.getPageCount() > 1 && (
+              <div
+                className="row between"
+                style={{
+                  alignItems: "center",
+                  padding: "10px 18px 14px",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: "var(--text-3)",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {pagination.pageIndex * pagination.pageSize + 1}–
+                  {Math.min((pagination.pageIndex + 1) * pagination.pageSize, filtered.length)} de{" "}
+                  {filtered.length}
+                </span>
+                <div className="row gap8" style={{ alignItems: "center" }}>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    disabled={!table.getCanPreviousPage()}
+                    onClick={() => table.previousPage()}
+                  >
+                    Anterior
+                  </Btn>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: "var(--text-2)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {pagination.pageIndex + 1} / {table.getPageCount()}
+                  </span>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    disabled={!table.getCanNextPage()}
+                    onClick={() => table.nextPage()}
+                  >
+                    Siguiente
+                  </Btn>
+                </div>
               </div>
             )}
           </div>

@@ -419,29 +419,36 @@ export function ReportsPage() {
 
       <FeatureNotice feature="contactLens" />
 
-      {/* Barra de control ÚNICA (rango premium + filtros finos) — reemplaza el
-          período separado y los inputs de fecha nativos. Un solo control. */}
-      <div style={{ marginBottom: 16 }}>
-        <ContactFilters
-          range={range}
-          onRangeChange={setRange}
-          onSearch={searchContacts}
-          loading={loading}
-        />
-      </div>
+      {/* Barra de contactos SOLO en Operación: es su dominio (período/cola/
+          sentimiento de contactos). En Pipeline los filtros los pone el propio
+          reporte — nunca dos barras de filtros apiladas. */}
+      {tab === "operacion" && (
+        <div style={{ marginBottom: 16 }}>
+          <ContactFilters
+            range={range}
+            onRangeChange={setRange}
+            onSearch={searchContacts}
+            loading={loading}
+          />
+        </div>
+      )}
 
-      <ReportsHero
-        kpis={kpis}
-        prevKpis={prevKpis}
-        volumeSpark={volumeSpark}
-        channelMix={channelMix}
-        periodLabel={range.label}
-        loading={initialLoading}
-        activeChannel={channelFilter}
-        onChannelClick={(k) =>
-          setChannelFilter((cur) => (cur === (k as ChannelKey) ? null : (k as ChannelKey)))
-        }
-      />
+      {/* El hero Resumen acompaña a Operación y Pipeline; en WhatsApp/Agente IA/
+          Descargas sus métricas de llamadas no aplican y solo meten ruido. */}
+      {(tab === "operacion" || tab === "crecimiento") && (
+        <ReportsHero
+          kpis={kpis}
+          prevKpis={prevKpis}
+          volumeSpark={volumeSpark}
+          channelMix={channelMix}
+          periodLabel={range.label}
+          loading={initialLoading}
+          activeChannel={channelFilter}
+          onChannelClick={(k) =>
+            setChannelFilter((cur) => (cur === (k as ChannelKey) ? null : (k as ChannelKey)))
+          }
+        />
+      )}
 
       {/* Tab bar de categorías — segmenta los reportes por dominio (Operación,
           Crecimiento, WhatsApp, Agente IA) en vez de una página larga apilada. */}
@@ -485,202 +492,206 @@ export function ReportsPage() {
         {REPORT_TABS.find((t) => t.id === tab)?.hint}
       </div>
 
-      {/* ── OPERACIÓN · contact center ── */}
-      {tab === "operacion" && (
-        <>
-          {channelFilter && (
-            <div className="row gap8" style={{ marginBottom: 12, alignItems: "center" }}>
-              <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>
-                Explorando el detalle de:
-              </span>
-              <button
-                type="button"
-                onClick={() => setChannelFilter(null)}
-                title="Quitar el filtro de canal"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 7,
-                  padding: "4px 11px",
-                  borderRadius: 99,
-                  border: "1px solid var(--accent)",
-                  background: "var(--accent-soft)",
-                  color: "var(--accent)",
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
+      {/* key={tab} remonta el contenido al cambiar de tab → los bloques entran
+          escalonados con aria-rise (motion.css .page > *). */}
+      <div key={tab} className="page">
+        {/* ── OPERACIÓN · contact center ── */}
+        {tab === "operacion" && (
+          <>
+            {channelFilter && (
+              <div className="row gap8" style={{ marginBottom: 12, alignItems: "center" }}>
+                <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+                  Explorando el detalle de:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setChannelFilter(null)}
+                  title="Quitar el filtro de canal"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "4px 11px",
+                    borderRadius: 99,
+                    border: "1px solid var(--accent)",
+                    background: "var(--accent-soft)",
+                    color: "var(--accent)",
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {CHANNEL_LABEL[channelFilter]} · {filteredContacts.length} contacto
+                  {filteredContacts.length === 1 ? "" : "s"}
+                  <span style={{ fontSize: 13 }}>✕</span>
+                </button>
+              </div>
+            )}
+            {!initialLoading && contacts.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <Card title="Insights automáticos" icon="sparkle" accent="var(--iris)">
+                  <AutoInsights contacts={filteredContacts} />
+                </Card>
+              </div>
+            )}
+            {initialLoading ? (
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}
               >
-                {CHANNEL_LABEL[channelFilter]} · {filteredContacts.length} contacto
-                {filteredContacts.length === 1 ? "" : "s"}
-                <span style={{ fontSize: 13 }}>✕</span>
-              </button>
-            </div>
-          )}
-          {!initialLoading && contacts.length > 0 && (
+                <div className="card" style={{ height: 300 }} />
+                <div className="card" style={{ height: 300 }} />
+              </div>
+            ) : (
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}
+              >
+                <Card
+                  title="Volumen por canal"
+                  icon="layers"
+                  extra={
+                    <span className="dim" style={{ fontSize: 12 }}>
+                      {contacts.length} contactos
+                    </span>
+                  }
+                >
+                  {volumeByChannel.length === 0 ? (
+                    <EmptyState
+                      icon={<Icon name="chart" size={20} />}
+                      title="Sin contactos en el rango"
+                      description="Ajusta el período o los filtros para ver volumen por canal."
+                    />
+                  ) : (
+                    <ChannelTrendChart data={volumeByChannel} height={264} />
+                  )}
+                </Card>
+                <Card
+                  title="Distribución de AHT"
+                  icon="clock"
+                  extra={
+                    <span className="dim" style={{ fontSize: 12 }}>
+                      minutos
+                    </span>
+                  }
+                >
+                  <AhtHistogramEChart contacts={filteredContacts} />
+                </Card>
+              </div>
+            )}
+
             <div style={{ marginBottom: 16 }}>
-              <Card title="Insights automáticos" icon="sparkle" accent="var(--iris)">
-                <AutoInsights contacts={filteredContacts} />
-              </Card>
-            </div>
-          )}
-          {initialLoading ? (
-            <div
-              className="grid"
-              style={{ gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}
-            >
-              <div className="card" style={{ height: 300 }} />
-              <div className="card" style={{ height: 300 }} />
-            </div>
-          ) : (
-            <div
-              className="grid"
-              style={{ gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}
-            >
-              <Card
-                title="Volumen por canal"
-                icon="layers"
-                extra={
-                  <span className="dim" style={{ fontSize: 12 }}>
-                    {contacts.length} contactos
-                  </span>
-                }
-              >
-                {volumeByChannel.length === 0 ? (
-                  <EmptyState
-                    icon={<Icon name="chart" size={20} />}
-                    title="Sin contactos en el rango"
-                    description="Ajusta el período o los filtros para ver volumen por canal."
-                  />
+              <Card title="Sentiment por día · Contact Lens" icon="gauge">
+                {initialLoading ? (
+                  <div className="card" style={{ height: 280 }} />
                 ) : (
-                  <ChannelTrendChart data={volumeByChannel} height={264} />
+                  <SentimentChart contacts={filteredContacts} />
                 )}
               </Card>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
               <Card
-                title="Distribución de AHT"
-                icon="clock"
+                title="Rendimiento de agente"
+                icon="users"
                 extra={
                   <span className="dim" style={{ fontSize: 12 }}>
-                    minutos
+                    click en columna para ordenar
                   </span>
                 }
+                pad={false}
               >
-                <AhtHistogramEChart contacts={filteredContacts} />
+                <AgentPerformanceReport contacts={filteredContacts} />
               </Card>
             </div>
-          )}
 
-          <div style={{ marginBottom: 16 }}>
-            <Card title="Sentiment por día · Contact Lens" icon="gauge">
-              {initialLoading ? (
-                <div className="card" style={{ height: 280 }} />
-              ) : (
-                <SentimentChart contacts={filteredContacts} />
-              )}
-            </Card>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
             <Card
-              title="Rendimiento de agente"
-              icon="users"
+              title="Historial de contactos"
+              icon="fileText"
               extra={
                 <span className="dim" style={{ fontSize: 12 }}>
-                  click en columna para ordenar
+                  {filteredContacts.length} contactos
                 </span>
               }
               pad={false}
             >
-              <AgentPerformanceReport contacts={filteredContacts} />
+              <ContactsTable contacts={filteredContacts} />
             </Card>
-          </div>
+          </>
+        )}
 
-          <Card
-            title="Historial de contactos"
-            icon="fileText"
-            extra={
-              <span className="dim" style={{ fontSize: 12 }}>
-                {filteredContacts.length} contactos
-              </span>
-            }
-            pad={false}
-          >
-            <ContactsTable contacts={filteredContacts} />
-          </Card>
-        </>
-      )}
-
-      {/* ── PIPELINE · leads/tipificación ──
+        {/* ── PIPELINE · leads/tipificación ──
           El dashboard analítico de tipificación (antes página suelta /tipificaciones):
           KPIs + insights narrados + embudo + %estado×programa + origen + agente +
           tendencia + heatmap + velocidad + esfuerzo (golpes). Todo desde
           manage-leads (report=typifications + report=attribution). */}
-      {tab === "crecimiento" && (
-        <div style={{ marginBottom: 16 }}>
-          <TipificacionesReport />
-        </div>
-      )}
-
-      {/* ── WHATSAPP · outbound (Pilar 9C + Pilar 4C) ── */}
-      {tab === "whatsapp" && (
-        <>
+        {tab === "crecimiento" && (
           <div style={{ marginBottom: 16 }}>
-            <Card title="WhatsApp · Plantillas (HSM Outbound)" icon="wa">
-              <HsmOutboundReport />
-            </Card>
+            <TipificacionesReport />
           </div>
+        )}
+
+        {/* ── WHATSAPP · outbound (Pilar 9C + Pilar 4C) ── */}
+        {tab === "whatsapp" && (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <Card title="WhatsApp · Plantillas (HSM Outbound)" icon="wa">
+                <HsmOutboundReport />
+              </Card>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Card title="WhatsApp · Entrega directo de Meta (Cloud API)" icon="wa">
+                <WhatsAppAnalyticsPanel />
+              </Card>
+            </div>
+          </>
+        )}
+
+        {/* ── AGENTE IA · bot (Pilar 9B) ── */}
+        {tab === "bot" && (
           <div style={{ marginBottom: 16 }}>
-            <Card title="WhatsApp · Entrega directo de Meta (Cloud API)" icon="wa">
-              <WhatsAppAnalyticsPanel />
-            </Card>
+            <BotAnalyticsReport />
           </div>
-        </>
-      )}
+        )}
 
-      {/* ── AGENTE IA · bot (Pilar 9B) ── */}
-      {tab === "bot" && (
-        <div style={{ marginBottom: 16 }}>
-          <BotAnalyticsReport />
-        </div>
-      )}
-
-      {/* ── DESCARGAS · exports (Chat detail + programados, estilo Chattigo) ── */}
-      {tab === "descargas" && (
-        <>
-          <div style={{ marginBottom: 16 }}>
-            <Card
-              title="Descargar reportes"
-              icon="download"
-              extra={
-                <span className="dim" style={{ fontSize: 12 }}>
-                  {contacts.length} contactos en el período
-                </span>
-              }
-            >
-              <div
-                style={{
-                  fontSize: 12.5,
-                  color: "var(--text-2)",
-                  lineHeight: 1.6,
-                  marginBottom: 14,
-                }}
+        {/* ── DESCARGAS · exports (Chat detail + programados, estilo Chattigo) ── */}
+        {tab === "descargas" && (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <Card
+                title="Descargar reportes"
+                icon="download"
+                extra={
+                  <span className="dim" style={{ fontSize: 12 }}>
+                    {contacts.length} contactos en el período
+                  </span>
+                }
               >
-                Descarga cualquier reporte como <strong>Excel</strong> o <strong>CSV</strong>. Los
-                de contactos (chat detail, agentes, llamadas, canal) respetan el{" "}
-                <strong>período</strong> elegido arriba; HSM, leads y conversaciones traen todo el
-                histórico.
-              </div>
-              <ReportDownloads contacts={contacts} range={range} />
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "var(--text-2)",
+                    lineHeight: 1.6,
+                    marginBottom: 14,
+                  }}
+                >
+                  Descarga cualquier reporte como <strong>Excel</strong> o <strong>CSV</strong>. Los
+                  de contactos (chat detail, agentes, llamadas, canal) respetan el{" "}
+                  <strong>período</strong> elegido arriba; HSM, leads y conversaciones traen todo el
+                  histórico.
+                </div>
+                <ReportDownloads contacts={contacts} range={range} />
+              </Card>
+            </div>
+            <Card title="Exports programados · XLSX por email" icon="calendar">
+              <ScheduledExportsPanel />
             </Card>
-          </div>
-          <Card title="Exports programados · XLSX por email" icon="calendar">
-            <ScheduledExportsPanel />
-          </Card>
-          <div style={{ marginTop: 16 }}>
-            <PowerBiFeedPanel />
-          </div>
-        </>
-      )}
+            <div style={{ marginTop: 16 }}>
+              <PowerBiFeedPanel />
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
