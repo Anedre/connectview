@@ -11,6 +11,7 @@ import { CampaignBlendBoard } from "@/components/campaigns/CampaignBlendBoard";
 import { useConnections } from "@/hooks/useConnections";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useCan } from "@/hooks/usePermissions";
+import { useProgram } from "@/context/ProgramContext";
 import { Btn, Card, Stat, Pill, Av, HeroBand, Num, Icon } from "@/components/aria";
 
 const STATUS_TONE: Record<string, "green" | "gold" | "cyan" | "red" | "outline"> = {
@@ -77,6 +78,10 @@ export function CampaignsPage() {
   const dataPlaneEnabled = !!config?.connect?.dataPlaneEnabled;
   const [activeTab, setActiveTab] = useState<TabId>("active");
   const [query, setQuery] = useState("");
+  // Filtro por programa = el switcher global del topbar (mismo que el dashboard).
+  const { activeProgramId, programs } = useProgram();
+  const programName = (pid?: string): string | null =>
+    pid ? (programs.find((p) => p.programId === pid)?.name ?? null) : null;
   const mutations = useCampaignMutations();
   const { confirm, confirmDialog } = useConfirm();
   // Crear/editar/lanzar campañas = capacidad `manage_campaigns` (Admin por
@@ -105,6 +110,13 @@ export function CampaignsPage() {
     if (tab && tab.statuses.length > 0) {
       list = list.filter((c) => tab.statuses.includes(c.status));
     }
+    // Scope por programa (switcher global): "all" = todas · "none" = sin
+    // programa · un id = solo esa unidad comercial.
+    if (activeProgramId === "none") {
+      list = list.filter((c) => !c.programId);
+    } else if (activeProgramId !== "all") {
+      list = list.filter((c) => c.programId === activeProgramId);
+    }
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -115,7 +127,7 @@ export function CampaignsPage() {
       );
     }
     return list;
-  }, [campaigns, activeTab, query]);
+  }, [campaigns, activeTab, query, activeProgramId]);
 
   const handleClone = async (campaign: Campaign, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -425,7 +437,35 @@ export function CampaignsPage() {
                         >
                           {c.name}
                         </div>
-                        <div className="dim tnum row gap12" style={{ fontSize: 11, marginTop: 3 }}>
+                        <div
+                          className="dim tnum row gap8"
+                          style={{ fontSize: 11, marginTop: 4, alignItems: "center" }}
+                        >
+                          {programName(c.programId) ? (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                padding: "1.5px 7px",
+                                borderRadius: 999,
+                                fontSize: 10.5,
+                                fontWeight: 700,
+                                color: "var(--accent)",
+                                background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                                border:
+                                  "1px solid color-mix(in srgb, var(--accent) 30%, transparent)",
+                              }}
+                            >
+                              <Icon name="cap" size={11} />
+                              {programName(c.programId)}
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--text-3)", fontStyle: "italic" }}>
+                              Sin programa
+                            </span>
+                          )}
+                          <span>·</span>
                           <span>
                             {completed + failed} / {c.totalContacts}
                           </span>
