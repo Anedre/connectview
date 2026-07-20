@@ -30,6 +30,7 @@ import {
 import { updateHsmStatus, type HsmStatus } from "../_shared/hsmStatus";
 import {
   appendInbound,
+  claimOnce,
   appendOutbound,
   convId,
   getConversation,
@@ -197,17 +198,28 @@ async function findTenantByMetaPhone(phoneNumberId: string): Promise<TenantWa | 
 async function pickBotId(dynamo: DynamoDBClient, configBotId?: string): Promise<string> {
   if (configBotId) return configBotId;
   try {
-    const res = await dynamo.send(new ScanCommand({ TableName: BOTS_TABLE }));
-    const bots = (res.Items || [])
-      .map((it) => unmarshall(it) as { botId?: string; status?: string })
-      .filter(
-        (b) =>
-          b.botId && !String(b.botId).startsWith("conv#") && !String(b.botId).startsWith("sess#"),
+    // BUG-audit P0-3: la BOTS_TABLE co-almacena logs de conversación (items
+    // `conv#`/`sess#`), así que un Scan de UNA página (≤1MB) puede NO incluir la
+    // definición del bot publicado → devolvía "" → la conversación iba a un
+    // humano en vez de correr el bot. Paginamos hasta hallar el publicado.
+    let ESK: Record<string, unknown> | undefined;
+    do {
+      const res = await dynamo.send(
+        new ScanCommand({ TableName: BOTS_TABLE, ExclusiveStartKey: ESK as never }),
       );
-    // Solo un bot PUBLICADO/activo atiende (sin `|| bots[0]`): un borrador no
-    // responde → sin flujo linkeado ni publicado, la conversación va al agente.
-    const pub = bots.find((b) => b.status === "published" || b.status === "active");
-    return pub?.botId || "";
+      const bots = (res.Items || [])
+        .map((it) => unmarshall(it) as { botId?: string; status?: string })
+        .filter(
+          (b) =>
+            b.botId && !String(b.botId).startsWith("conv#") && !String(b.botId).startsWith("sess#"),
+        );
+      // Solo un bot PUBLICADO/activo atiende (sin `|| bots[0]`): un borrador no
+      // responde → sin flujo linkeado ni publicado, la conversación va al agente.
+      const pub = bots.find((b) => b.status === "published" || b.status === "active");
+      if (pub?.botId) return pub.botId;
+      ESK = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (ESK);
+    return "";
   } catch {
     return "";
   }
@@ -742,6 +754,10 @@ export const handler: Handler = async (event: any) => {
         const phoneNumberId = value?.metadata?.phone_number_id || "";
         for (const msg of value.messages || []) {
           const from = msg.from;
+          // BUG-audit P0-1: dedup por wamid. Meta REINTREGA el webhook si tardamos
+          // en responder 200 (scan + assume-role + LLM por mensaje) → sin esto el
+          // cliente recibía DOBLE respuesta del bot + doble copia en el inbox.
+          if (msg.id && !(await claimOnce(legacyDynamo, `wadedup#${msg.id}`))) continue;
           // Respuesta de un WhatsApp Flow (#10): va al CRM, NO al bot (el
           // JSON crudo no es un turno de conversación).
           const nfm = msg.interactive?.nfm_reply;

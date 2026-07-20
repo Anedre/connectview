@@ -1336,7 +1336,21 @@ async function scanLeads(): Promise<LeadItem[]> {
 /** Marca el lead como "ya disparado" para esta regla (G3: en dos pasos porque
  *  `attributes` puede no existir). Se escribe AL FINAL (G2: las acciones
  *  bumpean updatedAt; el marcador debe quedar ≥ updatedAt para no re-armar). */
-async function writeFiredMarker(leadId: string, ruleId: string): Promise<void> {
+/**
+ * BUG-audit P0-2: CLAIM del marcador de "ya disparó", CONDICIONAL, para correr
+ * ANTES del efecto (antes se escribía DESPUÉS de executeRule → si el marcador no
+ * persistía o dos ticks se solapaban, se re-enviaba el WhatsApp/email/llamada
+ * cada tick). Devuelve `true` si ESTE tick ganó el claim (debe ejecutar el
+ * efecto), `false` si ya estaba marcado (skip). `notBefore` (ISO) = el
+ * `updatedAt` del episodio de inactividad para `lead_inactive`: re-permite el
+ * disparo si el marcador viejo es de ANTES de este episodio; para
+ * `score_threshold` va undefined → dispara una sola vez de por vida.
+ */
+async function claimFiredMarker(
+  leadId: string,
+  ruleId: string,
+  notBefore?: string,
+): Promise<boolean> {
   const key = { leadId: { S: leadId } };
   await leadsDynamo
     .send(
@@ -1348,15 +1362,26 @@ async function writeFiredMarker(leadId: string, ruleId: string): Promise<void> {
       }),
     )
     .catch(() => {});
-  await leadsDynamo.send(
-    new UpdateItemCommand({
-      TableName: LEADS_TABLE,
-      Key: key,
-      UpdateExpression: "SET attributes.#k = :now",
-      ExpressionAttributeNames: { "#k": `autoFired_${ruleId}` },
-      ExpressionAttributeValues: { ":now": { S: new Date().toISOString() } },
-    }),
-  );
+  try {
+    await leadsDynamo.send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: key,
+        UpdateExpression: "SET attributes.#k = :now",
+        ConditionExpression: notBefore
+          ? "attribute_not_exists(attributes.#k) OR attributes.#k < :notBefore"
+          : "attribute_not_exists(attributes.#k)",
+        ExpressionAttributeNames: { "#k": `autoFired_${ruleId}` },
+        ExpressionAttributeValues: notBefore
+          ? { ":now": { S: new Date().toISOString() }, ":notBefore": { S: notBefore } }
+          : { ":now": { S: new Date().toISOString() } },
+      }),
+    );
+    return true;
+  } catch (err) {
+    if ((err as { name?: string })?.name === "ConditionalCheckFailedException") return false;
+    throw err; // error real de DynamoDB → que el caller decida (NO ejecutar el efecto)
+  }
 }
 
 async function processTick(): Promise<{ tenants: number; fired: number; skipped: string[] }> {
@@ -1423,13 +1448,23 @@ async function processTick(): Promise<{ tenants: number; fired: number; skipped:
           source: lead.source,
         };
         if (!matchesConditions(rule, ctx)) continue;
+        // BUG-audit P0-2: reclamar el marcador ANTES del efecto. Si otro tick ya
+        // lo tomó o ya disparó para este episodio, la condición falla → NO se
+        // re-ejecuta. Un error real de DynamoDB también aborta (no-enviar > doble).
+        let claimed: boolean;
+        try {
+          claimed = await claimFiredMarker(
+            lead.leadId,
+            rule.ruleId,
+            kind === "lead_inactive" ? lead.updatedAt || lead.createdAt : undefined,
+          );
+        } catch (err) {
+          console.warn("claimFiredMarker error — no ejecuto para no arriesgar doble envío", err);
+          continue;
+        }
+        if (!claimed) continue;
         fired += await executeRule(rule, kind, ctx);
         firesLeft--;
-        try {
-          await writeFiredMarker(lead.leadId, rule.ruleId);
-        } catch (err) {
-          console.warn("writeFiredMarker failed", err);
-        }
       }
     }
   }

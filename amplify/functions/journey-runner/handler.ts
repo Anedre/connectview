@@ -894,7 +894,13 @@ async function processDueEnrollments(
           }
           const note = await runEffect(eff, enr.leadId, lead, tenantId, enr.journeyId);
           notes.push(note);
-          if (eff.type === "send" && note.includes(":sent")) sent.add(eff.nodeId);
+          if (eff.type === "send" && note.includes(":sent")) {
+            sent.add(eff.nodeId);
+            // BUG-audit P0-5: persistir el dedup INMEDIATAMENTE, no solo al final en
+            // markEnrollment. Si el Lambda muere entre el envío y markEnrollment, el
+            // próximo tick vería `sent` sin este nodo → reenvío del mismo paso.
+            await persistSentNodes(enr, [...sent]);
+          }
         }
         await markEnrollment(
           enr,
@@ -913,6 +919,28 @@ async function processDueEnrollments(
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (lastKey);
   return { processed, advanced };
+}
+
+/** BUG-audit P0-5: persiste SOLO el set de dedup `sent` (update quirúrgico) para
+ *  no perder el "ya envié el nodo X" si el Lambda muere antes del markEnrollment
+ *  final. Best-effort acotado — no debe romper el paso del journey. */
+async function persistSentNodes(
+  enr: Enrollment & { tenantId?: string },
+  sent: string[],
+): Promise<void> {
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: ENROLLMENTS_TABLE,
+        Key: { journeyId: { S: enr.journeyId }, leadId: { S: enr.leadId } },
+        UpdateExpression: "SET #snt = :snt",
+        ExpressionAttributeNames: { "#snt": "sent" },
+        ExpressionAttributeValues: marshall({ ":snt": sent.slice(-100) }),
+      }),
+    );
+  } catch (e) {
+    console.warn("persistSentNodes falló", enr.journeyId, enr.leadId, (e as Error).message);
+  }
 }
 
 async function markEnrollment(

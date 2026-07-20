@@ -592,6 +592,44 @@ export async function scanOpenConversations(dynamo: DynamoDBClient): Promise<Con
 }
 
 /**
+ * BUG-audit P0-1/P0-4: dedup de eventos externos que se ENTREGAN MÁS DE UNA VEZ
+ * (los webhooks de Meta reintentan si tardas en responder 200). Reserva una
+ * clave una sola vez con un PutItem CONDICIONAL a un item namespaced de la
+ * tabla de conversaciones (el rol de los webhooks ya tiene PutItem ahí, y
+ * scanOpenConversations filtra por status="open" → estos marcadores nunca
+ * aparecen como conversaciones). El TTL los limpia solos.
+ *
+ * Devuelve `true` si ESTA invocación ganó la reserva (debe procesar el evento),
+ * `false` si ya se había procesado (retry → skip). FAIL-OPEN: si el propio
+ * dedup falla (throttle/IAM), devuelve `true` — procesar posiblemente-doble es
+ * preferible a PERDER el mensaje en silencio.
+ */
+export async function claimOnce(
+  dynamo: DynamoDBClient,
+  key: string,
+  ttlSeconds = 86_400,
+): Promise<boolean> {
+  try {
+    await dynamo.send(
+      new PutItemCommand({
+        TableName: CONV_TABLE,
+        Item: {
+          conversationId: { S: key },
+          ttl: { N: String(Math.floor(Date.now() / 1000) + ttlSeconds) },
+          _dedup: { BOOL: true },
+        },
+        ConditionExpression: "attribute_not_exists(conversationId)",
+      }),
+    );
+    return true;
+  } catch (err) {
+    if ((err as { name?: string })?.name === "ConditionalCheckFailedException") return false;
+    console.warn("claimOnce error (proceso igual, fail-open):", (err as Error)?.message);
+    return true;
+  }
+}
+
+/**
  * Recibo de LECTURA entrante (WhatsApp statuses[].status==="read"): el cliente
  * leyó nuestros mensajes. Marca `readAt` en TODOS los mensajes salientes que aún
  * no lo tenían y setea `lastCustomerReadAt`. Best-effort (no rompe si no hay

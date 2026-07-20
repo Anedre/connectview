@@ -11,6 +11,7 @@ import { setActiveTenant } from "../_shared/salesforceClient";
 import { fireAutomation } from "../_shared/automationHook";
 import { normalizePhone } from "../_shared/phone";
 import { loadMetaAppSecret, verifyMetaSignature } from "../_shared/metaSignature";
+import { claimOnce } from "../_shared/conversations";
 
 /**
  * meta-lead-ads-webhook — ingesta nativa de Meta Lead Ads (Pilar 5 · R12).
@@ -131,6 +132,14 @@ function mapLead(fieldData: any[]): {
 }
 
 async function handleLead(pageId: string, leadgenId: string, source: string): Promise<void> {
+  // BUG-audit P0-4: dedup por leadgen_id. Meta REINTREGA el webhook (y
+  // meta-messaging-webhook lo re-reenvía) → sin esto, dos entregas del mismo lead
+  // pasaban la carrera scan→put de upsertVoxLead y creaban DOS filas + DOS HSM de
+  // bienvenida (fireAutomation "lead_created" 2×). El claim corta el retry.
+  if (leadgenId && !(await claimOnce(legacyDynamo, `leadgendedup#${leadgenId}`))) {
+    console.log(`leadgen ${leadgenId} ya procesado (retry de Meta) — skip`);
+    return;
+  }
   const tenantId = await findTenantByPageId(pageId);
   if (!tenantId) {
     console.warn(`leadgen: page ${pageId} no mapeado a ningún tenant (meta.pageId)`);

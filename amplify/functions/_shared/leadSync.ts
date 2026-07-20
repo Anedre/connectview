@@ -1071,8 +1071,9 @@ export async function bulkUpsertVoxLeads(
   updated: number;
   skipped: number;
   dropped: number;
+  errors: number;
 }> {
-  const summary = { attempted: 0, created: 0, updated: 0, skipped: 0, dropped: 0 };
+  const summary = { attempted: 0, created: 0, updated: 0, skipped: 0, dropped: 0, errors: 0 };
   const deadline = Date.now() + Math.max(1000, opts.deadlineMs ?? 20_000);
   const source = opts.source || "Vox Campaña";
   // SEC-A1: tenant a estampar en cada fila. A DIFERENCIA de upsertVoxLead, aquí
@@ -1095,6 +1096,7 @@ export async function bulkUpsertVoxLeads(
 
   const now = new Date().toISOString();
   const items: Lead[] = [];
+  const wasNew: boolean[] = []; // paralelo a items: el created/updated se cuenta TRAS el write
   const seen = new Set<string>();
   for (const c of contacts) {
     const phone = (c.phone || "").trim();
@@ -1158,8 +1160,7 @@ export async function bulkUpsertVoxLeads(
       updatedAt: typedTs || prev?.updatedAt || rowCreated || now,
     };
     items.push(merged);
-    if (prev) summary.updated++;
-    else summary.created++;
+    wasNew.push(!prev); // NO se cuenta aquí; se cuenta tras el write confirmado (abajo)
   }
   summary.attempted = items.length;
 
@@ -1174,15 +1175,26 @@ export async function bulkUpsertVoxLeads(
         cursor = items.length;
         return;
       }
-      const it = items[cursor++];
-      await dynamo
-        .send(
+      const idx = cursor++;
+      const it = items[idx];
+      // BUG-audit P0-6: contar created/updated SOLO tras un write CONFIRMADO. Antes
+      // se contaba al construir y el PutItem tenía `.catch(()=>{})` que tragaba el
+      // fallo → el resumen mentía ("N importados" con menos persistidos). Los que
+      // fallan van a `errors` y NO cuentan ni escriben membership.
+      try {
+        await dynamo.send(
           new PutItemCommand({
             TableName: LEADS_TABLE,
             Item: marshall(it, { removeUndefinedValues: true }),
           }),
-        )
-        .catch(() => {});
+        );
+      } catch (e) {
+        summary.errors++;
+        console.warn("bulkUpsertVoxLeads: PutItem falló", it.leadId, (e as Error).message);
+        continue;
+      }
+      if (wasNew[idx]) summary.created++;
+      else summary.updated++;
       // Auto-tag al programa (Pilar 1): programId de la campaña, o resuelto por
       // utm_campaign / columna "programa" del CSV (R26).
       const pid = opts.programId || (await resolveProgramIdFromAttributes(it.attributes));
