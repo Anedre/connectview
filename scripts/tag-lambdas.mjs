@@ -86,6 +86,7 @@ const TAXONOMY = {
       "manage-appointment",
       "journey-runner",
       "automation-engine",
+      "workflow-engine",
       "manage-automations",
       "program-tick",
       "manage-programs",
