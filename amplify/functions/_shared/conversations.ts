@@ -5,9 +5,11 @@
  * `manage-conversations` (lista/thread/reply). Tabla pooled `connectview-conversations`.
  */
 import {
+  DeleteItemCommand,
   DynamoDBClient,
   GetItemCommand,
   PutItemCommand,
+  type PutItemCommandInput,
   ScanCommand,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
@@ -139,6 +141,10 @@ export interface Disposition {
 }
 export interface Conversation {
   conversationId: string; // `${channel}#${senderId}`
+  /** BUG-audit P1-#7: revisión para optimistic locking. Cada escritura la
+   *  incrementa y la condiciona a que no haya cambiado desde la lectura → dos
+   *  webhooks concurrentes ya no se pisan (mensaje perdido / unread mal). */
+  rev?: number;
   tenantId?: string;
   channel: ConvChannel;
   senderId: string;
@@ -247,13 +253,75 @@ function blank(
   };
 }
 
-async function put(dynamo: DynamoDBClient, conv: Conversation): Promise<void> {
-  await dynamo.send(
-    new PutItemCommand({
-      TableName: CONV_TABLE,
-      Item: marshall(conv, { removeUndefinedValues: true }),
-    }),
-  );
+/**
+ * BUG-audit P1-#7: escribe la conversación incrementando `rev`. El `guard`
+ * habilita el optimistic locking: `undefined` = incondicional (retrocompat);
+ * `{rev:null}` = debe NO existir (creación); `{rev:N}` = `rev` debe seguir en N
+ * (nadie la tocó desde la lectura). Lanza ConditionalCheckFailedException en
+ * conflicto → `mutateConversation` reintenta. */
+async function put(
+  dynamo: DynamoDBClient,
+  conv: Conversation,
+  guard?: { rev: number | null | undefined },
+): Promise<void> {
+  conv.rev = (conv.rev ?? 0) + 1;
+  const cmd: PutItemCommandInput = {
+    TableName: CONV_TABLE,
+    Item: marshall(conv, { removeUndefinedValues: true }),
+  };
+  if (guard) {
+    if (guard.rev === null) {
+      cmd.ConditionExpression = "attribute_not_exists(conversationId)"; // debe ser NUEVA
+    } else if (guard.rev === undefined) {
+      // Item LEGACY: existe pero sin `rev` (creado antes de este cambio). El guard
+      // `rev = 0` fallaría (el atributo está AUSENTE, no vale 0) → la primera
+      // mutación de toda conversación previa reintentaría en vano. `attribute_not_exists`
+      // deja pasar exactamente al primer escritor que le pone rev; el resto reintenta.
+      cmd.ConditionExpression = "attribute_not_exists(rev)";
+    } else {
+      cmd.ConditionExpression = "rev = :grev";
+      cmd.ExpressionAttributeValues = marshall({ ":grev": guard.rev });
+    }
+  }
+  await dynamo.send(new PutItemCommand(cmd));
+}
+
+/**
+ * BUG-audit P1-#7: aplica una mutación a una conversación con optimistic
+ * locking + reintentos. Lee → `apply(cur)` (síncrono y RE-EJECUTABLE, sobre el
+ * estado fresco) → escribe condicional a que `rev` no cambió. Si otro escritor
+ * ganó, re-lee y re-aplica (hasta `maxTries`). `apply` devuelve el conv mutado o
+ * `null` para no escribir (p.ej. la conversación no existe). El caller resuelve
+ * FUERA cualquier trabajo async (lookups) y lo pasa capturado a `apply`. */
+async function mutateConversation(
+  dynamo: DynamoDBClient,
+  conversationId: string,
+  apply: (cur: Conversation | null) => Conversation | null,
+  maxTries = 8,
+): Promise<Conversation | null> {
+  for (let i = 0; i < maxTries; i++) {
+    const cur = await getConversation(dynamo, conversationId);
+    const next = apply(cur);
+    if (!next) return null;
+    try {
+      // cur=null → creación (guard attribute_not_exists). cur con rev=N → `rev=N`.
+      // cur SIN rev (legacy) → cur.rev es undefined → guard attribute_not_exists(rev).
+      await put(dynamo, next, { rev: cur ? cur.rev : null });
+      return next;
+    } catch (err) {
+      if (
+        (err as { name?: string })?.name === "ConditionalCheckFailedException" &&
+        i < maxTries - 1
+      ) {
+        // Backoff con jitter: bajo una ráfaga concurrente sobre la MISMA conversación
+        // espacia los reintentos → evita el thundering-herd y converge sin agotar.
+        await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 12) * (i + 1)));
+        continue; // otro escritor tocó la conversación → re-leer y re-aplicar
+      }
+      throw err;
+    }
+  }
+  return null;
 }
 
 /** Mensaje entrante (del cliente) → upsert de la conversación + unread++. */
@@ -285,76 +353,90 @@ export async function appendInbound(
     resolveLead?: (phone: string) => Promise<{ leadId?: string; name?: string } | null>;
   },
 ): Promise<Conversation> {
+  const cid = convId(m.channel, m.senderId);
   const now = m.ts || new Date().toISOString();
-  const existing = await getConversation(dynamo, convId(m.channel, m.senderId));
-  const isNew = !existing;
-  const conv = existing || blank(m.channel, m.senderId, now, m.tenantId);
-  const hadPhone = !!conv.phone;
-  conv.messages = [
-    ...(conv.messages || []).slice(-199),
-    { id: randomUUID(), direction: "in", text: m.text, ts: now, attachment: m.attachment },
-  ];
-  if (m.messageId) conv.lastInboundMessageId = m.messageId;
-  if (m.metaAccountId) conv.metaAccountId = m.metaAccountId;
-  conv.unread = (conv.unread || 0) + 1;
-  conv.lastMessageAt = now;
-  conv.lastMessagePreview = (m.text || "").slice(0, 120) || "[adjunto]";
-  if (m.customerName) conv.customerName = m.customerName;
-  if (m.leadId && !conv.leadId) conv.leadId = m.leadId;
-  // SEC-C1: persistimos el `tenantId` del webhook receptor (dueño de la fila en
-  // la tabla pooled) para que el listado pueda filtrar por tenant. Novasys legacy
-  // pasa "" (fila sin dueño) → queda sin `tenantId` y el listado legacy la incluye.
-  if (m.tenantId) conv.tenantId = m.tenantId;
-  // Fase C: si el cliente escribió su teléfono/email en el DM, lo guardamos como
-  // pista de identidad para auto-vincular después (no pisa lo ya conocido).
+  // Teléfono candidato, DETERMINISTA desde `m` (no depende del estado leído): en
+  // WhatsApp el remitente ES el teléfono; en otros canales, lo que el cliente
+  // haya escrito en el texto. Se usa para decidir/ejecutar el auto-vínculo.
   const hint = extractContact(m.text || "");
-  if (hint.phone && !conv.phone) conv.phone = hint.phone;
-  if (hint.email && !conv.email) conv.email = hint.email;
-  // En WhatsApp el remitente ES el teléfono → identidad directa (auto-vínculo).
-  if (m.channel === "whatsapp" && !conv.phone) {
-    conv.phone = normalizePhone(m.senderId)?.e164 || `+${m.senderId.replace(/\D/g, "")}`;
-  }
+  const waPhone =
+    m.channel === "whatsapp"
+      ? normalizePhone(m.senderId)?.e164 || `+${m.senderId.replace(/\D/g, "")}`
+      : undefined;
+  const candidatePhone = waPhone || hint.phone;
 
-  // ── Auto-vínculo al lead por teléfono ─────────────────────────────────────
-  // Si tenemos teléfono y aún NO hay lead vinculado, resolvemos el lead por su
-  // número y guardamos `leadId` + el `customerName` REAL. Así la bandeja muestra
-  // el NOMBRE del cliente (no el número/ID) y el chat queda ligado al Cliente 360
-  // sin que el agente lo haga a mano. Solo si la conversación es nueva o el
-  // teléfono se acaba de detectar → no scaneamos leads en cada mensaje.
-  const phoneJustAppeared = !hadPhone && !!conv.phone;
-  if (conv.phone && !conv.leadId && opts?.resolveLead && (isNew || phoneJustAppeared)) {
-    try {
-      const lead = await opts.resolveLead(conv.phone);
-      if (lead?.leadId) conv.leadId = lead.leadId;
-      // El nombre del lead solo pisa un `customerName` ausente o que no aporta
-      // (era el senderId crudo). Un nombre real ya resuelto (p.ej. de Graph) gana.
-      if (lead?.name && (!conv.customerName || conv.customerName === m.senderId)) {
-        conv.customerName = lead.name;
+  // ── Auto-vínculo al lead por teléfono (async, UNA sola vez) ────────────────
+  // BUG-audit P1-#7: el resolve es async y NO puede vivir dentro del retry loop
+  // (el `apply` debe ser síncrono y re-ejecutable). Lo resolvemos aquí, guiados
+  // por una lectura previa; el `apply` re-verifica `!c.leadId` antes de usarlo,
+  // así que si otro inbound concurrente ya vinculó, no lo pisamos. Solo cuando
+  // hay teléfono y la conversación aún no tiene lead ni teléfono conocidos → no
+  // scaneamos leads en cada mensaje de un número ya identificado.
+  let resolvedLead: { leadId?: string; name?: string } | null = null;
+  if (candidatePhone && opts?.resolveLead) {
+    const pre = await getConversation(dynamo, cid);
+    if (!pre?.leadId && !pre?.phone) {
+      try {
+        resolvedLead = await opts.resolveLead(candidatePhone);
+      } catch {
+        /* best-effort: sin vínculo automático, el agente puede hacerlo a mano */
       }
-    } catch {
-      /* best-effort: sin vínculo automático, el agente puede hacerlo a mano */
     }
   }
-  // Regla de negocio: una conversación cerrada SOLO se reabre cuando el cliente
-  // escribe. Al reabrir, el bot atiende primero de nuevo (assignee="bot"),
-  // se registra `reopenedAt` y se limpia el motivo/instante de cierre. Si ya
-  // estaba abierta, NO tocamos assignee (respeta que un humano la tomara).
-  if (conv.status === "closed") {
-    conv.status = "open";
-    conv.assignee = "bot";
-    conv.reopenedAt = now;
-    conv.closedReason = undefined;
-    conv.closedAt = undefined;
-    // Reabrir LIMPIO: soltar el dueño anterior. Si un agente la cerró (o se cerró
-    // por inactividad tras una derivación), al reabrir vuelve al bot SIN quedar
-    // pegada a ese agente — si no, el bot/Agente IA no la volvía a atender.
-    conv.ownerAgentId = undefined;
-    conv.ownerAgentName = undefined;
-    conv.assignedAgent = undefined;
-  }
-  conv.updatedAt = now;
-  await put(dynamo, conv);
-  return conv;
+
+  const conv = await mutateConversation(dynamo, cid, (cur) => {
+    const c = cur || blank(m.channel, m.senderId, now, m.tenantId);
+    c.messages = [
+      ...(c.messages || []).slice(-199),
+      { id: randomUUID(), direction: "in", text: m.text, ts: now, attachment: m.attachment },
+    ];
+    if (m.messageId) c.lastInboundMessageId = m.messageId;
+    if (m.metaAccountId) c.metaAccountId = m.metaAccountId;
+    c.unread = (c.unread || 0) + 1;
+    c.lastMessageAt = now;
+    c.lastMessagePreview = (m.text || "").slice(0, 120) || "[adjunto]";
+    if (m.customerName) c.customerName = m.customerName;
+    if (m.leadId && !c.leadId) c.leadId = m.leadId;
+    // SEC-C1: persistimos el `tenantId` del webhook receptor (dueño de la fila en
+    // la tabla pooled) para que el listado pueda filtrar por tenant. Novasys legacy
+    // pasa "" (fila sin dueño) → queda sin `tenantId` y el listado legacy la incluye.
+    if (m.tenantId) c.tenantId = m.tenantId;
+    // Fase C: si el cliente escribió su teléfono/email en el DM, lo guardamos como
+    // pista de identidad para auto-vincular después (no pisa lo ya conocido).
+    if (hint.phone && !c.phone) c.phone = hint.phone;
+    if (hint.email && !c.email) c.email = hint.email;
+    // En WhatsApp el remitente ES el teléfono → identidad directa (auto-vínculo).
+    if (m.channel === "whatsapp" && !c.phone && waPhone) c.phone = waPhone;
+    // Aplica el lead ya resuelto (si aún no hay vínculo). El nombre del lead solo
+    // pisa un `customerName` ausente o que no aporta (era el senderId crudo); un
+    // nombre real ya resuelto (p.ej. de Graph) gana.
+    if (resolvedLead?.leadId && !c.leadId) c.leadId = resolvedLead.leadId;
+    if (resolvedLead?.name && (!c.customerName || c.customerName === m.senderId)) {
+      c.customerName = resolvedLead.name;
+    }
+    // Regla de negocio: una conversación cerrada SOLO se reabre cuando el cliente
+    // escribe. Al reabrir, el bot atiende primero de nuevo (assignee="bot"),
+    // se registra `reopenedAt` y se limpia el motivo/instante de cierre. Si ya
+    // estaba abierta, NO tocamos assignee (respeta que un humano la tomara).
+    if (c.status === "closed") {
+      c.status = "open";
+      c.assignee = "bot";
+      c.reopenedAt = now;
+      c.closedReason = undefined;
+      c.closedAt = undefined;
+      // Reabrir LIMPIO: soltar el dueño anterior. Si un agente la cerró (o se cerró
+      // por inactividad tras una derivación), al reabrir vuelve al bot SIN quedar
+      // pegada a ese agente — si no, el bot/Agente IA no la volvía a atender.
+      c.ownerAgentId = undefined;
+      c.ownerAgentName = undefined;
+      c.assignedAgent = undefined;
+    }
+    c.updatedAt = now;
+    return c;
+  });
+  // `apply` nunca devuelve null aquí (siempre upserta) → mutateConversation
+  // devuelve la conversación. El `?? ` es un fallback defensivo por el tipo.
+  return conv ?? blank(m.channel, m.senderId, now, m.tenantId);
 }
 
 /**
@@ -379,27 +461,27 @@ export async function appendComment(
   },
 ): Promise<Conversation> {
   const now = m.ts || new Date().toISOString();
-  const conv =
-    (await getConversation(dynamo, convId("fb_comment", m.fromId))) ||
-    blank("fb_comment", m.fromId, now, m.tenantId);
-  if (m.metaAccountId) conv.metaAccountId = m.metaAccountId;
-  conv.messages = [
-    ...(conv.messages || []).slice(-199),
-    { id: randomUUID(), direction: "in", text: m.text, ts: now },
-  ];
-  conv.unread = (conv.unread || 0) + 1;
-  conv.lastMessageAt = now;
-  conv.lastMessagePreview = (m.text || "").slice(0, 120) || "[comentario]";
-  if (m.fromName) conv.customerName = m.fromName;
-  if (m.tenantId) conv.tenantId = m.tenantId;
-  conv.platform = m.platform;
-  conv.commentId = m.commentId;
-  conv.postId = m.postId;
-  conv.dmSent = false;
-  conv.status = "open";
-  conv.updatedAt = now;
-  await put(dynamo, conv);
-  return conv;
+  const conv = await mutateConversation(dynamo, convId("fb_comment", m.fromId), (cur) => {
+    const c = cur || blank("fb_comment", m.fromId, now, m.tenantId);
+    if (m.metaAccountId) c.metaAccountId = m.metaAccountId;
+    c.messages = [
+      ...(c.messages || []).slice(-199),
+      { id: randomUUID(), direction: "in", text: m.text, ts: now },
+    ];
+    c.unread = (c.unread || 0) + 1;
+    c.lastMessageAt = now;
+    c.lastMessagePreview = (m.text || "").slice(0, 120) || "[comentario]";
+    if (m.fromName) c.customerName = m.fromName;
+    if (m.tenantId) c.tenantId = m.tenantId;
+    c.platform = m.platform;
+    c.commentId = m.commentId;
+    c.postId = m.postId;
+    c.dmSent = false;
+    c.status = "open";
+    c.updatedAt = now;
+    return c;
+  });
+  return conv ?? blank("fb_comment", m.fromId, now, m.tenantId);
 }
 
 /**
@@ -420,27 +502,27 @@ export async function appendMlInbound(
   },
 ): Promise<Conversation> {
   const now = m.ts || new Date().toISOString();
-  const conv =
-    (await getConversation(dynamo, convId("mercadolibre", m.buyerId))) ||
-    blank("mercadolibre", m.buyerId, now, m.tenantId);
-  conv.messages = [
-    ...(conv.messages || []).slice(-199),
-    { id: randomUUID(), direction: "in", text: m.text, ts: now },
-  ];
-  conv.unread = (conv.unread || 0) + 1;
-  conv.lastMessageAt = now;
-  conv.lastMessagePreview = (m.text || "").slice(0, 120) || "[pregunta]";
-  if (m.customerName) conv.customerName = m.customerName;
-  if (m.tenantId) conv.tenantId = m.tenantId;
-  conv.ml = { ...m.ml, buyerId: m.buyerId };
-  // Pista de identidad si el comprador dejó teléfono/email en el texto.
   const hint = extractContact(m.text || "");
-  if (hint.phone && !conv.phone) conv.phone = hint.phone;
-  if (hint.email && !conv.email) conv.email = hint.email;
-  conv.status = "open";
-  conv.updatedAt = now;
-  await put(dynamo, conv);
-  return conv;
+  const conv = await mutateConversation(dynamo, convId("mercadolibre", m.buyerId), (cur) => {
+    const c = cur || blank("mercadolibre", m.buyerId, now, m.tenantId);
+    c.messages = [
+      ...(c.messages || []).slice(-199),
+      { id: randomUUID(), direction: "in", text: m.text, ts: now },
+    ];
+    c.unread = (c.unread || 0) + 1;
+    c.lastMessageAt = now;
+    c.lastMessagePreview = (m.text || "").slice(0, 120) || "[pregunta]";
+    if (m.customerName) c.customerName = m.customerName;
+    if (m.tenantId) c.tenantId = m.tenantId;
+    c.ml = { ...m.ml, buyerId: m.buyerId };
+    // Pista de identidad si el comprador dejó teléfono/email en el texto.
+    if (hint.phone && !c.phone) c.phone = hint.phone;
+    if (hint.email && !c.email) c.email = hint.email;
+    c.status = "open";
+    c.updatedAt = now;
+    return c;
+  });
+  return conv ?? blank("mercadolibre", m.buyerId, now, m.tenantId);
 }
 
 /** Mensaje saliente (respuesta del agente) → append + unread=0. `attachment`
@@ -452,20 +534,20 @@ export async function appendOutbound(
   agent?: string,
   attachment?: { type: string; url: string },
 ): Promise<Conversation | null> {
-  const conv = await getConversation(dynamo, conversationId);
-  if (!conv) return null;
   const now = new Date().toISOString();
-  conv.messages = [
-    ...(conv.messages || []).slice(-199),
-    { id: randomUUID(), direction: "out", text, ts: now, agent, attachment },
-  ];
-  conv.unread = 0;
-  conv.lastMessageAt = now;
-  conv.lastMessagePreview = (text || "").slice(0, 120) || (attachment ? "[adjunto]" : "");
-  conv.assignedAgent = agent || conv.assignedAgent;
-  conv.updatedAt = now;
-  await put(dynamo, conv);
-  return conv;
+  return mutateConversation(dynamo, conversationId, (cur) => {
+    if (!cur) return null;
+    cur.messages = [
+      ...(cur.messages || []).slice(-199),
+      { id: randomUUID(), direction: "out", text, ts: now, agent, attachment },
+    ];
+    cur.unread = 0;
+    cur.lastMessageAt = now;
+    cur.lastMessagePreview = (text || "").slice(0, 120) || (attachment ? "[adjunto]" : "");
+    cur.assignedAgent = agent || cur.assignedAgent;
+    cur.updatedAt = now;
+    return cur;
+  });
 }
 
 /** Marca leída / asigna / cierra / marca dmSent / typing / visto del cliente. */
@@ -495,11 +577,12 @@ export async function patchConversation(
     >
   >,
 ): Promise<Conversation | null> {
-  const conv = await getConversation(dynamo, conversationId);
-  if (!conv) return null;
-  Object.assign(conv, patch, { updatedAt: new Date().toISOString() });
-  await put(dynamo, conv);
-  return conv;
+  const now = new Date().toISOString();
+  return mutateConversation(dynamo, conversationId, (cur) => {
+    if (!cur) return null;
+    Object.assign(cur, patch, { updatedAt: now });
+    return cur;
+  });
 }
 
 /**
@@ -547,6 +630,7 @@ export async function closeConversation(
         Key: { conversationId: { S: conversationId } },
         UpdateExpression:
           "SET #s = :closed, closedReason = :reason, closedAt = :now, assignee = :bot, updatedAt = :now " +
+          "ADD rev :one " +
           "REMOVE ownerAgentId, ownerAgentName, assignedAgent",
         ConditionExpression: "updatedAt = :expected",
         ExpressionAttributeNames: { "#s": "status" },
@@ -556,6 +640,10 @@ export async function closeConversation(
           ":now": now,
           ":bot": "bot",
           ":expected": expectedUpdatedAt,
+          // BUG-audit P1-#7: bump de `rev` para que un mutador concurrente con el
+          // `rev` viejo detecte el cierre (su put condicional falla → reintenta y
+          // re-lee el estado cerrado) en vez de pisarlo con una lectura obsoleta.
+          ":one": 1,
         }),
         ReturnValues: "ALL_NEW",
       }),
@@ -630,6 +718,23 @@ export async function claimOnce(
 }
 
 /**
+ * BUG-audit P1-#9: libera un claim de `claimOnce` (borra el marcador namespaced).
+ * Lo usa el manejo de lote resiliente de los webhooks: si el procesamiento de un
+ * ítem FALLA tras haberlo reclamado, liberamos su claim para que el REINTENTO de
+ * Meta (disparado devolviendo no-200) lo vuelva a procesar en vez de saltarlo por
+ * dedup. Best-effort: si el delete falla, el TTL lo limpia igual (a lo sumo el
+ * ítem queda no-reintentable hasta expirar, que es el comportamiento previo). */
+export async function releaseClaim(dynamo: DynamoDBClient, key: string): Promise<void> {
+  try {
+    await dynamo.send(
+      new DeleteItemCommand({ TableName: CONV_TABLE, Key: { conversationId: { S: key } } }),
+    );
+  } catch (err) {
+    console.warn("releaseClaim error (best-effort):", (err as Error)?.message);
+  }
+}
+
+/**
  * Recibo de LECTURA entrante (WhatsApp statuses[].status==="read"): el cliente
  * leyó nuestros mensajes. Marca `readAt` en TODOS los mensajes salientes que aún
  * no lo tenían y setea `lastCustomerReadAt`. Best-effort (no rompe si no hay
@@ -640,18 +745,19 @@ export async function markOutboundRead(
   conversationId: string,
   readAt?: string,
 ): Promise<Conversation | null> {
-  const conv = await getConversation(dynamo, conversationId);
-  if (!conv) return null;
   const ts = readAt || new Date().toISOString();
-  conv.messages = (conv.messages || []).map((msg) =>
-    msg.direction === "out" && !msg.readAt ? { ...msg, readAt: ts } : msg,
-  );
-  // Guardamos siempre `lastCustomerReadAt` (aunque no haya saliente aún): sirve
-  // para pintar "visto" incluso si el recibo llegó antes de registrar el saliente.
-  conv.lastCustomerReadAt = ts;
-  conv.updatedAt = new Date().toISOString();
-  await put(dynamo, conv);
-  return conv;
+  const now = new Date().toISOString();
+  return mutateConversation(dynamo, conversationId, (cur) => {
+    if (!cur) return null;
+    cur.messages = (cur.messages || []).map((msg) =>
+      msg.direction === "out" && !msg.readAt ? { ...msg, readAt: ts } : msg,
+    );
+    // Guardamos siempre `lastCustomerReadAt` (aunque no haya saliente aún): sirve
+    // para pintar "visto" incluso si el recibo llegó antes de registrar el saliente.
+    cur.lastCustomerReadAt = ts;
+    cur.updatedAt = now;
+    return cur;
+  });
 }
 
 /**
@@ -665,12 +771,14 @@ export async function setTyping(
   conversationId: string,
   ttlMs = 8000,
 ): Promise<Conversation | null> {
-  const conv = await getConversation(dynamo, conversationId);
-  if (!conv) return null;
-  conv.typingUntil = new Date(Date.now() + ttlMs).toISOString();
-  conv.updatedAt = new Date().toISOString();
-  await put(dynamo, conv);
-  return conv;
+  const typingUntil = new Date(Date.now() + ttlMs).toISOString();
+  const now = new Date().toISOString();
+  return mutateConversation(dynamo, conversationId, (cur) => {
+    if (!cur) return null;
+    cur.typingUntil = typingUntil;
+    cur.updatedAt = now;
+    return cur;
+  });
 }
 
 /** Setea quién atiende AHORA (bot ↔ agent) + updatedAt. Muta el record en sitio
@@ -680,12 +788,13 @@ export async function setAssignee(
   conversationId: string,
   assignee: "bot" | "agent",
 ): Promise<Conversation | null> {
-  const conv = await getConversation(dynamo, conversationId);
-  if (!conv) return null;
-  conv.assignee = assignee;
-  conv.updatedAt = new Date().toISOString();
-  await put(dynamo, conv);
-  return conv;
+  const now = new Date().toISOString();
+  return mutateConversation(dynamo, conversationId, (cur) => {
+    if (!cur) return null;
+    cur.assignee = assignee;
+    cur.updatedAt = now;
+    return cur;
+  });
 }
 
 /** Tipifica una conversación: genera el id de la disposition (randomUUID, como el
@@ -704,8 +813,6 @@ export async function typifyConversation(
     agent?: string;
   },
 ): Promise<Conversation | null> {
-  const conv = await getConversation(dynamo, conversationId);
-  if (!conv) return null;
   const entry: Disposition = {
     id: randomUUID(),
     stageId: disposition.stageId,
@@ -716,11 +823,13 @@ export async function typifyConversation(
     agent: disposition.agent,
     ts: new Date().toISOString(),
   };
-  conv.dispositions = [...(conv.dispositions || []), entry];
-  conv.lastDisposition = entry;
-  conv.updatedAt = entry.ts;
-  await put(dynamo, conv);
-  return conv;
+  return mutateConversation(dynamo, conversationId, (cur) => {
+    if (!cur) return null;
+    cur.dispositions = [...(cur.dispositions || []), entry];
+    cur.lastDisposition = entry;
+    cur.updatedAt = entry.ts;
+    return cur;
+  });
 }
 
 /**

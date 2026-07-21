@@ -15,22 +15,22 @@ export const handler: Handler = async (event: any) => {
     ({ dynamo } = await resolveDynamo(event?.headers, legacyDynamo));
     const items: Record<string, unknown>[] = [];
     let lastKey: Record<string, unknown> | undefined;
-    for (let i = 0; i < 10; i++) {
+    // BUG-audit P2: paginar completo (antes truncaba a 10 páginas)
+    do {
       const res = await dynamo.send(
         new ScanCommand({
           TableName: CAMPAIGNS_TABLE,
           ExclusiveStartKey: lastKey as never,
-        })
+        }),
       );
       for (const it of res.Items || []) items.push(unmarshall(it));
       lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-      if (!lastKey) break;
-    }
+    } while (lastKey);
 
     items.sort(
       (a, b) =>
         new Date((b.createdAt as string) || 0).getTime() -
-        new Date((a.createdAt as string) || 0).getTime()
+        new Date((a.createdAt as string) || 0).getTime(),
     );
 
     return {

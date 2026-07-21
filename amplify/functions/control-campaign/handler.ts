@@ -72,7 +72,8 @@ function chunk<T>(arr: T[], size: number): T[][] {
 async function queryPendingContacts(campaignId: string): Promise<ContactRow[]> {
   const items: ContactRow[] = [];
   let lastKey: Record<string, unknown> | undefined;
-  for (let i = 0; i < 20; i++) {
+  // BUG-audit P2: paginar completo (antes truncaba a 20 páginas)
+  do {
     const res = await dynamo.send(
       new QueryCommand({
         TableName: CONTACTS_TABLE,
@@ -88,8 +89,7 @@ async function queryPendingContacts(campaignId: string): Promise<ContactRow[]> {
     );
     for (const it of res.Items || []) items.push(unmarshall(it) as ContactRow);
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    if (!lastKey) break;
-  }
+  } while (lastKey);
   return items;
 }
 

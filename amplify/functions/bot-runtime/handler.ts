@@ -207,25 +207,30 @@ async function buildKnowledge(data: Record<string, unknown>): Promise<KnowledgeR
     !!data.ragPrograms && data.ragPrograms !== "No" && data.ragPrograms !== false;
   if (wantPrograms) {
     try {
-      const r = await dynamo.send(new ScanCommand({ TableName: PROGRAMS_TABLE }));
-      const active = (r.Items || [])
-        .map(
-          (it) =>
-            unmarshall(it) as {
-              name?: string;
-              code?: string;
-              faculty?: string;
-              status?: string;
-              description?: string;
-              modality?: string;
-              duration?: string;
-              price?: string;
-              requirements?: string;
-            },
-        )
-        .filter((p) => p.status === "activo")
-        .slice(0, 60);
-      console.log(`[rag] programs: ${r.Items?.length || 0} total, ${active.length} activos`);
+      // BUG-audit P2: paginar completo (antes truncaba a 1 página → programas
+      // activos de páginas no leídas no llegaban al RAG del agente)
+      type ProgRow = {
+        name?: string;
+        code?: string;
+        faculty?: string;
+        status?: string;
+        description?: string;
+        modality?: string;
+        duration?: string;
+        price?: string;
+        requirements?: string;
+      };
+      const allPrograms: ProgRow[] = [];
+      let lastKey: Record<string, unknown> | undefined;
+      do {
+        const r = await dynamo.send(
+          new ScanCommand({ TableName: PROGRAMS_TABLE, ExclusiveStartKey: lastKey as never }),
+        );
+        for (const it of r.Items || []) allPrograms.push(unmarshall(it) as ProgRow);
+        lastKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (lastKey);
+      const active = allPrograms.filter((p) => p.status === "activo").slice(0, 60);
+      console.log(`[rag] programs: ${allPrograms.length} total, ${active.length} activos`);
       if (active.length) {
         sources.push({ id: "P1", label: "Programas activos" });
         parts.push(

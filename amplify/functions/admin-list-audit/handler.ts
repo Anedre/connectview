@@ -18,13 +18,18 @@ export const handler: Handler = async (event: any) => {
 
     const items: Record<string, unknown>[] = [];
     let lastKey: Record<string, unknown> | undefined;
-    for (let i = 0; i < 5; i++) {
+    // BUG-audit P2: paginar completo (antes truncaba a 5 páginas y, peor,
+    // ordenaba DESPUÉS de cortar → devolvía un subconjunto por orden de hash, no
+    // los más recientes). Acumulamos TODO y recién entonces ordenamos por ts desc
+    // y recortamos a `limit`.
+    // NOTA: con mucho volumen lo ideal sería un GSI por timestamp (el Scan
+    // completo se encarece); hoy admin-audit es de bajo volumen.
+    do {
       const res = await dynamo.send(
         new ScanCommand({
           TableName: AUDIT_TABLE,
-          Limit: limit,
           ExclusiveStartKey: lastKey as never,
-        })
+        }),
       );
       for (const it of res.Items || []) {
         const row = unmarshall(it);
@@ -39,13 +44,12 @@ export const handler: Handler = async (event: any) => {
         items.push(row);
       }
       lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-      if (!lastKey || items.length >= limit) break;
-    }
+    } while (lastKey);
 
     items.sort(
       (a, b) =>
         new Date((b.timestamp as string) || 0).getTime() -
-        new Date((a.timestamp as string) || 0).getTime()
+        new Date((a.timestamp as string) || 0).getTime(),
     );
 
     return {

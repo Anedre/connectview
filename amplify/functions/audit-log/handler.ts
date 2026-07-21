@@ -92,10 +92,21 @@ export const handler: Handler = async (event: any) => {
       );
       items = (r.Items || []).map((i) => unmarshall(i));
     } else {
-      // Prueba = pocos datos; un Scan basta. Ordenamos por ts desc en memoria.
-      const r = await dynamo.send(new ScanCommand({ TableName: TABLE, Limit: 1000 }));
-      items = (r.Items || [])
-        .map((i) => unmarshall(i))
+      // BUG-audit P2: paginar completo (antes truncaba a 1 página / Limit 1000).
+      // Sin el bucle devolvíamos un subconjunto por orden de hash, no los más
+      // recientes. Acumulamos TODAS las páginas y recién ahí ordenamos por ts desc.
+      // NOTA: si el volumen creciera mucho, lo ideal sería un GSI por timestamp
+      // (el Scan completo se encarece); hoy es telemetría de prueba con TTL 7 días.
+      const all: Record<string, unknown>[] = [];
+      let lastKey: Record<string, unknown> | undefined;
+      do {
+        const r = await dynamo.send(
+          new ScanCommand({ TableName: TABLE, ExclusiveStartKey: lastKey as never }),
+        );
+        for (const i of r.Items || []) all.push(unmarshall(i));
+        lastKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (lastKey);
+      items = all
         .sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")))
         .slice(0, limit);
     }

@@ -1,14 +1,7 @@
 import type { Handler } from "aws-lambda";
-import {
-  DynamoDBClient,
-  QueryCommand,
-  UpdateItemCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, QueryCommand, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
-import {
-  ConnectClient,
-  StartOutboundVoiceContactCommand,
-} from "@aws-sdk/client-connect";
+import { ConnectClient, StartOutboundVoiceContactCommand } from "@aws-sdk/client-connect";
 
 /**
  * callback-dispatcher — runs every 1 minute via EventBridge.
@@ -47,10 +40,8 @@ const connect: ConnectClient = legacyConnect;
 const TABLE = process.env.CALLBACKS_TABLE || "connectview-callbacks";
 const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 const DEFAULT_FLOW_ID =
-  process.env.DEFAULT_CALLBACK_FLOW_ID ||
-  "dfda0ca9-a9fe-4758-a602-b860353382cd"; // UDEP-Outbound-Smart
-const DEFAULT_SOURCE_PHONE =
-  process.env.DEFAULT_SOURCE_PHONE || "+5116433467";
+  process.env.DEFAULT_CALLBACK_FLOW_ID || "dfda0ca9-a9fe-4758-a602-b860353382cd"; // UDEP-Outbound-Smart
+const DEFAULT_SOURCE_PHONE = process.env.DEFAULT_SOURCE_PHONE || "+5116433467";
 
 // "task" = recordatorio genérico: cae en la rama no-voice → se marca DUE cuando
 // llega su hora (no se auto-despacha), igual que email/whatsapp.
@@ -95,7 +86,7 @@ async function claim(row: CallbackRow, targetStatus: string): Promise<boolean> {
           ":zero": { N: "0" },
           ":one": { N: "1" },
         },
-      })
+      }),
     );
     return true;
   } catch (err) {
@@ -113,15 +104,14 @@ async function markCompleted(callbackId: string, connectContactId: string) {
     new UpdateItemCommand({
       TableName: TABLE,
       Key: { callbackId: { S: callbackId } },
-      UpdateExpression:
-        "SET #s = :done, updatedAt = :now, connectContactId = :cid",
+      UpdateExpression: "SET #s = :done, updatedAt = :now, connectContactId = :cid",
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
         ":done": { S: "COMPLETED" },
         ":now": { S: new Date().toISOString() },
         ":cid": { S: connectContactId },
       },
-    })
+    }),
   );
 }
 
@@ -130,15 +120,14 @@ async function markFailed(callbackId: string, error: string) {
     new UpdateItemCommand({
       TableName: TABLE,
       Key: { callbackId: { S: callbackId } },
-      UpdateExpression:
-        "SET #s = :fail, updatedAt = :now, lastError = :err",
+      UpdateExpression: "SET #s = :fail, updatedAt = :now, lastError = :err",
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
         ":fail": { S: "FAILED" },
         ":now": { S: new Date().toISOString() },
         ":err": { S: error.slice(0, 500) },
       },
-    })
+    }),
   );
 }
 
@@ -161,7 +150,7 @@ async function dispatchVoice(row: CallbackRow): Promise<void> {
     ...Object.fromEntries(
       Object.entries(customAttrs)
         .slice(0, 25)
-        .map(([k, v]) => [k.slice(0, 127), String(v).slice(0, 256)])
+        .map(([k, v]) => [k.slice(0, 127), String(v).slice(0, 256)]),
     ),
   };
 
@@ -174,12 +163,12 @@ async function dispatchVoice(row: CallbackRow): Promise<void> {
         SourcePhoneNumber: row.sourcePhoneNumber || DEFAULT_SOURCE_PHONE,
         Attributes: attributes,
         ClientToken: `cb-${row.callbackId}-${(row.attempts || 0) + 1}`.slice(0, 500),
-      })
+      }),
     );
     if (res.ContactId) {
       await markCompleted(row.callbackId, res.ContactId);
       console.log(
-        `[ok] voice callback ${row.callbackId.slice(0, 8)} fired → contact ${res.ContactId}`
+        `[ok] voice callback ${row.callbackId.slice(0, 8)} fired → contact ${res.ContactId}`,
       );
     } else {
       await markFailed(row.callbackId, "StartOutboundVoiceContact returned no contactId");
@@ -210,7 +199,7 @@ export const handler: Handler = async (_event: any) => {
       },
       ScanIndexForward: true,
       Limit: 25,
-    })
+    }),
   );
 
   const rows = (res.Items || []).map((it) => unmarshall(it) as CallbackRow);
@@ -222,21 +211,29 @@ export const handler: Handler = async (_event: any) => {
   for (const row of rows) {
     const channel: Channel = (row.channel as Channel) || "voice";
 
-    if (channel === "voice") {
-      // Atomic claim then dispatch.
-      const claimed = await claim(row, "RINGING");
-      if (!claimed) continue;
-      await dispatchVoice(row);
-      voiceDispatched += 1;
-    } else {
-      // Email / WhatsApp: just flip to DUE so the agent's drawer
-      // surfaces it. The agent decides when to actually attend.
-      const claimed = await claim(row, "DUE");
-      if (!claimed) continue;
-      markedDue += 1;
-      console.log(
-        `[ok] ${channel} follow-up ${row.callbackId.slice(0, 8)} → DUE (agent ${row.assignedAgentUserId})`
-      );
+    // BUG-audit P3: cada follow-up AISLADO. Sin este try/catch, un fallo en
+    // dispatchVoice (Connect throttle) tumbaba el resto del lote ese tick. Un claim
+    // de voz que falle queda en RINGING a propósito (NO se auto-revierte: reintentar
+    // arriesgaría una segunda llamada saliente); el resto del lote sigue.
+    try {
+      if (channel === "voice") {
+        // Atomic claim then dispatch.
+        const claimed = await claim(row, "RINGING");
+        if (!claimed) continue;
+        await dispatchVoice(row);
+        voiceDispatched += 1;
+      } else {
+        // Email / WhatsApp: just flip to DUE so the agent's drawer
+        // surfaces it. The agent decides when to actually attend.
+        const claimed = await claim(row, "DUE");
+        if (!claimed) continue;
+        markedDue += 1;
+        console.log(
+          `[ok] ${channel} follow-up ${row.callbackId.slice(0, 8)} → DUE (agent ${row.assignedAgentUserId})`,
+        );
+      }
+    } catch (e) {
+      console.error(`[dispatcher] follow-up ${row.callbackId?.slice(0, 8)} falló:`, e);
     }
   }
 

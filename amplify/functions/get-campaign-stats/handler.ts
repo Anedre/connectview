@@ -144,7 +144,8 @@ export const handler: Handler = async (event: any) => {
     for (const st of statuses) {
       let count = 0;
       let lastKey: Record<string, unknown> | undefined;
-      for (let i = 0; i < 5; i++) {
+      // BUG-audit P2: paginar completo (antes truncaba a 5 páginas)
+      do {
         const r = await dynamo.send(
           new QueryCommand({
             TableName: CONTACTS_TABLE,
@@ -178,8 +179,7 @@ export const handler: Handler = async (event: any) => {
           }
         }
         lastKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
-        if (!lastKey) break;
-      }
+      } while (lastKey);
       freshCounts[st] = count;
     }
 

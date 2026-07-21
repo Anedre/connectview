@@ -273,6 +273,10 @@ async function scanWindow<T>(
     }
     ESK = r.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (ESK && ++pages < 50);
+  // BUG-audit P2: el tope de 50 páginas es una válvula anti-timeout (endpoint
+  // síncrono). Si se alcanza CON más datos pendientes, el costo queda SUBCONTADO →
+  // lo logueamos para que la cifra se lea como piso, no como silencio.
+  if (ESK) console.warn(`get-cost-report: ${table} truncado a 50 páginas — costo es un PISO`);
 }
 
 /** Cobro REAL de WhatsApp del WABA del tenant (Graph conversation_analytics, COST). */
@@ -344,6 +348,10 @@ async function voiceMinutes(
       }
       next = res.NextToken;
     } while (next && ++pages < 20);
+    // BUG-audit P2: si quedan contactos tras 20 páginas (2000 llamadas), los minutos
+    // de voz quedan SUBCONTADOS → logueamos para que la cifra se lea como piso.
+    if (next)
+      console.warn("get-cost-report: voiceMinutes truncado a 20 páginas — minutos son un PISO");
     return { inMin, outMin, calls };
   } catch (e) {
     console.warn("voiceMinutes falló:", e instanceof Error ? e.message : e);

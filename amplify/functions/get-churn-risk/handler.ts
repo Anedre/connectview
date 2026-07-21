@@ -1,13 +1,7 @@
 import type { Handler } from "aws-lambda";
-import {
-  DynamoDBClient,
-  ScanCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
-import {
-  CustomerProfilesClient,
-  SearchProfilesCommand,
-} from "@aws-sdk/client-customer-profiles";
+import { CustomerProfilesClient, SearchProfilesCommand } from "@aws-sdk/client-customer-profiles";
 import { ConnectClient } from "@aws-sdk/client-connect";
 import { resolveConnect } from "../_shared/tenantConnect";
 
@@ -52,7 +46,10 @@ async function scanRecentContacts(days: number): Promise<ContactRow[]> {
   const startIso = new Date(Date.now() - days * 86400 * 1000).toISOString();
   const rows: ContactRow[] = [];
   let lastKey: Record<string, unknown> | undefined;
-  for (let i = 0; i < 10; i++) {
+  // BUG-audit P2: paginar completo (antes truncaba a 10 páginas). El
+  // FilterExpression filtra DESPUÉS de leer ≤1MB por página, así que 10 páginas
+  // NO son 10*items: podía cortar clientes en riesgo de un rango largo.
+  do {
     const result = await dynamo.send(
       new ScanCommand({
         TableName: TABLE_NAME,
@@ -63,12 +60,11 @@ async function scanRecentContacts(days: number): Promise<ContactRow[]> {
           ":empty": { S: "" },
         },
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
     for (const it of result.Items || []) rows.push(unmarshall(it) as ContactRow);
     lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
-    if (!lastKey) break;
-  }
+  } while (lastKey);
   return rows;
 }
 
@@ -99,10 +95,7 @@ function bucketByCustomer(rows: ContactRow[]): Map<string, CustomerBucket> {
     b.avgDurationSec += Number(r.duration || 0);
     if (r.sentiment === "NEGATIVE") b.negativeContacts++;
     if (r.sentiment === "MIXED") b.mixedContacts++;
-    if (
-      r.disconnectReason === "CUSTOMER_DISCONNECT" &&
-      Number(r.duration || 0) < 30
-    ) {
+    if (r.disconnectReason === "CUSTOMER_DISCONNECT" && Number(r.duration || 0) < 30) {
       // Short call ending in customer hangup → likely abandoned / frustrated
       b.abandonedCount++;
     }
@@ -131,10 +124,7 @@ function computeRiskScore(b: CustomerBucket): number {
 
   // Weighted combination — sentiment dominates, frequency and abandonment add on top.
   const score =
-    40 * sentimentWeight +
-    25 * contactWeight +
-    20 * abandonedWeight +
-    15 * lastSentimentBoost;
+    40 * sentimentWeight + 25 * contactWeight + 20 * abandonedWeight + 15 * lastSentimentBoost;
   return Math.max(0, Math.min(100, Math.round(score * 1.1)));
 }
 
@@ -145,7 +135,7 @@ async function lookupProfileName(phone: string): Promise<string | null> {
         DomainName: CUSTOMER_PROFILES_DOMAIN,
         KeyName: "_phone",
         Values: [phone],
-      })
+      }),
     );
     const p = res.Items?.[0];
     if (!p) return null;
@@ -184,9 +174,7 @@ export const handler: Handler = async (event: any) => {
     const ranked = [...customers.values()]
       .map((b) => {
         const score = computeRiskScore(b);
-        const daysSince = Math.floor(
-          (Date.now() - new Date(b.lastContactAt).getTime()) / 86400000
-        );
+        const daysSince = Math.floor((Date.now() - new Date(b.lastContactAt).getTime()) / 86400000);
         return { ...b, riskScore: score, daysSinceContact: daysSince };
       })
       .filter((c) => c.riskScore >= minRisk)
@@ -202,7 +190,7 @@ export const handler: Handler = async (event: any) => {
         lastSentiment: c.lastSentiment,
         daysSinceContact: c.daysSinceContact,
         riskScore: c.riskScore,
-      }))
+      })),
     );
 
     return {

@@ -111,9 +111,13 @@ async function otherAssignmentsUseSamePair(
   excludeUserId: string,
 ): Promise<boolean> {
   // Scan the agents table for any other (routingProfileId, queueId) pair still in use.
-  // For small scale (< 10000 assignments) this is fine; for huge scale add a GSI.
+  // BUG-audit P2 (DESTRUCTIVO): paginar COMPLETO (do/while) con corto-circuito en el
+  // primer match. Antes `for i<10` cortaba a 10 páginas → si el par en uso estaba más
+  // allá, devolvía false y el caller DESASOCIABA una cola realmente EN USO, rompiendo
+  // el ruteo vivo de otra campaña/agente. El short-circuit hace el caso común barato;
+  // solo agotamos páginas cuando de verdad no hay otro uso (cuando desasociar es seguro).
   let lastKey: Record<string, unknown> | undefined;
-  for (let i = 0; i < 10; i++) {
+  do {
     const res = await dynamo.send(
       new ScanCommand({
         TableName: AGENTS_TABLE,
@@ -128,10 +132,9 @@ async function otherAssignmentsUseSamePair(
         ExclusiveStartKey: lastKey as never,
       }),
     );
-    if ((res.Count || 0) > 0) return true;
+    if ((res.Count || 0) > 0) return true; // otro uso encontrado → NO desasociar
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    if (!lastKey) break;
-  }
+  } while (lastKey);
   return false;
 }
 

@@ -82,10 +82,17 @@ export const handler: Handler = async (event: any) => {
         );
         return ok({ kb: res.Item ? unmarshall(res.Item) : null });
       }
-      const res = await dynamo.send(new ScanCommand({ TableName: TABLE }));
-      const kbs = (res.Items || [])
-        .map((it) => unmarshall(it))
-        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      // BUG-audit P2: paginar completo (antes truncaba a 1 página)
+      const items: Record<string, unknown>[] = [];
+      let lastKey: Record<string, unknown> | undefined;
+      do {
+        const res = await dynamo.send(
+          new ScanCommand({ TableName: TABLE, ExclusiveStartKey: lastKey as never }),
+        );
+        for (const it of res.Items || []) items.push(unmarshall(it));
+        lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (lastKey);
+      const kbs = items.sort((a, b) => String(a.name).localeCompare(String(b.name)));
       return ok({ kbs });
     }
 

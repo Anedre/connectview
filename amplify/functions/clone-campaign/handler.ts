@@ -15,8 +15,7 @@ import { requireCapability } from "../_shared/rbac";
 const legacyDynamo = new DynamoDBClient({});
 let dynamo: DynamoDBClient = legacyDynamo;
 const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
-const CONTACTS_TABLE =
-  process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
+const CONTACTS_TABLE = process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
 
 interface CloneBody {
   campaignId: string;
@@ -32,24 +31,22 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-async function listContacts(
-  campaignId: string
-): Promise<Array<Record<string, unknown>>> {
+async function listContacts(campaignId: string): Promise<Array<Record<string, unknown>>> {
   const items: Array<Record<string, unknown>> = [];
   let lastKey: Record<string, unknown> | undefined;
-  for (let i = 0; i < 20; i++) {
+  // BUG-audit P2: paginar completo (antes truncaba a 20 páginas)
+  do {
     const res = await dynamo.send(
       new QueryCommand({
         TableName: CONTACTS_TABLE,
         KeyConditionExpression: "campaignId = :cid",
         ExpressionAttributeValues: { ":cid": { S: campaignId } },
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
     for (const it of res.Items || []) items.push(unmarshall(it));
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    if (!lastKey) break;
-  }
+  } while (lastKey);
   return items;
 }
 
@@ -80,7 +77,7 @@ export const handler: Handler = async (event: any) => {
       new GetItemCommand({
         TableName: CAMPAIGNS_TABLE,
         Key: { campaignId: { S: campaignId } },
-      })
+      }),
     );
     if (!src.Item) {
       return {
@@ -93,9 +90,7 @@ export const handler: Handler = async (event: any) => {
 
     const newCampaignId = randomUUID();
     const now = new Date().toISOString();
-    const cloneName =
-      body.name?.trim() ||
-      `${source.name || "Campaign"} (copy)`.slice(0, 200);
+    const cloneName = body.name?.trim() || `${source.name || "Campaign"} (copy)`.slice(0, 200);
 
     // Copy contacts first so we know the true totalContacts
     let contacts: Array<Record<string, unknown>> = [];
@@ -146,7 +141,7 @@ export const handler: Handler = async (event: any) => {
           skippedCount: { N: "0" },
           clonedFrom: { S: campaignId },
         },
-      })
+      }),
     );
 
     // Copy contacts in batches (25 per BatchWrite)
@@ -184,7 +179,7 @@ export const handler: Handler = async (event: any) => {
                 };
               }),
             },
-          })
+          }),
         );
         contactsCopied += batch.length;
       }

@@ -80,6 +80,11 @@ export interface CaseEvent {
 export interface Case {
   caseId: string;
   tenantId: string;
+  /** BUG-audit P1-#12: revisión para optimistic locking (ver putCase/mutateCase).
+   *  Cada escritura la incrementa y la condiciona → dos agentes que transicionan /
+   *  asignan / editan el mismo caso a la vez ya no se pisan (evento de historial
+   *  perdido, estado revertido). */
+  rev?: number;
   number: number;
   subject: string;
   description?: string;
@@ -250,12 +255,8 @@ export async function createCase(dynamo: DynamoDBClient, input: CreateCaseInput)
     createdAt: now,
     updatedAt: now,
   };
-  await dynamo.send(
-    new PutItemCommand({
-      TableName: CASES_TABLE,
-      Item: marshall(c, { removeUndefinedValues: true }),
-    }),
-  );
+  // Nace con rev=1 (putCase lo setea) y condición attribute_not_exists(caseId).
+  await putCase(dynamo, c, { rev: null });
   return c;
 }
 
@@ -276,6 +277,73 @@ export async function getCase(
   } catch {
     return null;
   }
+}
+
+/**
+ * BUG-audit P1-#12: escribe el caso incrementando `rev`, con optimistic locking.
+ * `guard`: `undefined` = incondicional; `{rev:null}` = debe NO existir (creación);
+ * `{rev:undefined}` = existe pero sin `rev` (legacy → primer escritor gana);
+ * `{rev:N}` = `rev` debe seguir en N. Espejo de `put()` en conversations.ts. */
+async function putCase(
+  dynamo: DynamoDBClient,
+  next: Case,
+  guard?: { rev: number | null | undefined },
+): Promise<void> {
+  next.rev = (next.rev ?? 0) + 1;
+  const cmd: {
+    TableName: string;
+    Item: Record<string, unknown>;
+    ConditionExpression?: string;
+    ExpressionAttributeValues?: Record<string, unknown>;
+  } = {
+    TableName: CASES_TABLE,
+    Item: marshall(next, { removeUndefinedValues: true }),
+  };
+  if (guard) {
+    if (guard.rev === null) {
+      cmd.ConditionExpression = "attribute_not_exists(caseId)";
+    } else if (guard.rev === undefined) {
+      cmd.ConditionExpression = "attribute_not_exists(rev)"; // legacy: existe sin rev
+    } else {
+      cmd.ConditionExpression = "rev = :grev";
+      cmd.ExpressionAttributeValues = marshall({ ":grev": guard.rev });
+    }
+  }
+  await dynamo.send(new PutItemCommand(cmd as never));
+}
+
+/**
+ * BUG-audit P1-#12: aplica una mutación a un caso con optimistic locking +
+ * reintentos. Lee → `apply(cur)` (síncrono, re-ejecutable) → escribe condicional a
+ * que `rev` no cambió; si otro escritor ganó, re-lee y re-aplica. `apply` devuelve
+ * el caso mutado o `null` para no escribir (caso inexistente). Espejo de
+ * `mutateConversation`. */
+async function mutateCase(
+  dynamo: DynamoDBClient,
+  tenantId: string,
+  caseId: string,
+  apply: (cur: Case | null) => Case | null,
+  maxTries = 8,
+): Promise<Case | null> {
+  for (let i = 0; i < maxTries; i++) {
+    const cur = await getCase(dynamo, tenantId, caseId);
+    const next = apply(cur);
+    if (!next) return null;
+    try {
+      await putCase(dynamo, next, { rev: cur ? cur.rev : null });
+      return next;
+    } catch (err) {
+      if (
+        (err as { name?: string })?.name === "ConditionalCheckFailedException" &&
+        i < maxTries - 1
+      ) {
+        await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 12) * (i + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  return null;
 }
 
 export interface ListCasesOpts {
@@ -358,34 +426,30 @@ export async function transitionCase(
   to: CaseStatus,
   opts: { agent?: string; note?: string; closedReason?: Case["closedReason"] } = {},
 ): Promise<Case | null> {
-  const c = await getCase(dynamo, tenantId, caseId);
-  if (!c) return null;
   if (!isValidStatus(to)) throw new Error(`estado inválido: ${to}`);
-  if (!canTransition(c.status, to)) {
-    throw new Error(`transición no permitida: ${c.status} → ${to}`);
-  }
   const now = new Date().toISOString();
-  const sla = advanceSla(c.sla, c.status, to, now);
-
-  const ev: CaseEvent = { ts: now, type: "status_change", from: c.status, to, agent: opts.agent };
-  if (opts.note) ev.note = opts.note;
-
-  const next: Case = {
-    ...c,
-    status: to,
-    sla,
-    closedReason:
-      to === "closed" || to === "solved" ? (opts.closedReason ?? c.closedReason) : c.closedReason,
-    history: [...(c.history || []), ev],
-    updatedAt: now,
-  };
-  await dynamo.send(
-    new PutItemCommand({
-      TableName: CASES_TABLE,
-      Item: marshall(next, { removeUndefinedValues: true }),
-    }),
-  );
-  return next;
+  // BUG-audit P1-#12: optimistic locking. `canTransition` se re-verifica DENTRO del
+  // apply contra el estado FRESCO en cada reintento (una transición concurrente pudo
+  // cambiar `status`), y el CaseEvent se anexa sobre el historial vigente → dos
+  // agentes ya no se pisan el evento ni revierten el estado.
+  return mutateCase(dynamo, tenantId, caseId, (c) => {
+    if (!c) return null;
+    if (!canTransition(c.status, to)) {
+      throw new Error(`transición no permitida: ${c.status} → ${to}`);
+    }
+    const sla = advanceSla(c.sla, c.status, to, now);
+    const ev: CaseEvent = { ts: now, type: "status_change", from: c.status, to, agent: opts.agent };
+    if (opts.note) ev.note = opts.note;
+    return {
+      ...c,
+      status: to,
+      sla,
+      closedReason:
+        to === "closed" || to === "solved" ? (opts.closedReason ?? c.closedReason) : c.closedReason,
+      history: [...(c.history || []), ev],
+      updatedAt: now,
+    };
+  });
 }
 
 /** Asigna (o reasigna) un caso a un agente. Si estaba "new", pasa a "open". */
@@ -396,31 +460,25 @@ export async function assignCase(
   agentId: string,
   agentName?: string,
 ): Promise<Case | null> {
-  const c = await getCase(dynamo, tenantId, caseId);
-  if (!c) return null;
   const now = new Date().toISOString();
-  const ev: CaseEvent = {
-    ts: now,
-    type: "assign",
-    from: c.assigneeAgentId,
-    to: agentId,
-    agent: agentId,
-  };
-  const next: Case = {
-    ...c,
-    assigneeAgentId: agentId || undefined,
-    assigneeAgentName: agentName || (agentId ? c.assigneeAgentName : undefined),
-    status: c.status === "new" && agentId ? "open" : c.status,
-    history: [...(c.history || []), ev],
-    updatedAt: now,
-  };
-  await dynamo.send(
-    new PutItemCommand({
-      TableName: CASES_TABLE,
-      Item: marshall(next, { removeUndefinedValues: true }),
-    }),
-  );
-  return next;
+  return mutateCase(dynamo, tenantId, caseId, (c) => {
+    if (!c) return null;
+    const ev: CaseEvent = {
+      ts: now,
+      type: "assign",
+      from: c.assigneeAgentId,
+      to: agentId,
+      agent: agentId,
+    };
+    return {
+      ...c,
+      assigneeAgentId: agentId || undefined,
+      assigneeAgentName: agentName || (agentId ? c.assigneeAgentName : undefined),
+      status: c.status === "new" && agentId ? "open" : c.status,
+      history: [...(c.history || []), ev],
+      updatedAt: now,
+    };
+  });
 }
 
 /** Actualiza campos "planos" del caso (subject/description/priority/queue/programa)
@@ -440,38 +498,32 @@ export async function patchCase(
     agent?: string;
   },
 ): Promise<Case | null> {
-  const c = await getCase(dynamo, tenantId, caseId);
-  if (!c) return null;
   const now = new Date().toISOString();
-  let sla = c.sla;
-  if (patch.priority && isValidPriority(patch.priority) && patch.priority !== c.priority) {
-    // Recalcular vencimientos sobre la fecha de creación (MVP; B2 lo hará fino).
-    const fresh = initialSla(patch.priority, c.createdAt);
-    sla = {
-      ...c.sla,
-      firstResponseDueAt: fresh.firstResponseDueAt,
-      resolutionDueAt: fresh.resolutionDueAt,
+  return mutateCase(dynamo, tenantId, caseId, (c) => {
+    if (!c) return null;
+    let sla = c.sla;
+    if (patch.priority && isValidPriority(patch.priority) && patch.priority !== c.priority) {
+      // Recalcular vencimientos sobre la fecha de creación (MVP; B2 lo hará fino).
+      const fresh = initialSla(patch.priority, c.createdAt);
+      sla = {
+        ...c.sla,
+        firstResponseDueAt: fresh.firstResponseDueAt,
+        resolutionDueAt: fresh.resolutionDueAt,
+      };
+    }
+    const history = [...(c.history || [])];
+    if (patch.note) history.push({ ts: now, type: "note", note: patch.note, agent: patch.agent });
+    return {
+      ...c,
+      subject: patch.subject?.trim() || c.subject,
+      description:
+        patch.description !== undefined ? patch.description.trim() || undefined : c.description,
+      priority: patch.priority && isValidPriority(patch.priority) ? patch.priority : c.priority,
+      queueId: patch.queueId !== undefined ? patch.queueId || undefined : c.queueId,
+      programId: patch.programId !== undefined ? patch.programId || undefined : c.programId,
+      sla,
+      history,
+      updatedAt: now,
     };
-  }
-  const history = [...(c.history || [])];
-  if (patch.note) history.push({ ts: now, type: "note", note: patch.note, agent: patch.agent });
-  const next: Case = {
-    ...c,
-    subject: patch.subject?.trim() || c.subject,
-    description:
-      patch.description !== undefined ? patch.description.trim() || undefined : c.description,
-    priority: patch.priority && isValidPriority(patch.priority) ? patch.priority : c.priority,
-    queueId: patch.queueId !== undefined ? patch.queueId || undefined : c.queueId,
-    programId: patch.programId !== undefined ? patch.programId || undefined : c.programId,
-    sla,
-    history,
-    updatedAt: now,
-  };
-  await dynamo.send(
-    new PutItemCommand({
-      TableName: CASES_TABLE,
-      Item: marshall(next, { removeUndefinedValues: true }),
-    }),
-  );
-  return next;
+  });
 }

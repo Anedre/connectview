@@ -467,33 +467,47 @@ export async function evaluateBatch(
   };
   let i = 0;
   const CONC = 8;
+  let evalErrors = 0;
   const worker = async () => {
     while (i < phones.length) {
       const phone = phones[i++];
-      const entry = await getSuppression(dynamo, phone);
-      const v =
-        entry && channelBlocked(entry, opts.channel)
-          ? hardVerdict(entry)
-          : await applyPolicy(
-              dynamo,
-              { phone, channel: opts.channel, programId: opts.programId },
-              rules,
-              opts.convertedDigits,
-            );
-      if (v.allowed) summary.willSend++;
-      else {
-        const b = v.blockedBy;
-        if (b === "opt_out") summary.excluded.optOut++;
-        else if (b === "quarantine") summary.excluded.quarantine++;
-        else if (b === "dnc") summary.excluded.dnc++;
-        else if (b === "dedup_window") summary.excluded.dedupWindow++;
-        else if (b === "frequency") summary.excluded.frequency++;
-        else if (b === "quiet_hours") summary.excluded.quietHours++;
-        else if (b === "converted") summary.excluded.converted++;
+      // BUG-audit P3: cada teléfono AISLADO. Sin este try/catch, un solo error
+      // (throttle de DynamoDB, dato corrupto) rechazaba el Promise.all y tumbaba el
+      // preview ENTERO del lote. Fail-open (consistente con el resto del módulo): un
+      // teléfono no-evaluable se cuenta como willSend; el envío real lo re-evalúa.
+      try {
+        const entry = await getSuppression(dynamo, phone);
+        const v =
+          entry && channelBlocked(entry, opts.channel)
+            ? hardVerdict(entry)
+            : await applyPolicy(
+                dynamo,
+                { phone, channel: opts.channel, programId: opts.programId },
+                rules,
+                opts.convertedDigits,
+              );
+        if (v.allowed) summary.willSend++;
+        else {
+          const b = v.blockedBy;
+          if (b === "opt_out") summary.excluded.optOut++;
+          else if (b === "quarantine") summary.excluded.quarantine++;
+          else if (b === "dnc") summary.excluded.dnc++;
+          else if (b === "dedup_window") summary.excluded.dedupWindow++;
+          else if (b === "frequency") summary.excluded.frequency++;
+          else if (b === "quiet_hours") summary.excluded.quietHours++;
+          else if (b === "converted") summary.excluded.converted++;
+        }
+      } catch {
+        evalErrors++;
+        summary.willSend++; // fail-open: no lo excluimos por un error transitorio
       }
     }
   };
   await Promise.all(Array.from({ length: Math.min(CONC, phones.length || 1) }, () => worker()));
+  if (evalErrors)
+    console.warn(
+      `suppression preview: ${evalErrors}/${phones.length} teléfonos fail-open por error`,
+    );
   return summary;
 }
 

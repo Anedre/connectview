@@ -1,12 +1,6 @@
 import type { Handler } from "aws-lambda";
-import {
-  ConnectClient,
-  DescribeUserCommand,
-} from "@aws-sdk/client-connect";
-import {
-  DynamoDBClient,
-  ScanCommand,
-} from "@aws-sdk/client-dynamodb";
+import { ConnectClient, DescribeUserCommand } from "@aws-sdk/client-connect";
+import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { resolveConnect } from "../_shared/tenantConnect";
 
@@ -34,7 +28,7 @@ async function resolveUsername(userId: string): Promise<string> {
   }
   try {
     const res = await connect.send(
-      new DescribeUserCommand({ InstanceId: instanceId, UserId: userId })
+      new DescribeUserCommand({ InstanceId: instanceId, UserId: userId }),
     );
     const username = res.User?.Username || userId;
     userCache.set(k, username);
@@ -67,8 +61,10 @@ interface AgentScore {
 async function scanContactsWindow(startIso: string): Promise<ContactRow[]> {
   const rows: ContactRow[] = [];
   let lastKey: Record<string, unknown> | undefined;
-  // Cap at 10 pages (1000 rows) to keep the Lambda snappy.
-  for (let i = 0; i < 10; i++) {
+  // BUG-audit P2: paginar completo (antes truncaba a 10 páginas). El
+  // FilterExpression filtra DESPUÉS de leer ≤1MB por página, así que "10 páginas
+  // ≈ 1000 filas" era falso: con el filtro podía cortar agentes del leaderboard.
+  do {
     const result = await dynamo.send(
       new ScanCommand({
         TableName: TABLE_NAME,
@@ -77,14 +73,13 @@ async function scanContactsWindow(startIso: string): Promise<ContactRow[]> {
           ":start": { S: startIso },
         },
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
     for (const it of result.Items || []) {
       rows.push(unmarshall(it) as ContactRow);
     }
     lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
-    if (!lastKey) break;
-  }
+  } while (lastKey);
   return rows;
 }
 
@@ -137,7 +132,7 @@ export const handler: Handler = async (event: any) => {
     // Scan previous window for delta (exclude current window)
     const previousAllRows = await scanContactsWindow(previousWindowStart.toISOString());
     const previousRows = previousAllRows.filter(
-      (r) => new Date(r.initiationTimestamp) < currentWindowStart
+      (r) => new Date(r.initiationTimestamp) < currentWindowStart,
     );
 
     const currentAgg = aggregate(currentRows);
@@ -147,7 +142,7 @@ export const handler: Handler = async (event: any) => {
     await Promise.all(
       [...currentAgg.values()].map(async (a) => {
         a.username = await resolveUsername(a.agentId);
-      })
+      }),
     );
 
     // Build leaderboard sorted by contactCount desc
@@ -161,13 +156,11 @@ export const handler: Handler = async (event: any) => {
           prevScore > 0
             ? Math.round(((a.contactCount - prevScore) / prevScore) * 100)
             : a.contactCount > 0
-            ? 100
-            : 0;
+              ? 100
+              : 0;
         const sentimentTotal = a.positiveSegments + a.negativeSegments;
         const sentimentScore =
-          sentimentTotal > 0
-            ? Math.round((a.positiveSegments / sentimentTotal) * 100)
-            : null;
+          sentimentTotal > 0 ? Math.round((a.positiveSegments / sentimentTotal) * 100) : null;
         return {
           rank: idx + 1,
           agentId: a.agentId,
@@ -182,8 +175,8 @@ export const handler: Handler = async (event: any) => {
     // Badge counts (real ones, from the aggregate)
     const badges = {
       onFire: leaderboard.filter((a) => a.contactCount >= 10).length,
-      topCsat:
-        leaderboard.filter((a) => a.sentimentScore !== null && a.sentimentScore >= 70).length,
+      topCsat: leaderboard.filter((a) => a.sentimentScore !== null && a.sentimentScore >= 70)
+        .length,
       risingStar: leaderboard.filter((a) => a.changePct >= 20).length,
     };
 

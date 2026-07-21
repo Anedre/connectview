@@ -85,10 +85,7 @@ function sanitize(body: Record<string, unknown>): TaxonomyDoc {
     const s = raw as Record<string, unknown>;
     const label = typeof s.label === "string" ? s.label.trim() : "";
     if (!label) throw new Error(`stage[${i}] missing label`);
-    const id =
-      typeof s.id === "string" && s.id.trim()
-        ? s.id.trim()
-        : slug(label);
+    const id = typeof s.id === "string" && s.id.trim() ? s.id.trim() : slug(label);
     if (seenStageIds.has(id)) throw new Error(`duplicate stage id "${id}"`);
     seenStageIds.add(id);
     const valoracion = VALID_VALORACION.has(String(s.valoracion))
@@ -100,8 +97,7 @@ function sanitize(body: Record<string, unknown>): TaxonomyDoc {
       const ss = sr as Record<string, unknown>;
       const slabel = typeof ss.label === "string" ? ss.label.trim() : "";
       if (!slabel) throw new Error(`stage[${i}].subStage[${j}] missing label`);
-      let sid =
-        typeof ss.id === "string" && ss.id.trim() ? ss.id.trim() : slug(slabel);
+      let sid = typeof ss.id === "string" && ss.id.trim() ? ss.id.trim() : slug(slabel);
       // de-dup within a stage by suffixing
       let n = 2;
       while (seenSub.has(sid)) sid = `${slug(slabel)}_${n++}`;
@@ -139,19 +135,20 @@ function sanitize(body: Record<string, unknown>): TaxonomyDoc {
 }
 
 function slug(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 48) || "item";
+  return (
+    s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 48) || "item"
+  );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler: Handler = async (event: any) => {
-  const method =
-    event.requestContext?.http?.method || event.httpMethod || "GET";
+  const method = event.requestContext?.http?.method || event.httpMethod || "GET";
   if (method === "OPTIONS") return { statusCode: 200, headers: CORS, body: "" };
 
   // SEC — RBAC server-side: EDITAR la taxonomía (POST upsert / DELETE) exige
@@ -174,21 +171,28 @@ export const handler: Handler = async (event: any) => {
           new GetItemCommand({
             TableName: TABLE,
             Key: { taxonomyId: { S: params.taxonomyId } },
-          })
+          }),
         );
         return ok({ taxonomy: res.Item ? unmarshall(res.Item) : null });
       }
       // list all
-      const res = await dynamo.send(new ScanCommand({ TableName: TABLE }));
-      const taxonomies = (res.Items || [])
-        .map((it) => unmarshall(it))
-        .sort((a, b) =>
-          a.isDefault === b.isDefault
-            ? String(a.name).localeCompare(String(b.name))
-            : a.isDefault
-            ? -1
-            : 1
+      // BUG-audit P2: paginar completo (antes truncaba a 1 página)
+      const items: Record<string, unknown>[] = [];
+      let lastKey: Record<string, unknown> | undefined;
+      do {
+        const res = await dynamo.send(
+          new ScanCommand({ TableName: TABLE, ExclusiveStartKey: lastKey as never }),
         );
+        for (const it of res.Items || []) items.push(unmarshall(it));
+        lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (lastKey);
+      const taxonomies = items.sort((a, b) =>
+        a.isDefault === b.isDefault
+          ? String(a.name).localeCompare(String(b.name))
+          : a.isDefault
+            ? -1
+            : 1,
+      );
       return ok({ taxonomies });
     }
 
@@ -203,14 +207,13 @@ export const handler: Handler = async (event: any) => {
       const item = {
         ...doc,
         updatedAt: new Date().toISOString(),
-        updatedBy:
-          typeof body.actor === "string" ? body.actor : "unknown",
+        updatedBy: typeof body.actor === "string" ? body.actor : "unknown",
       };
       await dynamo.send(
         new PutItemCommand({
           TableName: TABLE,
           Item: marshall(item, { removeUndefinedValues: true }),
-        })
+        }),
       );
       return ok({ taxonomy: item, saved: true });
     }
@@ -222,7 +225,7 @@ export const handler: Handler = async (event: any) => {
         new GetItemCommand({
           TableName: TABLE,
           Key: { taxonomyId: { S: params.taxonomyId } },
-        })
+        }),
       );
       if (cur.Item && unmarshall(cur.Item).isDefault) {
         return bad(409, "Cannot delete the default taxonomy");
@@ -231,7 +234,7 @@ export const handler: Handler = async (event: any) => {
         new DeleteItemCommand({
           TableName: TABLE,
           Key: { taxonomyId: { S: params.taxonomyId } },
-        })
+        }),
       );
       return ok({ deleted: true, taxonomyId: params.taxonomyId });
     }

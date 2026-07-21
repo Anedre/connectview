@@ -12,11 +12,7 @@ import {
   ListRoutingProfileQueuesCommand,
   ListRoutingProfilesCommand,
 } from "@aws-sdk/client-connect";
-import {
-  DynamoDBClient,
-  QueryCommand,
-  ScanCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, QueryCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { resolveConnect } from "../_shared/tenantConnect";
 
@@ -30,8 +26,7 @@ const INSTANCE_ID = process.env.CONNECT_INSTANCE_ID || "";
 const CONTACTS_TABLE = process.env.CONTACTS_TABLE || "connectview-contacts";
 const CAMPAIGN_CONTACTS_TABLE =
   process.env.CAMPAIGN_CONTACTS_TABLE || "connectview-campaign-contacts";
-const CAMPAIGNS_TABLE =
-  process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
+const CAMPAIGNS_TABLE = process.env.CAMPAIGNS_TABLE || "connectview-campaigns";
 
 // Module-active: el handler las setea al inicio. Lambda procesa un evento a la
 // vez por contenedor → seguro. Los helpers (resolveUser/resolveQueue/getAgents/…)
@@ -49,10 +44,7 @@ const FINISHED_WINDOW_MS = 10 * 60 * 1000;
 // pero no imposible con UUIDs Connect-generated), el prefijo los aísla.
 const userCache = new Map<string, string>();
 const queueNameCache = new Map<string, string>();
-const routingProfileQueuesCache = new Map<
-  string,
-  { id: string; name: string }[]
->();
+const routingProfileQueuesCache = new Map<string, { id: string; name: string }[]>();
 const routingProfileNameCache = new Map<string, string>();
 // Expiry de routingProfileNameCache por instancia (no global).
 const routingProfileCacheExpiryByInstance = new Map<string, number>();
@@ -74,7 +66,7 @@ async function refreshRoutingProfileNameCache(): Promise<void> {
         InstanceId: activeInstanceId,
         MaxResults: 100,
         NextToken: nextToken,
-      })
+      }),
     );
     for (const rp of res.RoutingProfileSummaryList ?? []) {
       if (rp.Id && rp.Name) routingProfileNameCache.set(`${activeInstanceId}:${rp.Id}`, rp.Name);
@@ -91,7 +83,7 @@ async function resolveUser(id: string): Promise<string> {
   if (userCache.has(k)) return userCache.get(k)!;
   try {
     const r = await activeConnect.send(
-      new DescribeUserCommand({ InstanceId: activeInstanceId, UserId: id })
+      new DescribeUserCommand({ InstanceId: activeInstanceId, UserId: id }),
     );
     const name = r.User?.Username || id;
     userCache.set(k, name);
@@ -108,7 +100,7 @@ async function resolveQueue(id: string): Promise<string> {
   if (queueNameCache.has(k)) return queueNameCache.get(k)!;
   try {
     const r = await activeConnect.send(
-      new DescribeQueueCommand({ InstanceId: activeInstanceId, QueueId: id })
+      new DescribeQueueCommand({ InstanceId: activeInstanceId, QueueId: id }),
     );
     const name = r.Queue?.Name || id;
     queueNameCache.set(k, name);
@@ -196,7 +188,7 @@ interface QueuedContactView {
 }
 
 async function resolveRoutingProfileQueues(
-  routingProfileId: string
+  routingProfileId: string,
 ): Promise<{ id: string; name: string }[]> {
   if (!routingProfileId) return [];
   const k = `${activeInstanceId}:${routingProfileId}`;
@@ -209,7 +201,7 @@ async function resolveRoutingProfileQueues(
         InstanceId: activeInstanceId,
         RoutingProfileId: routingProfileId,
         MaxResults: 100,
-      })
+      }),
     );
     // Deduplicate by queueId (multiple entries for VOICE/CHAT/EMAIL/TASK).
     const seen = new Set<string>();
@@ -274,8 +266,7 @@ async function fetchRecentlyFinishedFromDynamo(): Promise<QueuedContactView[]> {
     const res = await dynamo.send(
       new ScanCommand({
         TableName: CAMPAIGN_CONTACTS_TABLE,
-        FilterExpression:
-          "#s IN (:done, :noans, :failed, :cancelled) AND lastAttemptAt >= :since",
+        FilterExpression: "#s IN (:done, :noans, :failed, :cancelled) AND lastAttemptAt >= :since",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {
           ":done": { S: "done" },
@@ -285,7 +276,7 @@ async function fetchRecentlyFinishedFromDynamo(): Promise<QueuedContactView[]> {
           ":since": { S: since },
         },
         Limit: 200,
-      })
+      }),
     );
     for (const raw of res.Items || []) {
       const row = unmarshall(raw);
@@ -302,8 +293,7 @@ async function fetchRecentlyFinishedFromDynamo(): Promise<QueuedContactView[]> {
         initiationMethod: "CAMPAIGN",
         initiationTimestamp: (row.createdAt as string) || null,
         state: "FINISHED",
-        stageEnteredAt:
-          (row.lastAttemptAt as string) || (row.createdAt as string) || since,
+        stageEnteredAt: (row.lastAttemptAt as string) || (row.createdAt as string) || since,
         waitingSeconds: 0,
         disconnectReason: statusToReason(row.status as string),
         agentUsername: null,
@@ -328,7 +318,7 @@ async function fetchRecentlyFinishedFromDynamo(): Promise<QueuedContactView[]> {
           ":since": { S: since },
         },
         Limit: 100,
-      })
+      }),
     );
     for (const raw of res.Items || []) {
       const row = unmarshall(raw);
@@ -399,7 +389,7 @@ async function fetchActiveCampaignIds(): Promise<Set<string> | null> {
           KeyConditionExpression: "#st = :s",
           ExpressionAttributeNames: { "#st": "status" },
           ExpressionAttributeValues: { ":s": { S: status } },
-        })
+        }),
       );
       for (const it of res.Items || []) {
         const row = unmarshall(it);
@@ -440,7 +430,7 @@ async function fetchCampaignPendingAndDialing(): Promise<{
           ":d": { S: "dialing" },
         },
         Limit: 500,
-      })
+      }),
     );
     for (const raw of res.Items || []) {
       const row = unmarshall(raw);
@@ -448,12 +438,7 @@ async function fetchCampaignPendingAndDialing(): Promise<{
       // Skip rows from campaigns that are not currently RUNNING/PAUSED. This
       // is the root cause of the "zombie pending rows" bug. Only applies
       // when we successfully determined which campaigns are active.
-      if (
-        activeCampaignIds !== null &&
-        campaignId &&
-        !activeCampaignIds.has(campaignId)
-      )
-        continue;
+      if (activeCampaignIds !== null && campaignId && !activeCampaignIds.has(campaignId)) continue;
       const status = row.status as string;
       const rowId = row.rowId as string;
       const cid = (row.connectContactId as string) || `row-${rowId}`;
@@ -465,11 +450,9 @@ async function fetchCampaignPendingAndDialing(): Promise<{
         queueId: null,
         queueName: null,
         initiationMethod: "CAMPAIGN",
-        initiationTimestamp:
-          (row.lastAttemptAt as string) || (row.createdAt as string) || null,
+        initiationTimestamp: (row.lastAttemptAt as string) || (row.createdAt as string) || null,
         state: status === "dialing" ? "ARRIVED" : "IN_IVR", // reused frontend slots
-        stageEnteredAt:
-          (row.lastAttemptAt as string) || (row.createdAt as string) || null,
+        stageEnteredAt: (row.lastAttemptAt as string) || (row.createdAt as string) || null,
         waitingSeconds: 0,
         disconnectReason: null,
         agentUsername: null,
@@ -477,8 +460,7 @@ async function fetchCampaignPendingAndDialing(): Promise<{
         campaignRowId: rowId,
         retryCount: Number(row.attempts) || 0,
         campaignId: campaignId || null,
-        assignedAgentUserId:
-          (row.assignedAgentUserId as string) || null,
+        assignedAgentUserId: (row.assignedAgentUserId as string) || null,
       };
       if (status === "dialing") dialing.push(view);
       else pending.push(view);
@@ -490,15 +472,13 @@ async function fetchCampaignPendingAndDialing(): Promise<{
 }
 
 async function fetchRetryScheduled(
-  activeCampaignIds?: Set<string> | null
+  activeCampaignIds?: Set<string> | null,
 ): Promise<QueuedContactView[]> {
   // If the caller didn't pass a set of currently-active campaign ids, fetch
   // them so retry rows from cancelled/completed campaigns don't leak.
   // `null` means we couldn't determine the active set — skip the filter.
   const activeIds =
-    activeCampaignIds !== undefined
-      ? activeCampaignIds
-      : await fetchActiveCampaignIds();
+    activeCampaignIds !== undefined ? activeCampaignIds : await fetchActiveCampaignIds();
   try {
     // The original code used a Query on `status-createdAt-index`, but that
     // GSI doesn't exist on the campaign-contacts table — the query was
@@ -517,14 +497,13 @@ async function fetchRetryScheduled(
           ":zero": { N: "0" },
         },
         Limit: 100,
-      })
+      }),
     );
     const out: QueuedContactView[] = [];
     for (const raw of res.Items || []) {
       const row = unmarshall(raw);
       const campaignId = row.campaignId as string | undefined;
-      if (activeIds !== null && campaignId && !activeIds.has(campaignId))
-        continue;
+      if (activeIds !== null && campaignId && !activeIds.has(campaignId)) continue;
       out.push({
         contactId: `retry-${row.rowId}`,
         phone: (row.phone as string) || null,
@@ -544,8 +523,7 @@ async function fetchRetryScheduled(
         // campaignId is not part of the QueuedContactView interface, but we
         // attach it on the wire as an extra field so the frontend can filter
         // retryScheduled items per campaign.
-        ...((row.campaignId && { campaignId: row.campaignId as string }) ||
-          {}),
+        ...((row.campaignId && { campaignId: row.campaignId as string }) || {}),
         retryCount: Number(row.attempts) || 0,
       });
     }
@@ -562,7 +540,7 @@ async function fetchRetryScheduled(
  * is one of the failure signals, or status is FAILED / MISSED / ABANDONED.
  */
 async function getAgentDailyStats(
-  agentKey: string
+  agentKey: string,
 ): Promise<{ completed: number; errors: number }> {
   // The "agentUsername" GSI actually stores the Connect user ID as its hash,
   // despite the attribute name. Callers pass the agent's userId here.
@@ -573,14 +551,13 @@ async function getAgentDailyStats(
       new QueryCommand({
         TableName: CONTACTS_TABLE,
         IndexName: "agentUsername-initiationTimestamp-index",
-        KeyConditionExpression:
-          "agentUsername = :u AND initiationTimestamp >= :since",
+        KeyConditionExpression: "agentUsername = :u AND initiationTimestamp >= :since",
         ExpressionAttributeValues: {
           ":u": { S: agentKey },
           ":since": { S: since },
         },
         Limit: 500,
-      })
+      }),
     );
     let completed = 0;
     let errors = 0;
@@ -614,10 +591,7 @@ async function getAgentDailyStats(
 
 async function getAgents(): Promise<AgentView[]> {
   // Step 1 — list all users (for usernames)
-  const users = new Map<
-    string,
-    { username: string; routingProfileId?: string | null }
-  >();
+  const users = new Map<string, { username: string; routingProfileId?: string | null }>();
   let nextToken: string | undefined;
   do {
     const res = await activeConnect.send(
@@ -625,7 +599,7 @@ async function getAgents(): Promise<AgentView[]> {
         InstanceId: activeInstanceId,
         MaxResults: 100,
         NextToken: nextToken,
-      })
+      }),
     );
     for (const u of res.UserSummaryList || []) {
       if (u.Id && u.Username) users.set(u.Id, { username: u.Username });
@@ -649,7 +623,7 @@ async function getAgents(): Promise<AgentView[]> {
           new DescribeUserCommand({
             InstanceId: activeInstanceId,
             UserId: userId,
-          })
+          }),
         );
         const rid = du.User?.RoutingProfileId || null;
         userRoutingProfileCache.set(cacheKey, rid);
@@ -657,7 +631,7 @@ async function getAgents(): Promise<AgentView[]> {
       } catch {
         meta.routingProfileId = null;
       }
-    })
+    }),
   );
 
   // Step 2 — call GetCurrentUserData for all users (chunks of 100 agents per call)
@@ -670,7 +644,7 @@ async function getAgents(): Promise<AgentView[]> {
         new GetCurrentUserDataCommand({
           InstanceId: activeInstanceId,
           Filters: { Agents: batch },
-        })
+        }),
       );
       for (const ud of res.UserDataList || []) {
         const userId = ud.User?.Id || "";
@@ -678,9 +652,7 @@ async function getAgents(): Promise<AgentView[]> {
         const username = userMeta?.username || userId;
         const contacts = ud.Contacts || [];
         const active = contacts.find((c) =>
-          ["CONNECTED", "INCOMING", "CONNECTING", "ON_HOLD"].includes(
-            c.ContactState || ""
-          )
+          ["CONNECTED", "INCOMING", "CONNECTING", "ON_HOLD"].includes(c.ContactState || ""),
         );
         let activeContact: AgentView["activeContact"] = null;
         if (active) {
@@ -693,18 +665,15 @@ async function getAgents(): Promise<AgentView[]> {
             state: active.ContactState || "",
             channel: active.Channel || "VOICE",
             queueName,
-            connectedToAgentTimestamp:
-              active.ConnectedToAgentTimestamp?.toISOString() || null,
+            connectedToAgentTimestamp: active.ConnectedToAgentTimestamp?.toISOString() || null,
           };
         }
-        const routingProfileId =
-          ud.RoutingProfile?.Id || userMeta?.routingProfileId || null;
+        const routingProfileId = ud.RoutingProfile?.Id || userMeta?.routingProfileId || null;
         allAgents.push({
           userId,
           username,
           statusName: ud.Status?.StatusName || null,
-          statusStartTimestamp:
-            ud.Status?.StatusStartTimestamp?.toISOString() || null,
+          statusStartTimestamp: ud.Status?.StatusStartTimestamp?.toISOString() || null,
           // GetCurrentUserData frequently returns null for the routing
           // profile name even when the id is set — fall back to the
           // cache built from ListRoutingProfiles.
@@ -743,9 +712,7 @@ async function getAgents(): Promise<AgentView[]> {
   await Promise.all(
     allAgents.map(async (a) => {
       const [queues, stats] = await Promise.all([
-        a.routingProfileId
-          ? resolveRoutingProfileQueues(a.routingProfileId)
-          : Promise.resolve([]),
+        a.routingProfileId ? resolveRoutingProfileQueues(a.routingProfileId) : Promise.resolve([]),
         // The GSI "agentUsername" holds userIds despite the name.
         getAgentDailyStats(a.userId),
       ]);
@@ -755,13 +722,12 @@ async function getAgents(): Promise<AgentView[]> {
         completedToday: stats.completed,
         errorsToday: stats.errors,
       };
-    })
+    }),
   );
 
   allAgents.sort((a, b) => a.username.localeCompare(b.username));
   return allAgents;
 }
-
 
 export interface WithAgentContact {
   contactId: string;
@@ -804,14 +770,12 @@ async function getQueuedAndFinishedContacts(): Promise<{
         },
         MaxResults: 100,
         NextToken: nextToken,
-      })
+      }),
     );
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const c of (res.Contacts as any[]) || []) {
-      const discTs = c.DisconnectTimestamp
-        ? new Date(c.DisconnectTimestamp).getTime()
-        : null;
+      const discTs = c.DisconnectTimestamp ? new Date(c.DisconnectTimestamp).getTime() : null;
 
       // Fast-skip: disconnected and already outside the FINISHED window
       if (discTs && discTs < finishedCutoff) continue;
@@ -821,7 +785,7 @@ async function getQueuedAndFinishedContacts(): Promise<{
           new DescribeContactCommand({
             InstanceId: activeInstanceId,
             ContactId: c.Id,
-          })
+          }),
         );
         const ct = detail.Contact;
         if (!ct) continue;
@@ -829,12 +793,10 @@ async function getQueuedAndFinishedContacts(): Promise<{
         const initiationMs = ct.InitiationTimestamp?.getTime() || Date.now();
         const queueId = ct.QueueInfo?.Id || null;
         const agentId = ct.AgentInfo?.Id || null;
-        const connectedMs =
-          ct.AgentInfo?.ConnectedToAgentTimestamp?.getTime() || null;
+        const connectedMs = ct.AgentInfo?.ConnectedToAgentTimestamp?.getTime() || null;
         const queueEnqueueMs = ct.QueueInfo?.EnqueueTimestamp?.getTime() || null;
         const discMs = ct.DisconnectTimestamp?.getTime() || null;
-        const customerName =
-          (ct.Attributes?.customerName as string | undefined) || null;
+        const customerName = (ct.Attributes?.customerName as string | undefined) || null;
         const campaignRowId =
           (ct.Attributes?.campaignRowId as string | undefined) ||
           (ct.Attributes?.campaignrowid as string | undefined) ||
@@ -871,10 +833,7 @@ async function getQueuedAndFinishedContacts(): Promise<{
           stageEnteredMs = initiationMs;
         }
 
-        const waitingSeconds = Math.max(
-          0,
-          Math.round((now.getTime() - stageEnteredMs) / 1000)
-        );
+        const waitingSeconds = Math.max(0, Math.round((now.getTime() - stageEnteredMs) / 1000));
         const agentUsername = agentId ? await resolveUser(agentId) : null;
 
         // If this is a campaign contact, look up the row to get attempt count.
@@ -884,21 +843,18 @@ async function getQueuedAndFinishedContacts(): Promise<{
             const rowRes = await dynamo.send(
               new QueryCommand({
                 TableName: CAMPAIGN_CONTACTS_TABLE,
-                KeyConditionExpression:
-                  "campaignId = :cid AND rowId = :rid",
+                KeyConditionExpression: "campaignId = :cid AND rowId = :rid",
                 ExpressionAttributeValues: {
                   ":cid": { S: campaignId },
                   ":rid": { S: campaignRowId },
                 },
                 Limit: 1,
-              })
+              }),
             );
             if (rowRes.Items && rowRes.Items.length > 0) {
               const row = unmarshall(rowRes.Items[0]);
               retryCount =
-                typeof row.attempts === "number"
-                  ? row.attempts
-                  : Number(row.attempts) || null;
+                typeof row.attempts === "number" ? row.attempts : Number(row.attempts) || null;
             }
           } catch {
             /* ignore */
@@ -955,6 +911,11 @@ async function getQueuedAndFinishedContacts(): Promise<{
     nextToken = res.NextToken;
     if (!nextToken) break;
   }
+  // BUG-audit P2: tope de 3 páginas (300 contactos) = válvula anti-latencia del
+  // endpoint de tiempo real. Si quedan más en la ventana, la vista está truncada →
+  // logueamos (no subimos el tope para no penalizar el polling frecuente).
+  if (nextToken)
+    console.warn("get-live-queue: SearchContacts truncado a 3 páginas — vista parcial");
 
   return { active, finished, withAgent };
 }
@@ -966,13 +927,13 @@ async function listQueuesAndStatuses() {
         InstanceId: activeInstanceId,
         QueueTypes: ["STANDARD"],
         MaxResults: 100,
-      })
+      }),
     ),
     activeConnect.send(
       new ListAgentStatusesCommand({
         InstanceId: activeInstanceId,
         MaxResults: 100,
-      })
+      }),
     ),
   ]);
 
@@ -1006,16 +967,15 @@ export const handler: Handler = async (event: any) => {
     // routing profile as `null`.
     const rpCachePromise = refreshRoutingProfileNameCache();
 
-    const [agents, contacts, meta, dynamoFinished, campaignActive] =
-      await Promise.all([
-        // getAgents references the routing-profile cache, so block on it
-        // first via the closure below.
-        rpCachePromise.then(() => getAgents()),
-        getQueuedAndFinishedContacts(),
-        listQueuesAndStatuses(),
-        fetchRecentlyFinishedFromDynamo(),
-        fetchCampaignPendingAndDialing(),
-      ]);
+    const [agents, contacts, meta, dynamoFinished, campaignActive] = await Promise.all([
+      // getAgents references the routing-profile cache, so block on it
+      // first via the closure below.
+      rpCachePromise.then(() => getAgents()),
+      getQueuedAndFinishedContacts(),
+      listQueuesAndStatuses(),
+      fetchRecentlyFinishedFromDynamo(),
+      fetchCampaignPendingAndDialing(),
+    ]);
 
     // Merge campaign pending/dialing rows into the active set. We reuse the
     // IN_IVR slot for "Pendientes" (not-yet-dialed) and ARRIVED for
@@ -1036,9 +996,8 @@ export const handler: Handler = async (event: any) => {
     const finishedByCid = new Map<string, QueuedContactView>();
     for (const c of contacts.finished) finishedByCid.set(c.contactId, c);
     for (const c of dynamoFinished) finishedByCid.set(c.contactId, c);
-    contacts.finished = [...finishedByCid.values()].sort(
-      (a, b) =>
-        (b.stageEnteredAt || "").localeCompare(a.stageEnteredAt || "")
+    contacts.finished = [...finishedByCid.values()].sort((a, b) =>
+      (b.stageEnteredAt || "").localeCompare(a.stageEnteredAt || ""),
     );
 
     // Enrich: if DescribeContact shows a contact connected to an agent but
@@ -1067,7 +1026,7 @@ export const handler: Handler = async (event: any) => {
       if (!agent.queues || agent.queues.length === 0) continue;
       const myQueueIds = new Set(agent.queues.map((q) => q.id));
       const count = activeInQueue.filter((c) =>
-        c.queueId ? myQueueIds.has(c.queueId) : false
+        c.queueId ? myQueueIds.has(c.queueId) : false,
       ).length;
       if (agent.stats) {
         agent.stats.queuedForMe = count;
@@ -1087,9 +1046,7 @@ export const handler: Handler = async (event: any) => {
 
     // Backward-compatible buckets for anything still reading the old shape.
     const preQueue = [...arrived, ...inIvr];
-    const pendingTransfer = contacts.active.filter(
-      (c) => c.state === "PENDING_TRANSFER"
-    );
+    const pendingTransfer = contacts.active.filter((c) => c.state === "PENDING_TRANSFER");
 
     return {
       statusCode: 200,

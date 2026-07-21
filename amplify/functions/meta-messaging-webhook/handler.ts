@@ -6,6 +6,7 @@ import {
   appendInbound,
   appendComment,
   setTyping,
+  claimOnce,
   convId,
   type ConvChannel,
 } from "../_shared/conversations";
@@ -213,6 +214,9 @@ export const handler: Handler = async (event: any) => {
         const commentId = String(v.comment_id || v.id || "");
         if (!fromId || !commentId) continue;
         if (fromId === metaId) continue; // comentario nuestro (de la propia Página/IG)
+        // BUG-audit P1-#10: dedup por `commentId` — un retry del webhook duplicaba
+        // el comentario como mensaje en la conversación fb_comment.
+        if (!(await claimOnce(legacyDynamo, `cmtdedup#${commentId}`))) continue;
         const platform: "facebook" | "instagram" =
           ch.field === "comments" ? "instagram" : "facebook";
         const text = String(v.message ?? v.text ?? "");
@@ -259,6 +263,11 @@ export const handler: Handler = async (event: any) => {
 
         const msg = ev.message;
         if (!msg || msg.is_echo) continue; // ignorar echoes (nuestros propios envíos)
+        // BUG-audit P1-#10: dedup por `mid`. Meta REINTREGA el webhook si tardamos
+        // en responder 200 (fetchName + append) → sin esto el mismo DM entraba
+        // DOBLE al inbox. claimOnce = PutItem condicional (fail-open).
+        const mid = String(msg.mid || "");
+        if (mid && !(await claimOnce(legacyDynamo, `igmsgdedup#${mid}`))) continue;
         const text = String(msg.text || "");
         const att = msg.attachments?.[0];
         const attachment = att?.payload?.url

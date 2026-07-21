@@ -42,8 +42,7 @@ const STATUS_INDEX = "byStatusNextAttempt";
  * del array define maxAttempts (al agotarlo → exhausted).
  */
 const BACKOFF_SECONDS = [
-  60, 300, 1800, 7200, 21600, 43200,
-  86400, 86400, 86400, 86400, 86400, 86400,
+  60, 300, 1800, 7200, 21600, 43200, 86400, 86400, 86400, 86400, 86400, 86400,
 ];
 const MAX_ATTEMPTS = BACKOFF_SECONDS.length;
 /** TTL: purga filas terminales (delivered/exhausted) a los 30 días. */
@@ -92,7 +91,7 @@ function uuid(): string {
 /** POST el payload al endpoint del cliente. 2xx = ok. */
 async function deliver(
   url: string,
-  payload: unknown
+  payload: unknown,
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
   if (!/^https?:\/\//.test(url)) return { ok: false, error: "url inválida" };
   const ac = new AbortController();
@@ -123,7 +122,7 @@ function ttlEpoch(): number {
 /** Aplica el resultado de un intento a la fila y la persiste (UpdateItem). */
 async function recordAttempt(
   row: DeliveryRow,
-  result: { ok: boolean; status?: number; error?: string }
+  result: { ok: boolean; status?: number; error?: string },
 ): Promise<void> {
   const attempts = row.attempts + 1;
   const names: Record<string, string> = {
@@ -185,15 +184,45 @@ async function recordAttempt(
       UpdateExpression: expr,
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: marshall(vals, { removeUndefinedValues: true }),
-    })
+    }),
   );
 }
 
 async function loadRow(deliveryId: string): Promise<DeliveryRow | null> {
   const r = await dynamo.send(
-    new GetItemCommand({ TableName: TABLE, Key: { deliveryId: { S: deliveryId } } })
+    new GetItemCommand({ TableName: TABLE, Key: { deliveryId: { S: deliveryId } } }),
   );
   return r.Item ? (unmarshall(r.Item) as DeliveryRow) : null;
+}
+
+/**
+ * BUG-audit P1-#14: reclama la fila para "delivering" de forma ATÓMICA justo antes
+ * del POST, condicional a que siga en un estado pre-entrega (queued/retrying). SQS
+ * es at-least-once → el mismo retry puede entregarse 2× y sin esto AMBOS hacían POST
+ * al endpoint del cliente (webhook duplicado). El primero gana el claim; el duplicado
+ * ve la condición fallar y se saltea. Devuelve `true` si ganó. */
+async function claimDelivering(row: DeliveryRow): Promise<boolean> {
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: TABLE,
+        Key: { deliveryId: { S: row.deliveryId } },
+        UpdateExpression: "SET #status = :d, #u = :now",
+        ConditionExpression: "#status IN (:queued, :retrying)",
+        ExpressionAttributeNames: { "#status": "status", "#u": "updatedAt" },
+        ExpressionAttributeValues: marshall({
+          ":d": "delivering",
+          ":now": nowIso(),
+          ":queued": "queued",
+          ":retrying": "retrying",
+        }),
+      }),
+    );
+    return true;
+  } catch (err) {
+    if ((err as { name?: string })?.name === "ConditionalCheckFailedException") return false;
+    throw err;
+  }
 }
 
 /** Procesa un mensaje de la cola: nuevo o reintento. */
@@ -213,12 +242,19 @@ async function processMessage(msg: QueueMessage): Promise<void> {
       updatedAt: nowIso(),
     };
     await dynamo.send(
-      new PutItemCommand({ TableName: TABLE, Item: marshall(row, { removeUndefinedValues: true }) })
+      new PutItemCommand({
+        TableName: TABLE,
+        Item: marshall(row, { removeUndefinedValues: true }),
+      }),
     );
   } else {
     row = await loadRow(msg.deliveryId);
     if (!row) return; // fila borrada/expirada → nada que hacer
     if (row.status === "delivered" || row.status === "exhausted") return; // ya terminal
+    if (row.status === "delivering") return; // otro worker ya lo está entregando
+    // Claim atómico antes del POST → un retry duplicado (SQS at-least-once) no re-postea.
+    if (!(await claimDelivering(row))) return;
+    row.status = "delivering";
   }
   const result = await deliver(row.url, row.payload);
   await recordAttempt(row, result);
@@ -240,25 +276,40 @@ async function processTick(): Promise<{ requeued: number }> {
         ExpressionAttributeValues: marshall({ ":s": "retrying", ":now": now }),
         Limit: 100,
         ExclusiveStartKey: lastKey as never,
-      })
+      }),
     );
     for (const item of q.Items || []) {
       const row = unmarshall(item) as DeliveryRow;
       // Marcar "queued" para que el próximo tick no lo re-encole mientras viaja.
-      await dynamo.send(
-        new UpdateItemCommand({
-          TableName: TABLE,
-          Key: { deliveryId: { S: row.deliveryId } },
-          UpdateExpression: "SET #status = :q, #u = :now REMOVE nextAttemptAt",
-          ExpressionAttributeNames: { "#status": "status", "#u": "updatedAt" },
-          ExpressionAttributeValues: marshall({ ":q": "queued", ":now": now }),
-        })
-      );
+      // BUG-audit P1-#14: CONDICIONAL a que siga "retrying" → dos ticks solapados no
+      // encolan el mismo delivery 2×. Si otro tick ya lo movió, saltamos el enqueue.
+      try {
+        await dynamo.send(
+          new UpdateItemCommand({
+            TableName: TABLE,
+            Key: { deliveryId: { S: row.deliveryId } },
+            UpdateExpression: "SET #status = :q, #u = :now REMOVE nextAttemptAt",
+            ConditionExpression: "#status = :retrying",
+            ExpressionAttributeNames: { "#status": "status", "#u": "updatedAt" },
+            ExpressionAttributeValues: marshall({
+              ":q": "queued",
+              ":now": now,
+              ":retrying": "retrying",
+            }),
+          }),
+        );
+      } catch (err) {
+        if ((err as { name?: string })?.name === "ConditionalCheckFailedException") continue;
+        throw err;
+      }
       await sqs.send(
         new SendMessageCommand({
           QueueUrl: QUEUE_URL,
-          MessageBody: JSON.stringify({ kind: "retry", deliveryId: row.deliveryId } as RetryMessage),
-        })
+          MessageBody: JSON.stringify({
+            kind: "retry",
+            deliveryId: row.deliveryId,
+          } as RetryMessage),
+        }),
       );
       requeued++;
     }

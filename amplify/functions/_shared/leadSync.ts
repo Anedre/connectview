@@ -902,12 +902,53 @@ export async function upsertVoxLead(
   const changed = isNew || sig(merged) !== sig(existing || undefined);
   if (!changed) return { lead: existing as Lead, isNew: false, changed: false };
 
-  await dynamo.send(
-    new PutItemCommand({
-      TableName: LEADS_TABLE,
-      Item: marshall(merged, { removeUndefinedValues: true }),
-    }),
-  );
+  if (isNew) {
+    await dynamo.send(
+      new PutItemCommand({
+        TableName: LEADS_TABLE,
+        Item: marshall(merged, { removeUndefinedValues: true }),
+      }),
+    );
+  } else {
+    // BUG-audit P1-#11: un lead EXISTENTE se actualiza con UpdateItem QUIRÚRGICO
+    // (SET de los campos escalares mergeados), NO con PutItem del item completo. El
+    // PutItem reescribía `history` con el valor LEÍDO en el scan → si entre el scan
+    // y el write otro proceso hizo appendLeadHistory (list_append atómico), esas
+    // entradas del ledger de golpes (Pilar 2) se PERDÍAN. Con UpdateItem no tocamos
+    // `history` ni `createdAt` → los appends concurrentes se conservan.
+    const setFields: Record<string, unknown> = {
+      phone: merged.phone,
+      name: merged.name,
+      email: merged.email,
+      company: merged.company,
+      stageId: merged.stageId,
+      source: merged.source,
+      sfLeadId: merged.sfLeadId,
+      attributes: merged.attributes,
+      tenantId: merged.tenantId,
+      updatedAt: merged.updatedAt,
+    };
+    const sets: string[] = [];
+    const names: Record<string, string> = {};
+    const values: Record<string, unknown> = {};
+    let i = 0;
+    for (const [k, v] of Object.entries(setFields)) {
+      if (v === undefined) continue; // ausente en nuevo y existente → no lo tocamos
+      names[`#f${i}`] = k;
+      values[`:v${i}`] = v;
+      sets.push(`#f${i} = :v${i}`);
+      i++;
+    }
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: LEADS_TABLE,
+        Key: marshall({ leadId }),
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: marshall(values, { removeUndefinedValues: true }),
+      }),
+    );
+  }
   return { lead: merged, isNew, changed: true };
 }
 

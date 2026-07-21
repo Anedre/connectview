@@ -11,7 +11,7 @@ import { setActiveTenant } from "../_shared/salesforceClient";
 import { fireAutomation } from "../_shared/automationHook";
 import { normalizePhone } from "../_shared/phone";
 import { loadMetaAppSecret, verifyMetaSignature } from "../_shared/metaSignature";
-import { claimOnce } from "../_shared/conversations";
+import { claimOnce, releaseClaim } from "../_shared/conversations";
 
 /**
  * meta-lead-ads-webhook — ingesta nativa de Meta Lead Ads (Pilar 5 · R12).
@@ -404,6 +404,11 @@ export const handler: Handler = async (event: any) => {
     }
   }
 
+  // BUG-audit P1-#9: cada leadgen se procesa AISLADO. Si uno falla (Graph timeout,
+  // throttle), NO perdemos el resto del lote: liberamos su claim de dedup, marcamos
+  // `anyFailed` y devolvemos no-200 → Meta reintrega el lote (los OK se saltan por
+  // dedup, el fallido se reprocesa). Antes: 1 try global → un fallo perdía el resto.
+  let anyFailed = false;
   try {
     for (const entry of body.entry || []) {
       const pageId = String(entry.id || "");
@@ -411,13 +416,22 @@ export const handler: Handler = async (event: any) => {
         if (change.field !== "leadgen") continue;
         const v = change.value || {};
         const leadgenId = v.leadgen_id || v.leadgenId;
-        if (leadgenId) await handleLead(String(v.page_id || pageId), String(leadgenId), "facebook");
+        if (!leadgenId) continue;
+        try {
+          await handleLead(String(v.page_id || pageId), String(leadgenId), "facebook");
+        } catch (e) {
+          anyFailed = true;
+          console.error(`leadgen ${leadgenId} falló (se reintentará vía Meta):`, e);
+          await releaseClaim(legacyDynamo, `leadgendedup#${String(leadgenId)}`);
+        }
       }
     }
   } catch (e) {
     console.error("leadgen webhook procesamiento falló:", e);
+    anyFailed = true;
   }
 
-  // Meta exige 200 rápido para no reintentar.
-  return TEXT(200, "ok");
+  // Meta exige 200 rápido para no reintentar. Si hubo fallos parciales, devolvemos
+  // 500 para que REINTENTE el lote (dedup evita duplicar los que sí entraron).
+  return anyFailed ? TEXT(500, "retry") : TEXT(200, "ok");
 };

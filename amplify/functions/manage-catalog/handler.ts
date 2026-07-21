@@ -30,7 +30,11 @@ const TABLE = process.env.CATALOGS_TABLE || "connectview-catalogs";
 const CORS = { "Content-Type": "application/json" };
 
 const ok = (b: unknown) => ({ statusCode: 200, headers: CORS, body: JSON.stringify(b) });
-const bad = (c: number, e: string) => ({ statusCode: c, headers: CORS, body: JSON.stringify({ error: e }) });
+const bad = (c: number, e: string) => ({
+  statusCode: c,
+  headers: CORS,
+  body: JSON.stringify({ error: e }),
+});
 
 interface CatalogDoc {
   catalogId: string;
@@ -52,9 +56,7 @@ function sanitize(body: Record<string, unknown>): CatalogDoc {
   const rows: string[][] = rowsRaw
     .filter((r): r is unknown[] => Array.isArray(r))
     // Normalise each row to the column count (pad/truncate).
-    .map((r) =>
-      columns.map((_, i) => (r[i] != null ? String(r[i]) : ""))
-    )
+    .map((r) => columns.map((_, i) => (r[i] != null ? String(r[i]) : "")))
     // Drop fully-empty rows.
     .filter((r) => r.some((cell) => cell.trim() !== ""));
   return {
@@ -89,14 +91,21 @@ export const handler: Handler = async (event: any) => {
     if (method === "GET") {
       if (params.catalogId) {
         const res = await dynamo.send(
-          new GetItemCommand({ TableName: TABLE, Key: { catalogId: { S: params.catalogId } } })
+          new GetItemCommand({ TableName: TABLE, Key: { catalogId: { S: params.catalogId } } }),
         );
         return ok({ catalog: res.Item ? unmarshall(res.Item) : null });
       }
-      const res = await dynamo.send(new ScanCommand({ TableName: TABLE }));
-      const catalogs = (res.Items || [])
-        .map((it) => unmarshall(it))
-        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      // BUG-audit P2: paginar completo (antes truncaba a 1 página)
+      const items: Record<string, unknown>[] = [];
+      let lastKey: Record<string, unknown> | undefined;
+      do {
+        const res = await dynamo.send(
+          new ScanCommand({ TableName: TABLE, ExclusiveStartKey: lastKey as never }),
+        );
+        for (const it of res.Items || []) items.push(unmarshall(it));
+        lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (lastKey);
+      const catalogs = items.sort((a, b) => String(a.name).localeCompare(String(b.name)));
       return ok({ catalogs });
     }
 
@@ -114,7 +123,10 @@ export const handler: Handler = async (event: any) => {
         updatedBy: typeof body.actor === "string" ? body.actor : "unknown",
       };
       await dynamo.send(
-        new PutItemCommand({ TableName: TABLE, Item: marshall(item, { removeUndefinedValues: true }) })
+        new PutItemCommand({
+          TableName: TABLE,
+          Item: marshall(item, { removeUndefinedValues: true }),
+        }),
       );
       return ok({ catalog: item, saved: true });
     }
@@ -122,7 +134,7 @@ export const handler: Handler = async (event: any) => {
     if (method === "DELETE") {
       if (!params.catalogId) return bad(400, "catalogId required");
       await dynamo.send(
-        new DeleteItemCommand({ TableName: TABLE, Key: { catalogId: { S: params.catalogId } } })
+        new DeleteItemCommand({ TableName: TABLE, Key: { catalogId: { S: params.catalogId } } }),
       );
       return ok({ deleted: true, catalogId: params.catalogId });
     }

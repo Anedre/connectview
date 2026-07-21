@@ -31,6 +31,7 @@ import { updateHsmStatus, type HsmStatus } from "../_shared/hsmStatus";
 import {
   appendInbound,
   claimOnce,
+  releaseClaim,
   appendOutbound,
   convId,
   getConversation,
@@ -346,20 +347,30 @@ async function handleInbound(
     } catch {
       /* sin lead → la entrada de supresión es el registro de verdad */
     }
-    try {
-      if (isStop) {
-        await recordOptOut(dynamo, phoneE164, {
-          channels: ["whatsapp"],
-          reason: `Baja por WhatsApp: "${(text || "").trim().slice(0, 40)}"`,
-          source: "inbound_keyword",
-          tenantId: t.tenantId,
-          leadId,
-        });
-      } else {
-        await removeSuppression(dynamo, phoneE164);
+    // BUG-audit P1-#8 (compliance Meta): NO confirmamos la baja al cliente si la
+    // supresión no se registró de verdad. Antes el `catch` solo logueaba y aun así
+    // mandábamos "Listo ✅ No volverás a recibir mensajes" → mentira + seguíamos
+    // pudiendo mensajear (violación). Ahora reintentamos una vez y confirmamos el
+    // éxito SOLO si `recorded===true`; si no, damos un mensaje honesto de "en
+    // proceso" y lo dejamos logueado para intervención manual.
+    let recorded = false;
+    for (let attempt = 0; attempt < 2 && !recorded; attempt++) {
+      try {
+        if (isStop) {
+          await recordOptOut(dynamo, phoneE164, {
+            channels: ["whatsapp"],
+            reason: `Baja por WhatsApp: "${(text || "").trim().slice(0, 40)}"`,
+            source: "inbound_keyword",
+            tenantId: t.tenantId,
+            leadId,
+          });
+        } else {
+          await removeSuppression(dynamo, phoneE164);
+        }
+        recorded = true;
+      } catch (e) {
+        console.error(`opt-${isStop ? "out" : "in"} record intento ${attempt + 1} falló:`, e);
       }
-    } catch (e) {
-      console.error("opt-out/in record falló:", e);
     }
     // Pilar 3 Fase C — propagar la baja/alta a Salesforce (DoNotCall). El tenant
     // BYO usa su propia org → activamos su contexto SF antes del push. Best-effort:
@@ -372,9 +383,13 @@ async function handleInbound(
     } catch (e) {
       console.warn("SF DoNotCall push falló (best-effort):", e);
     }
-    const confirmText = isStop
-      ? "Listo ✅ No volverás a recibir mensajes de WhatsApp de nuestra parte. Si fue un error, responde *ALTA* para reactivar."
-      : "Listo ✅ Reactivamos tus mensajes de WhatsApp. ¡Gracias por volver!";
+    const confirmText = recorded
+      ? isStop
+        ? "Listo ✅ No volverás a recibir mensajes de WhatsApp de nuestra parte. Si fue un error, responde *ALTA* para reactivar."
+        : "Listo ✅ Reactivamos tus mensajes de WhatsApp. ¡Gracias por volver!"
+      : isStop
+        ? "Recibimos tu solicitud de baja y la estamos procesando. Si vuelves a recibir un mensaje nuestro, por favor responde *STOP* nuevamente."
+        : "Recibimos tu solicitud. Si no se reactiva pronto, vuelve a intentarlo respondiendo *ALTA*.";
     try {
       await sendWhatsApp(
         { mode: "meta" as const, metaPhoneNumberId: phoneNumberId, tenantId: t.tenantId },
@@ -747,6 +762,11 @@ export const handler: Handler = async (event: any) => {
     return TEXT(200, "ok");
   }
 
+  // BUG-audit P1-#9: si algún ítem del lote falla, lo marcamos para devolver
+  // no-200 al final → Meta REINTREGA el lote (los OK se saltan por dedup, los
+  // fallidos —cuyo claim liberamos— se reprocesan). Sin esto, un throttle en un
+  // mensaje perdía TODO el resto del lote con un 200 silencioso.
+  let anyFailed = false;
   try {
     for (const entry of body.entry || []) {
       for (const change of entry.changes || []) {
@@ -758,38 +778,56 @@ export const handler: Handler = async (event: any) => {
           // en responder 200 (scan + assume-role + LLM por mensaje) → sin esto el
           // cliente recibía DOBLE respuesta del bot + doble copia en el inbox.
           if (msg.id && !(await claimOnce(legacyDynamo, `wadedup#${msg.id}`))) continue;
-          // Respuesta de un WhatsApp Flow (#10): va al CRM, NO al bot (el
-          // JSON crudo no es un turno de conversación).
-          const nfm = msg.interactive?.nfm_reply;
-          if (phoneNumberId && from && nfm) {
-            await handleFlowReply(phoneNumberId, from, nfm);
-            continue;
+          // BUG-audit P1-#9: cada mensaje AISLADO. Si falla, liberamos su claim y
+          // seguimos con el resto del lote (no lo tumbamos entero).
+          try {
+            // Respuesta de un WhatsApp Flow (#10): va al CRM, NO al bot (el
+            // JSON crudo no es un turno de conversación).
+            const nfm = msg.interactive?.nfm_reply;
+            if (phoneNumberId && from && nfm) {
+              await handleFlowReply(phoneNumberId, from, nfm);
+              continue;
+            }
+            // Botón/lista tappable → `choice` = outlet del flujo del bot (b:<id> /
+            // r:<id>). Es navegación del bot, NO texto libre: el runtime avanza por
+            // esa rama y NO lo evalúa la red global de escalado (wantsHuman). El
+            // `text` legible (el título) se espeja al inbox.
+            const br = msg.interactive?.button_reply;
+            const lr = msg.interactive?.list_reply;
+            // bot-runtime YA emite los ids de botón/fila CON su prefijo ("b:"/"r:"),
+            // y buildMetaMessage los manda tal cual como reply.id → Meta los devuelve
+            // igual. Usarlos directo: re-prefijar daba "b:b:maestrias" y ningún edge
+            // del grafo matcheaba → el bot no avanzaba al tocar un botón.
+            const choice = br?.id || lr?.id || undefined;
+            const text = msg.text?.body || br?.title || lr?.title || msg.button?.text || "";
+            if (phoneNumberId && from)
+              await handleInbound(phoneNumberId, from, text, msg.id, choice);
+          } catch (e) {
+            anyFailed = true;
+            console.error(`msg ${msg.id} falló (se reintentará vía Meta):`, e);
+            if (msg.id) await releaseClaim(legacyDynamo, `wadedup#${msg.id}`);
           }
-          // Botón/lista tappable → `choice` = outlet del flujo del bot (b:<id> /
-          // r:<id>). Es navegación del bot, NO texto libre: el runtime avanza por
-          // esa rama y NO lo evalúa la red global de escalado (wantsHuman). El
-          // `text` legible (el título) se espeja al inbox.
-          const br = msg.interactive?.button_reply;
-          const lr = msg.interactive?.list_reply;
-          // bot-runtime YA emite los ids de botón/fila CON su prefijo ("b:"/"r:"),
-          // y buildMetaMessage los manda tal cual como reply.id → Meta los devuelve
-          // igual. Usarlos directo: re-prefijar daba "b:b:maestrias" y ningún edge
-          // del grafo matcheaba → el bot no avanzaba al tocar un botón.
-          const choice = br?.id || lr?.id || undefined;
-          const text = msg.text?.body || br?.title || lr?.title || msg.button?.text || "";
-          if (phoneNumberId && from) await handleInbound(phoneNumberId, from, text, msg.id, choice);
         }
         // Pilar 4 — recibos de entrega (delivered/read/failed) llegan en el mismo
         // webhook, en value.statuses[]. Avanzan el estado del HSM + cuarentena.
+        // handleStatus es idempotente (rank monótono) → reprocesar en un retry es
+        // seguro; por eso NO se dedupean con claimOnce.
         for (const st of value.statuses || []) {
-          if (phoneNumberId && st?.id) await handleStatus(phoneNumberId, st);
+          try {
+            if (phoneNumberId && st?.id) await handleStatus(phoneNumberId, st);
+          } catch (e) {
+            anyFailed = true;
+            console.error(`status ${st?.id} falló:`, e);
+          }
         }
       }
     }
   } catch (e) {
     console.error("webhook procesamiento falló:", e);
+    anyFailed = true;
   }
 
-  // Meta exige un 200 rápido para no reintentar.
-  return TEXT(200, "ok");
+  // Meta exige un 200 rápido para no reintentar. Si hubo fallos parciales,
+  // devolvemos 500 para que REINTENTE el lote (dedup evita duplicar los OK).
+  return anyFailed ? TEXT(500, "retry") : TEXT(200, "ok");
 };

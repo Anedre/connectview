@@ -34,7 +34,7 @@ async function refreshUserCache(): Promise<void> {
           InstanceId: activeInstanceId,
           MaxResults: 100,
           NextToken: nextToken,
-        })
+        }),
       );
       for (const u of res.UserSummaryList ?? []) {
         if (u.Id && u.Username) usernameCache.set(`${activeInstanceId}:${u.Id}`, u.Username);
@@ -68,6 +68,18 @@ export const handler: Handler = async (event: any) => {
     const campaignId = params.campaignId;
     const statusFilter = params.status; // optional
     const limit = parseInt(params.limit || "100");
+    // BUG-audit P2: paginar completo — aceptamos un cursor opcional (base64 del
+    // ExclusiveStartKey) y devolvemos lastKey en la respuesta, así el caller
+    // pide la siguiente página en vez de perder silenciosamente lo que pasa del
+    // Limit. Cursor inválido → arrancamos desde el inicio.
+    let startKey: Record<string, unknown> | undefined;
+    if (params.cursor) {
+      try {
+        startKey = JSON.parse(Buffer.from(String(params.cursor), "base64").toString("utf8"));
+      } catch {
+        /* cursor inválido → desde el inicio */
+      }
+    }
 
     if (!campaignId) {
       return {
@@ -81,6 +93,7 @@ export const handler: Handler = async (event: any) => {
     const cacheWarm = refreshUserCache();
 
     let items: Record<string, unknown>[] = [];
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
 
     if (statusFilter) {
       const r = await dynamo.send(
@@ -94,9 +107,11 @@ export const handler: Handler = async (event: any) => {
             ":s": { S: statusFilter },
           },
           Limit: limit,
-        })
+          ExclusiveStartKey: startKey as never,
+        }),
       );
       items = (r.Items || []).map((it) => unmarshall(it));
+      lastEvaluatedKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
     } else {
       const r = await dynamo.send(
         new QueryCommand({
@@ -104,9 +119,11 @@ export const handler: Handler = async (event: any) => {
           KeyConditionExpression: "campaignId = :cid",
           ExpressionAttributeValues: { ":cid": { S: campaignId } },
           Limit: limit,
-        })
+          ExclusiveStartKey: startKey as never,
+        }),
       );
       items = (r.Items || []).map((it) => unmarshall(it));
+      lastEvaluatedKey = r.LastEvaluatedKey as Record<string, unknown> | undefined;
     }
 
     // Parse customAttributes JSON back to object for convenience
@@ -134,10 +151,15 @@ export const handler: Handler = async (event: any) => {
       return tb - ta;
     });
 
+    // lastKey = cursor base64 para la siguiente página (null = no hay más).
+    const lastKey = lastEvaluatedKey
+      ? Buffer.from(JSON.stringify(lastEvaluatedKey)).toString("base64")
+      : null;
+
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contacts: items, count: items.length }),
+      body: JSON.stringify({ contacts: items, count: items.length, lastKey }),
     };
   } catch (err) {
     console.error("get-campaign-contacts error", err);

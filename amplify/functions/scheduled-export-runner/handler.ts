@@ -222,6 +222,37 @@ async function persistResult(job: ScheduledExport, result: { ok: boolean; error?
   );
 }
 
+/**
+ * BUG-audit P1-#13: reclama el job ANTES de enviar el email, avanzando `nextRunAt`
+ * al próximo período de forma CONDICIONAL a que siga siendo el valor que escaneamos.
+ * Dos ticks solapados (los crons de EventBridge no tienen reserved-concurrency) veían
+ * el mismo job vencido y ambos mandaban el export → correo DUPLICADO. Con el claim,
+ * solo un tick gana; el otro ve la condición fallar y lo saltea. Devuelve `true` si
+ * ganó la reserva. (Trade-off: un envío que falle tras reclamar se pierde ese período
+ * —persistResult lo marca lastStatus="error"— en vez de arriesgar el doble envío.) */
+async function claimJob(job: ScheduledExport): Promise<boolean> {
+  try {
+    await dynamo.send(
+      new UpdateItemCommand({
+        TableName: EXPORTS_TABLE,
+        Key: { exportId: { S: job.exportId } },
+        UpdateExpression: "SET nextRunAt = :next, updatedAt = :u",
+        ConditionExpression: "nextRunAt = :seen AND enabled = :t",
+        ExpressionAttributeValues: marshall({
+          ":next": computeNextRun(job.frequency, job.hourUtc, Date.now()),
+          ":seen": job.nextRunAt,
+          ":t": true,
+          ":u": nowIso(),
+        }),
+      }),
+    );
+    return true;
+  } catch (err) {
+    if ((err as { name?: string })?.name === "ConditionalCheckFailedException") return false;
+    throw err;
+  }
+}
+
 async function loadJob(exportId: string): Promise<ScheduledExport | null> {
   const r = await dynamo.send(
     new GetItemCommand({ TableName: EXPORTS_TABLE, Key: { exportId: { S: exportId } } }),
@@ -258,14 +289,20 @@ export const handler = async (event: any): Promise<unknown> => {
     await persistResult(job, result);
     return result;
   }
-  // Tick — corre los vencidos.
+  // Tick — corre los vencidos. BUG-audit P1-#13: reclama cada job (avance atómico
+  // de nextRunAt) ANTES de enviar → un tick solapado no reenvía el mismo export.
   const jobs = await dueJobs();
   const results: Record<string, unknown>[] = [];
+  let skipped = 0;
   for (const job of jobs) {
+    if (!(await claimJob(job))) {
+      skipped++;
+      continue; // otro tick ya lo tomó
+    }
     const result = await runExport(job);
     await persistResult(job, result);
     results.push({ exportId: job.exportId, ...result });
   }
-  console.log("scheduled-export-runner tick:", { due: jobs.length });
+  console.log("scheduled-export-runner tick:", { due: jobs.length, sent: results.length, skipped });
   return { due: jobs.length, results };
 };

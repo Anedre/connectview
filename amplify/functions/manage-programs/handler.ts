@@ -228,8 +228,17 @@ export const handler: Handler = async (event: any) => {
         const health = await programHealth(params.programId);
         return ok({ program, health });
       }
-      const res = await dynamo.send(new ScanCommand({ TableName: TABLE }));
-      let programs = (res.Items || []).map((it) => unmarshall(it) as Program);
+      // BUG-audit P2: paginar completo (antes truncaba a 1 página)
+      const programsAll: Program[] = [];
+      let lastKey: Record<string, unknown> | undefined;
+      do {
+        const res = await dynamo.send(
+          new ScanCommand({ TableName: TABLE, ExclusiveStartKey: lastKey as never }),
+        );
+        for (const it of res.Items || []) programsAll.push(unmarshall(it) as Program);
+        lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (lastKey);
+      let programs = programsAll;
       if (params.status) programs = programs.filter((p) => p.status === params.status);
       if (params.faculty) programs = programs.filter((p) => p.faculty === params.faculty);
       if (params.includeArchived !== "1")
@@ -273,12 +282,20 @@ export const handler: Handler = async (event: any) => {
       if (body.action === "importExcel") {
         const rows = Array.isArray(body.rows) ? body.rows : [];
         // Mapa code → programId existente para upsert (no duplicar por código).
-        const existing = await dynamo.send(new ScanCommand({ TableName: TABLE }));
+        // BUG-audit P2: paginar completo (antes truncaba a 1 página → un code
+        // en una página no leída se re-creaba en vez de actualizarse).
         const byCode = new Map<string, string>();
-        for (const it of existing.Items || []) {
-          const p = unmarshall(it) as Program;
-          if (p.code) byCode.set(p.code.toLowerCase(), p.programId);
-        }
+        let lastKey: Record<string, unknown> | undefined;
+        do {
+          const existing = await dynamo.send(
+            new ScanCommand({ TableName: TABLE, ExclusiveStartKey: lastKey as never }),
+          );
+          for (const it of existing.Items || []) {
+            const p = unmarshall(it) as Program;
+            if (p.code) byCode.set(p.code.toLowerCase(), p.programId);
+          }
+          lastKey = existing.LastEvaluatedKey as Record<string, unknown> | undefined;
+        } while (lastKey);
         let created = 0;
         let updated = 0;
         const errors: string[] = [];

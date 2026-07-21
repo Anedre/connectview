@@ -193,9 +193,13 @@ async function listProfileCtrs(profileId: string, cap: number): Promise<Historic
     parsed.map(async (ctr) => {
       const agentId = ctr.agent?.arn?.split("/").pop() || ctr.agent?.id || "";
       const queueId = ctr.queue?.arn?.split("/").pop() || ctr.queue?.id || "";
+      // BUG-audit P3: una resolución de nombre que falle NO debe tumbar TODO el
+      // historial (Promise.all externo rechazaría). Degradamos a "" por-ítem.
       const [agentUsername, queueName] = await Promise.all([
-        agentId ? resolveAgentUsername(agentId) : Promise.resolve(""),
-        queueId ? resolveQueueName(queueId) : Promise.resolve(ctr.queue?.name || ""),
+        agentId ? resolveAgentUsername(agentId).catch(() => "") : Promise.resolve(""),
+        queueId
+          ? resolveQueueName(queueId).catch(() => "")
+          : Promise.resolve(ctr.queue?.name || ""),
       ]);
 
       const initiationMs =
