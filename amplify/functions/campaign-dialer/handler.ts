@@ -1172,7 +1172,6 @@ async function forceCompleteCampaign(campaign: Campaign, reason: string): Promis
 async function processCampaignWithBuckets(
   campaign: Campaign,
   assignedAgentIds: string[],
-  slotOverride?: number,
 ): Promise<void> {
   const maxPerAgent = Math.max(1, Math.min(50, Number(campaign.maxContactsPerAgent) || 5));
 
@@ -1276,14 +1275,14 @@ async function processCampaignWithBuckets(
     `[dialer] ${campaign.campaignId}: bucket-mode · agents=${assignedAgentIds.length}, idle=${idleSet.size}, unassignedLeft=${unassigned.length}`,
   );
 
-  // Concurrency cap still applies (campaign-level safety). Pilar 7: si el
-  // orquestador asignó un presupuesto de slots para este ciclo, ese manda
-  // (ya descontó el dialing en vuelo y la concurrencia al calcular el reparto).
-  const maxConcurrency = Number(campaign.concurrency) || 1;
-  let slotsLeft =
-    slotOverride !== undefined
-      ? slotOverride
-      : Math.max(0, maxConcurrency - (await countDialingForCampaign(campaign.campaignId)));
+  // Auditoría campañas 2026-07: en modo bucket el RITMO lo dan los agentes — una
+  // llamada por agente libre. El loop de abajo ya está acotado por assignedAgentIds
+  // (y por el chequeo idle + inFlightByAgent), así que basta con eso. Se ELIMINÓ el
+  // tope de concurrencia y el slotOverride del pool: eran vestigios del modelo de
+  // marcación por pool compartido y solo podían FRENAR a los agentes por debajo de
+  // su capacidad (p.ej. concurrencia=1 con 5 agentes → 1 sola llamada). El camino
+  // por pool (processCampaignLegacy) conserva ambos para el modo agentless.
+  let slotsLeft = assignedAgentIds.length;
 
   let dialedAny = false;
   for (const userId of assignedAgentIds) {
@@ -1659,8 +1658,10 @@ async function dialCycle(): Promise<{
       // Pilar 7 — presupuesto de slots de este ciclo (si hubo reparto por peso).
       const slotOverride = slotBudget.get(campaign.campaignId);
       if (useBuckets) {
-        await processCampaignWithBuckets(campaign, assignedAgentIds, slotOverride);
+        // Modo bucket (agentes): el ritmo lo dan los agentes, sin tope de pool.
+        await processCampaignWithBuckets(campaign, assignedAgentIds);
       } else {
+        // Modo pool / agentless (dormido): conserva el presupuesto de orquestación.
         await processCampaignLegacy(campaign, slotOverride);
       }
       const pending = await countPendingContacts(campaign.campaignId);

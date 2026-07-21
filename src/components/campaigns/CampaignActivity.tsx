@@ -195,6 +195,9 @@ export function CampaignActivity({
         display: "grid",
         gridTemplateColumns: isWhatsApp ? "1fr" : "1fr 1fr",
         gap: 14,
+        // align-items:start → cada card toma su altura natural (antes se estiraban
+        // a la más alta → la de Actividad vacía quedaba como una caja enorme).
+        alignItems: "start",
       }}
     >
       {/* ── Live feed ──────────────────────────────────────────── */}
@@ -216,14 +219,32 @@ export function CampaignActivity({
             {events.length === 0 && liveContacts.length === 0 ? (
               <div
                 style={{
-                  padding: 32,
+                  padding: "22px 24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 8,
                   textAlign: "center",
                   color: "var(--text-3)",
-                  fontSize: 12.5,
                 }}
               >
-                Aún no hay actividad. {isWhatsApp ? "Los envíos" : "Las llamadas"} y resultados
-                aparecerán aquí en tiempo real.
+                <span
+                  style={{
+                    display: "grid",
+                    placeItems: "center",
+                    width: 34,
+                    height: 34,
+                    borderRadius: "50%",
+                    background: "var(--bg-3)",
+                    color: "var(--text-3)",
+                  }}
+                >
+                  <Icon.Activity size={16} />
+                </span>
+                <div style={{ fontSize: 12, maxWidth: 260, lineHeight: 1.4 }}>
+                  Aún no hay actividad. {isWhatsApp ? "Los envíos" : "Las llamadas"} y resultados
+                  aparecerán aquí en tiempo real.
+                </div>
               </div>
             ) : (
               <>
@@ -387,13 +408,32 @@ export function CampaignActivity({
               {agentStats.length === 0 ? (
                 <div
                   style={{
-                    padding: 32,
+                    padding: "22px 24px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 8,
                     textAlign: "center",
                     color: "var(--text-3)",
-                    fontSize: 12.5,
                   }}
                 >
-                  Cuando los agentes empiecen a tomar llamadas verás aquí su rendimiento individual.
+                  <span
+                    style={{
+                      display: "grid",
+                      placeItems: "center",
+                      width: 34,
+                      height: 34,
+                      borderRadius: "50%",
+                      background: "var(--bg-3)",
+                      color: "var(--text-3)",
+                    }}
+                  >
+                    <Icon.Users size={16} />
+                  </span>
+                  <div style={{ fontSize: 12, maxWidth: 260, lineHeight: 1.4 }}>
+                    Cuando los agentes empiecen a tomar llamadas verás aquí su rendimiento
+                    individual.
+                  </div>
                 </div>
               ) : (
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>

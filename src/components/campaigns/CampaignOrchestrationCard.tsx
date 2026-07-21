@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
+import { SegmentedControl } from "@/components/ui/segmented";
+import { RadioCards } from "@/components/ui/radio-cards";
 import { useCampaignMutations } from "@/hooks/useCampaignMutations";
 
 interface Props {
@@ -12,17 +14,40 @@ interface Props {
   goalTarget?: number;
   connectedCount?: number;
   conversionsCount?: number;
+  /** true si la campaña es POR AGENTES (progressive/manual) — el caso normal. El
+   *  peso y el pool global reparten un pool COMPARTIDO, que solo existe en modo
+   *  agentless (bucketMode=false, hoy fuera del UI) → con agentes se ocultan. */
+  bucketMode?: boolean;
   disabled?: boolean;
   onUpdated?: () => void;
 }
 
+const label: React.CSSProperties = {
+  fontSize: 10.5,
+  letterSpacing: "0.05em",
+  textTransform: "uppercase",
+  color: "var(--text-3)",
+  fontWeight: 650,
+};
+const numInput: React.CSSProperties = {
+  width: 96,
+  padding: "8px 11px",
+  fontSize: 14,
+  fontWeight: 600,
+  border: "1px solid var(--border-1)",
+  borderRadius: 9,
+  background: "var(--bg-2)",
+  color: "var(--text-1)",
+};
+
 /**
- * Orquestación (Pilar 7) — control de blend del supervisor por campaña:
- *  · Prioridad (1-10) — quién se sirve primero cuando el pool no alcanza.
- *  · Peso — el % del pool global (la repartición 80/20).
- *  · Meta — parar a N contactados / N conversiones (auto-completa).
- *  · Pool global del tenant — nº máx de marcaciones simultáneas (= agentes).
- * Cambios en vivo (set-blend / set-pool), efectivos en el próximo tick (~60s).
+ * Orquestación (Pilar 7) — control de blend por campaña, CONSCIENTE del modo:
+ *  · Prioridad — orden en que el discador sirve las campañas (aplica en todo modo).
+ *  · Meta — parar a N contactados / conversiones (aplica en todo modo).
+ *  · Peso + Pool global — SOLO en modo pool compartido (agentless / sin agentes):
+ *    reparten un pool común. Con agentes asignados no hay pool que repartir → se
+ *    ocultan (antes se mostraban siempre y podían frenar una campaña por error).
+ * Controles modernos: SegmentedControl (prioridad/peso) + RadioCards (meta).
  */
 export function CampaignOrchestrationCard({
   campaignId,
@@ -32,6 +57,7 @@ export function CampaignOrchestrationCard({
   goalTarget,
   connectedCount,
   conversionsCount,
+  bucketMode,
   disabled,
   onUpdated,
 }: Props) {
@@ -54,7 +80,9 @@ export function CampaignOrchestrationCard({
     setBusy(true);
     try {
       await setBlend(campaignId, next);
-      toast.success("Blend actualizado", { description: "Efectivo en el próximo tick (~60s)" });
+      toast.success("Orquestación actualizada", {
+        description: "Efectivo en el próximo tick (~60s)",
+      });
       onUpdated?.();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error");
@@ -96,7 +124,7 @@ export function CampaignOrchestrationCard({
     }
   };
 
-  // Avance de meta.
+  // Meta — avance.
   const goalCurrent =
     gType === "contacts"
       ? Number(connectedCount || 0)
@@ -108,13 +136,28 @@ export function CampaignOrchestrationCard({
       ? Math.min(100, Math.round((goalCurrent / Number(gTarget)) * 100))
       : 0;
 
-  const label: React.CSSProperties = {
-    fontSize: 10.5,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
-    color: "var(--text-3)",
-    fontWeight: 600,
-  };
+  // Prioridad como niveles nombrados (el tick usa prioridad RELATIVA). El activo
+  // es el nivel MÁS CERCANO al valor guardado — no se reescribe hasta que el
+  // usuario elige uno (sin escrituras silenciosas).
+  const PRIO_LEVELS = [
+    { value: "3", label: "Baja", color: "var(--text-3)" },
+    { value: "5", label: "Normal", color: "var(--accent-cyan)" },
+    { value: "8", label: "Alta", color: "var(--accent-violet)" },
+    { value: "10", label: "Máxima", color: "var(--accent-red)" },
+  ];
+  const prioSel = PRIO_LEVELS.reduce((best, o) =>
+    Math.abs(Number(o.value) - prio) < Math.abs(Number(best.value) - prio) ? o : best,
+  ).value;
+
+  const WEIGHTS = [
+    { value: "1", label: "1×" },
+    { value: "2", label: "2×" },
+    { value: "3", label: "3×" },
+    { value: "5", label: "5×" },
+  ];
+  const wSel = WEIGHTS.reduce((best, o) =>
+    Math.abs(Number(o.value) - w) < Math.abs(Number(best.value) - w) ? o : best,
+  ).value;
 
   return (
     <Card>
@@ -123,173 +166,153 @@ export function CampaignOrchestrationCard({
           <Icon.Workflow size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
           Orquestación
         </div>
-        <span className="card__sub">prioridad · peso · meta — efectivo en ≤60s</span>
+        <span className="card__sub">
+          {bucketMode ? "prioridad · meta — efectivo en ≤60s" : "prioridad · peso · meta — ≤60s"}
+        </span>
       </div>
       <CardBody>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Prioridad */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          {/* ── Prioridad (aplica en todo modo) ─────────────────────────── */}
           <div>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <span style={label}>Prioridad</span>
-              <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{prio}/10</span>
-            </div>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              step={1}
-              value={prio}
-              disabled={disabled || busy}
-              onChange={(e) => setPrio(parseInt(e.target.value, 10))}
-              onMouseUp={(e) =>
-                commitBlend({ priority: parseInt((e.target as HTMLInputElement).value, 10) })
-              }
-              onTouchEnd={(e) =>
-                commitBlend({ priority: parseInt((e.target as HTMLInputElement).value, 10) })
-              }
-              style={{ width: "100%", accentColor: "var(--accent-violet)" }}
+            <div style={{ ...label, marginBottom: 6 }}>Prioridad</div>
+            <SegmentedControl
+              aria-label="Prioridad de la campaña"
+              value={prioSel}
+              onValueChange={(v) => {
+                setPrio(Number(v));
+                void commitBlend({ priority: Number(v) });
+              }}
+              options={PRIO_LEVELS}
             />
-            <div className="muted" style={{ fontSize: 10 }}>
-              Mayor = se sirve primero cuando el pool no alcanza.
+            <div className="muted" style={{ fontSize: 10.5, marginTop: 6 }}>
+              Mayor prioridad = el discador la sirve primero cuando no alcanzan los agentes.
             </div>
           </div>
 
-          {/* Peso */}
+          {/* ── Meta (aplica en todo modo) ──────────────────────────────── */}
           <div>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <span style={label}>Peso (% del pool)</span>
-              <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{w}×</span>
-            </div>
-            <input
-              type="range"
-              min={0.5}
-              max={5}
-              step={0.5}
-              value={w}
-              disabled={disabled || busy}
-              onChange={(e) => setW(parseFloat(e.target.value))}
-              onMouseUp={(e) =>
-                commitBlend({ weight: parseFloat((e.target as HTMLInputElement).value) })
-              }
-              onTouchEnd={(e) =>
-                commitBlend({ weight: parseFloat((e.target as HTMLInputElement).value) })
-              }
-              style={{ width: "100%", accentColor: "var(--accent-cyan)" }}
+            <div style={{ ...label, marginBottom: 6 }}>Meta — auto-completa al alcanzarla</div>
+            <RadioCards
+              aria-label="Tipo de meta"
+              columns={3}
+              value={gType}
+              onValueChange={setGType}
+              options={[
+                {
+                  value: "none",
+                  label: "Sin meta",
+                  icon: <Icon.Workflow size={14} />,
+                  description: "Corre hasta agotar los contactos.",
+                },
+                {
+                  value: "contacts",
+                  label: "Contactados",
+                  color: "var(--accent-cyan)",
+                  icon: <Icon.Phone size={14} />,
+                  description: "Para al llegar a N atendidas.",
+                },
+                {
+                  value: "conversions",
+                  label: "Conversiones",
+                  color: "var(--accent-green)",
+                  icon: <Icon.Check size={14} />,
+                  description: "Para al llegar a N ventas.",
+                },
+              ]}
             />
-            <div className="muted" style={{ fontSize: 10 }}>
-              De la repartición sale el 80/20 entre campañas activas.
-            </div>
-          </div>
-
-          {/* Meta */}
-          <div>
-            <span style={label}>Meta (auto-completa al alcanzarla)</span>
-            <div
-              className="row"
-              style={{ gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}
-            >
-              <select
-                value={gType}
-                disabled={disabled || busy}
-                onChange={(e) => setGType(e.target.value)}
-                style={{
-                  padding: "7px 10px",
-                  fontSize: 13,
-                  border: "1px solid var(--border-1)",
-                  borderRadius: 8,
-                  background: "var(--bg-2)",
-                  color: "var(--text-1)",
-                }}
+            {gType !== "none" && (
+              <div
+                className="row"
+                style={{ gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}
               >
-                <option value="none">Sin meta</option>
-                <option value="contacts">Contactados</option>
-                <option value="conversions">Conversiones</option>
-              </select>
-              {gType !== "none" && (
                 <input
                   type="number"
                   min={0}
                   value={gTarget}
                   onChange={(e) => setGTarget(e.target.value)}
-                  placeholder="N"
+                  placeholder="Meta (N)"
                   disabled={disabled || busy}
-                  style={{
-                    width: 90,
-                    padding: "7px 10px",
-                    fontSize: 13,
-                    border: "1px solid var(--border-1)",
-                    borderRadius: 8,
-                    background: "var(--bg-2)",
-                    color: "var(--text-1)",
-                  }}
+                  style={numInput}
                 />
-              )}
-              <button className="btn btn--sm" onClick={commitGoal} disabled={disabled || busy}>
-                Guardar meta
-              </button>
-            </div>
-            {gType !== "none" && Number(gTarget) > 0 && (
-              <div style={{ marginTop: 8 }}>
-                <div className="row" style={{ justifyContent: "space-between", fontSize: 11 }}>
-                  <span className="muted">
-                    {goalCurrent} / {gTarget}{" "}
-                    {gType === "contacts" ? "contactados" : "conversiones"}
+                <button
+                  className="btn btn--sm btn--primary"
+                  onClick={commitGoal}
+                  disabled={disabled || busy}
+                >
+                  Guardar meta
+                </button>
+                {Number(gTarget) > 0 && (
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    {goalCurrent} / {gTarget} · {goalPct}%
                   </span>
-                  <span style={{ fontWeight: 700 }}>{goalPct}%</span>
-                </div>
+                )}
+              </div>
+            )}
+            {gType !== "none" && Number(gTarget) > 0 && (
+              <div
+                style={{
+                  height: 6,
+                  background: "var(--bg-3)",
+                  borderRadius: 999,
+                  overflow: "hidden",
+                  marginTop: 8,
+                }}
+              >
                 <div
                   style={{
-                    height: 6,
-                    background: "var(--bg-2)",
-                    borderRadius: 999,
-                    overflow: "hidden",
-                    marginTop: 4,
+                    height: "100%",
+                    width: `${goalPct}%`,
+                    background: "var(--accent-green)",
                   }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${goalPct}%`,
-                      background: "var(--accent-green)",
-                    }}
-                  />
-                </div>
+                />
               </div>
             )}
           </div>
 
-          {/* Pool global del tenant */}
-          <div style={{ borderTop: "1px solid var(--border-1)", paddingTop: 12 }}>
-            <span style={label}>Pool global (máx. marcaciones simultáneas)</span>
-            <div
-              className="row"
-              style={{ gap: 8, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}
-            >
-              <input
-                type="number"
-                min={0}
-                value={pool}
-                onChange={(e) => setPoolVal(e.target.value)}
-                placeholder="ej. nº de agentes"
-                disabled={busy}
-                style={{
-                  width: 140,
-                  padding: "7px 10px",
-                  fontSize: 13,
-                  border: "1px solid var(--border-1)",
-                  borderRadius: 8,
-                  background: "var(--bg-2)",
-                  color: "var(--text-1)",
-                }}
-              />
-              <button className="btn btn--sm" onClick={commitPool} disabled={busy}>
-                Aplicar
-              </button>
-              <span className="muted" style={{ fontSize: 10.5 }}>
-                0 = sin tope. Ponlo ≈ agentes para que el 80/20 muerda.
-              </span>
-            </div>
-          </div>
+          {/* ── Peso + Pool global — SOLO modo pool compartido (agentless, hoy
+                dormido). Con agentes asignados no se muestran: cada campaña tiene
+                sus propios agentes, no hay pool que repartir. ─────────────── */}
+          {!bucketMode && (
+            <>
+              <div>
+                <div style={{ ...label, marginBottom: 6 }}>Peso del pool</div>
+                <SegmentedControl
+                  aria-label="Peso de la campaña"
+                  value={wSel}
+                  onValueChange={(v) => {
+                    setW(Number(v));
+                    void commitBlend({ weight: Number(v) });
+                  }}
+                  options={WEIGHTS.map((o) => ({ ...o, color: "var(--accent-cyan)" }))}
+                />
+                <div className="muted" style={{ fontSize: 10.5, marginTop: 6 }}>
+                  Reparte el pool compartido entre campañas activas (el 80/20).
+                </div>
+              </div>
+              <div style={{ borderTop: "1px solid var(--border-1)", paddingTop: 14 }}>
+                <div style={{ ...label, marginBottom: 6 }}>
+                  Pool global — máx. marcaciones simultáneas
+                </div>
+                <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    type="number"
+                    min={0}
+                    value={pool}
+                    onChange={(e) => setPoolVal(e.target.value)}
+                    placeholder="≈ nº agentes"
+                    disabled={busy}
+                    style={{ ...numInput, width: 130 }}
+                  />
+                  <button className="btn btn--sm" onClick={commitPool} disabled={busy}>
+                    Aplicar
+                  </button>
+                  <span className="muted" style={{ fontSize: 10.5 }}>
+                    0 = sin tope. Ponlo ≈ agentes para que el 80/20 muerda.
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </CardBody>
     </Card>

@@ -428,7 +428,7 @@ export function AssignedAgentsPanel({ campaign, participatingAgentsCount = 0 }: 
                     <span
                       className="muted"
                       style={{ fontSize: 9.5, flexShrink: 0 }}
-                      title="Queue añadida automáticamente al routing profile"
+                      title="Cola añadida automáticamente al perfil de ruteo"
                     >
                       · auto
                     </span>

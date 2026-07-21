@@ -7,7 +7,6 @@ import { CampaignRowMenu, type RowMenuItem } from "@/components/campaigns/Campai
 import { getApiEndpoints } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import { NotIntegrated } from "@/components/vox/NotIntegrated";
-import { CampaignBlendBoard } from "@/components/campaigns/CampaignBlendBoard";
 import { useConnections } from "@/hooks/useConnections";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useCan } from "@/hooks/usePermissions";
@@ -314,9 +313,6 @@ export function CampaignsPage() {
           sub="acumulado"
         />
       </div>
-
-      {/* Pilar 7 · Fase B — tablero blend en vivo (solo si hay voz activa). */}
-      <CampaignBlendBoard />
 
       <Card
         title={

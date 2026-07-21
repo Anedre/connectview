@@ -10,14 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import {
-  Upload,
-  FileSpreadsheet,
-  CheckCircle2,
-  AlertTriangle,
-  Loader2,
-  Plus,
-} from "lucide-react";
+import { Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { parseCsvText, parsePhoneList, type ParsedContact } from "@/lib/csvParser";
 import { useCampaignContactMutations } from "@/hooks/useCampaignContactMutations";
@@ -63,7 +56,7 @@ export function AddContactsDialog({ campaignId, open, onClose, onAdded }: Props)
       setContacts(result.contacts);
       setSkipped(result.skipped.map((s) => ({ reason: s.reason })));
       toast.success(
-        `${result.contacts.length} contactos parseados (${result.skipped.length} skipped)`
+        `${result.contacts.length} contactos parseados (${result.skipped.length} skipped)`,
       );
     } catch (err) {
       setParseError(err instanceof Error ? err.message : "Parse error");
@@ -91,12 +84,10 @@ export function AddContactsDialog({ campaignId, open, onClose, onAdded }: Props)
           phone: c.phone,
           customerName: c.customerName,
           attributes: c.attributes,
-        }))
+        })),
       );
       toast.success(
-        `${res.inserted} contactos agregados${
-          res.skipped ? ` (${res.skipped} inválidos)` : ""
-        }`
+        `${res.inserted} contactos agregados${res.skipped ? ` (${res.skipped} inválidos)` : ""}`,
       );
       onAdded();
       onClose();
@@ -111,17 +102,15 @@ export function AddContactsDialog({ campaignId, open, onClose, onAdded }: Props)
         <DialogHeader>
           <DialogTitle>Agregar contactos a la campaña</DialogTitle>
           <DialogDescription>
-            Se agregan como <strong>pending</strong>. Si la campaña está
-            RUNNING, el dialer los tomará en el próximo tick.
+            Se agregan como <strong>pendientes</strong>. Si la campaña está activa, el discador los
+            tomará en el próximo ciclo.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex gap-2 rounded-lg border p-1">
           <button
             className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${
-              inputMode === "csv"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
+              inputMode === "csv" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
             }`}
             onClick={() => setInputMode("csv")}
           >
@@ -130,9 +119,7 @@ export function AddContactsDialog({ campaignId, open, onClose, onAdded }: Props)
           </button>
           <button
             className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${
-              inputMode === "paste"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
+              inputMode === "paste" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
             }`}
             onClick={() => setInputMode("paste")}
           >
@@ -147,9 +134,7 @@ export function AddContactsDialog({ campaignId, open, onClose, onAdded }: Props)
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload className="h-8 w-8 text-muted-foreground" />
-              <p className="mt-2 text-sm font-medium">
-                Click para subir CSV
-              </p>
+              <p className="mt-2 text-sm font-medium">Click para subir CSV</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 Auto-detecta columnas · normaliza E.164
               </p>
@@ -236,10 +221,7 @@ export function AddContactsDialog({ campaignId, open, onClose, onAdded }: Props)
           <Button variant="ghost" onClick={onClose}>
             Cancelar
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={pending || contacts.length === 0}
-          >
+          <Button onClick={handleSubmit} disabled={pending || contacts.length === 0}>
             {pending ? (
               <>
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />

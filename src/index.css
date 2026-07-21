@@ -4565,15 +4565,17 @@ textarea:focus {
   transition: width 0.4s var(--ease);
 }
 
-/* ---- Tarjetas de conteo (6): panel contenido + estado activo con glow ---- */
+/* ---- Tarjetas de conteo: stat-strip compacto, número-primero ----
+   Nº de columnas = nº de tiles (voz=7, WhatsApp=4) vía --tile-count inline →
+   una sola fila, sin el 7º huérfano. Responsive baja a 4 / 2. */
 .cdet-tiles {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(var(--tile-count, 7), minmax(0, 1fr));
+  gap: 10px;
 }
 @media (max-width: 1180px) {
   .cdet-tiles {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 @media (max-width: 620px) {
@@ -4589,10 +4591,10 @@ textarea:focus {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  gap: 7px;
   text-align: left;
-  padding: 13px 14px;
-  border-radius: 14px;
+  padding: 11px 13px 12px;
+  border-radius: 13px;
   border: 1px solid var(--border-1);
   background: var(--bg-2);
   cursor: pointer;
@@ -4644,33 +4646,53 @@ textarea:focus {
   min-width: 0;
 }
 .cdet-tile__ico {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
+  width: 25px;
+  height: 25px;
+  border-radius: 7px;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
   color: var(--_c);
-  background: color-mix(in srgb, var(--_c) 15%, var(--bg-1));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--_c) 24%, transparent);
+  background: color-mix(in srgb, var(--_c) 16%, var(--bg-1));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--_c) 26%, transparent);
 }
 .cdet-tile__label {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 750;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Número = dato en TINTA de alto contraste (el color de estado lo lleva el ícono).
+   Antes iba en --_c → los "pendientes/suprimidos" (gris) se leían apagados. */
 .cdet-tile__val {
-  font-size: 26px;
-  font-weight: 800;
+  font-size: 29px;
+  font-weight: 820;
   letter-spacing: -0.03em;
   line-height: 1;
-  color: var(--_c);
+  color: var(--text-1);
   font-variant-numeric: tabular-nums;
+}
+/* Un bucket en 0 no debe competir con los que tienen datos: se atenúa a gris
+   → los no-cero (con color de ícono + número en tinta) saltan a la vista. */
+.cdet-tile--zero {
+  background: color-mix(in srgb, var(--bg-2) 60%, var(--bg-1));
+}
+.cdet-tile--zero .cdet-tile__val {
+  color: var(--text-3);
+  font-weight: 750;
+}
+.cdet-tile--zero .cdet-tile__ico {
+  opacity: 0.5;
+}
+
+/* ---- Stepper (ui/stepper.tsx): hover de los botones − / + ---- */
+.tstep__btn:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--text-1) !important;
 }
 
 /* ---- Métricas en vivo: cada visual en su propio panel contenido ---- */

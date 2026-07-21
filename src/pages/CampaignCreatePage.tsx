@@ -21,7 +21,6 @@ import {
   Phone,
   MessageSquare,
   User,
-  Bot,
   Zap,
   Check,
   ShieldCheck,
@@ -113,22 +112,10 @@ const DIAL_MODES: Array<{ value: string; label: string; short: string; icon: Luc
     icon: Phone,
   },
   {
-    value: "power",
-    label: "Automático — 2 a la vez",
-    short: "Marca 2 por agente libre, prioriza el primero que conteste.",
-    icon: Zap,
-  },
-  {
     value: "manual",
     label: "Manual — el agente decide",
     short: "Los leads aparecen en lista; el agente elige cuándo marcar.",
     icon: User,
-  },
-  {
-    value: "agentless",
-    label: "Sin agente (IVR / encuesta)",
-    short: "Marca sin agente; atiende un flujo automático.",
-    icon: Bot,
   },
 ];
 const TIMEZONES = [
@@ -272,7 +259,10 @@ export function CampaignCreatePage() {
   const [contactFlowId, setContactFlowId] = useState("");
   const [campaignQueueId, setCampaignQueueId] = useState("");
   const [dialMode, setDialMode] = useState("progressive");
-  const [concurrency, setConcurrency] = useState(5);
+  // Fijo: las campañas corren por AGENTES, el ritmo lo dan ellos (no un tope de
+  // concurrencia del modelo de pool). Se envía un default inofensivo; el discador
+  // lo ignora en modo bucket. Ver auditoría de campañas 2026-07.
+  const concurrency = 5;
   const [timezone, setTimezone] = useState("America/Lima");
   const [windowStartHour, setWindowStartHour] = useState(9);
   const [windowEndHour, setWindowEndHour] = useState(18);
@@ -1789,22 +1779,6 @@ export function CampaignCreatePage() {
               <div className="camp-adv">
                 <div className="camp-adv__title">Personalización avanzada</div>
                 <div className="camp-2col">
-                  <div className="camp-field">
-                    <label className="camp-lbl">Llamadas simultáneas</label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={concurrency}
-                      onChange={(e) => setConcurrency(parseInt(e.target.value) || 1)}
-                    />
-                    <span
-                      className="muted"
-                      style={{ fontSize: 10.5, display: "block", marginTop: 4, lineHeight: 1.4 }}
-                    >
-                      Tope <strong>total</strong> de llamadas marcando a la vez en toda la campaña.
-                    </span>
-                  </div>
                   <div className="camp-field">
                     <label className="camp-lbl">Cola por agente</label>
                     <Input

@@ -216,7 +216,7 @@ export function CampaignCharts({
                 marginBottom: 6,
               }}
             >
-              Progreso · últimos {Math.min(buffer.length, 30)} samples
+              Progreso · últimas {Math.min(buffer.length, 30)} muestras
             </div>
             <div
               style={{
@@ -427,7 +427,7 @@ function Gauge({
           alignSelf: "flex-start",
         }}
       >
-        {isWhatsApp ? "Ritmo · mensajes/min" : "Pace · llamadas/min"}
+        {isWhatsApp ? "Ritmo · mensajes/min" : "Ritmo · llamadas/min"}
       </div>
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
         <path

@@ -12,6 +12,7 @@ import { useCustomerNamesByPhone } from "@/hooks/useCustomerNamesByPhone";
 import { getApiEndpoints } from "@/lib/api";
 import { authedFetch } from "@/lib/authedFetch";
 import { formatDistanceToNow, format } from "date-fns";
+import { es } from "date-fns/locale";
 import { EditCampaignDialog } from "@/components/campaigns/EditCampaignDialog";
 import { AddContactsDialog } from "@/components/campaigns/AddContactsDialog";
 import { EditContactDialog } from "@/components/campaigns/EditContactDialog";
@@ -42,6 +43,19 @@ const STATUS_CHIP: Record<string, string> = {
   done: "chip chip--green",
   no_answer: "chip chip--amber",
   failed: "chip chip--red",
+};
+
+// Etiqueta legible (ES) de cada estado de contacto. Antes la tabla mostraba el
+// string crudo ("no_answer", "dialing") mientras el resto de la página usaba
+// español → dos vocabularios en la misma pantalla. Este mapa unifica.
+const STATUS_LABEL_ES: Record<string, string> = {
+  pending: "Pendiente",
+  dialing: "Marcando",
+  connected: "Conectado",
+  done: "Completado",
+  no_answer: "Sin contestar",
+  failed: "Fallido",
+  suppressed: "Suprimido",
 };
 
 const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
@@ -78,6 +92,11 @@ export function CampaignDetailPage() {
   // Contacts table — search + bulk select state.
   const [contactSearch, setContactSearch] = useState("");
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  // Reorganización en 3 vistas para no apilar ~12 bloques en una columna:
+  //  · live    — dashboard en vivo (tiles + gráficos + monitoreo + actividad)
+  //  · contacts— la tabla de contactos (buscador, filtros, export, masivas)
+  //  · config  — pacing + orquestación + agentes (voz) / plantilla (WhatsApp)
+  const [tab, setTab] = useState<"live" | "contacts" | "config">("live");
 
   // ── Filtered contacts (search + status filter) ────────────────
   // Must live above the early-return guards — calling hooks
@@ -331,6 +350,13 @@ export function CampaignDetailPage() {
 
   // ── Ventana de llamadas: avisar si está fuera de horario (causa #1 de "parece colgada") ──
   const isWa = String(c.campaignType || "voice").toLowerCase() === "whatsapp";
+  // Campaña POR AGENTES (progressive/manual) vs POOL (agentless). Lo define el
+  // dialMode, NO el nº de agentes: una campaña por agentes sigue siéndolo aunque
+  // todavía no tenga agentes asignados. Solo las agentless (modelo pool, hoy fuera
+  // del UI) muestran los controles de peso/pool. `agentCount` alimenta el mensaje
+  // del Ritmo (manual / N agentes / sin agentes aún).
+  const agentCount = assignedAgents.length;
+  const bucketMode = String(c.dialMode || "").toLowerCase() !== "agentless";
   const win = (() => {
     try {
       const tz = c.timezone || "America/Lima";
@@ -414,6 +440,14 @@ export function CampaignDetailPage() {
       }
       return next;
     });
+  };
+
+  // Click en un tile/chip de estado → filtra la tabla Y salta a la vista
+  // Contactos para ver el resultado. Toggle: volver a clickear el mismo estado
+  // limpia el filtro (y se queda en Contactos, donde el chip ✕ también lo limpia).
+  const applyFilterAndView = (status: string | null) => {
+    setFilterStatus((prev) => (prev === status ? null : status));
+    if (status) setTab("contacts");
   };
 
   // Reintento MANUAL de los seleccionados: los devuelve a `pending` con
@@ -641,7 +675,7 @@ export function CampaignDetailPage() {
             </span>
             {c.createdAt && (
               <span className="cdet-meta-chip">
-                creada {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
+                creada {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: es })}
               </span>
             )}
           </span>
@@ -657,78 +691,15 @@ export function CampaignDetailPage() {
             <div className="cdet-hero__cap">Contactos procesados · {pct}%</div>
           </div>
           <div className="cdet-hero__chips">
-            <div className="row" style={{ gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}>
-              {/* Pending — show only when there's something pending. */}
-              {counts.pending > 0 && (
-                <button
-                  className={`chip${filterStatus === "pending" ? " chip--amber" : ""}`}
-                  onClick={() => setFilterStatus(filterStatus === "pending" ? null : "pending")}
-                  style={{
-                    border: "1px solid var(--border-1)",
-                    cursor: "pointer",
-                    background: filterStatus === "pending" ? "var(--gold-soft)" : "transparent",
-                  }}
-                  title="Filtrar pendientes"
-                >
-                  <Icon.Clock size={11} /> {counts.pending} pendientes
-                </button>
-              )}
-              {counts.dialing + counts.connected > 0 && (
-                <span className="chip chip--green">
-                  <span className="dot pulse" />
-                  {counts.dialing + counts.connected} {isWa ? "enviando" : "en vivo"}
-                </span>
-              )}
-              {/* Finished-state outcome chips. Surface only the
-                  non-zero buckets so the user immediately sees the
-                  breakdown without the tiles row showing 1 lonely
-                  pill. Each chip is clickable to filter the table. */}
-              {(c.status === "COMPLETED" || c.status === "CANCELLED") && (
-                <>
-                  {counts.done > 0 && (
-                    <button
-                      className={`chip chip--green`}
-                      onClick={() => setFilterStatus(filterStatus === "done" ? null : "done")}
-                      style={{
-                        cursor: "pointer",
-                        outline: filterStatus === "done" ? "2px solid var(--green)" : "none",
-                      }}
-                      title="Filtrar completados"
-                    >
-                      <Icon.Check size={11} /> {counts.done} completados
-                    </button>
-                  )}
-                  {counts.no_answer > 0 && (
-                    <button
-                      className={`chip chip--amber`}
-                      onClick={() =>
-                        setFilterStatus(filterStatus === "no_answer" ? null : "no_answer")
-                      }
-                      style={{
-                        cursor: "pointer",
-                        outline: filterStatus === "no_answer" ? "2px solid var(--gold)" : "none",
-                      }}
-                      title="Filtrar sin contestar"
-                    >
-                      <Icon.Phone size={11} /> {counts.no_answer} sin contestar
-                    </button>
-                  )}
-                  {counts.failed > 0 && (
-                    <button
-                      className={`chip chip--red`}
-                      onClick={() => setFilterStatus(filterStatus === "failed" ? null : "failed")}
-                      style={{
-                        cursor: "pointer",
-                        outline: filterStatus === "failed" ? "2px solid var(--red)" : "none",
-                      }}
-                      title="Filtrar fallidos"
-                    >
-                      <Icon.Close size={11} /> {counts.failed} fallidos
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
+            {/* Dedup: el desglose por estado vive UNA sola vez en los tiles de la
+                vista "En vivo". El hero solo conserva el pulso de actividad viva
+                (contexto que se ve desde cualquier tab) y la hora de inicio. */}
+            {counts.dialing + counts.connected > 0 && (
+              <span className="chip chip--green">
+                <span className="dot pulse" />
+                {counts.dialing + counts.connected} {isWa ? "enviando" : "en vivo"}
+              </span>
+            )}
             {c.startedAt && (
               <div className="muted mono" style={{ fontSize: 11 }}>
                 Iniciada {format(new Date(c.startedAt), "HH:mm")}
@@ -741,62 +712,10 @@ export function CampaignDetailPage() {
           <span style={{ width: `${pct}%` }} />
         </div>
       </div>
+      {/* HeroBand solo empuja las ACCIONES al topbar global (renderiza null). Los
+          antiguos props title/chip los ignoraba el componente → eran ~55 líneas de
+          código muerto (nombre/estado/plantilla ya viven en el hero de arriba). */}
       <HeroBand
-        title={
-          <span className="row gap10" style={{ flexWrap: "wrap" }}>
-            <Btn
-              variant="ghost"
-              size="sm"
-              icon="chevL"
-              onClick={() => navigate("/campaigns")}
-              title="Volver a campañas"
-            />
-            <span style={{ minWidth: 0 }}>{c.name}</span>
-            <Pill tone={CAMPAIGN_STATUS_TONE[c.status] || "outline"} icon="dot">
-              {CAMPAIGN_STATUS_LABEL[c.status] || c.status}
-            </Pill>
-          </span>
-        }
-        chip={
-          <span className="row gap6 mono" style={{ flexWrap: "wrap" }}>
-            <span>{c.sourcePhoneNumber}</span>
-            <span>·</span>
-            {isWa ? (
-              <>
-                <span className="row" style={{ gap: 4 }}>
-                  <Icon.WhatsApp size={12} /> WhatsApp
-                </span>
-                {(c as unknown as { templateName?: string }).templateName && (
-                  <>
-                    <span>·</span>
-                    <span>
-                      {(c as unknown as { templateName?: string }).templateName}
-                      {(c as unknown as { templateLanguage?: string }).templateLanguage
-                        ? ` (${(c as unknown as { templateLanguage?: string }).templateLanguage})`
-                        : ""}
-                    </span>
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                <span>{c.dialMode}</span>
-                <span>·</span>
-                <span>concurrencia {c.concurrency}</span>
-              </>
-            )}
-            {c.createdAt && (
-              <>
-                <span>·</span>
-                <span>
-                  creada {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
-                </span>
-              </>
-            )}
-          </span>
-        }
-        chipIcon={isWa ? "wa" : "megaphone"}
-        chipTone={isWa ? "var(--green)" : "var(--accent)"}
         right={
           !canManage ? null : (
             <div className="row gap8" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -991,126 +910,151 @@ export function CampaignDetailPage() {
         </div>
       )}
 
-      {/* ── Charts (donut + sparkline + gauge) ───────────────────── */}
-      <CampaignCharts
-        counts={counts}
-        total={total}
-        startedAt={c.startedAt}
-        // Bug #25: freeze the "en curso" clock for terminated campaigns.
-        // We pass the endedAt (preferring the completedAt timestamp if
-        // the backend includes one) and `isFinished` so the header label
-        // flips to "de duración total".
-        endedAt={
-          (c as unknown as { completedAt?: string; endedAt?: string }).completedAt ||
-          (c as unknown as { completedAt?: string; endedAt?: string }).endedAt ||
-          null
-        }
-        isFinished={c.status === "COMPLETED" || c.status === "CANCELLED"}
-        isWhatsApp={isWa}
-      />
+      {/* ── Barra de vistas: 3 tabs para no apilar ~12 bloques en una columna ─ */}
+      <div className="tabs" role="tablist" aria-label="Vistas de la campaña">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "live"}
+          className={`tabs__tab${tab === "live" ? " tabs__tab--active" : ""}`}
+          onClick={() => setTab("live")}
+        >
+          En vivo
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "contacts"}
+          className={`tabs__tab${tab === "contacts" ? " tabs__tab--active" : ""}`}
+          onClick={() => setTab("contacts")}
+        >
+          Contactos <span className="count">{total}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "config"}
+          className={`tabs__tab${tab === "config" ? " tabs__tab--active" : ""}`}
+          onClick={() => setTab("config")}
+        >
+          Configuración
+        </button>
+      </div>
 
-      {/* ── Pacing controls (live tuning of concurrency) ─────────────
-           Solo para voz: WhatsApp no usa concurrencia ni modo de marcado. */}
-      {!isWa && (
-        <PacingControlCard
-          campaignId={c.campaignId}
-          concurrency={Number(c.concurrency) || 1}
-          dialMode={c.dialMode}
-          onUpdated={() => refresh()}
-          disabled={c.status === "COMPLETED" || c.status === "CANCELLED" || mutations.pending}
-        />
+      {/* ══════ VISTA: EN VIVO ══════
+           desglose de estados (tiles = fuente canónica + filtro) → métricas →
+           monitoreo por cola/agente → feed de actividad + leaderboard. */}
+      {tab === "live" && (
+        <>
+          {/* Tiles: el ÚNICO lugar con el desglose por estado. Cada uno filtra la
+              tabla y salta a la vista Contactos. --tile-count = nº de tiles → una
+              sola fila; los buckets en 0 se atenúan para que los con datos salten. */}
+          <div className="cdet-tiles" style={{ ["--tile-count" as string]: statusCards.length }}>
+            {statusCards.map((s) => {
+              const active = filterStatus === s.key;
+              const val = counts[s.key] ?? 0;
+              const Icn = s.Icn;
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  className={`cdet-tile${active ? " cdet-tile--active" : ""}${
+                    val === 0 ? " cdet-tile--zero" : ""
+                  }`}
+                  onClick={() => applyFilterAndView(s.key)}
+                  style={{ ["--_c" as string]: s.color }}
+                  title={`Ver contactos: ${s.label.toLowerCase()}`}
+                >
+                  <div className="cdet-tile__head">
+                    <span className="cdet-tile__ico">
+                      <Icn size={14} />
+                    </span>
+                    <span className="cdet-tile__label">{s.label}</span>
+                  </div>
+                  <div className="cdet-tile__val">{val}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Charts (donut + sparkline + gauge). Bug #25: el reloj se congela en
+              campañas terminadas vía endedAt/completedAt + isFinished. */}
+          <CampaignCharts
+            counts={counts}
+            total={total}
+            startedAt={c.startedAt}
+            endedAt={
+              (c as unknown as { completedAt?: string; endedAt?: string }).completedAt ||
+              (c as unknown as { completedAt?: string; endedAt?: string }).endedAt ||
+              null
+            }
+            isFinished={c.status === "COMPLETED" || c.status === "CANCELLED"}
+            isWhatsApp={isWa}
+          />
+
+          <CampaignMonitoringPanel byQueue={data.byQueue} byAgent={data.byAgent} />
+
+          <CampaignActivity
+            liveContacts={data.liveContacts}
+            contacts={contacts}
+            resolveAgentLabel={resolveAgentLabel}
+            isWhatsApp={isWa}
+            // Colgar una llamada puntual desde "En vivo ahora" (solo admins de
+            // campañas; el backend re-valida el rol vía JWT).
+            onHangup={canManage && !isWa ? handleHangupLive : undefined}
+          />
+        </>
       )}
 
-      {/* ── Orquestación (Pilar 7): prioridad · peso · meta · pool ─── */}
-      {!isWa && (
-        <CampaignOrchestrationCard
-          campaignId={c.campaignId}
-          priority={Number((c as unknown as { priority?: number }).priority) || undefined}
-          weight={Number((c as unknown as { weight?: number }).weight) || undefined}
-          goalType={(c as unknown as { goalType?: string }).goalType}
-          goalTarget={Number((c as unknown as { goalTarget?: number }).goalTarget) || undefined}
-          connectedCount={Number((c as unknown as { connectedCount?: number }).connectedCount) || 0}
-          conversionsCount={
-            Number((c as unknown as { conversionsCount?: number }).conversionsCount) || 0
-          }
-          onUpdated={() => refresh()}
-          disabled={c.status === "COMPLETED" || c.status === "CANCELLED" || mutations.pending}
-        />
-      )}
-
-      {/* ── WhatsApp: vista previa del mensaje real que se envía ───── */}
-      {isWa && (
-        <WhatsAppTemplateSummary
-          templateName={(c as unknown as { templateName?: string }).templateName}
-          templateLanguage={(c as unknown as { templateLanguage?: string }).templateLanguage}
-          templateVarColumns={(c as unknown as { templateVarColumns?: string }).templateVarColumns}
-        />
-      )}
-
-      {/* ── Status tiles (clickable filters) ─────────────────────── */}
-      {/*
-        For RUNNING / PAUSED / DRAFT campaigns we always render all 6
-        tiles so the manager can watch them tick. For COMPLETED /
-        CANCELLED we hide the row entirely — those outcomes are now
-        surfaced as compact clickable chips inside the progress
-        banner header, which avoids the "orphan tile" look that came
-        from only 1 bucket having a non-zero value.
-      */}
-      {c.status !== "COMPLETED" && c.status !== "CANCELLED" && (
-        <div className="cdet-tiles">
-          {statusCards.map((s) => {
-            const active = filterStatus === s.key;
-            const Icn = s.Icn;
-            return (
-              <button
-                key={s.key}
-                type="button"
-                className={`cdet-tile${active ? " cdet-tile--active" : ""}`}
-                onClick={() => setFilterStatus(active ? null : s.key)}
-                style={{ ["--_c" as string]: s.color }}
-                title={`Filtrar por ${s.label.toLowerCase()}`}
-              >
-                <div className="cdet-tile__head">
-                  <span className="cdet-tile__ico">
-                    <Icn size={15} />
-                  </span>
-                  <span className="cdet-tile__label">{s.label}</span>
-                </div>
-                <div className="cdet-tile__val">{counts[s.key] ?? 0}</div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Monitoreo en vivo: pools por cola/agente + nombres ──────── */}
-      <CampaignMonitoringPanel byQueue={data.byQueue} byAgent={data.byAgent} />
-
-      {/* ── Activity: live feed + agent leaderboard ──────────────── */}
-      <CampaignActivity
-        liveContacts={data.liveContacts}
-        contacts={contacts}
-        resolveAgentLabel={resolveAgentLabel}
-        isWhatsApp={isWa}
-        // Colgar una llamada puntual desde "En vivo ahora" (solo admins de
-        // campañas; el backend re-valida el rol vía JWT).
-        onHangup={canManage && !isWa ? handleHangupLive : undefined}
-      />
-
-      {/* Assigned agents — routing profile auto-configured.
-           WhatsApp no usa agentes (es envío de templates), así que se omite. */}
-      {!isWa && (
-        <AssignedAgentsPanel
-          campaign={c}
-          // Bug #28: pass the number of distinct agents who answered any
-          // contact so the panel can disambiguate "no assignees" vs
-          // "no assignees AND nobody answered yet".
-          participatingAgentsCount={
-            new Set(
-              contacts.map((r) => resolveAgentLabel(r.agentUsername)).filter((n) => n && n !== "—"),
-            ).size
-          }
-        />
+      {/* ══════ VISTA: CONFIGURACIÓN ══════
+           voz: pacing + orquestación (Pilar 7) + agentes asignados.
+           WhatsApp: vista previa de la plantilla que se envía. */}
+      {tab === "config" && (
+        <>
+          {isWa ? (
+            <WhatsAppTemplateSummary
+              templateName={(c as unknown as { templateName?: string }).templateName}
+              templateLanguage={(c as unknown as { templateLanguage?: string }).templateLanguage}
+              templateVarColumns={
+                (c as unknown as { templateVarColumns?: string }).templateVarColumns
+              }
+            />
+          ) : (
+            <>
+              <PacingControlCard dialMode={c.dialMode} agentCount={agentCount} />
+              <CampaignOrchestrationCard
+                campaignId={c.campaignId}
+                priority={Number((c as unknown as { priority?: number }).priority) || undefined}
+                weight={Number((c as unknown as { weight?: number }).weight) || undefined}
+                goalType={(c as unknown as { goalType?: string }).goalType}
+                goalTarget={
+                  Number((c as unknown as { goalTarget?: number }).goalTarget) || undefined
+                }
+                connectedCount={
+                  Number((c as unknown as { connectedCount?: number }).connectedCount) || 0
+                }
+                conversionsCount={
+                  Number((c as unknown as { conversionsCount?: number }).conversionsCount) || 0
+                }
+                bucketMode={bucketMode}
+                onUpdated={() => refresh()}
+                disabled={c.status === "COMPLETED" || c.status === "CANCELLED" || mutations.pending}
+              />
+              <AssignedAgentsPanel
+                campaign={c}
+                // Bug #28: nº de agentes distintos que atendieron algún contacto →
+                // el panel distingue "sin asignados" de "asignados pero nadie atendió".
+                participatingAgentsCount={
+                  new Set(
+                    contacts
+                      .map((r) => resolveAgentLabel(r.agentUsername))
+                      .filter((n) => n && n !== "—"),
+                  ).size
+                }
+              />
+            </>
+          )}
+        </>
       )}
 
       <EditCampaignDialog
@@ -1139,390 +1083,393 @@ export function CampaignDetailPage() {
         }}
       />
 
-      {/* ── Contacts table ───────────────────────────────────────── */}
-      <Card>
-        <div className="card__head" style={{ flexWrap: "wrap", gap: 8 }}>
-          <div className="card__title">
-            <Icon.Users size={17} /> Contactos
-          </div>
-          {filterStatus && (
-            <span className="chip chip--amber" style={{ fontSize: 10.5 }}>
-              filtro: {filterStatus}
-              <button
-                onClick={() => setFilterStatus(null)}
-                style={{
-                  marginLeft: 6,
-                  background: "transparent",
-                  border: "none",
-                  color: "inherit",
-                  cursor: "pointer",
-                  padding: 0,
-                  fontSize: 11,
-                }}
-              >
-                ✕
-              </button>
-            </span>
-          )}
-          <div
-            className="tb__search"
-            style={{
-              maxWidth: 240,
-              height: 28,
-              marginLeft: "auto",
-            }}
-          >
-            <Icon.Search size={12} />
-            <input
-              placeholder="Buscar contacto…"
-              value={contactSearch}
-              onChange={(e) => setContactSearch(e.target.value)}
-            />
-          </div>
-          <span className="card__sub">
-            {visibleContacts.length}/{contacts.length}
-          </span>
-          <Btn
-            variant="ghost"
-            size="sm"
-            icon="download"
-            onClick={handleExportCSV}
-            disabled={visibleContacts.length === 0}
-            title="Exportar contactos como CSV"
-          >
-            CSV
-          </Btn>
-          {c.status !== "COMPLETED" && c.status !== "CANCELLED" && (
-            <Btn variant="ghost" size="sm" icon="plus" onClick={() => setAddContactsOpen(true)}>
-              Agregar
-            </Btn>
-          )}
-        </div>
-
-        {/* Bulk action toolbar — shown when at least 1 row selected. */}
-        {selectedRowIds.size > 0 && (
-          <div
-            className="row"
-            style={{
-              padding: "8px 14px",
-              borderBottom: "1px solid var(--border-1)",
-              background: "var(--gold-soft)",
-              gap: 10,
-              fontSize: 12,
-            }}
-          >
-            <Icon.Check size={13} style={{ color: "var(--gold-2)" }} />
-            <span style={{ fontWeight: 600, color: "var(--text-1)" }}>
-              {selectedRowIds.size} seleccionado
-              {selectedRowIds.size === 1 ? "" : "s"}
-            </span>
-            {lockedRowCount > 0 && (
-              <span className="muted" style={{ fontSize: 11 }}>
-                ({lockedRowCount} bloqueado{lockedRowCount === 1 ? "" : "s"} por estar en llamada
-                activa)
+      {/* ══════ VISTA: CONTACTOS ══════ tabla con buscador, filtros, export y masivas */}
+      {tab === "contacts" && (
+        <Card>
+          <div className="card__head" style={{ flexWrap: "wrap", gap: 8 }}>
+            <div className="card__title">
+              <Icon.Users size={17} /> Contactos
+            </div>
+            {filterStatus && (
+              <span className="chip chip--amber" style={{ fontSize: 10.5 }}>
+                filtro: {STATUS_LABEL_ES[filterStatus] || filterStatus}
+                <button
+                  onClick={() => setFilterStatus(null)}
+                  style={{
+                    marginLeft: 6,
+                    background: "transparent",
+                    border: "none",
+                    color: "inherit",
+                    cursor: "pointer",
+                    padding: 0,
+                    fontSize: 11,
+                  }}
+                >
+                  ✕
+                </button>
               </span>
             )}
-            <Btn
-              variant="ghost"
-              size="sm"
+            <div
+              className="tb__search"
               style={{
+                maxWidth: 240,
+                height: 28,
                 marginLeft: "auto",
-                color: "var(--green-2)",
-                borderColor: "color-mix(in srgb,var(--green) 40%,var(--border-1))",
               }}
-              onClick={handleBulkRetry}
-              disabled={!canManage || mutations.pending || lockedRowCount === selectedRowIds.size}
-              title="Vuelve los seleccionados a la cola y marca ahora (sin esperar el reintento automático)"
             >
-              <Icon.Phone size={13} />
-              Reintentar ahora {selectedRowIds.size - lockedRowCount}
-            </Btn>
+              <Icon.Search size={12} />
+              <input
+                placeholder="Buscar contacto…"
+                value={contactSearch}
+                onChange={(e) => setContactSearch(e.target.value)}
+              />
+            </div>
+            <span className="card__sub">
+              {visibleContacts.length}/{contacts.length}
+            </span>
             <Btn
               variant="ghost"
               size="sm"
-              style={{
-                color: "var(--red)",
-                borderColor: "color-mix(in srgb,var(--red) 40%,var(--border-1))",
-              }}
-              onClick={handleBulkDelete}
-              disabled={contactMutations.pending || lockedRowCount === selectedRowIds.size}
+              icon="download"
+              onClick={handleExportCSV}
+              disabled={visibleContacts.length === 0}
+              title="Exportar contactos como CSV"
             >
-              <Icon.Trash size={13} />
-              Eliminar {selectedRowIds.size - lockedRowCount}
+              CSV
             </Btn>
-            <Btn variant="quiet" size="sm" onClick={() => setSelectedRowIds(new Set())}>
-              Limpiar
-            </Btn>
+            {c.status !== "COMPLETED" && c.status !== "CANCELLED" && (
+              <Btn variant="ghost" size="sm" icon="plus" onClick={() => setAddContactsOpen(true)}>
+                Agregar
+              </Btn>
+            )}
           </div>
-        )}
-        <CardBody flush>
-          <div style={{ maxHeight: 500, overflow: "auto" }}>
-            <table
+
+          {/* Bulk action toolbar — shown when at least 1 row selected. */}
+          {selectedRowIds.size > 0 && (
+            <div
+              className="row"
               style={{
-                width: "100%",
-                fontSize: 12.5,
-                borderCollapse: "collapse",
+                padding: "8px 14px",
+                borderBottom: "1px solid var(--border-1)",
+                background: "var(--gold-soft)",
+                gap: 10,
+                fontSize: 12,
               }}
             >
-              <thead
+              <Icon.Check size={13} style={{ color: "var(--gold-2)" }} />
+              <span style={{ fontWeight: 600, color: "var(--text-1)" }}>
+                {selectedRowIds.size} seleccionado
+                {selectedRowIds.size === 1 ? "" : "s"}
+              </span>
+              {lockedRowCount > 0 && (
+                <span className="muted" style={{ fontSize: 11 }}>
+                  ({lockedRowCount} bloqueado{lockedRowCount === 1 ? "" : "s"} por estar en llamada
+                  activa)
+                </span>
+              )}
+              <Btn
+                variant="ghost"
+                size="sm"
                 style={{
-                  position: "sticky",
-                  top: 0,
-                  background: "var(--bg-2)",
-                  zIndex: 1,
+                  marginLeft: "auto",
+                  color: "var(--green-2)",
+                  borderColor: "color-mix(in srgb,var(--green) 40%,var(--border-1))",
+                }}
+                onClick={handleBulkRetry}
+                disabled={!canManage || mutations.pending || lockedRowCount === selectedRowIds.size}
+                title="Vuelve los seleccionados a la cola y marca ahora (sin esperar el reintento automático)"
+              >
+                <Icon.Phone size={13} />
+                Reintentar ahora {selectedRowIds.size - lockedRowCount}
+              </Btn>
+              <Btn
+                variant="ghost"
+                size="sm"
+                style={{
+                  color: "var(--red)",
+                  borderColor: "color-mix(in srgb,var(--red) 40%,var(--border-1))",
+                }}
+                onClick={handleBulkDelete}
+                disabled={contactMutations.pending || lockedRowCount === selectedRowIds.size}
+              >
+                <Icon.Trash size={13} />
+                Eliminar {selectedRowIds.size - lockedRowCount}
+              </Btn>
+              <Btn variant="quiet" size="sm" onClick={() => setSelectedRowIds(new Set())}>
+                Limpiar
+              </Btn>
+            </div>
+          )}
+          <CardBody flush>
+            <div style={{ maxHeight: 500, overflow: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  fontSize: 12.5,
+                  borderCollapse: "collapse",
                 }}
               >
-                <tr>
-                  {/* Master checkbox */}
-                  <th
-                    style={{
-                      padding: "8px 6px",
-                      width: 32,
-                      borderBottom: "1px solid var(--border-1)",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        visibleContacts.length > 0 &&
-                        visibleContacts
-                          .filter((r) => r.status !== "dialing" && r.status !== "connected")
-                          .every((r) => selectedRowIds.has(r.rowId))
-                      }
-                      onChange={toggleAllSelected}
-                      title="Seleccionar todos los eligibles"
-                      style={{ cursor: "pointer" }}
-                    />
-                  </th>
-                  {[
-                    "Teléfono",
-                    "Nombre",
-                    "Estado",
-                    "Disposición",
-                    "Intentos",
-                    "Asignado a",
-                    "Atendido por",
-                    "Último intento",
-                    "Grabación",
-                    "",
-                  ].map((h, i) => (
-                    <th
-                      key={i}
-                      style={{
-                        padding: "8px 10px",
-                        textAlign: i === 9 ? "right" : "left",
-                        fontSize: 10.5,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                        color: "var(--text-3)",
-                        borderBottom: "1px solid var(--border-1)",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {visibleContacts.length === 0 && (
+                <thead
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    background: "var(--bg-2)",
+                    zIndex: 1,
+                  }}
+                >
                   <tr>
-                    <td
-                      colSpan={11}
+                    {/* Master checkbox */}
+                    <th
                       style={{
-                        padding: 32,
-                        textAlign: "center",
-                        color: "var(--text-3)",
-                        fontSize: 12.5,
+                        padding: "8px 6px",
+                        width: 32,
+                        borderBottom: "1px solid var(--border-1)",
                       }}
                     >
-                      {contactSearch
-                        ? `Ningún contacto coincide con "${contactSearch}".`
-                        : "Sin contactos para este filtro."}
-                    </td>
-                  </tr>
-                )}
-                {visibleContacts.map((row) => {
-                  const locked = row.status === "dialing" || row.status === "connected";
-                  const assignedLabel = resolveAgentLabel(row.assignedAgentUserId);
-                  const handlerLabel = resolveAgentLabel(row.agentUsername);
-                  const isSelected = selectedRowIds.has(row.rowId);
-                  const recUrl = !!(row.connectContactId && recordingEndpoint);
-                  return (
-                    <tr
-                      key={row.rowId}
-                      style={{
-                        borderTop: "1px solid var(--border-1)",
-                        background: isSelected ? "var(--gold-soft)" : undefined,
-                        transition: "background 0.12s ease",
-                      }}
-                    >
-                      <td style={{ padding: "8px 6px", textAlign: "center" }}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleRowSelected(row.rowId)}
-                          disabled={locked}
-                          title={locked ? "Llamada activa — no seleccionable" : "Seleccionar"}
-                          style={{ cursor: locked ? "not-allowed" : "pointer" }}
-                        />
-                      </td>
-                      <td className="mono" style={{ padding: "8px 10px", fontSize: 11.5 }}>
-                        {row.phone}
-                      </td>
-                      <td style={{ padding: "8px 10px", color: "var(--text-1)" }}>
-                        {row.customerName ? (
-                          row.customerName
-                        ) : namesByPhone[row.phone] ? (
-                          <span
-                            title="Resuelto desde Customer Profiles"
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                            }}
-                          >
-                            {namesByPhone[row.phone]}
-                            <span
-                              className="muted"
-                              style={{
-                                fontSize: 9,
-                                opacity: 0.6,
-                              }}
-                            >
-                              ◆
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                      <td style={{ padding: "8px 10px" }}>
-                        <span
-                          className={STATUS_CHIP[row.status] || "chip"}
-                          style={{ fontSize: 10.5 }}
-                        >
-                          {row.status}
-                        </span>
-                        {/* Reintento automático programado (no_answer → pending con
-                            nextRetryAt futuro): sin esto el admin ve "pending" con
-                            intentos ≥1 y no sabe por qué no marca todavía. */}
-                        {row.status === "pending" &&
-                          row.nextRetryAt &&
-                          Date.parse(row.nextRetryAt) > Date.now() && (
-                            <span
-                              className="muted"
-                              style={{ display: "block", fontSize: 10, marginTop: 2 }}
-                              title={`Reintento automático programado: ${new Date(row.nextRetryAt).toLocaleString("es-PE")}`}
-                            >
-                              ↻ reintenta{" "}
-                              {new Date(row.nextRetryAt).toLocaleTimeString("es-PE", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                          )}
-                      </td>
-                      <td style={{ padding: "6px 10px" }}>
-                        <DispositionSelect
-                          value={row.customAttributes?.disposition || ""}
-                          options={DISPOSITION_OPTIONS}
-                          // Only allow setting disposition once the call
-                          // has finished — pending / dialing / connected
-                          // don't have an outcome yet.
-                          disabled={
-                            row.status === "pending" ||
-                            row.status === "dialing" ||
-                            row.status === "connected" ||
-                            contactMutations.pending
-                          }
-                          onChange={(v) => handleSetDisposition(row, v)}
-                        />
-                      </td>
-                      <td className="mono" style={{ padding: "8px 10px", fontSize: 11.5 }}>
-                        {row.attempts}
-                      </td>
-                      <td style={{ padding: "8px 10px" }}>
-                        {assignedLabel === "—" ? (
-                          <span className="muted" style={{ fontSize: 11.5 }}>
-                            —
-                          </span>
-                        ) : (
-                          <span className="chip chip--amber" style={{ fontSize: 10 }}>
-                            {assignedLabel}
-                          </span>
-                        )}
-                      </td>
-                      <td
+                      <input
+                        type="checkbox"
+                        checked={
+                          visibleContacts.length > 0 &&
+                          visibleContacts
+                            .filter((r) => r.status !== "dialing" && r.status !== "connected")
+                            .every((r) => selectedRowIds.has(r.rowId))
+                        }
+                        onChange={toggleAllSelected}
+                        title="Seleccionar todos los eligibles"
+                        style={{ cursor: "pointer" }}
+                      />
+                    </th>
+                    {[
+                      "Teléfono",
+                      "Nombre",
+                      "Estado",
+                      "Disposición",
+                      "Intentos",
+                      "Asignado a",
+                      "Atendido por",
+                      "Último intento",
+                      "Grabación",
+                      "",
+                    ].map((h, i) => (
+                      <th
+                        key={i}
                         style={{
                           padding: "8px 10px",
-                          fontSize: 11.5,
-                          color: "var(--text-2)",
+                          textAlign: i === 9 ? "right" : "left",
+                          fontSize: 10.5,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          color: "var(--text-3)",
+                          borderBottom: "1px solid var(--border-1)",
+                          fontWeight: 500,
                         }}
                       >
-                        {handlerLabel === "—" ? <span className="muted">—</span> : handlerLabel}
-                      </td>
-                      <td className="muted" style={{ padding: "8px 10px", fontSize: 11 }}>
-                        {row.lastAttemptAt
-                          ? formatDistanceToNow(new Date(row.lastAttemptAt), {
-                              addSuffix: true,
-                            })
-                          : "—"}
-                      </td>
-                      <td style={{ padding: "8px 10px" }}>
-                        {recUrl ? (
-                          <button
-                            type="button"
-                            onClick={() => openRecording(row.connectContactId)}
-                            className="chip chip--cyan"
-                            style={{
-                              fontSize: 10.5,
-                              textDecoration: "none",
-                              border: "none",
-                              cursor: "pointer",
-                            }}
-                            title={`Escuchar (contactId ${row.connectContactId?.slice(-8)})`}
-                          >
-                            <Icon.Headset size={10} />
-                            Escuchar
-                          </button>
-                        ) : (
-                          <span className="muted" style={{ fontSize: 11 }}>
-                            —
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ padding: "8px 10px", textAlign: "right" }}>
-                        <div className="row" style={{ gap: 4, justifyContent: "flex-end" }}>
-                          <button
-                            className="btn btn--ghost btn--sm btn--icon"
-                            onClick={() => setEditingContact(row)}
-                            disabled={locked}
-                            title={locked ? "No se puede editar llamada activa" : "Editar"}
-                          >
-                            <Icon.Pencil size={12} />
-                          </button>
-                          <button
-                            className="btn btn--ghost btn--sm btn--icon"
-                            onClick={() => handleDeleteContact(row)}
-                            disabled={locked || contactMutations.pending}
-                            title={locked ? "No se puede eliminar llamada activa" : "Eliminar"}
-                            style={{
-                              color: locked ? undefined : "var(--red)",
-                            }}
-                          >
-                            <Icon.Trash size={12} />
-                          </button>
-                        </div>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleContacts.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={11}
+                        style={{
+                          padding: 32,
+                          textAlign: "center",
+                          color: "var(--text-3)",
+                          fontSize: 12.5,
+                        }}
+                      >
+                        {contactSearch
+                          ? `Ningún contacto coincide con "${contactSearch}".`
+                          : "Sin contactos para este filtro."}
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </CardBody>
-      </Card>
+                  )}
+                  {visibleContacts.map((row) => {
+                    const locked = row.status === "dialing" || row.status === "connected";
+                    const assignedLabel = resolveAgentLabel(row.assignedAgentUserId);
+                    const handlerLabel = resolveAgentLabel(row.agentUsername);
+                    const isSelected = selectedRowIds.has(row.rowId);
+                    const recUrl = !!(row.connectContactId && recordingEndpoint);
+                    return (
+                      <tr
+                        key={row.rowId}
+                        style={{
+                          borderTop: "1px solid var(--border-1)",
+                          background: isSelected ? "var(--gold-soft)" : undefined,
+                          transition: "background 0.12s ease",
+                        }}
+                      >
+                        <td style={{ padding: "8px 6px", textAlign: "center" }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleRowSelected(row.rowId)}
+                            disabled={locked}
+                            title={locked ? "Llamada activa — no seleccionable" : "Seleccionar"}
+                            style={{ cursor: locked ? "not-allowed" : "pointer" }}
+                          />
+                        </td>
+                        <td className="mono" style={{ padding: "8px 10px", fontSize: 11.5 }}>
+                          {row.phone}
+                        </td>
+                        <td style={{ padding: "8px 10px", color: "var(--text-1)" }}>
+                          {row.customerName ? (
+                            row.customerName
+                          ) : namesByPhone[row.phone] ? (
+                            <span
+                              title="Resuelto desde Customer Profiles"
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                              }}
+                            >
+                              {namesByPhone[row.phone]}
+                              <span
+                                className="muted"
+                                style={{
+                                  fontSize: 9,
+                                  opacity: 0.6,
+                                }}
+                              >
+                                ◆
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "8px 10px" }}>
+                          <span
+                            className={STATUS_CHIP[row.status] || "chip"}
+                            style={{ fontSize: 10.5 }}
+                          >
+                            {STATUS_LABEL_ES[row.status] || row.status}
+                          </span>
+                          {/* Reintento automático programado (no_answer → pending con
+                            nextRetryAt futuro): sin esto el admin ve "pending" con
+                            intentos ≥1 y no sabe por qué no marca todavía. */}
+                          {row.status === "pending" &&
+                            row.nextRetryAt &&
+                            Date.parse(row.nextRetryAt) > Date.now() && (
+                              <span
+                                className="muted"
+                                style={{ display: "block", fontSize: 10, marginTop: 2 }}
+                                title={`Reintento automático programado: ${new Date(row.nextRetryAt).toLocaleString("es-PE")}`}
+                              >
+                                ↻ reintenta{" "}
+                                {new Date(row.nextRetryAt).toLocaleTimeString("es-PE", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            )}
+                        </td>
+                        <td style={{ padding: "6px 10px" }}>
+                          <DispositionSelect
+                            value={row.customAttributes?.disposition || ""}
+                            options={DISPOSITION_OPTIONS}
+                            // Only allow setting disposition once the call
+                            // has finished — pending / dialing / connected
+                            // don't have an outcome yet.
+                            disabled={
+                              row.status === "pending" ||
+                              row.status === "dialing" ||
+                              row.status === "connected" ||
+                              contactMutations.pending
+                            }
+                            onChange={(v) => handleSetDisposition(row, v)}
+                          />
+                        </td>
+                        <td className="mono" style={{ padding: "8px 10px", fontSize: 11.5 }}>
+                          {row.attempts}
+                        </td>
+                        <td style={{ padding: "8px 10px" }}>
+                          {assignedLabel === "—" ? (
+                            <span className="muted" style={{ fontSize: 11.5 }}>
+                              —
+                            </span>
+                          ) : (
+                            <span className="chip chip--amber" style={{ fontSize: 10 }}>
+                              {assignedLabel}
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            padding: "8px 10px",
+                            fontSize: 11.5,
+                            color: "var(--text-2)",
+                          }}
+                        >
+                          {handlerLabel === "—" ? <span className="muted">—</span> : handlerLabel}
+                        </td>
+                        <td className="muted" style={{ padding: "8px 10px", fontSize: 11 }}>
+                          {row.lastAttemptAt
+                            ? formatDistanceToNow(new Date(row.lastAttemptAt), {
+                                addSuffix: true,
+                                locale: es,
+                              })
+                            : "—"}
+                        </td>
+                        <td style={{ padding: "8px 10px" }}>
+                          {recUrl ? (
+                            <button
+                              type="button"
+                              onClick={() => openRecording(row.connectContactId)}
+                              className="chip chip--cyan"
+                              style={{
+                                fontSize: 10.5,
+                                textDecoration: "none",
+                                border: "none",
+                                cursor: "pointer",
+                              }}
+                              title={`Escuchar (contactId ${row.connectContactId?.slice(-8)})`}
+                            >
+                              <Icon.Headset size={10} />
+                              Escuchar
+                            </button>
+                          ) : (
+                            <span className="muted" style={{ fontSize: 11 }}>
+                              —
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: "8px 10px", textAlign: "right" }}>
+                          <div className="row" style={{ gap: 4, justifyContent: "flex-end" }}>
+                            <button
+                              className="btn btn--ghost btn--sm btn--icon"
+                              onClick={() => setEditingContact(row)}
+                              disabled={locked}
+                              title={locked ? "No se puede editar llamada activa" : "Editar"}
+                            >
+                              <Icon.Pencil size={12} />
+                            </button>
+                            <button
+                              className="btn btn--ghost btn--sm btn--icon"
+                              onClick={() => handleDeleteContact(row)}
+                              disabled={locked || contactMutations.pending}
+                              title={locked ? "No se puede eliminar llamada activa" : "Eliminar"}
+                              style={{
+                                color: locked ? undefined : "var(--red)",
+                              }}
+                            >
+                              <Icon.Trash size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardBody>
+        </Card>
+      )}
       {confirmDialog}
     </div>
   );

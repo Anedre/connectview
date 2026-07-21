@@ -38,10 +38,11 @@ import { RadioCards } from "@/components/ui/radio-cards";
 import { Switch } from "@/components/ui/switch";
 import type { Campaign } from "@/hooks/useCampaigns";
 
+// Solo modos POR AGENTE (la operación no usa marcación por pool/agentless). El
+// modelo pool sigue soportado en el backend pero no se ofrece en el UI.
 const DIAL_MODES = [
-  { value: "progressive", label: "Progressive (1 llamada por agente libre)" },
-  { value: "power", label: "Power (2 llamadas por agente libre)" },
-  { value: "agentless", label: "Agentless (IVR sin agente)" },
+  { value: "progressive", label: "Progresivo (1 llamada por agente libre)" },
+  { value: "manual", label: "Manual (el agente inicia cada llamada)" },
 ];
 
 const TIMEZONES = [
@@ -215,14 +216,14 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Contact flow</Label>
+              <Label>Flujo de contacto</Label>
               <Select
                 value={contactFlowId}
                 onValueChange={(v) => setContactFlowId(v || "")}
                 disabled={flowsLoading || usesDirectFlow}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Elegir flow">
+                  <SelectValue placeholder="Elegir flujo">
                     {usesDirectFlow
                       ? "ARIA-Outbound-Direct (auto)"
                       : flows.find((f) => f.id === contactFlowId)?.name ||
@@ -247,7 +248,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
           </div>
 
           <div className="space-y-2">
-            <Label>Queue destino (para asignar agentes)</Label>
+            <Label>Cola destino (para asignar agentes)</Label>
             <Select
               value={campaignQueueId}
               onValueChange={(v) => {
@@ -257,7 +258,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
               disabled={queuesLoading}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Opcional — elegir queue">
+                <SelectValue placeholder="Opcional — elegir cola">
                   {queues.find((q) => q.id === campaignQueueId)?.name ||
                     (campaign as unknown as { campaignQueueName?: string }).campaignQueueName ||
                     (queuesLoading ? "Cargando..." : "Opcional — elegir queue")}
@@ -387,32 +388,23 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Dial mode</Label>
-              <Select value={dialMode} onValueChange={(v) => setDialMode(v || "progressive")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DIAL_MODES.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Concurrencia</Label>
-              <Input
-                type="number"
-                min={1}
-                max={50}
-                value={concurrency}
-                onChange={(e) => setConcurrency(parseInt(e.target.value) || 1)}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label>Modo de marcado</Label>
+            <Select value={dialMode} onValueChange={(v) => setDialMode(v || "progressive")}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DIAL_MODES.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* Progresivo: el discador marca 1 llamada por agente libre. Manual: el
+                agente inicia cada llamada. El ritmo lo dan los agentes asignados —
+                por eso ya no hay "concurrencia" que configurar aquí. */}
           </div>
 
           <div className="space-y-2">
@@ -456,7 +448,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label>Retry no-answer (min)</Label>
+              <Label>Reintento sin respuesta (min)</Label>
               <Input
                 type="number"
                 min={1}
