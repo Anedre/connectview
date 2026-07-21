@@ -32,9 +32,9 @@ const FEATURES: {
     color: "var(--gold)",
     name: "Automatización",
     tagline: "Reacciona al instante",
-    what: "Una regla: cuando pasa algo, ARIA ejecuta una acción al toque — sin conversación.",
-    example: "Entró un lead por WhatsApp → etiquétalo y avisa a un agente.",
-    when: "reaccionar a un evento puntual.",
+    what: "El reflejo: cuando pasa un evento, ARIA reacciona al toque y ENRUTA — a un Journey, al dialer o a Salesforce. Sin conversación, sin esperas.",
+    example: "El score cruzó 80 → encólalo al dialer para llamarlo ya.",
+    when: "reaccionar a un evento puntual y mandarlo al lugar correcto.",
   },
   {
     key: "journeys",

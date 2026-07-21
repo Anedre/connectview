@@ -399,8 +399,10 @@ export function AutomationsPage() {
         className="dim"
         style={{ fontSize: 13, marginTop: -8, marginBottom: 18, maxWidth: 760, lineHeight: 1.55 }}
       >
-        Reglas que reaccionan al instante: cuando pasa algo (un lead entra, alguien escribe), ARIA
-        ejecuta la acción — sin esperas ni conversación.
+        Los <strong>reflejos</strong> de ARIA: cuando pasa un evento (score que cruza un umbral,
+        wrap-up guardado, cita agendada), reacciona al instante y <strong>enruta</strong> — a un
+        Journey, al dialer o a Salesforce. Sin esperas ni conversación. Para pasos en el tiempo usa
+        Journey; para avisar de chats, la bandeja ya lo hace.
       </div>
 
       {/* KPIs — familia ARIA (Stat + count-up). */}
@@ -497,7 +499,7 @@ export function AutomationsPage() {
               title={
                 rules.length === 0 ? "Todavía no hay automatizaciones" : "Ninguna regla coincide"
               }
-              description="Reglas que reaccionan al instante: cuando pasa algo (un lead entra, alguien escribe), ARIA ejecuta la acción — sin esperas ni conversación. Ej.: «lead nuevo del form web → plantilla de bienvenida por WhatsApp»."
+              description="Los reflejos de ARIA: cuando pasa un evento, reacciona al instante y enruta —a un Journey, al dialer o a Salesforce— sin esperas ni conversación. Ej.: «lead nuevo del form web → plantilla de bienvenida por WhatsApp» o «score cruzó 80 → a la cola de llamadas». Para pasos en el tiempo usa Journey."
               action={
                 <Btn variant="primary" icon="plus" onClick={() => setPicking(true)}>
                   Crear la primera

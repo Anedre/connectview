@@ -526,7 +526,8 @@ export const ACTION_DEFS: Record<
   },
   notify_agent: {
     label: "Avisar a un agente",
-    description: "Crea una notificación in-app para un agente (aparece en sus tareas).",
+    description:
+      "Notificación in-app para un evento que amerita ACCIÓN (lead caliente, escalamiento, SLA). Para “llegó un chat” no hace falta —la bandeja ya lo muestra—; para “llámalo ya” usa Llamar (dialer) o Callback.",
     icon: BellRing,
     accent: "var(--accent-pink)",
     fields: [
@@ -547,8 +548,9 @@ export const ACTION_DEFS: Record<
     ],
   },
   start_journey: {
-    label: "Iniciar Journey",
-    description: "Inscribe al lead en un recorrido del Engagement Studio (nurturing multi-paso).",
+    label: "Iniciar Journey →",
+    description:
+      "El hand-off natural: la automatización reacciona al instante y ENTREGA el lead a un Journey para el seguimiento multi-paso en el tiempo. Reflejo (ya) → recorrido (después).",
     icon: Route,
     accent: "var(--accent-green)",
     fields: [
