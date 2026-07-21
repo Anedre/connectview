@@ -9,7 +9,6 @@ import {
   Megaphone,
   Robot,
   FlowArrow,
-  Lightning,
   CalendarDots,
   ChartBar,
   Disc,
@@ -107,19 +106,14 @@ const NAV: NavEntry[] = [
     cap: "view_bots",
     minRole: "Admins",
   },
-  {
-    id: "journeys",
-    path: "/journeys",
-    label: "Journeys",
-    icon: FlowArrow,
-    cap: "view_journeys",
-    minRole: "Admins",
-  },
+  // "Flujos" = la familia de ORQUESTACIÓN: reflejos (Automatización, instantáneos)
+  // + recorridos (Journey, en el tiempo). El hub (/automations) lista ambos y deja
+  // elegir el modo al crear. /journeys sigue vivo como el editor del modo Recorrido.
   {
     id: "automations",
     path: "/automations",
-    label: "Automatizaciones",
-    icon: Lightning,
+    label: "Flujos",
+    icon: FlowArrow,
     cap: "view_automations",
     minRole: "Admins",
   },

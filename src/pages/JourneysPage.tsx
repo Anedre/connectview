@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useJourneys, type Journey, type JourneyNodeKind } from "@/hooks/useJourneys";
 import { JourneyFlowBuilder } from "@/components/journeys/JourneyFlowBuilder";
@@ -438,6 +439,12 @@ export function JourneysPage() {
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "draft" | "paused">("all");
   const { confirm, confirmDialog } = useConfirm();
+  // Deep-link desde el hub Flujos (/automations): ?new=1 abre la galería de plantillas.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("new")) setPicking(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const persist = async (j: Journey) => {
     setSaving(true);

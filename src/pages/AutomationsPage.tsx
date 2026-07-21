@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -56,6 +57,11 @@ export function AutomationsPage() {
   const { tree } = useTaxonomy(activeProgram?.taxonomyId);
   const { users } = useUsers();
   const { journeys } = useJourneys();
+  const navigate = useNavigate();
+  // Picker de MODO al crear un flujo: "reflejo" (regla instantánea, editor in-page)
+  // vs "recorrido" (Journey en el tiempo, editor /journeys). El hub "Flujos" agrupa
+  // ambos; el motor de cada uno queda intacto (Fase 0 = unificar UI, no motores).
+  const [newMode, setNewMode] = useState(false);
   const { programs } = usePrograms();
   const { campaigns } = useCampaigns(0);
   const [rules, setRules] = useState<AutomationRule[]>([]);
@@ -306,6 +312,85 @@ export function AutomationsPage() {
     );
   }
 
+  // ── Picker de MODO al crear (Reflejo vs Recorrido) ──
+  // Reflejo → plantillas de regla (in-page). Recorrido → editor de Journey (/journeys).
+  if (newMode) {
+    return (
+      <div className="page" style={{ maxWidth: 760 }}>
+        <div className="row gap10" style={{ marginBottom: 6 }}>
+          <Btn
+            variant="ghost"
+            size="sm"
+            icon="chevL"
+            onClick={() => setNewMode(false)}
+            title="Volver"
+          />
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Nuevo flujo</h1>
+        </div>
+        <div
+          className="dim"
+          style={{ fontSize: 13, margin: "8px 0 20px", maxWidth: 640, lineHeight: 1.55 }}
+        >
+          ¿Qué necesitas? Un <strong>reflejo</strong> que reacciona al instante, o un{" "}
+          <strong>recorrido</strong> que acompaña al lead en el tiempo.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <button
+            type="button"
+            className="card card__accent-bar"
+            style={
+              {
+                "--_c": "var(--gold)",
+                padding: 20,
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              } as React.CSSProperties
+            }
+            onClick={() => {
+              setNewMode(false);
+              setPicking(true);
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: 16, color: "var(--gold)" }}>
+              Reflejo · instantáneo
+            </div>
+            <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+              Cuando pasa un evento (score, wrap-up, cita…) → una acción al toque y enruta. Sin
+              esperas.
+            </div>
+          </button>
+          <button
+            type="button"
+            className="card card__accent-bar"
+            style={
+              {
+                "--_c": "var(--green)",
+                padding: 20,
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              } as React.CSSProperties
+            }
+            onClick={() => navigate("/journeys?new=1")}
+          >
+            <div style={{ fontWeight: 800, fontSize: 16, color: "var(--green)" }}>
+              Recorrido · en el tiempo
+            </div>
+            <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+              Una secuencia con esperas y ramas a lo largo de días/semanas. Inscribe al lead y lo
+              acompaña.
+            </div>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Picker de plantillas ──
   if (picking) {
     return (
@@ -388,8 +473,8 @@ export function AutomationsPage() {
             >
               Webhooks
             </Btn>
-            <Btn variant="primary" size="sm" icon="plus" onClick={() => setPicking(true)}>
-              Nueva regla
+            <Btn variant="primary" size="sm" icon="plus" onClick={() => setNewMode(true)}>
+              Nuevo flujo
             </Btn>
           </div>
         }
@@ -399,11 +484,43 @@ export function AutomationsPage() {
         className="dim"
         style={{ fontSize: 13, marginTop: -8, marginBottom: 18, maxWidth: 760, lineHeight: 1.55 }}
       >
-        Los <strong>reflejos</strong> de ARIA: cuando pasa un evento (score que cruza un umbral,
-        wrap-up guardado, cita agendada), reacciona al instante y <strong>enruta</strong> — a un
-        Journey, al dialer o a Salesforce. Sin esperas ni conversación. Para pasos en el tiempo usa
-        Journey; para avisar de chats, la bandeja ya lo hace.
+        <strong>Flujos</strong> de orquestación, en dos modos: <strong>reflejos</strong> que
+        reaccionan a un evento al instante (score, wrap-up, cita → una acción y enruta), y{" "}
+        <strong>recorridos</strong> que acompañan al lead en el tiempo (con esperas y ramas). Eliges
+        el modo al crear uno. Abajo ves tus reflejos; los recorridos viven en su propio editor.
       </div>
+
+      {/* Acceso a Recorridos (Journeys) — el otro modo de Flujos vive en /journeys. */}
+      <button
+        type="button"
+        className="card"
+        onClick={() => navigate("/journeys")}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          width: "100%",
+          textAlign: "left",
+          padding: "12px 16px",
+          marginBottom: 18,
+          cursor: "pointer",
+          borderLeft: "3px solid var(--green)",
+        }}
+      >
+        <Icon name="flow" size={17} style={{ color: "var(--green)", flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 13.5 }}>
+            Recorridos en el tiempo{" "}
+            <span className="dim" style={{ fontWeight: 500 }}>
+              · {journeys.length} {journeys.length === 1 ? "journey" : "journeys"}
+            </span>
+          </div>
+          <div className="dim" style={{ fontSize: 11.5 }}>
+            Secuencias con esperas y ramas (nurturing, seguimiento). Se editan en su canvas.
+          </div>
+        </div>
+        <Icon name="chevR" size={15} style={{ color: "var(--text-3)", flexShrink: 0 }} />
+      </button>
 
       {/* KPIs — familia ARIA (Stat + count-up). */}
       <div
