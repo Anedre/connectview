@@ -34,6 +34,8 @@ import {
 import type { WaTemplate } from "@/components/whatsapp/WaTemplateConfigurator";
 import { WebhookDeliveriesPanel } from "@/components/automations/WebhookDeliveriesPanel";
 import { Icon, Btn, Stat, Pill, HeroBand, Num } from "@/components/aria";
+import { isFlujosFusionEnabled } from "@/lib/flags";
+import { WorkflowsHub } from "@/components/workflows/WorkflowsHub";
 
 /**
  * AutomationsPage — /automations (#15, "Digital Pipeline" de ARIA).
@@ -50,7 +52,18 @@ import { Icon, Btn, Stat, Pill, HeroBand, Num } from "@/components/aria";
  * valida contra los mismos type strings. Las reglas NO se encadenan entre sí.
  */
 
+/**
+ * AutomationsPage — el hub "Flujos". Detrás del flag `flujosFusion` renderiza el
+ * hub UNIFICADO (WorkflowsHub: una lista + un builder que rutea al motor correcto,
+ * Fase 1). Con el flag OFF (default) queda el hub de la Fase 0 intacto abajo
+ * (picker Reflejo/Recorrido + editores separados) como fallback seguro.
+ */
 export function AutomationsPage() {
+  if (isFlujosFusionEnabled()) return <WorkflowsHub />;
+  return <AutomationsPageLegacy />;
+}
+
+function AutomationsPageLegacy() {
   const ep = getApiEndpoints();
   const { confirm, confirmDialog } = useConfirm();
   const activeProgram = useProgramOptional()?.activeProgram;

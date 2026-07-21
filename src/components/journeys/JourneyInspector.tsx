@@ -187,6 +187,7 @@ export function JourneyInspector({
   onDelete,
   onDuplicate,
   onClose,
+  hideEntryConfig,
 }: {
   node: JourneyNode;
   entry: NonNullable<Journey["entry"]>;
@@ -200,6 +201,10 @@ export function JourneyInspector({
   onDelete: (id: string) => void;
   onDuplicate?: (id: string) => void;
   onClose: () => void;
+  /** Modo "Flujos" (fachada): la entrada (evento/audiencia) se configura en el
+   *  panel de arriba, así que el inspector oculta su selector de entrada legacy
+   *  y solo deja la re-inscripción. Opt-in: sin la prop, comportamiento nativo. */
+  hideEntryConfig?: boolean;
 }) {
   const { segments } = useSegments();
   // Campañas de VOZ → poblar el selector del bloque "Llamar (dialer)" (sin polling).
@@ -258,7 +263,35 @@ export function JourneyInspector({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {node.kind === "entry" && (
+        {node.kind === "entry" && hideEntryConfig && (
+          <>
+            <div className="jb-note" style={{ fontSize: 12.5 }}>
+              La <strong>entrada</strong> del flujo (por evento o por audiencia) se configura en el
+              panel de arriba. Aquí solo defines la re-inscripción.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "2px 0" }}>
+              <Switch
+                checked={reenroll}
+                onCheckedChange={onReenroll}
+                accent="var(--green)"
+                aria-label="Permitir re-inscripción"
+              />
+              <span
+                onClick={() => onReenroll(!reenroll)}
+                style={{
+                  cursor: "pointer",
+                  fontSize: 12.5,
+                  color: "var(--text-2)",
+                  lineHeight: 1.4,
+                }}
+              >
+                Permitir re-inscripción (volver a entrar si ya pasó)
+              </span>
+            </div>
+          </>
+        )}
+
+        {node.kind === "entry" && !hideEntryConfig && (
           <>
             <Field label="Cómo entran los leads">
               <select

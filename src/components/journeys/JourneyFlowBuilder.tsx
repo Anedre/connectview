@@ -346,6 +346,9 @@ export function JourneyFlowBuilder(props: {
   onBack?: () => void;
   /** Otros journeys del tenant → poblar el selector del bloque "Iniciar journey". */
   journeys?: Journey[];
+  /** Modo "Flujos": oculta el selector de entrada del inspector (la entrada la
+   *  maneja el panel del WorkflowBuilder). Opt-in — /journeys no lo pasa. */
+  hideEntryConfig?: boolean;
 }) {
   return (
     <ReactFlowProvider>
@@ -360,12 +363,14 @@ function JourneyFlowInner({
   saving,
   onBack,
   journeys,
+  hideEntryConfig,
 }: {
   initial: Journey;
   onSave?: (j: Journey) => void | Promise<void>;
   saving?: boolean;
   onBack?: () => void;
   journeys?: Journey[];
+  hideEntryConfig?: boolean;
 }) {
   const { screenToFlowPosition, fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(initialRFNodes(initial));
@@ -1366,6 +1371,7 @@ function JourneyFlowInner({
                   onDelete={deleteNode}
                   onDuplicate={duplicateNode}
                   onClose={() => setSelectedId(null)}
+                  hideEntryConfig={hideEntryConfig}
                 />
               ) : (
                 <div className="sfn-hint">
