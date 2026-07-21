@@ -10,7 +10,6 @@ import {
   Robot,
   FlowArrow,
   Lightning,
-  Sparkle,
   CalendarDots,
   ChartBar,
   Disc,
@@ -103,7 +102,7 @@ const NAV: NavEntry[] = [
   {
     id: "bots",
     path: "/bot",
-    label: "Bots",
+    label: "Asistentes",
     icon: Robot,
     cap: "view_bots",
     minRole: "Admins",
@@ -124,14 +123,9 @@ const NAV: NavEntry[] = [
     cap: "view_automations",
     minRole: "Admins",
   },
-  {
-    id: "agente",
-    path: "/agente",
-    label: "Agente IA",
-    icon: Sparkle,
-    cap: "view_agente_ai",
-    minRole: "Admins",
-  },
+  // "Agente IA" se unificó dentro de Asistentes (/bot): un agente IA es un bot de
+  // un nodo `ai_agent` (mismo runtime/tabla). El hub deja crear/editar ambos modos.
+  // La ruta /agente sigue viva como el editor del modo IA (se abre desde el hub).
   {
     id: "appointments",
     path: "/appointments",

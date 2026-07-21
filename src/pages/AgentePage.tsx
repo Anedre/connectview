@@ -13,7 +13,7 @@ import {
   HelpCircle,
   ArrowUpRight,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getApiEndpoints } from "@/lib/api";
@@ -474,8 +474,17 @@ export function AgentePage() {
       setLoading(false);
     }
   };
+  const [searchParams] = useSearchParams();
   useEffect(() => {
     loadList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Deep-link desde el hub de Asistentes (/bot): ?bot=<id> abre ese agente IA para
+  // editar; ?new=1 arranca uno nuevo (galería). Solo al montar.
+  useEffect(() => {
+    const botId = searchParams.get("bot");
+    if (botId) openAgent(botId);
+    else if (searchParams.get("new")) setPicking(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

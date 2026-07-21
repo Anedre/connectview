@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { getApiEndpoints } from "@/lib/api";
@@ -28,6 +29,9 @@ interface BotSummary {
   trigger?: string;
   stepCount: number;
   updatedAt?: string;
+  /** "agent" = asistente de IA (bot de un nodo ai_agent, editor /agente); resto =
+   *  bot de guion (editor visual en esta misma página). Unifica ambos modos. */
+  kind?: string;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -69,6 +73,10 @@ export function FlowBuilderPage() {
   const [picking, setPicking] = useState(false);
   const [autoTest, setAutoTest] = useState(false);
   const [routing, setRouting] = useState(false);
+  // Picker de MODO al crear un asistente: "guion" (builder visual) vs "IA"
+  // (formulario del agente en /agente). Un solo botón "Nuevo" abre esta elección.
+  const [newMode, setNewMode] = useState(false);
+  const navigate = useNavigate();
 
   const ep = getApiEndpoints();
   const { confirm, confirmDialog } = useConfirm();
@@ -82,12 +90,10 @@ export function FlowBuilderPage() {
     try {
       const r = await fetch(ep.manageBot);
       const d = await r.json();
-      // Agents live in their own hub (/agente); keep this list to visual bots.
-      setList(
-        Array.isArray(d.bots)
-          ? d.bots.filter((b: BotSummary & { kind?: string }) => b.kind !== "agent")
-          : [],
-      );
+      // Unificado (Asistentes): la lista muestra AMBOS modos — bots de guion y
+      // agentes IA (kind:"agent"). El badge los distingue; al editar, un agente IA
+      // se abre en su editor (/agente) y un bot de guion en el builder visual.
+      setList(Array.isArray(d.bots) ? (d.bots as BotSummary[]) : []);
     } catch {
       toast.error("No se pudieron cargar los bots");
     } finally {
@@ -186,6 +192,82 @@ export function FlowBuilderPage() {
     return <WaRouting onBack={() => setRouting(false)} />;
   }
 
+  // ── Picker de MODO al crear (Guion vs IA) ──
+  // Ambos son bots sobre el mismo runtime; solo cambia el estilo de autoría.
+  // Guion → galería de plantillas + builder visual. IA → formulario del agente (/agente).
+  if (newMode) {
+    return (
+      <div className="page" style={{ maxWidth: 720 }}>
+        <div className="row gap10" style={{ marginBottom: 6 }}>
+          <Btn
+            variant="ghost"
+            size="sm"
+            icon="chevL"
+            onClick={() => setNewMode(false)}
+            title="Volver"
+          />
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Nuevo asistente</h1>
+        </div>
+        <div
+          className="dim"
+          style={{ fontSize: 13, margin: "8px 0 20px", maxWidth: 620, lineHeight: 1.55 }}
+        >
+          ¿Cómo querés que responda? Los dos corren sobre el mismo motor; eliges el estilo de
+          autoría.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <button
+            type="button"
+            className="card card__accent-bar"
+            style={
+              {
+                "--_c": "var(--iris)",
+                padding: 20,
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              } as React.CSSProperties
+            }
+            onClick={() => {
+              setNewMode(false);
+              setPicking(true);
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: 16, color: "var(--iris)" }}>Guion</div>
+            <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+              Árbol de botones y respuestas fijas — predecible, paso a paso. Se arma en el builder
+              visual.
+            </div>
+          </button>
+          <button
+            type="button"
+            className="card card__accent-bar"
+            style={
+              {
+                "--_c": "var(--cyan)",
+                padding: 20,
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              } as React.CSSProperties
+            }
+            onClick={() => navigate("/agente?new=1")}
+          >
+            <div style={{ fontWeight: 800, fontSize: 16, color: "var(--cyan)" }}>IA</div>
+            <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+              Un agente que entiende lenguaje natural y responde con tu conocimiento. Se configura
+              con un formulario.
+            </div>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Template picker (premium Kommo-style gallery) ──
   if (picking) {
     return (
@@ -225,10 +307,10 @@ export function FlowBuilderPage() {
       {/* ARIA hero band — reemplaza el PageHeader por el lenguaje premium de
           ARIA. El CRUD real (manage-bot) queda intacto debajo. */}
       <HeroBand
-        title="Bots"
+        title="Asistentes"
         chip={
           <>
-            {list.length} {list.length === 1 ? "bot" : "bots"} · {counts.active} activos
+            {list.length} {list.length === 1 ? "asistente" : "asistentes"} · {counts.active} activos
           </>
         }
         chipIcon="bot"
@@ -243,8 +325,8 @@ export function FlowBuilderPage() {
             <Btn variant="ghost" size="sm" icon="refresh" onClick={loadList} disabled={loading}>
               Actualizar
             </Btn>
-            <Btn variant="primary" size="sm" icon="plus" onClick={() => setPicking(true)}>
-              Nuevo bot
+            <Btn variant="primary" size="sm" icon="plus" onClick={() => setNewMode(true)}>
+              Nuevo asistente
             </Btn>
           </div>
         }
@@ -254,8 +336,9 @@ export function FlowBuilderPage() {
         className="dim"
         style={{ fontSize: 13, marginTop: -8, marginBottom: 18, maxWidth: 760, lineHeight: 1.55 }}
       >
-        Conversación con un guion: un árbol de botones y respuestas fijas que lleva al cliente por
-        un menú, paso a paso — predecible y sin sorpresas.
+        Tus asistentes que conversan con el cliente — en modo <strong>Guion</strong> (árbol de
+        botones y respuestas fijas, predecible) o modo <strong>IA</strong> (un agente que entiende y
+        responde con tu conocimiento). Eliges el modo al crear uno.
       </div>
 
       {loading ? (
@@ -309,9 +392,9 @@ export function FlowBuilderPage() {
             <Stat
               icon="bot"
               color="var(--accent)"
-              label="Bots"
+              label="Asistentes"
               value={<Num value={counts.all} />}
-              sub="flujos creados"
+              sub="guion + IA"
             />
             <Stat
               icon="check"
@@ -441,7 +524,9 @@ export function FlowBuilderPage() {
                         gap: 12,
                       } as React.CSSProperties
                     }
-                    onClick={() => openBot(b.botId)}
+                    onClick={() =>
+                      b.kind === "agent" ? navigate(`/agente?bot=${b.botId}`) : openBot(b.botId)
+                    }
                     role="button"
                     tabIndex={0}
                   >
@@ -460,12 +545,18 @@ export function FlowBuilderPage() {
                       >
                         <CardIcon size={19} />
                       </span>
-                      <Pill
-                        tone={STATUS_TONE[b.status]}
-                        icon={b.status === "active" ? "dot" : undefined}
-                      >
-                        {STATUS_LABEL[b.status] || b.status}
-                      </Pill>
+                      <span className="row gap6">
+                        {/* Modo del asistente: IA (nodo ai_agent, editor /agente) vs Guion. */}
+                        <Pill tone={b.kind === "agent" ? "cyan" : "outline"}>
+                          {b.kind === "agent" ? "IA" : "Guion"}
+                        </Pill>
+                        <Pill
+                          tone={STATUS_TONE[b.status]}
+                          icon={b.status === "active" ? "dot" : undefined}
+                        >
+                          {STATUS_LABEL[b.status] || b.status}
+                        </Pill>
+                      </span>
                     </div>
 
                     <div
