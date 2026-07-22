@@ -33,21 +33,22 @@ Este documento es el que gobierna la fecha de go-live. El cronograma de [01-plan
 
 ## 2. Compromisos de UDEP
 
-| #    | Compromiso                                                                             | Responsable             | Fecha límite         | Bloquea                                 | Estado       |
-| ---- | -------------------------------------------------------------------------------------- | ----------------------- | -------------------- | --------------------------------------- | ------------ |
-| C-01 | Entregar acceso al **Developer Sandbox de Salesforce** con permisos de administrador   | Carlos Olortiga / Julio | **31 jul**           | Toda la integración con Salesforce (F3) | ⬜ Pendiente |
-| C-02 | Crear los 7 campos personalizados `Vox*__c` en el objeto Lead                          | Carlos Olortiga / Julio | **14 ago**           | Write-back de golpes (R4)               | ⬜ Pendiente |
-| C-03 | Habilitar el número Meta **+51 908 825 660** en modo standalone y confirmar el webhook | Juan Gallardo           | **21 ago**           | Estado de entrega de WhatsApp (R5)      | ⬜ Pendiente |
-| C-04 | Entregar metadata SAML o credenciales OIDC del proveedor de identidad                  | TI (por designar)       | **21 ago**           | Login federado                          | ⬜ Pendiente |
-| C-05 | Definir el set final de reportes y sus campos                                          | Adriana Gómez           | **31 jul**           | Configuración de reportes (R20)         | ⬜ Pendiente |
-| C-06 | Enviar 5 programas de ejemplo y el layout programa ↔ cursos                            | Zhenia Loyola           | **31 jul**           | Validación del modelo de programa       | ⬜ Pendiente |
-| C-07 | Enviar capturas de los formularios de Meta Lead Ads en uso                             | Adriana Gómez           | **31 jul**           | Mapeo de la ingesta de leads            | ⬜ Pendiente |
-| C-08 | Entregar 2–3 imágenes por tarjeta para las plantillas de carrusel                      | Marketing               | **14 ago**           | Plantillas de carrusel                  | ⬜ Pendiente |
-| C-09 | Crear la App de Mercado Libre y entregar credenciales                                  | Juan Gallardo           | **21 ago**           | Canal Mercado Libre                     | ⬜ Pendiente |
-| C-10 | Designar 3–5 asesores para el UAT, media jornada durante 2 semanas                     | Paul De Rutte           | **4 sep**            | UAT (F4)                                | ⬜ Pendiente |
-| C-11 | Entregar la base de contactos de prueba (200 filas reales anonimizadas)                | Adriana Gómez           | **21 ago**           | Pruebas de carga masiva                 | ⬜ Pendiente |
-| C-12 | Confirmar la ventana de mantenimiento para el cambio de webhook                        | Juan Gallardo           | **14 ago**           | Activación de WhatsApp                  | ⬜ Pendiente |
-| C-13 | Solicitar el App Review de Meta para comentarios de Instagram                          | Adriana Gómez           | Sin fecha (diferido) | Comentarios de Instagram                | ⬜ Diferido  |
+| #    | Compromiso                                                                                                                             | Responsable             | Fecha límite         | Bloquea                                                      | Estado       |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | -------------------- | ------------------------------------------------------------ | ------------ |
+| C-01 | Entregar acceso al **Developer Sandbox de Salesforce** con permisos de administrador                                                   | Carlos Olortiga / Julio | **31 jul**           | Toda la integración con Salesforce (F3)                      | ⬜ Pendiente |
+| C-02 | Crear los 7 campos personalizados `Vox*__c` en el objeto Lead                                                                          | Carlos Olortiga / Julio | **14 ago**           | Write-back de golpes (R4)                                    | ⬜ Pendiente |
+| C-03 | Habilitar el número Meta **+51 908 825 660** en modo standalone y confirmar el webhook                                                 | Juan Gallardo           | **21 ago**           | Estado de entrega de WhatsApp (R5)                           | ⬜ Pendiente |
+| C-04 | Entregar metadata SAML o credenciales OIDC del proveedor de identidad                                                                  | TI (por designar)       | **21 ago**           | Login federado                                               | ⬜ Pendiente |
+| C-05 | Definir el set final de reportes y sus campos                                                                                          | Adriana Gómez           | **31 jul**           | Configuración de reportes (R20)                              | ⬜ Pendiente |
+| C-06 | Enviar 5 programas de ejemplo y el layout programa ↔ cursos                                                                            | Zhenia Loyola           | **31 jul**           | Validación del modelo de programa                            | ⬜ Pendiente |
+| C-07 | Enviar capturas de los formularios de Meta Lead Ads en uso                                                                             | Adriana Gómez           | **31 jul**           | Mapeo de la ingesta de leads                                 | ⬜ Pendiente |
+| C-08 | Entregar 2–3 imágenes por tarjeta para las plantillas de carrusel                                                                      | Marketing               | **14 ago**           | Plantillas de carrusel                                       | ⬜ Pendiente |
+| C-09 | Crear la App de Mercado Libre y entregar credenciales                                                                                  | Juan Gallardo           | **21 ago**           | Canal Mercado Libre                                          | ⬜ Pendiente |
+| C-10 | Designar 3–5 asesores para el UAT, media jornada durante 2 semanas                                                                     | Paul De Rutte           | **4 sep**            | UAT (F4)                                                     | ⬜ Pendiente |
+| C-11 | Entregar la base de contactos de prueba (200 filas reales anonimizadas)                                                                | Adriana Gómez           | **21 ago**           | Pruebas de carga masiva                                      | ⬜ Pendiente |
+| C-12 | Confirmar la ventana de mantenimiento para el cambio de webhook                                                                        | Juan Gallardo           | **14 ago**           | Activación de WhatsApp                                       | ⬜ Pendiente |
+| C-13 | Solicitar el App Review de Meta para comentarios de Instagram                                                                          | Adriana Gómez           | Sin fecha (diferido) | Comentarios de Instagram                                     | ⬜ Diferido  |
+| C-14 | Volver a aplicar la plantilla de conexión de Amazon Connect (CloudFormation, un clic) para conceder `connect:DescribeHoursOfOperation` | Juan Gallardo           | **14 ago**           | Que las campañas usen el horario de atención real de Connect | ⬜ Pendiente |
 
 ---
 
@@ -73,16 +74,17 @@ Este documento es el que gobierna la fecha de go-live. El cronograma de [01-plan
 
 Cada ítem tiene una consecuencia definida por adelantado, para evitar discutirla en caliente.
 
-| Compromiso            | Si no se cumple en fecha                                                                                               |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| C-01 Sandbox          | Las pruebas de integración se hacen contra la org de Novasys. Riesgo residual: diferencias de esquema detectadas tarde |
-| C-02 Campos `Vox*__c` | El write-back queda inactivo. La plataforma sigue funcionando; R4 no se demuestra en Salesforce                        |
-| C-03 Número Meta      | Sin estado de entrega por mensaje. El reporte de deliverability queda parcial y R17 no es medible                      |
-| C-04 IdP              | El acceso se hace con usuario y contraseña de Cognito. Sin impacto funcional                                           |
-| C-05 Reportes         | Los ajustes entran durante el UAT como cambios tardíos, con mayor costo                                                |
-| C-08 Imágenes         | Las plantillas de carrusel no se envían a aprobación. Se usan plantillas de texto                                      |
-| C-09 Mercado Libre    | El canal no se activa. Se difiere                                                                                      |
-| C-10 Asesores         | El UAT se hace con datos sintéticos. **El riesgo se traslada al go-live**                                              |
+| Compromiso               | Si no se cumple en fecha                                                                                                                                              |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C-01 Sandbox             | Las pruebas de integración se hacen contra la org de Novasys. Riesgo residual: diferencias de esquema detectadas tarde                                                |
+| C-02 Campos `Vox*__c`    | El write-back queda inactivo. La plataforma sigue funcionando; R4 no se demuestra en Salesforce                                                                       |
+| C-03 Número Meta         | Sin estado de entrega por mensaje. El reporte de deliverability queda parcial y R17 no es medible                                                                     |
+| C-04 IdP                 | El acceso se hace con usuario y contraseña de Cognito. Sin impacto funcional                                                                                          |
+| C-05 Reportes            | Los ajustes entran durante el UAT como cambios tardíos, con mayor costo                                                                                               |
+| C-08 Imágenes            | Las plantillas de carrusel no se envían a aprobación. Se usan plantillas de texto                                                                                     |
+| C-09 Mercado Libre       | El canal no se activa. Se difiere                                                                                                                                     |
+| C-10 Asesores            | El UAT se hace con datos sintéticos. **El riesgo se traslada al go-live**                                                                                             |
+| C-14 Permiso de horarios | Las campañas no pueden leer el horario de atención de Connect y siguen usando una ventana propia configurada a mano, que puede quedar desincronizada del horario real |
 
 **Regla de escalamiento:** un compromiso con 5 días hábiles de retraso escala a Paul De Rutte y se registra en el acta de la reunión semanal.
 

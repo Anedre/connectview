@@ -146,6 +146,20 @@ _Cómo se cierra:_ parametrizar el dominio por inquilino. Requisito previo al se
 
 ---
 
+### B-T6 · El permiso para leer los horarios de Connect no estaba concedido
+
+**Severidad:** Media · **Dueño:** UDEP (aplicar) + Novasys (plantilla)
+
+Las campañas ya pueden usar el **Hours of Operation de Amazon Connect** como horario de atención, en vez de una copia configurada a mano que podía quedar desincronizada del horario real del contact center.
+
+_Lo que falta:_ el rol de acceso concede `connect:ListHoursOfOperations` (nombre del horario) pero no `connect:DescribeHoursOfOperation` (su configuración). La plantilla ya está corregida; **el rol que UDEP aplicó tiene la versión anterior**.
+
+_Cómo se cierra:_ volver a aplicar la plantilla de conexión desde Configuración → Amazon Connect. Es un clic de CloudFormation, sin interrupción del servicio. Es el compromiso C-14 del acta.
+
+_Si no se cierra:_ las campañas siguen usando su ventana propia. Funciona, pero vuelve el problema original: dos horarios que pueden decir cosas distintas.
+
+---
+
 ## 4. Brechas de proceso y documentación
 
 Estas eran las brechas más grandes al iniciar este trabajo. Tres de las cinco se cierran con los documentos de esta carpeta.
