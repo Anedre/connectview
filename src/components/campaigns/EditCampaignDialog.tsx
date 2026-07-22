@@ -20,9 +20,6 @@ import {
   zonedInputsToUtcIso,
 } from "@/lib/callWindow";
 import { useHoursOfOperation } from "@/hooks/useHoursOfOperation";
-
-/** Valor centinela del selector: base-ui no admite un SelectItem con value "". */
-const MANUAL_HOURS = "__manual__";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -57,6 +54,9 @@ const DIAL_MODES = [
   { value: "progressive", label: "Progresivo (1 llamada por agente libre)" },
   { value: "manual", label: "Manual (el agente inicia cada llamada)" },
 ];
+
+/** Valor centinela del selector: base-ui no admite un SelectItem con value "". */
+const MANUAL_HOURS = "__manual__";
 
 const TIMEZONES = [
   { value: "America/Lima", label: "Perú (Lima) — UTC-5" },
