@@ -108,17 +108,16 @@ export function CampaignsPage() {
   // controles de gestión. La matriz de Seguridad puede re-escalar esto en vivo.
   const canManage = useCan("manage_campaigns");
 
+  // Los contadores salen de la MISMA definición de TABS que filtra la lista, así
+  // un estado nuevo se cuenta solo. Antes eran un if/else a mano cuyo `else`
+  // final era catch-all: al sumar SCHEDULED, las campañas programadas se
+  // contaban como "Terminadas".
   const tabCounts = useMemo(() => {
-    const acc: Record<TabId, number> = {
-      active: 0,
-      drafts: 0,
-      finished: 0,
-      all: campaigns.length,
-    };
+    const acc = Object.fromEntries(TABS.map((t) => [t.id, 0])) as Record<TabId, number>;
     for (const c of campaigns) {
-      if (c.status === "RUNNING" || c.status === "PAUSED") acc.active += 1;
-      else if (c.status === "DRAFT") acc.drafts += 1;
-      else acc.finished += 1;
+      for (const t of TABS) {
+        if (t.statuses.length === 0 || t.statuses.includes(c.status)) acc[t.id] += 1;
+      }
     }
     return acc;
   }, [campaigns]);
