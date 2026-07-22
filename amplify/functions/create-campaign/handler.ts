@@ -13,6 +13,7 @@ import { resolveTenantId, isLegacyTenant } from "../_shared/cognitoAuth";
 import { resolveDynamo, resolveCustomerProfiles, readTenantConfig } from "../_shared/tenantConnect";
 import { requireCapability } from "../_shared/rbac";
 import { validateScheduledAt } from "../_shared/callWindow";
+import { parseScheduleSnapshot, serializeSchedule } from "../_shared/connectHours";
 
 // BYO Data Plane (#46): DynamoDB del tenant para campaigns + campaign-contacts
 // + bulkUpsertVoxLeads (vía setActiveDynamo). ConnectCampaignsV2 queda legacy
@@ -70,6 +71,12 @@ interface CreateCampaignBody {
   /** Fin de vigencia (ISO 8601). Al pasar esa fecha el dialer completa la
    *  campaña aunque queden contactos pendientes. Opcional. */
   scheduledEndAt?: string;
+  /** Hours of Operation de Amazon Connect. Si viene, manda sobre la ventana
+   *  manual: el dialer lee ese horario en vivo en cada ciclo. */
+  hoursOfOperationId?: string;
+  hoursOfOperationName?: string;
+  /** Copia del horario resuelto, como respaldo si Connect no responde. */
+  hoursOfOperationSnapshot?: unknown;
   /** Programa (Pilar 1) al que pertenece la campaña → auto-tag de sus leads
    *  a la membership N:N (connectview-lead-programs). */
   programId?: string;
@@ -278,6 +285,20 @@ export const handler: Handler = async (event: any, context: any) => {
       }
       scheduledEndAt = v.iso!;
     }
+    // Horario de atención de Connect. El snapshot pasa por el validador antes
+    // de guardarse; si no es un horario válido se descarta y la campaña queda
+    // con el id (el dialer lo resolverá en vivo) pero sin respaldo.
+    const hoursOfOperationId = String(body.hoursOfOperationId || "").trim();
+    const parsedHours = hoursOfOperationId
+      ? parseScheduleSnapshot(body.hoursOfOperationSnapshot)
+      : null;
+    const hoursSnapshot = parsedHours ? serializeSchedule(parsedHours) : "";
+    if (hoursOfOperationId && !parsedHours) {
+      console.warn(
+        `create-campaign: snapshot de horario inválido para ${hoursOfOperationId} — se guarda sin respaldo`,
+      );
+    }
+
     // validateScheduledAt ya descartó el pasado (con 2 min de gracia), así que
     // si quedó un scheduledStartAt es futuro y la campaña espera.
     const startNow = !scheduledStartAt && body.startNow !== false;
@@ -369,6 +390,12 @@ export const handler: Handler = async (event: any, context: any) => {
           // que ya vencieron. scheduledEndAt cierra la campaña por vigencia.
           scheduledStartAt: scheduledStartAt ? { S: scheduledStartAt } : { NULL: true },
           scheduledEndAt: scheduledEndAt ? { S: scheduledEndAt } : { NULL: true },
+          // Horario de atención tomado de Connect. El snapshot se valida antes
+          // de guardarlo: es lo que el dialer usa si Connect no responde, así
+          // que un valor corrupto se traduciría en llamadas a deshora.
+          hoursOfOperationId: hoursOfOperationId ? { S: hoursOfOperationId } : { NULL: true },
+          hoursOfOperationName: { S: body.hoursOfOperationName || "" },
+          hoursOfOperationSnapshot: hoursSnapshot ? { S: hoursSnapshot } : { NULL: true },
           completedAt: { NULL: true },
           totalContacts: { N: String(validContacts.length) },
           pendingCount: { N: String(validContacts.length) },

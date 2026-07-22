@@ -36,6 +36,11 @@ export interface UpdateCampaignInput {
   scheduledStartAt?: string;
   /** Fin de vigencia en ISO UTC. Mismas reglas que scheduledStartAt. */
   scheduledEndAt?: string;
+  /** Hours of Operation de Connect. "" desvincula y vuelve a la ventana propia. */
+  hoursOfOperationId?: string;
+  hoursOfOperationName?: string;
+  /** El horario resuelto; el backend lo valida antes de guardarlo como respaldo. */
+  hoursOfOperationSnapshot?: unknown;
 }
 
 export type RelaunchScope = "all" | "failed" | "specific";

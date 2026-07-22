@@ -34,6 +34,13 @@ export interface Campaign {
   /** ISO UTC. Fin de vigencia: al pasar, el dialer completa la campaña aunque
    *  queden contactos pendientes. */
   scheduledEndAt?: string | null;
+  /** Hours of Operation de Amazon Connect que rige la campaña. Si está, manda
+   *  sobre windowStartHour/EndHour/DaysOfWeek. */
+  hoursOfOperationId?: string | null;
+  hoursOfOperationName?: string;
+  /** Copia del horario resuelto (JSON). Respaldo cuando Connect no responde, y
+   *  lo que el front usa para pintar el horario sin reconsultar Connect. */
+  hoursOfOperationSnapshot?: string | null;
   /** Programa (unidad comercial) al que pertenece la campaña. Se elige al crear
    *  y propaga la membership a los leads; aquí alimenta el badge + filtro por
    *  programa de la lista. Vacío/undefined = "Sin programa". */

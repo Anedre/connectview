@@ -17,11 +17,15 @@ import { maskPhone } from "../_shared/maskPhone";
 import { evaluateSend } from "../_shared/suppression";
 import { applyAutoAccept } from "../_shared/campaignAutoAccept";
 import {
-  isWithinWindow,
+  isWithinSchedule,
   isScheduleDue,
   isScheduleExpired,
   describeWindow,
+  describeSchedule,
+  scheduleFromWindow,
+  type WeeklySchedule,
 } from "../_shared/callWindow";
+import { fetchConnectSchedule, parseScheduleSnapshot } from "../_shared/connectHours";
 
 // BYO Data Plane (#46): DDB module-active igual que Connect. Se resetea por
 // campaña usando getTenantConnect(campaign.tenantId).dynamo. Lambda procesa
@@ -123,6 +127,15 @@ interface Campaign {
   /** ISO UTC. Fin de vigencia: al pasar esa fecha el dialer completa la
    *  campaña aunque queden contactos pendientes. */
   scheduledEndAt?: string;
+  // ── Horario de atención desde Amazon Connect ─────────────────────────
+  /** Id del Hours of Operation de Connect. Si está, MANDA sobre la ventana
+   *  manual (windowStartHour/EndHour/DaysOfWeek). */
+  hoursOfOperationId?: string;
+  /** Nombre cacheado, solo para logs y UI. */
+  hoursOfOperationName?: string;
+  /** Copia del horario resuelto al guardarlo. Respaldo para cuando Connect no
+   *  responde o al rol del tenant le falta DescribeHoursOfOperation. */
+  hoursOfOperationSnapshot?: string;
 }
 
 interface CampaignContact {
@@ -165,6 +178,43 @@ async function listCampaignsByStatus(status: string): Promise<Campaign[]> {
 
 async function listRunningCampaigns(): Promise<Campaign[]> {
   return listCampaignsByStatus("RUNNING");
+}
+
+/**
+ * Horario de atención efectivo de una campaña, en cascada:
+ *
+ *   1. El Hours of Operation de Connect, leído en vivo (cacheado 5 min). Es la
+ *      fuente de verdad del cliente: el mismo horario que usan sus colas.
+ *   2. El snapshot guardado al elegirlo, si Connect no responde o al rol del
+ *      tenant le falta `connect:DescribeHoursOfOperation`.
+ *   3. La ventana manual de la campaña — el modelo viejo, que sigue siendo el
+ *      de todas las campañas anteriores a esta función.
+ *
+ * Nunca lanza: cualquier fallo cae al escalón siguiente. Que una campaña deje
+ * de marcar por un error de lectura sería peor que usar un horario algo viejo.
+ */
+async function resolveCampaignSchedule(campaign: Campaign): Promise<WeeklySchedule> {
+  if (!campaign.hoursOfOperationId) return scheduleFromWindow(campaign);
+  try {
+    const tc = campaign.tenantId ? await getTenantConnect(campaign.tenantId) : null;
+    const client = tc?.client || legacyConnect;
+    const instanceId = tc?.instanceId || INSTANCE_ID;
+    const live = await fetchConnectSchedule(client, instanceId, campaign.hoursOfOperationId);
+    if (live) return live;
+  } catch (err) {
+    console.warn(`[dialer] ${campaign.campaignId}: fallo resolviendo el horario de Connect`, err);
+  }
+  const snapshot = parseScheduleSnapshot(campaign.hoursOfOperationSnapshot);
+  if (snapshot) {
+    console.log(
+      `[dialer] ${campaign.campaignId}: usando el horario guardado (Connect no respondió)`,
+    );
+    return snapshot;
+  }
+  console.warn(
+    `[dialer] ${campaign.campaignId}: sin horario de Connect ni copia guardada → ventana manual`,
+  );
+  return scheduleFromWindow(campaign);
 }
 
 /**
@@ -1656,8 +1706,24 @@ async function dialCycle(): Promise<{
     if (pb !== pa) return pb - pa;
     return Number(b.weight ?? 1) - Number(a.weight ?? 1);
   });
+  // Resolver el horario de CADA campaña de una sola vez, antes de repartir slots
+  // y de entrar al loop. Es asíncrono (puede leer el Hours of Operation de
+  // Connect), y `Array.filter` no acepta promesas, así que se precomputa acá.
+  // Ambas lecturas están cacheadas —el rol del tenant ~50 min, el horario 5
+  // min—, de modo que en régimen esto no genera tráfico por tick.
+  const schedules = new Map<string, WeeklySchedule>();
+  await Promise.all(
+    campaigns.map(async (c) => {
+      schedules.set(c.campaignId, await resolveCampaignSchedule(c));
+    }),
+  );
+  const isOpen = (c: Campaign): boolean => {
+    const s = schedules.get(c.campaignId);
+    return s ? isWithinSchedule(s) : true; // sin horario resuelto → no bloquear
+  };
+
   const voiceCampaigns = campaigns.filter(
-    (c) => isWithinWindow(c) && (c.campaignType || "voice").toLowerCase() !== "whatsapp",
+    (c) => isOpen(c) && (c.campaignType || "voice").toLowerCase() !== "whatsapp",
   );
   const slotBudget = await computeSlotBudget(voiceCampaigns);
   let anyPendingLeft = false;
@@ -1678,8 +1744,13 @@ async function dialCycle(): Promise<{
         await forceCompleteCampaign(campaign, "expired");
         continue;
       }
-      if (!isWithinWindow(campaign)) {
-        console.log(`[dialer] ${campaign.campaignId} outside calling window`);
+      if (!isOpen(campaign)) {
+        const s = schedules.get(campaign.campaignId);
+        console.log(
+          `[dialer] ${campaign.campaignId} fuera del horario de atención · ${
+            s ? describeSchedule(s) : describeWindow(campaign)
+          }`,
+        );
         continue;
       }
       // Pilar 7 — meta alcanzada → completar y saltar (no marca más).

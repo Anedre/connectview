@@ -167,6 +167,10 @@ Resources:
                   - connect:GetAttachedFile
                   - connect:DescribeRoutingProfile
                   - connect:ListHoursOfOperations
+                  # Lee la configuración del horario (días y franjas), no solo su
+                  # nombre. Es lo que permite que una campaña use el horario de
+                  # atención real de Connect en vez de una copia a mano.
+                  - connect:DescribeHoursOfOperation
                   - connect:CreateQueue
                   - connect:UpdateQueueName
                   - connect:UpdateQueueStatus

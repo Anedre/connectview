@@ -46,7 +46,14 @@ import { useProgram, useProgramOptional } from "@/context/ProgramContext";
 import { Btn, Card, Pill, Icon as AriaIcon } from "@/components/aria";
 import { useTopBarActions } from "@/components/layout/TopBarSlot";
 import { BusinessHoursPreview } from "@/components/campaigns/BusinessHoursPreview";
-import { formatInZone, isWithinWindow, zonedInputsToUtcIso } from "@/lib/callWindow";
+import {
+  formatInZone,
+  isWithinSchedule,
+  scheduleFromWindow,
+  zonedInputsToUtcIso,
+  type WeeklySchedule,
+} from "@/lib/callWindow";
+import { useHoursOfOperation } from "@/hooks/useHoursOfOperation";
 
 /**
  * CampaignCreatePage — full-screen, single-page campaign builder (replaces the
@@ -269,6 +276,12 @@ export function CampaignCreatePage() {
   const [windowStartHour, setWindowStartHour] = useState(9);
   const [windowEndHour, setWindowEndHour] = useState(18);
   const [windowDaysOfWeek, setWindowDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
+  // Origen del horario de atención: el Hours of Operation de Amazon Connect
+  // (fuente de verdad del cliente, la misma que usan sus colas) o una ventana
+  // propia de la campaña.
+  const [hoursSource, setHoursSource] = useState<"connect" | "manual">("connect");
+  const [hoursOfOperationId, setHoursOfOperationId] = useState("");
+  const { options: hoursOptions, loading: hoursLoading, missingPermission } = useHoursOfOperation();
   // Programación: "now" arranca al guardar, "later" deja la campaña en espera
   // hasta la fecha elegida (el dialer la promueve sola).
   const [startMode, setStartMode] = useState<"now" | "later">("now");
@@ -573,10 +586,39 @@ export function CampaignCreatePage() {
   // La fecha/hora elegidas se interpretan en el huso de la campaña, no en el
   // del navegador: un supervisor en Madrid programando una campaña de Lima ve
   // y escribe hora de Lima.
+  // Horario elegido en Connect, si lo hay. Cuando el permiso IAM falta, el
+  // horario existe pero llega sin configuración (`schedule: null`).
+  const selectedHours = useMemo(
+    () => hoursOptions.find((h) => h.id === hoursOfOperationId) || null,
+    [hoursOptions, hoursOfOperationId],
+  );
+  // Auto-seleccionar el primer horario utilizable evita el estado "elegiste
+  // Connect pero no hay nada seleccionado", que no lleva a ninguna parte.
+  useEffect(() => {
+    if (hoursSource !== "connect" || hoursOfOperationId) return;
+    const first = hoursOptions.find((h) => h.schedule);
+    if (first) setHoursOfOperationId(first.id);
+  }, [hoursSource, hoursOfOperationId, hoursOptions]);
+
+  const usingConnectHours = hoursSource === "connect" && !!selectedHours?.schedule;
+
+  /** El horario que realmente va a regir la campaña. */
+  const effectiveSchedule: WeeklySchedule = useMemo(
+    () =>
+      usingConnectHours && selectedHours?.schedule
+        ? selectedHours.schedule
+        : scheduleFromWindow({ timezone, windowStartHour, windowEndHour, windowDaysOfWeek }),
+    [usingConnectHours, selectedHours, timezone, windowStartHour, windowEndHour, windowDaysOfWeek],
+  );
+
+  // La fecha/hora se interpretan en el huso del horario efectivo: con un Hours
+  // of Operation de Connect manda SU zona horaria, no la de la campaña, porque
+  // es la que determina cuándo se atiende de verdad.
+  const scheduleTz = effectiveSchedule.timezone;
   const scheduledStartAtIso = useMemo(
     () =>
-      startMode === "later" ? zonedInputsToUtcIso(scheduledDate, scheduledTime, timezone) : null,
-    [startMode, scheduledDate, scheduledTime, timezone],
+      startMode === "later" ? zonedInputsToUtcIso(scheduledDate, scheduledTime, scheduleTz) : null,
+    [startMode, scheduledDate, scheduledTime, scheduleTz],
   );
 
   const handleCreate = async () => {
@@ -606,8 +648,16 @@ export function CampaignCreatePage() {
         return;
       }
     }
-    if (windowDaysOfWeek.length === 0) {
-      toast.error("Marca al menos un día de atención o la campaña nunca va a marcar.");
+    if (hoursSource === "connect" && !usingConnectHours) {
+      toast.error(
+        missingPermission
+          ? "No se puede leer la configuración de los horarios de Connect. Usa un horario propio o revisa los permisos."
+          : "Elige un horario de atención de Amazon Connect, o cambia a horario propio.",
+      );
+      return;
+    }
+    if (effectiveSchedule.intervals.length === 0) {
+      toast.error("El horario elegido no tiene ninguna franja: la campaña nunca va a marcar.");
       return;
     }
     setSubmitting(true);
@@ -667,9 +717,17 @@ export function CampaignCreatePage() {
         dialMode,
         concurrency,
         timezone,
+        // La ventana manual se sigue enviando siempre: es el respaldo final del
+        // dialer si el horario de Connect desaparece (lo borran, se le quita el
+        // permiso), y lo que usan las campañas que no eligen Connect.
         windowStartHour,
         windowEndHour,
         windowDaysOfWeek,
+        // Horario de atención tomado de Connect. El snapshot viaja junto al id
+        // para que el dialer tenga de qué agarrarse si Connect no responde.
+        hoursOfOperationId: usingConnectHours ? hoursOfOperationId : undefined,
+        hoursOfOperationName: usingConnectHours ? selectedHours?.name : undefined,
+        hoursOfOperationSnapshot: usingConnectHours ? selectedHours?.schedule : undefined,
         retryNoAnswerMinutes,
         retryMaxAttempts,
         maxContactsPerAgent,
@@ -1839,51 +1897,115 @@ export function CampaignCreatePage() {
                 </div>
                 <div className="camp-field">
                   <label className="camp-lbl">Horario de atención</label>
-                  <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={23}
-                      value={windowStartHour}
-                      onChange={(e) => setWindowStartHour(parseInt(e.target.value) || 0)}
-                      style={{ width: 70 }}
-                    />
-                    <span className="muted" style={{ fontSize: 12 }}>
-                      a
-                    </span>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={24}
-                      value={windowEndHour}
-                      onChange={(e) => setWindowEndHour(parseInt(e.target.value) || 0)}
-                      style={{ width: 70 }}
-                    />
-                    <Select
-                      value={timezone}
-                      onValueChange={(v) => setTimezone(v || "America/Lima")}
-                    >
-                      <SelectTrigger className="flex-1">
-                        <SelectValue>
-                          {TIMEZONES.find((t) => t.value === timezone)?.label || timezone}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TIMEZONES.map((tz) => (
-                          <SelectItem key={tz.value} value={tz.value}>
-                            {tz.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <RadioCards
+                    value={hoursSource}
+                    onValueChange={setHoursSource}
+                    options={[
+                      {
+                        value: "connect",
+                        label: "El de Amazon Connect",
+                        description:
+                          "Usa el mismo horario que tus colas. Si lo cambias en Connect, la campaña lo respeta sola.",
+                      },
+                      {
+                        value: "manual",
+                        label: "Uno propio de la campaña",
+                        description: "Define un rango de horas y días solo para esta campaña.",
+                      },
+                    ]}
+                  />
+
+                  {hoursSource === "connect" ? (
+                    <div style={{ marginTop: 8 }}>
+                      {hoursLoading ? (
+                        <span className="muted" style={{ fontSize: 11.5 }}>
+                          Leyendo los horarios de Amazon Connect…
+                        </span>
+                      ) : missingPermission ? (
+                        <div className="cw-warn" style={{ borderRadius: 10, border: 0 }}>
+                          <AlertTriangle size={13} style={{ flex: "0 0 auto", marginTop: 1 }} />
+                          <span>
+                            Tus horarios existen en Connect pero ARIA no puede leer su
+                            configuración. Falta el permiso{" "}
+                            <code>connect:DescribeHoursOfOperation</code> en el rol de acceso —
+                            vuelve a aplicar la plantilla de conexión desde Configuración. Mientras
+                            tanto, usa un horario propio.
+                          </span>
+                        </div>
+                      ) : hoursOptions.length === 0 ? (
+                        <span className="muted" style={{ fontSize: 11.5 }}>
+                          No hay horarios definidos en Amazon Connect. Crea uno allí o usa un
+                          horario propio.
+                        </span>
+                      ) : (
+                        <Select
+                          value={hoursOfOperationId}
+                          onValueChange={(v) => setHoursOfOperationId(v || "")}
+                        >
+                          <SelectTrigger>
+                            <SelectValue>
+                              {selectedHours?.name || "Elige un horario de Connect"}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {hoursOptions.map((h) => (
+                              <SelectItem key={h.id} value={h.id} disabled={!h.schedule}>
+                                {h.name}
+                                {!h.schedule ? " (sin acceso)" : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="row" style={{ gap: 8, alignItems: "center", marginTop: 8 }}>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={23}
+                        value={windowStartHour}
+                        onChange={(e) => setWindowStartHour(parseInt(e.target.value) || 0)}
+                        style={{ width: 70 }}
+                      />
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        a
+                      </span>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={24}
+                        value={windowEndHour}
+                        onChange={(e) => setWindowEndHour(parseInt(e.target.value) || 0)}
+                        style={{ width: 70 }}
+                      />
+                      <Select
+                        value={timezone}
+                        onValueChange={(v) => setTimezone(v || "America/Lima")}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue>
+                            {TIMEZONES.find((t) => t.value === timezone)?.label || timezone}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TIMEZONES.map((tz) => (
+                            <SelectItem key={tz.value} value={tz.value}>
+                              {tz.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
                   <div style={{ marginTop: 8 }}>
                     <BusinessHoursPreview
-                      timezone={timezone}
-                      windowStartHour={windowStartHour}
-                      windowEndHour={windowEndHour}
-                      windowDaysOfWeek={windowDaysOfWeek}
-                      onDaysChange={setWindowDaysOfWeek}
+                      schedule={effectiveSchedule}
+                      // Los días solo se editan en el horario propio: los de
+                      // Connect se cambian en Connect, que es el punto de tener
+                      // una sola fuente de verdad.
+                      onDaysChange={usingConnectHours ? undefined : setWindowDaysOfWeek}
                       scheduledStartAt={scheduledStartAtIso}
                     />
                   </div>
@@ -1891,8 +2013,17 @@ export function CampaignCreatePage() {
                     className="muted"
                     style={{ fontSize: 10.5, display: "block", marginTop: 5, lineHeight: 1.4 }}
                   >
-                    Fuera de estas franjas el discador no marca. Click en un día para activarlo o
-                    desactivarlo.
+                    {usingConnectHours ? (
+                      <>
+                        Fuera de estas franjas el discador no marca. Este horario se edita en Amazon
+                        Connect (Configuración → Colas), no acá.
+                      </>
+                    ) : (
+                      <>
+                        Fuera de estas franjas el discador no marca. Click en un día para activarlo
+                        o desactivarlo.
+                      </>
+                    )}
                   </span>
                 </div>
 
@@ -1949,16 +2080,10 @@ export function CampaignCreatePage() {
                         {scheduledStartAtIso ? (
                           <>
                             Arranca el{" "}
-                            <strong>{formatInZone(scheduledStartAtIso, timezone)}</strong> (hora de{" "}
-                            {TIMEZONES.find((t) => t.value === timezone)?.label || timezone}
-                            ).
-                            {!isWithinWindow(
-                              {
-                                timezone,
-                                windowStartHour,
-                                windowEndHour,
-                                windowDaysOfWeek,
-                              },
+                            <strong>{formatInZone(scheduledStartAtIso, scheduleTz)}</strong> (hora
+                            de {scheduleTz.split("/")[1]?.replace(/_/g, " ") || scheduleTz}).
+                            {!isWithinSchedule(
+                              effectiveSchedule,
                               new Date(scheduledStartAtIso),
                             ) && (
                               <>

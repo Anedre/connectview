@@ -14,9 +14,15 @@ import { BusinessHoursPreview } from "@/components/campaigns/BusinessHoursPrevie
 import {
   formatInZone,
   parseDays,
+  parseScheduleSnapshot,
+  scheduleFromWindow,
   utcIsoToZonedInputs,
   zonedInputsToUtcIso,
 } from "@/lib/callWindow";
+import { useHoursOfOperation } from "@/hooks/useHoursOfOperation";
+
+/** Valor centinela del selector: base-ui no admite un SelectItem con value "". */
+const MANUAL_HOURS = "__manual__";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -88,6 +94,10 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
   const [windowStartHour, setWindowStartHour] = useState(9);
   const [windowEndHour, setWindowEndHour] = useState(18);
   const [windowDaysOfWeek, setWindowDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
+  // Horario de Connect vinculado. Vacío = la campaña usa su ventana propia.
+  const [hoursOfOperationId, setHoursOfOperationId] = useState("");
+  const [hoursOfOperationName, setHoursOfOperationName] = useState("");
+  const { options: hoursOptions } = useHoursOfOperation(open);
   // Reprogramar el arranque. Solo se ofrece mientras la campaña no arrancó
   // (DRAFT / SCHEDULED / PAUSED); el backend rechaza reprogramar una RUNNING.
   const [scheduledDate, setScheduledDate] = useState("");
@@ -130,6 +140,8 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
       setWindowStartHour(Number(campaign.windowStartHour ?? 9));
       setWindowEndHour(Number(campaign.windowEndHour ?? 18));
       setWindowDaysOfWeek(parseDays(campaign.windowDaysOfWeek));
+      setHoursOfOperationId(campaign.hoursOfOperationId || "");
+      setHoursOfOperationName(campaign.hoursOfOperationName || "");
       const sched = utcIsoToZonedInputs(
         campaign.scheduledStartAt,
         campaign.timezone || "America/Lima",
@@ -156,8 +168,16 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
   // El arranque solo se puede mover si todavía no ocurrió.
   const canReschedule =
     campaign.status === "DRAFT" || campaign.status === "SCHEDULED" || campaign.status === "PAUSED";
+  const selectedHours = hoursOptions.find((h) => h.id === hoursOfOperationId) || null;
+  const usingConnectHours = !!hoursOfOperationId && !!selectedHours?.schedule;
+  // Con Connect elegido manda su horario; si el permiso falta y solo queda la
+  // copia guardada, se usa esa; y si no, la ventana propia de la campaña.
+  const effectiveSchedule =
+    selectedHours?.schedule ||
+    (hoursOfOperationId ? parseScheduleSnapshot(campaign.hoursOfOperationSnapshot) : null) ||
+    scheduleFromWindow({ timezone, windowStartHour, windowEndHour, windowDaysOfWeek });
   const scheduledIso = canReschedule
-    ? zonedInputsToUtcIso(scheduledDate, scheduledTime, timezone)
+    ? zonedInputsToUtcIso(scheduledDate, scheduledTime, effectiveSchedule.timezone)
     : null;
 
   const handleSave = async () => {
@@ -194,6 +214,11 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
         windowStartHour,
         windowEndHour,
         windowDaysOfWeek,
+        // "" desvincula el horario de Connect y devuelve la campaña a su ventana
+        // propia; el backend limpia también el respaldo.
+        hoursOfOperationId: usingConnectHours ? hoursOfOperationId : "",
+        hoursOfOperationName: usingConnectHours ? selectedHours?.name || "" : "",
+        hoursOfOperationSnapshot: usingConnectHours ? selectedHours?.schedule : "",
         // "" borra la programación (update-campaign lo traduce a NULL y devuelve
         // la campaña a borrador). undefined = no tocar.
         ...(canReschedule ? { scheduledStartAt: scheduledIso || "" } : {}),
@@ -464,37 +489,60 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Ventana desde</Label>
-              <Input
-                type="number"
-                min={0}
-                max={23}
-                value={windowStartHour}
-                onChange={(e) => setWindowStartHour(parseInt(e.target.value) || 0)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Ventana hasta</Label>
-              <Input
-                type="number"
-                min={0}
-                max={24}
-                value={windowEndHour}
-                onChange={(e) => setWindowEndHour(parseInt(e.target.value) || 0)}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label>Horario de atención</Label>
+            <Select
+              value={hoursOfOperationId || MANUAL_HOURS}
+              onValueChange={(v) => setHoursOfOperationId(v === MANUAL_HOURS ? "" : v || "")}
+            >
+              <SelectTrigger>
+                <SelectValue>
+                  {hoursOfOperationId
+                    ? selectedHours?.name || hoursOfOperationName || "Horario de Connect"
+                    : "Horario propio de la campaña"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={MANUAL_HOURS}>Horario propio de la campaña</SelectItem>
+                {hoursOptions.map((h) => (
+                  <SelectItem key={h.id} value={h.id} disabled={!h.schedule}>
+                    {h.name} (Amazon Connect){!h.schedule ? " — sin acceso" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
+          {!usingConnectHours && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Ventana desde</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={windowStartHour}
+                  onChange={(e) => setWindowStartHour(parseInt(e.target.value) || 0)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Ventana hasta</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={24}
+                  value={windowEndHour}
+                  onChange={(e) => setWindowEndHour(parseInt(e.target.value) || 0)}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
-            <Label>Días de atención</Label>
             <BusinessHoursPreview
-              timezone={timezone}
-              windowStartHour={windowStartHour}
-              windowEndHour={windowEndHour}
-              windowDaysOfWeek={windowDaysOfWeek}
-              onDaysChange={setWindowDaysOfWeek}
+              schedule={effectiveSchedule}
+              // Los días de un horario de Connect se cambian en Connect.
+              onDaysChange={usingConnectHours ? undefined : setWindowDaysOfWeek}
               scheduledStartAt={scheduledIso}
               compact
             />

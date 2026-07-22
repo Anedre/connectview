@@ -240,6 +240,8 @@ const blockedConnectClient = new Proxy({} as ConnectClient, {
         if (name === "ListRoutingProfileQueuesCommand")
           return { RoutingProfileQueueConfigSummaryList: [] };
         if (name === "ListAgentStatusesCommand") return { AgentStatusSummaryList: [] };
+        if (name === "ListHoursOfOperationsCommand") return { HoursOfOperationSummaryList: [] };
+        if (name === "DescribeHoursOfOperationCommand") return { HoursOfOperation: undefined };
         if (name === "ListPhoneNumbersCommand" || name === "ListPhoneNumbersV2Command")
           return { PhoneNumberSummaryList: [], ListPhoneNumbersSummaryList: [] };
         if (name === "SearchContactsCommand") return { Contacts: [] };

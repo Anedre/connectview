@@ -9,11 +9,20 @@ import {
   parseDays,
   zonedInputsToUtcIso,
   utcIsoToZonedInputs,
+  scheduleFromConnectHours,
+  isMinuteActive,
+  isHourActive,
+  isWithinSchedule,
+  isScheduleEmpty,
+  nextScheduleChange,
+  weeklyScheduleHours,
   type CallWindow,
 } from "../lib/callWindow";
 import {
   isWithinWindow as isWithinWindowBackend,
   isSlotActive as isSlotActiveBackend,
+  scheduleFromConnectHours as scheduleFromConnectHoursBackend,
+  isHourActive as isHourActiveBackend,
   validateScheduledAt,
   isScheduleDue,
   isScheduleExpired,
@@ -210,6 +219,148 @@ describe("formato para humanos", () => {
     expect(describeWindow({ ...OFICINA, windowStartHour: 9, windowEndHour: 9 })).toBe(
       "Lun a Vie · 24 horas",
     );
+  });
+});
+
+describe("Hours of Operation de Amazon Connect", () => {
+  // Lunes a viernes 9:00-13:00 y 15:00-18:00 (corte de almuerzo), más sábado
+  // 9:00-13:00. Es la forma típica de un contact center real y NO se puede
+  // representar con la ventana simple de una sola franja.
+  const HOO = [
+    ...["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"].flatMap((Day) => [
+      { Day, StartTime: { Hours: 9, Minutes: 0 }, EndTime: { Hours: 13, Minutes: 0 } },
+      { Day, StartTime: { Hours: 15, Minutes: 0 }, EndTime: { Hours: 18, Minutes: 0 } },
+    ]),
+    { Day: "SATURDAY", StartTime: { Hours: 9, Minutes: 0 }, EndTime: { Hours: 13, Minutes: 0 } },
+  ];
+
+  const schedule = scheduleFromConnectHours(HOO, LIMA, { id: "hoo-1", name: "Admisión" });
+
+  it("traduce los días de Connect al índice correcto", () => {
+    expect(schedule.source).toBe("connect");
+    expect(schedule.hoursOfOperationName).toBe("Admisión");
+    expect(schedule.intervals.filter((i) => i.day === 1)).toHaveLength(2); // lunes
+    expect(schedule.intervals.filter((i) => i.day === 0)).toHaveLength(0); // domingo
+  });
+
+  it("abre en la mañana y en la tarde, pero no en el corte de almuerzo", () => {
+    expect(isMinuteActive(schedule, 1, 10 * 60)).toBe(true); // 10:00
+    expect(isMinuteActive(schedule, 1, 14 * 60)).toBe(false); // 14:00 ← almuerzo
+    expect(isMinuteActive(schedule, 1, 16 * 60)).toBe(true); // 16:00
+  });
+
+  it("respeta el sábado corto y cierra el domingo", () => {
+    expect(isMinuteActive(schedule, 6, 10 * 60)).toBe(true);
+    expect(isMinuteActive(schedule, 6, 16 * 60)).toBe(false);
+    expect(isMinuteActive(schedule, 0, 10 * 60)).toBe(false);
+  });
+
+  it("suma las horas semanales contando ambas franjas", () => {
+    // (4 h + 3 h) × 5 días + 4 h del sábado = 39
+    expect(weeklyScheduleHours(schedule)).toBe(39);
+  });
+
+  it("evalúa un instante real en el huso del horario", () => {
+    expect(isWithinSchedule(schedule, LUNES_14H_LIMA)).toBe(false); // almuerzo
+    expect(isWithinSchedule(schedule, new Date("2026-08-03T15:00:00.000Z"))).toBe(true); // 10:00 Lima
+  });
+
+  it("respeta los minutos, no solo las horas", () => {
+    const media = scheduleFromConnectHours(
+      [{ Day: "MONDAY", StartTime: { Hours: 9, Minutes: 30 }, EndTime: { Hours: 18, Minutes: 0 } }],
+      LIMA,
+    );
+    expect(isMinuteActive(media, 1, 9 * 60 + 29)).toBe(false);
+    expect(isMinuteActive(media, 1, 9 * 60 + 30)).toBe(true);
+    // La celda de las 9 se pinta activa aunque abra a y media.
+    expect(isHourActive(media, 1, 9)).toBe(true);
+    expect(isHourActive(media, 1, 8)).toBe(false);
+  });
+
+  it("un horario nocturno de Connect cruza medianoche", () => {
+    const noche = scheduleFromConnectHours(
+      [{ Day: "FRIDAY", StartTime: { Hours: 22, Minutes: 0 }, EndTime: { Hours: 2, Minutes: 0 } }],
+      LIMA,
+    );
+    expect(isMinuteActive(noche, 5, 23 * 60)).toBe(true); // viernes 23:00
+    expect(isMinuteActive(noche, 6, 1 * 60)).toBe(true); // sábado 01:00 ← sesión del viernes
+    expect(isMinuteActive(noche, 6, 3 * 60)).toBe(false);
+    expect(isMinuteActive(noche, 5, 3 * 60)).toBe(false);
+  });
+
+  it("00:00 a 00:00 en Connect es el día completo", () => {
+    const full = scheduleFromConnectHours(
+      [{ Day: "MONDAY", StartTime: { Hours: 0, Minutes: 0 }, EndTime: { Hours: 0, Minutes: 0 } }],
+      LIMA,
+    );
+    for (let h = 0; h < 24; h++) expect(isHourActive(full, 1, h)).toBe(true);
+    expect(isHourActive(full, 2, 10)).toBe(false);
+  });
+
+  it("descarta entradas corruptas sin romperse", () => {
+    const roto = scheduleFromConnectHours(
+      [
+        { Day: "LUNES", StartTime: { Hours: 9 }, EndTime: { Hours: 18 } }, // día inválido
+        { Day: "MONDAY", StartTime: undefined, EndTime: { Hours: 18 } }, // sin inicio
+        { Day: "TUESDAY", StartTime: { Hours: 9, Minutes: 0 }, EndTime: { Hours: 18, Minutes: 0 } },
+      ],
+      LIMA,
+    );
+    expect(roto.intervals).toHaveLength(1);
+    expect(roto.intervals[0].day).toBe(2);
+  });
+
+  it("un horario sin franjas nunca abre y se detecta", () => {
+    const vacio = scheduleFromConnectHours([], LIMA);
+    expect(isScheduleEmpty(vacio)).toBe(true);
+    expect(isWithinSchedule(vacio, LUNES_14H_LIMA)).toBe(false);
+    expect(nextScheduleChange(vacio, LUNES_14H_LIMA)).toBeNull();
+  });
+
+  it("el próximo cambio respeta los minutos exactos", () => {
+    const media = scheduleFromConnectHours(
+      [{ Day: "MONDAY", StartTime: { Hours: 9, Minutes: 30 }, EndTime: { Hours: 18, Minutes: 0 } }],
+      LIMA,
+    );
+    // Lunes 00:30 Lima → abre a las 9:30 Lima = 14:30 UTC.
+    const change = nextScheduleChange(media, LUNES_0030_LIMA);
+    expect(change?.opens).toBe(true);
+    expect(change?.at.toISOString()).toBe("2026-08-03T14:30:00.000Z");
+  });
+
+  it("interpreta el horario real de UDEP en Connect", () => {
+    // Copiado de `describe-hours-of-operation` sobre la instancia real
+    // (d697fc10…, "UDEP-Horario"): 7 días de 00:00 a 23:59 en Lima. Es la
+    // convención de la consola de Connect para "todo el día" — no usa 00:00.
+    const udep = scheduleFromConnectHours(
+      ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"].map((Day) => ({
+        Day,
+        StartTime: { Hours: 0, Minutes: 0 },
+        EndTime: { Hours: 23, Minutes: 59 },
+      })),
+      "America/Lima",
+      { id: "d697fc10-4c4c-42b8-b927-99e88196540e", name: "UDEP-Horario" },
+    );
+    // Abierto a cualquier hora de cualquier día, incluida la medianoche que
+    // rompía el modelo viejo.
+    expect(isWithinSchedule(udep, LUNES_0030_LIMA)).toBe(true);
+    expect(isWithinSchedule(udep, DOMINGO_14H_LIMA)).toBe(true);
+    for (let d = 0; d < 7; d++) {
+      for (let h = 0; h < 24; h++) expect(isHourActive(udep, d, h)).toBe(true);
+    }
+    // 23:59–00:00 queda fuera: es fiel a lo que el cliente ve en su consola,
+    // no un redondeo nuestro.
+    expect(isMinuteActive(udep, 1, 23 * 60 + 59)).toBe(false);
+    expect(weeklyScheduleHours(udep)).toBe(167.9);
+  });
+
+  it("front y back coinciden en todas las celdas de la semana", () => {
+    const back = scheduleFromConnectHoursBackend(HOO, LIMA);
+    for (let d = 0; d < 7; d++) {
+      for (let h = 0; h < 24; h++) {
+        expect(isHourActiveBackend(back, d, h)).toBe(isHourActive(schedule, d, h));
+      }
+    }
   });
 });
 

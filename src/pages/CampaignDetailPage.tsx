@@ -31,9 +31,10 @@ import { BusinessHoursPreview } from "@/components/campaigns/BusinessHoursPrevie
 import {
   formatInZone,
   formatRelative,
-  isWithinWindow,
-  nextWindowChange,
-  parseDays,
+  isWithinSchedule,
+  nextScheduleChange,
+  parseScheduleSnapshot,
+  scheduleFromWindow,
 } from "@/lib/callWindow";
 
 // UUID heuristic — matches the v4 ARN-suffix form Connect emits. Used in
@@ -89,6 +90,31 @@ export function CampaignDetailPage() {
   const { campaignId } = useParams<{ campaignId: string }>();
   const navigate = useNavigate();
   const { data, loading, error, refresh } = useCampaignStats(campaignId || null, 3000);
+
+  // El horario lo evalúa @/lib/callWindow, espejo exacto de la lógica del dialer
+  // (_shared/callWindow.ts). Antes esto era una copia local que se quedó sin el
+  // fix del bug de medianoche, así que el banner mentía respecto de lo que el
+  // discador hacía de verdad.
+  //
+  // Se prefiere la copia guardada del Hours of Operation sobre la ventana
+  // manual, en el mismo orden que usa el dialer. La diferencia es que acá no se
+  // relee Connect: la copia alcanza para el banner y ahorra una llamada por
+  // render. Va arriba de los returns tempranos porque es un hook.
+  const hoursSnapshot = data?.campaign?.hoursOfOperationSnapshot;
+  const campaignSchedule = useMemo(
+    () =>
+      parseScheduleSnapshot(hoursSnapshot) ||
+      scheduleFromWindow(data?.campaign || { timezone: "America/Lima" }),
+    [
+      hoursSnapshot,
+      data?.campaign?.timezone,
+      data?.campaign?.windowStartHour,
+      data?.campaign?.windowEndHour,
+      data?.campaign?.windowDaysOfWeek,
+      data?.campaign,
+    ],
+  );
+
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const { contacts, refresh: refreshContacts } = useCampaignContacts(
     campaignId || null,
@@ -376,16 +402,12 @@ export function CampaignDetailPage() {
   // del Ritmo (manual / N agentes / sin agentes aún).
   const agentCount = assignedAgents.length;
   const bucketMode = String(c.dialMode || "").toLowerCase() !== "agentless";
-  // La ventana la evalúa @/lib/callWindow, que es el espejo exacto de la lógica
-  // del dialer (_shared/callWindow.ts). Antes esto era una copia local que se
-  // quedó sin el fix del bug de medianoche y sin soporte de ventanas nocturnas,
-  // así que el banner mentía respecto de lo que el discador hacía de verdad.
   const win = {
-    within: isWithinWindow(c),
+    within: isWithinSchedule(campaignSchedule),
     start: Number(c.windowStartHour ?? 9),
     end: Number(c.windowEndHour ?? 18),
   };
-  const nextChange = nextWindowChange(c);
+  const nextChange = nextScheduleChange(campaignSchedule);
   const dialingBlocked = c.status === "RUNNING" && counts.pending > 0 && !win.within;
   // Voz en ventana con pendientes pero nada marcando ⇒ probablemente sin agente disponible.
   const waitingAgent =
@@ -1080,10 +1102,7 @@ export function CampaignDetailPage() {
                     </span>
                   </div>
                   <BusinessHoursPreview
-                    timezone={c.timezone || "America/Lima"}
-                    windowStartHour={Number(c.windowStartHour ?? 9)}
-                    windowEndHour={Number(c.windowEndHour ?? 18)}
-                    windowDaysOfWeek={parseDays(c.windowDaysOfWeek)}
+                    schedule={campaignSchedule}
                     scheduledStartAt={c.scheduledStartAt}
                     compact
                   />

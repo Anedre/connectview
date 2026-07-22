@@ -4,6 +4,7 @@ import { resolveDynamo, readTenantConfig } from "../_shared/tenantConnect";
 import { resolveTenantId, isLegacyTenant } from "../_shared/cognitoAuth";
 import { requireCapability } from "../_shared/rbac";
 import { validateScheduledAt } from "../_shared/callWindow";
+import { parseScheduleSnapshot, serializeSchedule } from "../_shared/connectHours";
 
 // BYO Data Plane (#46): tenant primero, fallback Vox pooled.
 const legacyDynamo = new DynamoDBClient({});
@@ -42,6 +43,10 @@ interface UpdateBody {
   /** Reprogramar arranque / vigencia. ISO 8601; string vacío borra el valor. */
   scheduledStartAt?: string;
   scheduledEndAt?: string;
+  /** Hours of Operation de Connect. "" desvincula y vuelve a la ventana manual. */
+  hoursOfOperationId?: string;
+  hoursOfOperationName?: string;
+  hoursOfOperationSnapshot?: unknown;
 }
 
 // Each editable field → a builder that knows its DynamoDB value type.
@@ -90,6 +95,15 @@ const FIELD_MAP: Record<
     toAttrValue: (v: string) => (v ? { S: v } : { NULL: true }),
   },
   scheduledEndAt: {
+    toAttrValue: (v: string) => (v ? { S: v } : { NULL: true }),
+  },
+  // Horario de atención de Connect. "" desvincula y devuelve la campaña a su
+  // ventana manual. El snapshot se valida antes de llegar acá.
+  hoursOfOperationId: {
+    toAttrValue: (v: string) => (v ? { S: v } : { NULL: true }),
+  },
+  hoursOfOperationName: { toAttrValue: (v: string) => ({ S: v || "" }) },
+  hoursOfOperationSnapshot: {
     toAttrValue: (v: string) => (v ? { S: v } : { NULL: true }),
   },
 };
@@ -207,6 +221,22 @@ export const handler: Handler = async (event: any) => {
         };
       }
     }
+    // Horario de Connect: el snapshot se normaliza acá (mismo motivo que las
+    // fechas — FIELD_MAP solo sabe de tipos DynamoDB, no de contenido). Un
+    // snapshot inválido se descarta en vez de guardarse: el dialer lo usa como
+    // respaldo cuando Connect no responde, así que basura ahí = llamadas a
+    // deshora. Desvincular ("" en el id) limpia también el respaldo.
+    if (body.hoursOfOperationId === "") {
+      body.hoursOfOperationSnapshot = "";
+      body.hoursOfOperationName = "";
+    } else if (body.hoursOfOperationSnapshot !== undefined) {
+      const parsed = parseScheduleSnapshot(body.hoursOfOperationSnapshot);
+      body.hoursOfOperationSnapshot = parsed ? serializeSchedule(parsed) : "";
+      if (!parsed) {
+        console.warn(`update-campaign: snapshot de horario inválido para ${body.campaignId}`);
+      }
+    }
+
     // Programar una campaña en DRAFT la pone en espera; despro­gramarla (string
     // vacío) la devuelve a DRAFT para que no quede SCHEDULED sin fecha.
     let statusOverride: string | null = null;

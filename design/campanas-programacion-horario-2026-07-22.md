@@ -148,4 +148,4 @@ El frontend se publica solo al integrar en `master` (Amplify Hosting).
 ## 8. Pendientes
 
 - **Fin de vigencia sin interfaz.** `scheduledEndAt` está implementado de punta a punta en el backend, pero ninguna pantalla lo expone todavía. Cablearlo es un campo de fecha en el asistente y en el diálogo de edición.
-- **Horas de operación de Amazon Connect.** Las colas ya tienen su horario configurado en Connect, y la campaña tiene el suyo propio. Hoy son independientes y pueden contradecirse. Superponer el horario de la cola en el visualizador — o directamente permitir heredarlo — requiere exponer el detalle desde `list-queues` (hoy sólo lista identificadores y nombres, haría falta `DescribeHoursOfOperation`).
+- ~~**Horas de operación de Amazon Connect.**~~ **Resuelto** el mismo día en [horario-atencion-desde-connect-2026-07-22.md](horario-atencion-desde-connect-2026-07-22.md): la campaña puede usar directamente el Hours of Operation de Connect, y el motor de este documento se generalizó a varias franjas por día para poder representarlo.
