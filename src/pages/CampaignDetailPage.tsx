@@ -926,6 +926,30 @@ export function CampaignDetailPage() {
         </div>
       )}
 
+      {/* ── Cierre automático programado ── */}
+      {c.scheduledEndAt && c.status === "RUNNING" && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            padding: "10px 14px",
+            borderRadius: 12,
+            border: "1px solid var(--border-1)",
+            background: "var(--bg-2)",
+            fontSize: 12.5,
+          }}
+        >
+          <Icon.Clock size={15} style={{ color: "var(--text-3)", flexShrink: 0 }} />
+          <span>
+            Se cierra sola el{" "}
+            <strong>{formatInZone(c.scheduledEndAt, campaignSchedule.timezone)}</strong> (
+            {formatRelative(new Date(c.scheduledEndAt))}), aunque queden contactos sin llamar.
+          </span>
+        </div>
+      )}
+
       {/* ── Aviso de ventana fuera de horario (no está "colgada", solo esperando) ── */}
       {dialingBlocked && (
         <div

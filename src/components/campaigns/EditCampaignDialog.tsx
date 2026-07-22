@@ -102,6 +102,10 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
   // (DRAFT / SCHEDULED / PAUSED); el backend rechaza reprogramar una RUNNING.
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("09:00");
+  // Fin de vigencia. A diferencia del arranque, se puede mover en caliente:
+  // adelantar o extender el cierre de una campaña que ya corre es legítimo.
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("18:00");
   const [retryNoAnswerMinutes, setRetryNoAnswerMinutes] = useState(30);
   const [retryMaxAttempts, setRetryMaxAttempts] = useState(3);
   // Control total — editable en caliente (el dialer re-lee cada tick).
@@ -148,6 +152,9 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
       );
       setScheduledDate(sched?.date || "");
       setScheduledTime(sched?.time || "09:00");
+      const fin = utcIsoToZonedInputs(campaign.scheduledEndAt, campaign.timezone || "America/Lima");
+      setEndDate(fin?.date || "");
+      setEndTime(fin?.time || "18:00");
       setRetryNoAnswerMinutes(Number(campaign.retryNoAnswerMinutes ?? 30));
       setRetryMaxAttempts(Number(campaign.retryMaxAttempts ?? 3));
       setAgentRouting(campaign.agentRouting === "exclusive" ? "exclusive" : "shared");
@@ -179,6 +186,7 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
   const scheduledIso = canReschedule
     ? zonedInputsToUtcIso(scheduledDate, scheduledTime, effectiveSchedule.timezone)
     : null;
+  const endIso = endDate ? zonedInputsToUtcIso(endDate, endTime, effectiveSchedule.timezone) : null;
 
   const handleSave = async () => {
     if (windowDaysOfWeek.length === 0) {
@@ -191,6 +199,18 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
     }
     if (scheduledIso && Date.parse(scheduledIso) <= Date.now()) {
       toast.error("La fecha de inicio ya pasó. Elige un momento futuro o quítala.");
+      return;
+    }
+    if (endDate && !endIso) {
+      toast.error("La fecha de cierre no es válida.");
+      return;
+    }
+    if (endIso && Date.parse(endIso) <= Date.now()) {
+      toast.error("La fecha de cierre ya pasó. Elige un momento futuro o quítala.");
+      return;
+    }
+    if (endIso && scheduledIso && Date.parse(endIso) <= Date.parse(scheduledIso)) {
+      toast.error("La campaña no puede cerrar antes de arrancar.");
       return;
     }
     try {
@@ -222,6 +242,9 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
         // "" borra la programación (update-campaign lo traduce a NULL y devuelve
         // la campaña a borrador). undefined = no tocar.
         ...(canReschedule ? { scheduledStartAt: scheduledIso || "" } : {}),
+        // El cierre sí se puede mover en caliente, incluso con la campaña
+        // corriendo. "" lo quita.
+        scheduledEndAt: endIso || "",
         retryNoAnswerMinutes,
         retryMaxAttempts,
       });
@@ -546,6 +569,35 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
               scheduledStartAt={scheduledIso}
               compact
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Cierre automático (opcional)</Label>
+            <div className="grid grid-cols-[1fr_110px] gap-3">
+              <Input
+                type="date"
+                value={endDate}
+                min={scheduledDate || new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+              <Input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                disabled={!endDate}
+              />
+            </div>
+            <p style={{ fontSize: 11, color: "var(--text-3)", lineHeight: 1.45 }}>
+              {endIso ? (
+                <>
+                  Se cierra sola el{" "}
+                  <strong>{formatInZone(endIso, effectiveSchedule.timezone)}</strong>, aunque queden
+                  contactos sin llamar. Vacía la fecha para quitarlo.
+                </>
+              ) : (
+                "Sin fecha de cierre, la campaña corre hasta terminar todos sus contactos."
+              )}
+            </p>
           </div>
 
           {canReschedule && (

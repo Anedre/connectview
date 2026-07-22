@@ -287,6 +287,11 @@ export function CampaignCreatePage() {
   const [startMode, setStartMode] = useState<"now" | "later">("now");
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("09:00");
+  // Fin de vigencia: al pasar esa fecha la campaña se cierra aunque queden
+  // contactos sin llamar. Sirve para bases con fecha de corte (una convocatoria
+  // que vence), donde seguir marcando después no tiene sentido.
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("18:00");
   const [retryNoAnswerMinutes, setRetryNoAnswerMinutes] = useState(30);
   const [retryMaxAttempts, setRetryMaxAttempts] = useState(3);
   const [maxContactsPerAgent, setMaxContactsPerAgent] = useState(5);
@@ -620,6 +625,10 @@ export function CampaignCreatePage() {
       startMode === "later" ? zonedInputsToUtcIso(scheduledDate, scheduledTime, scheduleTz) : null,
     [startMode, scheduledDate, scheduledTime, scheduleTz],
   );
+  const scheduledEndAtIso = useMemo(
+    () => (endDate ? zonedInputsToUtcIso(endDate, endTime, scheduleTz) : null),
+    [endDate, endTime, scheduleTz],
+  );
 
   const handleCreate = async () => {
     // Normaliza teléfonos editados a E.164 y detecta los que el backend
@@ -658,6 +667,22 @@ export function CampaignCreatePage() {
     }
     if (effectiveSchedule.intervals.length === 0) {
       toast.error("El horario elegido no tiene ninguna franja: la campaña nunca va a marcar.");
+      return;
+    }
+    if (endDate && !scheduledEndAtIso) {
+      toast.error("La fecha de cierre no es válida.");
+      return;
+    }
+    if (scheduledEndAtIso && Date.parse(scheduledEndAtIso) <= Date.now()) {
+      toast.error("La fecha de cierre ya pasó. Elige un momento futuro o quítala.");
+      return;
+    }
+    if (
+      scheduledEndAtIso &&
+      scheduledStartAtIso &&
+      Date.parse(scheduledEndAtIso) <= Date.parse(scheduledStartAtIso)
+    ) {
+      toast.error("La campaña no puede cerrar antes de arrancar.");
       return;
     }
     setSubmitting(true);
@@ -755,6 +780,7 @@ export function CampaignCreatePage() {
         startNow: startMode === "now",
         // La hora se elige en el huso de la campaña, no en el del navegador.
         scheduledStartAt: startMode === "later" ? scheduledStartAtIso || undefined : undefined,
+        scheduledEndAt: scheduledEndAtIso || undefined,
         programId: programId || undefined,
       };
       const r = await fetch(ep.createCampaign, {
@@ -2101,6 +2127,46 @@ export function CampaignCreatePage() {
                     </div>
                   )}
                 </div>
+
+                <div className="camp-field">
+                  <label className="camp-lbl">Cierre automático (opcional)</label>
+                  <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                    <Input
+                      type="date"
+                      value={endDate}
+                      min={scheduledDate || new Date().toISOString().slice(0, 10)}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      style={{ flex: 1 }}
+                    />
+                    <Input
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      style={{ width: 110 }}
+                      disabled={!endDate}
+                    />
+                    {endDate && (
+                      <Btn variant="ghost" size="sm" onClick={() => setEndDate("")}>
+                        Quitar
+                      </Btn>
+                    )}
+                  </div>
+                  <span
+                    className="muted"
+                    style={{ fontSize: 10.5, display: "block", marginTop: 5, lineHeight: 1.45 }}
+                  >
+                    {scheduledEndAtIso ? (
+                      <>
+                        La campaña se cierra sola el{" "}
+                        <strong>{formatInZone(scheduledEndAtIso, scheduleTz)}</strong>, aunque
+                        queden contactos sin llamar.
+                      </>
+                    ) : (
+                      "Sin fecha de cierre, la campaña corre hasta terminar todos sus contactos."
+                    )}
+                  </span>
+                </div>
+
                 <div className="camp-2col">
                   <div className="camp-field">
                     <label className="camp-lbl">Reintentar (min)</label>
