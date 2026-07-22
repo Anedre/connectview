@@ -16,13 +16,17 @@ import {
   isScheduleEmpty,
   nextScheduleChange,
   weeklyScheduleHours,
+  shiftDateKey,
+  specialDates,
   type CallWindow,
+  type WeeklySchedule,
 } from "../lib/callWindow";
 import {
   isWithinWindow as isWithinWindowBackend,
   isSlotActive as isSlotActiveBackend,
   scheduleFromConnectHours as scheduleFromConnectHoursBackend,
   isHourActive as isHourActiveBackend,
+  isWithinSchedule as isWithinScheduleBackend,
   validateScheduledAt,
   isScheduleDue,
   isScheduleExpired,
@@ -361,6 +365,93 @@ describe("Hours of Operation de Amazon Connect", () => {
         expect(isHourActiveBackend(back, d, h)).toBe(isHourActive(schedule, d, h));
       }
     }
+  });
+});
+
+describe("feriados y días especiales (overrides de Connect)", () => {
+  // Lunes a viernes 9-18. El martes 4 de agosto lo declaramos feriado y el
+  // miércoles 5 con horario reducido.
+  const base = scheduleFromConnectHours(
+    ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"].map((Day) => ({
+      Day,
+      StartTime: { Hours: 9, Minutes: 0 },
+      EndTime: { Hours: 18, Minutes: 0 },
+    })),
+    LIMA,
+    { id: "hoo-2", name: "Admisión" },
+  );
+  const conFeriado: WeeklySchedule = {
+    ...base,
+    overrides: {
+      "2026-08-03": [{ startMinutes: 540, endMinutes: 1080 }], // lunes normal
+      "2026-08-04": [], // martes FERIADO
+      "2026-08-05": [{ startMinutes: 540, endMinutes: 720 }], // miércoles corto
+    },
+  };
+
+  const martes14hLima = new Date("2026-08-04T19:00:00.000Z");
+  const miercoles10hLima = new Date("2026-08-05T15:00:00.000Z");
+  const miercoles14hLima = new Date("2026-08-05T19:00:00.000Z");
+
+  it("un feriado cierra aunque el patrón semanal diga que abre", () => {
+    // Sin overrides, un martes a las 14:00 estaría abierto.
+    expect(isWithinSchedule(base, martes14hLima)).toBe(true);
+    expect(isWithinSchedule(conFeriado, martes14hLima)).toBe(false);
+  });
+
+  it("un día con horario reducido respeta el recorte", () => {
+    expect(isWithinSchedule(conFeriado, miercoles10hLima)).toBe(true);
+    expect(isWithinSchedule(conFeriado, miercoles14hLima)).toBe(false);
+    // El mismo miércoles sin override sí abriría a las 14:00.
+    expect(isWithinSchedule(base, miercoles14hLima)).toBe(true);
+  });
+
+  it("una fecha sin override cae al patrón semanal", () => {
+    // Jueves 6 de agosto no está en el mapa.
+    expect(isWithinSchedule(conFeriado, new Date("2026-08-06T19:00:00.000Z"))).toBe(true);
+  });
+
+  it("lista solo las fechas que difieren del patrón", () => {
+    const especiales = specialDates(conFeriado);
+    expect(especiales.map((s) => s.date)).toEqual(["2026-08-04", "2026-08-05"]);
+    expect(especiales[0].closed).toBe(true);
+    expect(especiales[1].closed).toBe(false);
+  });
+
+  it("una franja nocturna del día anterior se estira a la madrugada", () => {
+    const nocturno: WeeklySchedule = {
+      ...base,
+      overrides: {
+        "2026-08-03": [{ startMinutes: 22 * 60, endMinutes: 2 * 60 }], // lunes 22:00-02:00
+        "2026-08-04": [], // martes cerrado por sí mismo
+      },
+    };
+    // Martes 01:00 Lima = 06:00 UTC → pertenece a la sesión del lunes.
+    expect(isWithinSchedule(nocturno, new Date("2026-08-04T06:00:00.000Z"))).toBe(true);
+    // Martes 03:00 Lima → ya cerró.
+    expect(isWithinSchedule(nocturno, new Date("2026-08-04T08:00:00.000Z"))).toBe(false);
+  });
+
+  it("shiftDateKey cruza meses y años sin corromper la fecha", () => {
+    expect(shiftDateKey("2026-08-01", -1)).toBe("2026-07-31");
+    expect(shiftDateKey("2026-12-31", 1)).toBe("2027-01-01");
+    expect(shiftDateKey("2026-03-01", -1)).toBe("2026-02-28");
+  });
+
+  it("front y back deciden igual sobre el feriado", () => {
+    const backSchedule = {
+      ...scheduleFromConnectHoursBackend(
+        ["TUESDAY"].map((Day) => ({
+          Day,
+          StartTime: { Hours: 9, Minutes: 0 },
+          EndTime: { Hours: 18, Minutes: 0 },
+        })),
+        LIMA,
+      ),
+      overrides: { "2026-08-04": [] },
+    };
+    expect(isWithinScheduleBackend(backSchedule, martes14hLima)).toBe(false);
+    expect(isWithinSchedule(conFeriado, martes14hLima)).toBe(false);
   });
 });
 

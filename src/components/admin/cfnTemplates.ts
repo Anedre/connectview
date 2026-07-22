@@ -171,6 +171,10 @@ Resources:
                   # nombre. Es lo que permite que una campaña use el horario de
                   # atención real de Connect en vez de una copia a mano.
                   - connect:DescribeHoursOfOperation
+                  # Horario EFECTIVO por fecha: aplica los overrides (feriados)
+                  # que el cliente configura en Connect. Sin esto, una campaña
+                  # marcaría un 28 de julio como si fuera un martes cualquiera.
+                  - connect:GetEffectiveHoursOfOperations
                   - connect:CreateQueue
                   - connect:UpdateQueueName
                   - connect:UpdateQueueStatus

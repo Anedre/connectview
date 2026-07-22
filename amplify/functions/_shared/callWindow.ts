@@ -75,14 +75,31 @@ export interface ScheduleInterval {
   endMinutes: number;
 }
 
+/** Franja sin día: se usa dentro de las excepciones por fecha. */
+export interface TimeRange {
+  startMinutes: number;
+  endMinutes: number;
+}
+
 export interface WeeklySchedule {
   timezone: string;
+  /** Patrón semanal. Es el que rige salvo que la fecha tenga excepción. */
   intervals: ScheduleInterval[];
   /** De dónde salió: el Hours of Operation de Connect o la ventana manual. */
   source: "connect" | "manual";
   /** Solo con source "connect": identidad del horario en Connect. */
   hoursOfOperationId?: string;
   hoursOfOperationName?: string;
+  /**
+   * Horario EFECTIVO por fecha (`"2026-07-28"` → franjas), tal como lo devuelve
+   * `GetEffectiveHoursOfOperations`. Manda sobre el patrón semanal para las
+   * fechas presentes, y es lo que hace que se respeten los **feriados** que el
+   * cliente configura en Connect como overrides.
+   *
+   * Una fecha con lista VACÍA significa cerrado todo ese día — es exactamente
+   * cómo se ve un feriado, y por eso no se puede tratar como "sin dato".
+   */
+  overrides?: Record<string, TimeRange[]>;
 }
 
 /** Días de Connect → índice 0-6. Connect los manda en inglés y en mayúsculas. */
@@ -204,14 +221,18 @@ export function isHourActive(schedule: WeeklySchedule, weekday: number, hour: nu
   return false;
 }
 
-/** Posición actual dentro de la semana, en el huso del horario. */
+/** Posición actual dentro de la semana + la fecha local, en el huso del horario. */
 function zonedWeekPosition(
   timezone: string,
   at: Date,
-): { weekday: number; minutes: number } | null {
+): { weekday: number; minutes: number; date: string } | null {
   try {
-    const parts = new Intl.DateTimeFormat("en-US", {
+    // en-CA da la fecha en ISO (2026-07-28), que es la clave de los overrides.
+    const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: timezone || DEFAULT_TZ,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
       // h23 y no `hour12:false`: en-US con hour12:false resuelve a h24 y las
@@ -220,15 +241,67 @@ function zonedWeekPosition(
       hourCycle: "h23",
       weekday: "short",
     }).formatToParts(at);
-    const rawHour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value || "";
+    const rawHour = parseInt(get("hour") || "0", 10);
     const hour = rawHour === 24 ? 0 : rawHour; // cinturón por si ignora h23
-    const minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
-    const weekday = WEEKDAY_MAP[parts.find((p) => p.type === "weekday")?.value || ""] ?? -1;
+    const minute = parseInt(get("minute") || "0", 10);
+    const weekday = WEEKDAY_MAP[get("weekday")] ?? -1;
     if (weekday < 0) return null;
-    return { weekday, minutes: hour * 60 + minute };
+    return {
+      weekday,
+      minutes: hour * 60 + minute,
+      date: `${get("year")}-${get("month")}-${get("day")}`,
+    };
   } catch {
     return null;
   }
+}
+
+/** "2026-07-28" + (-1) → "2026-07-27". Fechas puras, sin husos de por medio. */
+export function shiftDateKey(dateKey: string, days: number): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  t.setUTCDate(t.getUTCDate() + days);
+  return t.toISOString().slice(0, 10);
+}
+
+/** ¿Alguna franja de esa lista cubre el minuto, contando desde el mismo día? */
+function rangesCoverSameDay(ranges: TimeRange[], minutes: number): boolean {
+  return ranges.some((r) =>
+    r.endMinutes > r.startMinutes
+      ? minutes >= r.startMinutes && minutes < r.endMinutes
+      : minutes >= r.startMinutes,
+  );
+}
+
+/** ¿Alguna franja de la víspera se estira hasta este minuto de la madrugada? */
+function rangesCoverFromPrevDay(ranges: TimeRange[], minutes: number): boolean {
+  return ranges.some(
+    (r) =>
+      (r.endMinutes < r.startMinutes && minutes < r.endMinutes) ||
+      (r.endMinutes === r.startMinutes && minutes < r.startMinutes),
+  );
+}
+
+/**
+ * Igual que el anterior pero contra el patrón semanal, para cuando la víspera
+ * quedó fuera del rango de fechas consultado.
+ *
+ * Solo mira la COLA nocturna: el día de hoy ya lo decidió su excepción, y
+ * consultar el patrón entero acá haría que un feriado abriera igual.
+ */
+function weeklyCoversFromPrevDay(
+  schedule: WeeklySchedule,
+  weekday: number,
+  minutes: number,
+): boolean {
+  const prevDay = (weekday + 6) % 7;
+  return schedule.intervals.some(
+    (iv) =>
+      iv.day === prevDay &&
+      ((iv.endMinutes < iv.startMinutes && minutes < iv.endMinutes) ||
+        (iv.endMinutes === iv.startMinutes && minutes < iv.startMinutes)),
+  );
 }
 
 /**
@@ -244,7 +317,58 @@ function zonedWeekPosition(
 export function isWithinSchedule(schedule: WeeklySchedule, at: Date = new Date()): boolean {
   const pos = zonedWeekPosition(schedule.timezone, at);
   if (!pos) return true;
+
+  // Excepciones por fecha (feriados). Si la fecha de hoy tiene entrada, ES la
+  // verdad de hoy: una lista vacía significa cerrado, no "sin dato". El patrón
+  // semanal no se consulta para ese día.
+  const today = schedule.overrides?.[pos.date];
+  if (today) {
+    if (rangesCoverSameDay(today, pos.minutes)) return true;
+    // Cola nocturna de la víspera. El rango se pide desde ayer justamente para
+    // que esta entrada exista; si no está, se mira SOLO la cola del patrón
+    // semanal. Consultar el patrón entero acá haría que un feriado abriera
+    // igual, que es exactamente lo que este bloque evita.
+    const yesterday = schedule.overrides?.[shiftDateKey(pos.date, -1)];
+    if (yesterday) return rangesCoverFromPrevDay(yesterday, pos.minutes);
+    return weeklyCoversFromPrevDay(schedule, pos.weekday, pos.minutes);
+  }
+
   return isMinuteActive(schedule, pos.weekday, pos.minutes);
+}
+
+export interface SpecialDate {
+  /** "2026-07-28" */
+  date: string;
+  /** Franjas efectivas de ese día. Vacío = cerrado (feriado). */
+  ranges: TimeRange[];
+  closed: boolean;
+}
+
+/**
+ * Fechas cuyo horario efectivo DIFIERE del patrón semanal — o sea, los feriados
+ * y excepciones que el cliente configuró en Connect.
+ *
+ * `GetEffectiveHoursOfOperations` devuelve todas las fechas del rango, coincidan
+ * o no con el patrón. Guardarlas todas hace la evaluación exacta, pero para
+ * avisar en la interfaz solo interesan las que se salen de lo normal.
+ */
+export function specialDates(schedule: WeeklySchedule): SpecialDate[] {
+  const out: SpecialDate[] = [];
+  for (const [date, ranges] of Object.entries(schedule.overrides || {})) {
+    const [y, m, d] = date.split("-").map(Number);
+    const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    const patron = schedule.intervals
+      .filter((iv) => iv.day === weekday)
+      .map((iv) => `${iv.startMinutes}-${iv.endMinutes}`)
+      .sort()
+      .join("|");
+    const efectivo = ranges
+      .map((r) => `${r.startMinutes}-${r.endMinutes}`)
+      .sort()
+      .join("|");
+    if (patron !== efectivo) out.push({ date, ranges, closed: ranges.length === 0 });
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /**

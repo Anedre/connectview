@@ -10,8 +10,17 @@
  * 🔑 Los Lambdas bundlean este archivo: tras editarlo hay que redesplegar
  *    `campaign-dialer` con `node scripts/deploy-lambda.mjs campaign-dialer`.
  */
-import { ConnectClient, DescribeHoursOfOperationCommand } from "@aws-sdk/client-connect";
-import { scheduleFromConnectHours, type WeeklySchedule } from "./callWindow";
+import {
+  ConnectClient,
+  DescribeHoursOfOperationCommand,
+  GetEffectiveHoursOfOperationsCommand,
+} from "@aws-sdk/client-connect";
+import {
+  scheduleFromConnectHours,
+  shiftDateKey,
+  type TimeRange,
+  type WeeklySchedule,
+} from "./callWindow";
 
 // parseScheduleSnapshot / serializeSchedule viven en `callWindow.ts` porque son
 // lógica pura y tienen que existir idénticas en el front (src/lib/callWindow.ts).
@@ -78,7 +87,98 @@ export async function fetchConnectSchedule(
   }
 }
 
-/** Solo para tests: vacía la caché entre casos. */
+/**
+ * Cuántos días de horario efectivo se piden por delante. Ocho cubren la semana
+ * que muestra el visualizador y el cálculo del próximo borde, que mira 8 días.
+ */
+const EFFECTIVE_DAYS_AHEAD = 8;
+
+/**
+ * Enriquece un horario con su calendario EFECTIVO — el que aplica los overrides
+ * que el cliente configura en Connect para feriados y días especiales.
+ *
+ * Sin esto, una campaña trataría el 28 de julio como un martes cualquiera y
+ * llamaría en Fiestas Patrias.
+ *
+ * El rango arranca AYER, no hoy: una franja nocturna del día anterior puede
+ * estirarse hasta la madrugada de hoy, y sin esa fecha en el mapa no habría
+ * contra qué evaluar ese tramo.
+ *
+ * Si falla, devuelve el horario tal cual: se pierde el respeto a los feriados,
+ * pero el patrón semanal sigue vigente. Nunca lanza.
+ */
+export async function withEffectiveHours(
+  connect: ConnectClient,
+  instanceId: string,
+  schedule: WeeklySchedule,
+  now: Date = new Date(),
+): Promise<WeeklySchedule> {
+  if (!schedule.hoursOfOperationId || !instanceId) return schedule;
+  const today = zonedDateKey(schedule.timezone, now);
+  if (!today) return schedule;
+  const fromDate = shiftDateKey(today, -1);
+  const toDate = shiftDateKey(today, EFFECTIVE_DAYS_AHEAD);
+
+  const key = `${instanceId}#${schedule.hoursOfOperationId}#${fromDate}`;
+  const hit = effectiveCache.get(key);
+  if (hit && hit.exp > Date.now()) {
+    return hit.overrides ? { ...schedule, overrides: hit.overrides } : schedule;
+  }
+
+  try {
+    const res = await connect.send(
+      new GetEffectiveHoursOfOperationsCommand({
+        InstanceId: instanceId,
+        HoursOfOperationId: schedule.hoursOfOperationId,
+        FromDate: fromDate,
+        ToDate: toDate,
+      }),
+    );
+    const overrides: Record<string, TimeRange[]> = {};
+    for (const day of res.EffectiveHoursOfOperationList || []) {
+      if (!day?.Date) continue;
+      overrides[day.Date] = (day.OperationalHours || []).map((h) => ({
+        startMinutes: (h.Start?.Hours ?? 0) * 60 + (h.Start?.Minutes ?? 0),
+        endMinutes: (h.End?.Hours ?? 0) * 60 + (h.End?.Minutes ?? 0),
+      }));
+    }
+    effectiveCache.set(key, { overrides, exp: Date.now() + TTL_OK_MS });
+    return { ...schedule, overrides };
+  } catch (err) {
+    const reason = err instanceof Error ? err.name : String(err);
+    // Lo más probable: al rol del tenant le falta
+    // `connect:GetEffectiveHoursOfOperations`. Se cachea el fallo un rato corto
+    // para no repetir la llamada en cada tick.
+    console.warn(
+      `[connectHours] sin horario efectivo para ${schedule.hoursOfOperationId} (${reason}) — se usa el patrón semanal`,
+    );
+    effectiveCache.set(key, { overrides: null, exp: Date.now() + TTL_FAIL_MS });
+    return schedule;
+  }
+}
+
+interface EffectiveCacheEntry {
+  overrides: Record<string, TimeRange[]> | null;
+  exp: number;
+}
+const effectiveCache = new Map<string, EffectiveCacheEntry>();
+
+/** Fecha local ISO en el huso indicado — la clave de los overrides. */
+function zonedDateKey(timezone: string, at: Date): string | null {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone || "America/Lima",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(at);
+  } catch {
+    return null;
+  }
+}
+
+/** Solo para tests: vacía las cachés entre casos. */
 export function __clearScheduleCache(): void {
   cache.clear();
+  effectiveCache.clear();
 }

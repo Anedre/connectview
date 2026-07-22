@@ -24,6 +24,8 @@ interface RawHours {
     StartTime?: { Hours?: number; Minutes?: number };
     EndTime?: { Hours?: number; Minutes?: number };
   }> | null;
+  /** Horario efectivo por fecha (feriados ya aplicados por Connect). */
+  overrides?: Record<string, Array<{ startMinutes: number; endMinutes: number }>> | null;
   reason?: string;
 }
 
@@ -58,10 +60,13 @@ export function useHoursOfOperation(enabled = true) {
           name: h.name,
           description: h.description || "",
           schedule: h.config
-            ? scheduleFromConnectHours(h.config, h.timezone || "America/Lima", {
-                id: h.id,
-                name: h.name,
-              })
+            ? {
+                ...scheduleFromConnectHours(h.config, h.timezone || "America/Lima", {
+                  id: h.id,
+                  name: h.name,
+                }),
+                ...(h.overrides ? { overrides: h.overrides } : {}),
+              }
             : null,
           reason: h.reason,
         })),

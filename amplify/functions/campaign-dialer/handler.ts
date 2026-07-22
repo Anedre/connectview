@@ -25,7 +25,11 @@ import {
   scheduleFromWindow,
   type WeeklySchedule,
 } from "../_shared/callWindow";
-import { fetchConnectSchedule, parseScheduleSnapshot } from "../_shared/connectHours";
+import {
+  fetchConnectSchedule,
+  parseScheduleSnapshot,
+  withEffectiveHours,
+} from "../_shared/connectHours";
 
 // BYO Data Plane (#46): DDB module-active igual que Connect. Se resetea por
 // campaña usando getTenantConnect(campaign.tenantId).dynamo. Lambda procesa
@@ -200,7 +204,10 @@ async function resolveCampaignSchedule(campaign: Campaign): Promise<WeeklySchedu
     const client = tc?.client || legacyConnect;
     const instanceId = tc?.instanceId || INSTANCE_ID;
     const live = await fetchConnectSchedule(client, instanceId, campaign.hoursOfOperationId);
-    if (live) return live;
+    // El calendario efectivo aplica los overrides de Connect (feriados). Si esa
+    // segunda lectura falla, `withEffectiveHours` devuelve el patrón semanal
+    // intacto: se pierde el feriado, no el horario.
+    if (live) return withEffectiveHours(client, instanceId, live);
   } catch (err) {
     console.warn(`[dialer] ${campaign.campaignId}: fallo resolviendo el horario de Connect`, err);
   }

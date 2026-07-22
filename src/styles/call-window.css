@@ -234,6 +234,12 @@
   line-height: 1.45;
 }
 
+/* Aviso de feriados: informativo, no una advertencia de configuración rota. */
+.cw-warn[data-kind="dates"] {
+  background: var(--accent-violet-soft);
+  color: var(--text-1);
+}
+
 /* ── Variante compacta (dentro de diálogos angostos) ───────── */
 .cw-root[data-compact="true"] .cw-cell {
   height: 11px;

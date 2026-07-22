@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Clock, Link2 } from "lucide-react";
+import { AlertTriangle, CalendarOff, Clock, Link2 } from "lucide-react";
 import {
   DAY_LABELS,
   DAY_LABELS_LONG,
@@ -9,6 +9,7 @@ import {
   isWithinSchedule,
   nextScheduleChange,
   scheduleFromWindow,
+  specialDates,
   weeklyScheduleHours,
   zonedNow,
   type WeeklySchedule,
@@ -49,6 +50,21 @@ function fmt(total: number): string {
   const h = Math.floor(total / 60) % 24;
   const m = total % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** "2026-07-28" → "mar 28 jul". Fecha pura, sin husos: no lleva hora. */
+function formatDateShort(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  try {
+    return new Intl.DateTimeFormat("es-PE", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      timeZone: "UTC",
+    }).format(new Date(Date.UTC(y, m - 1, d)));
+  } catch {
+    return dateKey;
+  }
 }
 
 /** Resumen de una línea: agrupa los días que comparten las mismas franjas. */
@@ -117,6 +133,8 @@ export function BusinessHoursPreview({
   // Una franja que cruza medianoche merece explicación: su cola cae en el día
   // siguiente y eso confunde al leer la grilla.
   const cruzaMedianoche = schedule.intervals.some((iv) => iv.endMinutes < iv.startMinutes);
+  // Feriados y excepciones que Connect aplica sobre el patrón semanal.
+  const especiales = useMemo(() => specialDates(schedule), [schedule]);
 
   // Celda que ocupa el arranque programado, solo si cae dentro de la semana
   // visible (más allá de eso la grilla genérica engañaría más de lo que ayuda).
@@ -241,6 +259,29 @@ export function BusinessHoursPreview({
           </span>
         </div>
       ) : null}
+
+      {/* Feriados y días especiales que Connect aplica sobre el patrón semanal.
+          La grilla muestra la semana típica, así que sin este aviso un feriado
+          quedaría invisible justo cuando más importa. */}
+      {especiales.length > 0 && (
+        <div className="cw-warn" data-kind="dates">
+          <CalendarOff size={13} style={{ flex: "0 0 auto", marginTop: 1 }} />
+          <span>
+            {especiales.length === 1 ? "Día especial" : "Días especiales"} en la próxima semana,
+            según Amazon Connect:{" "}
+            {especiales.map((s, i) => (
+              <span key={s.date}>
+                {i > 0 && ", "}
+                <strong>{formatDateShort(s.date)}</strong>{" "}
+                {s.closed
+                  ? "cerrado"
+                  : s.ranges.map((r) => `${fmt(r.startMinutes)}–${fmt(r.endMinutes)}`).join(" y ")}
+              </span>
+            ))}
+            .
+          </span>
+        </div>
+      )}
 
       <div className="cw-foot">
         <span className="cw-summary">{describeSchedule(schedule)}</span>

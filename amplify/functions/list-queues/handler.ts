@@ -18,6 +18,8 @@ import {
 } from "@aws-sdk/client-connect";
 import { resolveConnect } from "../_shared/tenantConnect";
 import { getIdentity } from "../_shared/cognitoAuth";
+import { scheduleFromConnectHours } from "../_shared/callWindow";
+import { withEffectiveHours } from "../_shared/connectHours";
 
 /**
  * list-queues — el endpoint de COLAS del tenant. Empezó como GET (lista) y ahora
@@ -345,6 +347,15 @@ export const handler: Handler = async (event: any) => {
               }),
             );
             const h = d.HoursOfOperation;
+            // Calendario efectivo: aplica los overrides de Connect (feriados).
+            // Se pide para cada horario porque el selector de campañas tiene que
+            // poder avisar "el 28 de julio está cerrado" antes de que el admin
+            // programe una campaña para ese día. Va en paralelo con los demás.
+            const schedule = scheduleFromConnectHours(h?.Config, h?.TimeZone || "", {
+              id: s.id,
+              name: h?.Name,
+            });
+            const conFeriados = await withEffectiveHours(connect, instanceId, schedule);
             return {
               id: s.id,
               name: h?.Name || s.name,
@@ -355,6 +366,7 @@ export const handler: Handler = async (event: any) => {
                 StartTime: { Hours: c.StartTime?.Hours ?? 0, Minutes: c.StartTime?.Minutes ?? 0 },
                 EndTime: { Hours: c.EndTime?.Hours ?? 0, Minutes: c.EndTime?.Minutes ?? 0 },
               })),
+              overrides: conFeriados.overrides || null,
             };
           } catch (err) {
             // Lo más probable: al rol del tenant le falta

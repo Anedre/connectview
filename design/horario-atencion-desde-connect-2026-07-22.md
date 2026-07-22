@@ -110,8 +110,32 @@ node scripts/deploy-lambda.mjs campaign-dialer create-campaign update-campaign c
 
 ---
 
-## 7. Pendientes
+## 7. Feriados y días especiales
+
+El patrón semanal no alcanza: un contact center cierra el 28 de julio aunque ese año caiga martes. Connect resuelve eso con **overrides** por fecha, y expone `GetEffectiveHoursOfOperations`, que devuelve el horario **ya resuelto** día por día para un rango.
+
+Se usa esa API en vez de leer los overrides y combinarlos a mano: el que sabe aplicar las reglas de precedencia es AWS.
+
+```
+Config (patrón semanal)  +  overrides  ──GetEffectiveHoursOfOperations──▶  horario por fecha
+```
+
+El resultado se guarda en `schedule.overrides`, un mapa `"2026-07-28" → franjas`. La evaluación lo consulta **antes** que el patrón semanal:
+
+- Si la fecha de hoy tiene entrada, **esa es la verdad de hoy**. Una lista vacía significa cerrado, no "sin dato" — es exactamente cómo se ve un feriado.
+- La cola nocturna de la víspera se resuelve con la entrada del día anterior. Por eso el rango se pide **desde ayer**, no desde hoy.
+- Si la víspera quedó fuera del rango, se consulta el patrón semanal **solo para esa cola**, nunca para el día completo. Consultar el patrón entero ahí haría que un feriado abriera igual — el test de paridad front/back cazó exactamente ese error mientras se escribía esto.
+
+`specialDates()` compara el efectivo contra el patrón y devuelve solo las fechas que difieren, que es lo que el visualizador muestra como aviso ("mar 28 jul cerrado"). La grilla sigue mostrando la semana típica; sin ese aviso, un feriado quedaría invisible justo cuando más importa.
+
+**El respaldo no lleva overrides**, y es correcto: caducan. Si Connect no responde, el patrón semanal es lo mejor disponible.
+
+**Permiso:** `connect:GetEffectiveHoursOfOperations`, agregado a los mismos dos templates. Si falta, `withEffectiveHours` devuelve el horario sin tocar y se pierden los feriados, no el horario.
+
+---
+
+## 8. Pendientes
 
 - **Las colas y las campañas siguen eligiendo su horario por separado.** Ahora pueden usar el mismo, pero nada obliga a que coincidan. Un paso natural sería proponer por defecto el horario de la cola de la campaña.
-- **`ParentHoursOfOperations`** (los overrides jerárquicos de Connect, para feriados) se ignora: solo se lee `Config`. Un feriado configurado en Connect no se respeta todavía.
 - **`scheduledEndAt` sigue sin interfaz** — implementado de punta a punta en el backend, sin exponer.
+- **El rol de la plataforma quedó a ~38 bytes del límite** de 10 KB de políticas inline. El próximo permiso que haga falta obliga a consolidar políticas de verdad, no a buscar otro duplicado.
