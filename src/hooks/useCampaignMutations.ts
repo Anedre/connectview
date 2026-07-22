@@ -31,6 +31,11 @@ export interface UpdateCampaignInput {
   agentRouting?: "shared" | "exclusive";
   directConnect?: boolean;
   autoAccept?: boolean;
+  /** Arranque programado en ISO UTC. "" borra la fecha y devuelve la campaña a
+   *  borrador; undefined = no tocar. El backend rechaza reprogramar una RUNNING. */
+  scheduledStartAt?: string;
+  /** Fin de vigencia en ISO UTC. Mismas reglas que scheduledStartAt. */
+  scheduledEndAt?: string;
 }
 
 export type RelaunchScope = "all" | "failed" | "specific";

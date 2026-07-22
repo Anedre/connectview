@@ -27,6 +27,14 @@ import { Card, CardBody } from "@/components/vox/primitives";
 import * as Icon from "@/components/vox/primitives";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Btn, Pill, Num, HeroBand } from "@/components/aria";
+import { BusinessHoursPreview } from "@/components/campaigns/BusinessHoursPreview";
+import {
+  formatInZone,
+  formatRelative,
+  isWithinWindow,
+  nextWindowChange,
+  parseDays,
+} from "@/lib/callWindow";
 
 // UUID heuristic — matches the v4 ARN-suffix form Connect emits. Used in
 // the contacts table to detect legacy rows where agentUsername was written
@@ -60,6 +68,7 @@ const STATUS_LABEL_ES: Record<string, string> = {
 
 const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
   DRAFT: "Borrador",
+  SCHEDULED: "Programada",
   RUNNING: "En curso",
   PAUSED: "Pausada",
   COMPLETED: "Terminada",
@@ -69,6 +78,7 @@ const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
 // Campaign status → ARIA Pill tone (matches the CampaignsPage list).
 const CAMPAIGN_STATUS_TONE: Record<string, "green" | "gold" | "cyan" | "red" | "outline"> = {
   DRAFT: "outline",
+  SCHEDULED: "cyan",
   RUNNING: "green",
   PAUSED: "gold",
   COMPLETED: "cyan",
@@ -188,7 +198,15 @@ export function CampaignDetailPage() {
     }
   };
 
-  const handleControl = async (action: "start" | "pause" | "resume" | "cancel") => {
+  const CONTROL_TOAST: Record<string, string> = {
+    start: "Campaña iniciada",
+    pause: "Campaña pausada",
+    resume: "Campaña reanudada",
+    cancel: "Campaña cancelada",
+    unschedule: "Programación cancelada — la campaña volvió a borrador",
+  };
+
+  const handleControl = async (action: "start" | "pause" | "resume" | "cancel" | "unschedule") => {
     if (!campaignId) return;
     setControlling(true);
     try {
@@ -201,7 +219,8 @@ export function CampaignDetailPage() {
       });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body?.error || body?.message || `HTTP ${r.status}`);
-      toast.success(`Campaña ${action}d`);
+      // Antes era `Campaña ${action}d` → "Campaña startd", "Campaña cancelrd".
+      toast.success(CONTROL_TOAST[action] || "Acción aplicada");
       refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error");
@@ -357,35 +376,16 @@ export function CampaignDetailPage() {
   // del Ritmo (manual / N agentes / sin agentes aún).
   const agentCount = assignedAgents.length;
   const bucketMode = String(c.dialMode || "").toLowerCase() !== "agentless";
-  const win = (() => {
-    try {
-      const tz = c.timezone || "America/Lima";
-      const parts = new Intl.DateTimeFormat("en-US", {
-        timeZone: tz,
-        hour: "numeric",
-        hour12: false,
-        weekday: "short",
-      }).formatToParts(new Date());
-      const hour = Number(parts.find((p) => p.type === "hour")?.value || "0") % 24;
-      const dayMap: Record<string, number> = {
-        Sun: 0,
-        Mon: 1,
-        Tue: 2,
-        Wed: 3,
-        Thu: 4,
-        Fri: 5,
-        Sat: 6,
-      };
-      const day =
-        dayMap[parts.find((p) => p.type === "weekday")?.value || ""] ?? new Date().getDay();
-      const days: number[] = JSON.parse(c.windowDaysOfWeek || "[1,2,3,4,5]");
-      const start = Number(c.windowStartHour ?? 9),
-        end = Number(c.windowEndHour ?? 18);
-      return { within: days.includes(day) && hour >= start && hour < end, start, end };
-    } catch {
-      return { within: true, start: 9, end: 18 };
-    }
-  })();
+  // La ventana la evalúa @/lib/callWindow, que es el espejo exacto de la lógica
+  // del dialer (_shared/callWindow.ts). Antes esto era una copia local que se
+  // quedó sin el fix del bug de medianoche y sin soporte de ventanas nocturnas,
+  // así que el banner mentía respecto de lo que el discador hacía de verdad.
+  const win = {
+    within: isWithinWindow(c),
+    start: Number(c.windowStartHour ?? 9),
+    end: Number(c.windowEndHour ?? 18),
+  };
+  const nextChange = nextWindowChange(c);
   const dialingBlocked = c.status === "RUNNING" && counts.pending > 0 && !win.within;
   // Voz en ventana con pendientes pero nada marcando ⇒ probablemente sin agente disponible.
   const waitingAgent =
@@ -779,6 +779,18 @@ export function CampaignDetailPage() {
                   Iniciar
                 </Btn>
               )}
+              {/* SCHEDULED → volver a borrador (el "Iniciar ahora" vive en el
+                  banner de programación, junto a la fecha). */}
+              {c.status === "SCHEDULED" && (
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleControl("unschedule")}
+                  disabled={controlling}
+                >
+                  Cancelar programación
+                </Btn>
+              )}
               {c.status === "RUNNING" && (
                 <>
                   {/* Freno de emergencia: cuelga TODAS las llamadas vivas.
@@ -855,6 +867,43 @@ export function CampaignDetailPage() {
         }
       />
 
+      {/* ── Campaña programada: todavía no arrancó, arranca sola ── */}
+      {c.status === "SCHEDULED" && c.scheduledStartAt && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            padding: "12px 16px",
+            borderRadius: 14,
+            border: "1px solid color-mix(in srgb, var(--accent-cyan) 40%, transparent)",
+            background: "var(--accent-cyan-soft)",
+          }}
+        >
+          <Icon.Clock size={18} style={{ color: "var(--accent-cyan)", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontWeight: 700, fontSize: 13.5 }}>
+              Programada para {formatInZone(c.scheduledStartAt, c.timezone)}
+            </div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+              {counts.pending} contacto{counts.pending === 1 ? "" : "s"} en espera. Arranca sola{" "}
+              {formatRelative(new Date(c.scheduledStartAt))} y empieza a marcar dentro del horario
+              de atención.
+            </div>
+          </div>
+          <Btn
+            variant="primary"
+            size="sm"
+            icon="play"
+            onClick={() => handleControl("start")}
+            disabled={controlling}
+          >
+            Iniciar ahora
+          </Btn>
+        </div>
+      )}
+
       {/* ── Aviso de ventana fuera de horario (no está "colgada", solo esperando) ── */}
       {dialingBlocked && (
         <div
@@ -877,7 +926,8 @@ export function CampaignDetailPage() {
             </div>
             <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
               La campaña está activa con {counts.pending} pendiente{counts.pending === 1 ? "" : "s"}
-              . {isWa ? "Se enviarán" : "Se discarán"} automáticamente al volver al horario, o
+              . {isWa ? "Se enviarán" : "Se discarán"} automáticamente
+              {nextChange?.opens ? ` ${formatRelative(nextChange.at)}` : " al volver al horario"}, o
               puedes forzar ahora.
             </div>
           </div>
@@ -1021,6 +1071,24 @@ export function CampaignDetailPage() {
             />
           ) : (
             <>
+              <Card>
+                <CardBody>
+                  <div className="row between" style={{ marginBottom: 10, alignItems: "baseline" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>Horario de atención</div>
+                    <span className="muted" style={{ fontSize: 11 }}>
+                      Fuera de estas franjas no se marca
+                    </span>
+                  </div>
+                  <BusinessHoursPreview
+                    timezone={c.timezone || "America/Lima"}
+                    windowStartHour={Number(c.windowStartHour ?? 9)}
+                    windowEndHour={Number(c.windowEndHour ?? 18)}
+                    windowDaysOfWeek={parseDays(c.windowDaysOfWeek)}
+                    scheduledStartAt={c.scheduledStartAt}
+                    compact
+                  />
+                </CardBody>
+              </Card>
               <PacingControlCard dialMode={c.dialMode} agentCount={agentCount} />
               <CampaignOrchestrationCard
                 campaignId={c.campaignId}

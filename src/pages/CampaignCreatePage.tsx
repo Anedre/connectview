@@ -45,6 +45,8 @@ import { authedFetch } from "@/lib/authedFetch";
 import { useProgram, useProgramOptional } from "@/context/ProgramContext";
 import { Btn, Card, Pill, Icon as AriaIcon } from "@/components/aria";
 import { useTopBarActions } from "@/components/layout/TopBarSlot";
+import { BusinessHoursPreview } from "@/components/campaigns/BusinessHoursPreview";
+import { formatInZone, isWithinWindow, zonedInputsToUtcIso } from "@/lib/callWindow";
 
 /**
  * CampaignCreatePage — full-screen, single-page campaign builder (replaces the
@@ -266,6 +268,12 @@ export function CampaignCreatePage() {
   const [timezone, setTimezone] = useState("America/Lima");
   const [windowStartHour, setWindowStartHour] = useState(9);
   const [windowEndHour, setWindowEndHour] = useState(18);
+  const [windowDaysOfWeek, setWindowDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
+  // Programación: "now" arranca al guardar, "later" deja la campaña en espera
+  // hasta la fecha elegida (el dialer la promueve sola).
+  const [startMode, setStartMode] = useState<"now" | "later">("now");
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("09:00");
   const [retryNoAnswerMinutes, setRetryNoAnswerMinutes] = useState(30);
   const [retryMaxAttempts, setRetryMaxAttempts] = useState(3);
   const [maxContactsPerAgent, setMaxContactsPerAgent] = useState(5);
@@ -562,6 +570,15 @@ export function CampaignCreatePage() {
                 : "ruteo (atributo → cola)"
               : null;
 
+  // La fecha/hora elegidas se interpretan en el huso de la campaña, no en el
+  // del navegador: un supervisor en Madrid programando una campaña de Lima ve
+  // y escribe hora de Lima.
+  const scheduledStartAtIso = useMemo(
+    () =>
+      startMode === "later" ? zonedInputsToUtcIso(scheduledDate, scheduledTime, timezone) : null,
+    [startMode, scheduledDate, scheduledTime, timezone],
+  );
+
   const handleCreate = async () => {
     // Normaliza teléfonos editados a E.164 y detecta los que el backend
     // descartaría (create-campaign exige `+` + 8-15 dígitos). Antes se enviaban
@@ -577,6 +594,20 @@ export function CampaignCreatePage() {
           badCount === 1 ? "" : "s"
         } antes de lanzar.`,
       );
+      return;
+    }
+    if (startMode === "later") {
+      if (!scheduledStartAtIso) {
+        toast.error("Elige la fecha y la hora de inicio de la campaña.");
+        return;
+      }
+      if (Date.parse(scheduledStartAtIso) <= Date.now()) {
+        toast.error("La fecha de inicio ya pasó. Elige un momento futuro.");
+        return;
+      }
+    }
+    if (windowDaysOfWeek.length === 0) {
+      toast.error("Marca al menos un día de atención o la campaña nunca va a marcar.");
       return;
     }
     setSubmitting(true);
@@ -638,7 +669,7 @@ export function CampaignCreatePage() {
         timezone,
         windowStartHour,
         windowEndHour,
-        windowDaysOfWeek: [1, 2, 3, 4, 5],
+        windowDaysOfWeek,
         retryNoAnswerMinutes,
         retryMaxAttempts,
         maxContactsPerAgent,
@@ -663,7 +694,9 @@ export function CampaignCreatePage() {
           })(),
         })),
         createdBy: user?.username || "system",
-        startNow: true,
+        startNow: startMode === "now",
+        // La hora se elige en el huso de la campaña, no en el del navegador.
+        scheduledStartAt: startMode === "later" ? scheduledStartAtIso || undefined : undefined,
         programId: programId || undefined,
       };
       const r = await fetch(ep.createCampaign, {
@@ -673,7 +706,11 @@ export function CampaignCreatePage() {
       });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body?.error || body?.message || `HTTP ${r.status}`);
-      toast.success(`Campaña creada (${body.totalContacts} contactos). Iniciando dialing…`);
+      toast.success(
+        body.status === "SCHEDULED"
+          ? `Campaña programada (${body.totalContacts} contactos) — inicia ${formatInZone(body.scheduledStartAt, timezone)}`
+          : `Campaña creada (${body.totalContacts} contactos). Iniciando dialing…`,
+      );
       navigate("/campaigns");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo crear la campaña");
@@ -705,21 +742,24 @@ export function CampaignCreatePage() {
       <Btn
         variant="primary"
         size="sm"
-        icon={submitting ? undefined : "send"}
+        icon={submitting ? undefined : startMode === "later" ? "calendar" : "send"}
         disabled={!canLaunch || submitting}
         onClick={handleCreate}
         title={canLaunch ? "" : `Falta: ${missing}`}
       >
         {submitting ? (
           <>
-            <Loader2 className="h-4 w-4 animate-spin" /> Lanzando…
+            <Loader2 className="h-4 w-4 animate-spin" />{" "}
+            {startMode === "later" ? "Programando…" : "Lanzando…"}
           </>
+        ) : startMode === "later" ? (
+          <>Programar campaña</>
         ) : (
           <>Lanzar campaña</>
         )}
       </Btn>
     </div>,
-    [submitting, canLaunch, missing],
+    [submitting, canLaunch, missing, startMode],
   );
 
   return (
@@ -1798,7 +1838,7 @@ export function CampaignCreatePage() {
                   </div>
                 </div>
                 <div className="camp-field">
-                  <label className="camp-lbl">Horario de llamadas</label>
+                  <label className="camp-lbl">Horario de atención</label>
                   <div className="row" style={{ gap: 8, alignItems: "center" }}>
                     <Input
                       type="number"
@@ -1814,7 +1854,7 @@ export function CampaignCreatePage() {
                     <Input
                       type="number"
                       min={0}
-                      max={23}
+                      max={24}
                       value={windowEndHour}
                       onChange={(e) => setWindowEndHour(parseInt(e.target.value) || 0)}
                       style={{ width: 70 }}
@@ -1837,6 +1877,104 @@ export function CampaignCreatePage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div style={{ marginTop: 8 }}>
+                    <BusinessHoursPreview
+                      timezone={timezone}
+                      windowStartHour={windowStartHour}
+                      windowEndHour={windowEndHour}
+                      windowDaysOfWeek={windowDaysOfWeek}
+                      onDaysChange={setWindowDaysOfWeek}
+                      scheduledStartAt={scheduledStartAtIso}
+                    />
+                  </div>
+                  <span
+                    className="muted"
+                    style={{ fontSize: 10.5, display: "block", marginTop: 5, lineHeight: 1.4 }}
+                  >
+                    Fuera de estas franjas el discador no marca. Click en un día para activarlo o
+                    desactivarlo.
+                  </span>
+                </div>
+
+                <div className="camp-field">
+                  <label className="camp-lbl">Inicio de la campaña</label>
+                  <RadioCards
+                    value={startMode}
+                    onValueChange={(mode) => {
+                      setStartMode(mode);
+                      // Precargar mañana a la hora de apertura: es lo que el
+                      // admin quiere el 90% de las veces y evita el error de
+                      // "fecha en el pasado" al abrir el selector vacío.
+                      if (mode === "later" && !scheduledDate) {
+                        const t = new Date();
+                        t.setDate(t.getDate() + 1);
+                        setScheduledDate(t.toISOString().slice(0, 10));
+                        setScheduledTime(`${String(windowStartHour).padStart(2, "0")}:00`);
+                      }
+                    }}
+                    options={[
+                      {
+                        value: "now",
+                        label: "Iniciar al guardar",
+                        description: "Empieza a marcar apenas entre en el horario de atención.",
+                      },
+                      {
+                        value: "later",
+                        label: "Programar",
+                        description: "Queda en espera y arranca sola en la fecha que elijas.",
+                      },
+                    ]}
+                  />
+                  {startMode === "later" && (
+                    <div style={{ marginTop: 8 }}>
+                      <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                        <Input
+                          type="date"
+                          value={scheduledDate}
+                          min={new Date().toISOString().slice(0, 10)}
+                          onChange={(e) => setScheduledDate(e.target.value)}
+                          style={{ flex: 1 }}
+                        />
+                        <Input
+                          type="time"
+                          value={scheduledTime}
+                          onChange={(e) => setScheduledTime(e.target.value)}
+                          style={{ width: 110 }}
+                        />
+                      </div>
+                      <span
+                        className="muted"
+                        style={{ fontSize: 10.5, display: "block", marginTop: 5, lineHeight: 1.45 }}
+                      >
+                        {scheduledStartAtIso ? (
+                          <>
+                            Arranca el{" "}
+                            <strong>{formatInZone(scheduledStartAtIso, timezone)}</strong> (hora de{" "}
+                            {TIMEZONES.find((t) => t.value === timezone)?.label || timezone}
+                            ).
+                            {!isWithinWindow(
+                              {
+                                timezone,
+                                windowStartHour,
+                                windowEndHour,
+                                windowDaysOfWeek,
+                              },
+                              new Date(scheduledStartAtIso),
+                            ) && (
+                              <>
+                                {" "}
+                                Ese momento cae <strong>fuera del horario de atención</strong>: la
+                                campaña quedará activa y empezará a marcar en la primera franja
+                                hábil.
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          "Elige la fecha y la hora de arranque."
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="camp-2col">
                   <div className="camp-field">

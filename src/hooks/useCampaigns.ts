@@ -27,7 +27,13 @@ export interface Campaign {
    *  agent's bucket has room, more contacts are claimed from the general
    *  pool. */
   maxContactsPerAgent?: number;
-  status: "DRAFT" | "RUNNING" | "PAUSED" | "COMPLETED" | "CANCELLED";
+  status: "DRAFT" | "SCHEDULED" | "RUNNING" | "PAUSED" | "COMPLETED" | "CANCELLED";
+  /** ISO UTC. Con status SCHEDULED, cuándo arranca sola la campaña: el dialer
+   *  la promueve a RUNNING en el tick siguiente a esa fecha. */
+  scheduledStartAt?: string | null;
+  /** ISO UTC. Fin de vigencia: al pasar, el dialer completa la campaña aunque
+   *  queden contactos pendientes. */
+  scheduledEndAt?: string | null;
   /** Programa (unidad comercial) al que pertenece la campaña. Se elige al crear
    *  y propaga la membership a los leads; aquí alimenta el badge + filtro por
    *  programa de la lista. Vacío/undefined = "Sin programa". */

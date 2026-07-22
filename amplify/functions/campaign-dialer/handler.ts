@@ -16,6 +16,12 @@ import { getTenantConnect } from "../_shared/tenantConnect";
 import { maskPhone } from "../_shared/maskPhone";
 import { evaluateSend } from "../_shared/suppression";
 import { applyAutoAccept } from "../_shared/campaignAutoAccept";
+import {
+  isWithinWindow,
+  isScheduleDue,
+  isScheduleExpired,
+  describeWindow,
+} from "../_shared/callWindow";
 
 // BYO Data Plane (#46): DDB module-active igual que Connect. Se resetea por
 // campaña usando getTenantConnect(campaign.tenantId).dynamo. Lambda procesa
@@ -110,6 +116,13 @@ interface Campaign {
   /** Aplicar auto-accept a los agentes asignados (lo gestionan
    *  control-campaign / assign-campaign-agents, no el dialer). */
   autoAccept?: boolean;
+  // ── Programación con fecha y hora ────────────────────────────────────
+  /** ISO UTC. Mientras el status es SCHEDULED, el momento en que la campaña
+   *  debe pasar sola a RUNNING. Se limpia al promover. */
+  scheduledStartAt?: string;
+  /** ISO UTC. Fin de vigencia: al pasar esa fecha el dialer completa la
+   *  campaña aunque queden contactos pendientes. */
+  scheduledEndAt?: string;
 }
 
 interface CampaignContact {
@@ -132,52 +145,91 @@ interface CampaignContact {
   assignedAgentUserId?: string;
 }
 
-// Check whether we're inside the allowed calling window for the campaign timezone.
-function isWithinWindow(campaign: Campaign): boolean {
-  try {
-    const allowedDays: number[] = JSON.parse(campaign.windowDaysOfWeek || "[1,2,3,4,5]");
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: campaign.timezone || "America/Lima",
-      hour: "2-digit",
-      // BUG medianoche: `hour12:false` en en-US resuelve a hourCycle "h24",
-      // donde las 00:xx se formatean como "24" → `24 < end` fallaba y TODA
-      // campaña quedaba "outside calling window" de 00:00 a 00:59. h23 = "00".
-      hourCycle: "h23",
-      weekday: "short",
-    });
-    const parts = fmt.formatToParts(new Date());
-    const rawHour = parseInt(parts.find((p) => p.type === "hour")?.value || "0");
-    const hour = rawHour === 24 ? 0 : rawHour; // cinturón por si el runtime ignora h23
-    const weekdayStr = parts.find((p) => p.type === "weekday")?.value || "";
-    const weekdayMap: Record<string, number> = {
-      Sun: 0,
-      Mon: 1,
-      Tue: 2,
-      Wed: 3,
-      Thu: 4,
-      Fri: 5,
-      Sat: 6,
-    };
-    const weekday = weekdayMap[weekdayStr] ?? -1;
-    if (weekday < 0) return true; // if we can't determine, be permissive
-    if (!allowedDays.includes(weekday)) return false;
-    return hour >= Number(campaign.windowStartHour) && hour < Number(campaign.windowEndHour);
-  } catch {
-    return true;
-  }
-}
+// La lógica de ventana horaria vive en ../_shared/callWindow (espejo de
+// src/lib/callWindow.ts, que es lo que el front usa para pintar el banner y el
+// visualizador de horario). No reimplementarla acá: cuando estuvo duplicada,
+// el fix del bug de medianoche se aplicó solo de un lado.
 
-async function listRunningCampaigns(): Promise<Campaign[]> {
+async function listCampaignsByStatus(status: string): Promise<Campaign[]> {
   const res = await dynamo.send(
     new QueryCommand({
       TableName: CAMPAIGNS_TABLE,
       IndexName: "status-createdAt-index",
       KeyConditionExpression: "#st = :s",
       ExpressionAttributeNames: { "#st": "status" },
-      ExpressionAttributeValues: { ":s": { S: "RUNNING" } },
+      ExpressionAttributeValues: { ":s": { S: status } },
     }),
   );
   return (res.Items || []).map((it) => unmarshall(it) as Campaign);
+}
+
+async function listRunningCampaigns(): Promise<Campaign[]> {
+  return listCampaignsByStatus("RUNNING");
+}
+
+/**
+ * Promueve a RUNNING las campañas SCHEDULED cuyo `scheduledStartAt` ya venció.
+ *
+ * Se apoya en el tick de 1 minuto que ya existe — no hace falta un scheduler
+ * nuevo ni un GSI nuevo. Las campañas en espera son pocas (decenas), así que
+ * consultar el GSI por status y filtrar la fecha en memoria es más barato que
+ * mantener un índice extra sobre `connectview-campaigns`.
+ *
+ * El UpdateItem lleva ConditionExpression sobre el status: si dos invocaciones
+ * del dialer se solapan (no hay reserved-concurrency en los crons), solo una
+ * gana la promoción y la otra recibe ConditionalCheckFailed y sigue de largo.
+ *
+ * OJO: la campaña arranca aunque esté fuera de su ventana horaria. Es
+ * deliberado — pasa a RUNNING y el filtro de ventana la deja esperando el
+ * primer horario hábil, que es lo que el admin espera al programarla un
+ * domingo para el lunes.
+ */
+async function promoteScheduledCampaigns(): Promise<number> {
+  let promoted = 0;
+  let scheduled: Campaign[];
+  try {
+    scheduled = await listCampaignsByStatus("SCHEDULED");
+  } catch (err) {
+    console.error("[dialer] no se pudo listar campañas programadas", err);
+    return 0;
+  }
+  const now = new Date();
+  for (const campaign of scheduled) {
+    const due = isScheduleDue(
+      (campaign as Campaign & { scheduledStartAt?: string }).scheduledStartAt,
+      now,
+    );
+    if (!due) continue;
+    try {
+      await dynamo.send(
+        new UpdateItemCommand({
+          TableName: CAMPAIGNS_TABLE,
+          Key: { campaignId: { S: campaign.campaignId } },
+          UpdateExpression: "SET #st = :running, startedAt = :now, scheduledStartAt = :null",
+          ConditionExpression: "#st = :scheduled",
+          ExpressionAttributeNames: { "#st": "status" },
+          ExpressionAttributeValues: {
+            ":running": { S: "RUNNING" },
+            ":scheduled": { S: "SCHEDULED" },
+            ":now": { S: now.toISOString() },
+            ":null": { NULL: true },
+          },
+        }),
+      );
+      promoted++;
+      console.log(
+        `[dialer] campaña programada ${campaign.campaignId} (${campaign.name}) → RUNNING · ventana ${describeWindow(campaign)}`,
+      );
+    } catch (err) {
+      const name = (err as { name?: string })?.name || "";
+      if (name === "ConditionalCheckFailedException") {
+        // Otra invocación la promovió primero. Normal, no es un error.
+        continue;
+      }
+      console.error(`[dialer] no se pudo promover ${campaign.campaignId}`, err);
+    }
+  }
+  return promoted;
 }
 
 async function countDialingForCampaign(campaignId: string): Promise<number> {
@@ -1589,6 +1641,9 @@ async function dialCycle(): Promise<{
   campaignsProcessed: number;
   anyPendingLeft: boolean;
 }> {
+  // Programación: las campañas cuya fecha de arranque ya venció pasan a RUNNING
+  // ANTES de listar, así entran a este mismo ciclo y no pierden un minuto.
+  await promoteScheduledCampaigns();
   const campaigns = await listRunningCampaigns();
   if (campaigns.length === 0) {
     return { campaignsProcessed: 0, anyPendingLeft: false };
@@ -1613,6 +1668,16 @@ async function dialCycle(): Promise<{
     // campañas quedaban sin procesar. Capturamos, logueamos y seguimos con la
     // siguiente (no re-lanzar).
     try {
+      // Fin de vigencia: la campaña se cierra aunque queden pendientes. Va
+      // ANTES del filtro de ventana — si no, una campaña vencida fuera de
+      // horario quedaría RUNNING para siempre sin que nadie la complete.
+      if (isScheduleExpired(campaign.scheduledEndAt)) {
+        console.log(
+          `[dialer] ${campaign.campaignId} venció su vigencia (${campaign.scheduledEndAt}) → completar`,
+        );
+        await forceCompleteCampaign(campaign, "expired");
+        continue;
+      }
       if (!isWithinWindow(campaign)) {
         console.log(`[dialer] ${campaign.campaignId} outside calling window`);
         continue;

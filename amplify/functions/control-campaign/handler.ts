@@ -21,6 +21,7 @@ import { resolveTenantId, getIdentity } from "../_shared/cognitoAuth";
 import { requireCapability } from "../_shared/rbac";
 import { kickDialer } from "../_shared/invokeDialer";
 import { applyAutoAccept } from "../_shared/campaignAutoAccept";
+import { validateScheduledAt } from "../_shared/callWindow";
 
 // BYO Data Plane (#46): DDB del tenant; ConnectCampaignsV2 queda legacy.
 const legacyDynamo = new DynamoDBClient({});
@@ -52,6 +53,11 @@ const ALLOWED_ACTIONS = new Set([
   // masivo). Privilegiado (Admins/Supervisors). No cambia el status: el front
   // lo combina con pause para el "freno de emergencia".
   "stop-all-calls",
+  // Programación con fecha y hora: deja la campaña en SCHEDULED con un
+  // `scheduledStartAt`; el dialer la promueve a RUNNING sola cuando vence.
+  // "unschedule" la devuelve a DRAFT sin perder los contactos cargados.
+  "schedule",
+  "unschedule",
 ]);
 
 interface ContactRow {
@@ -461,7 +467,14 @@ export const handler: Handler = async (event: any) => {
 
     switch (action) {
       case "start":
-        if (currentStatus !== "DRAFT" && currentStatus !== "PAUSED") {
+        // SCHEDULED entra acá a propósito: "Iniciar ahora" sobre una campaña
+        // programada es adelantar el arranque. Limpiamos la fecha para que el
+        // barrido de SCHEDULED del dialer no la vuelva a tocar.
+        if (
+          currentStatus !== "DRAFT" &&
+          currentStatus !== "PAUSED" &&
+          currentStatus !== "SCHEDULED"
+        ) {
           return {
             statusCode: 409,
             headers: { "Content-Type": "application/json" },
@@ -471,7 +484,53 @@ export const handler: Handler = async (event: any) => {
           };
         }
         newStatus = "RUNNING";
-        if (currentStatus === "DRAFT") extraSets.startedAt = { S: now };
+        if (currentStatus === "DRAFT" || currentStatus === "SCHEDULED") {
+          extraSets.startedAt = { S: now };
+        }
+        if (currentStatus === "SCHEDULED") extraSets.scheduledStartAt = { NULL: true };
+        break;
+      case "schedule": {
+        // Programar / reprogramar. Vale desde DRAFT, PAUSED o SCHEDULED — no
+        // desde RUNNING (el arranque ya ocurrió; para eso está pausar primero).
+        if (
+          currentStatus !== "DRAFT" &&
+          currentStatus !== "PAUSED" &&
+          currentStatus !== "SCHEDULED"
+        ) {
+          return {
+            statusCode: 409,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              error: `No se puede programar una campaña en estado ${currentStatus}`,
+            }),
+          };
+        }
+        const v = validateScheduledAt(body.scheduledStartAt);
+        if (!v.ok) {
+          return {
+            statusCode: 400,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ error: v.error }),
+          };
+        }
+        newStatus = "SCHEDULED";
+        extraSets.scheduledStartAt = { S: v.iso! };
+        // Reprogramar borra el arranque previo: la campaña todavía no empezó.
+        extraSets.startedAt = { NULL: true };
+        break;
+      }
+      case "unschedule":
+        if (currentStatus !== "SCHEDULED") {
+          return {
+            statusCode: 409,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              error: `Solo se puede desprogramar una campaña en espera (estado actual: ${currentStatus})`,
+            }),
+          };
+        }
+        newStatus = "DRAFT";
+        extraSets.scheduledStartAt = { NULL: true };
         break;
       case "pause":
         if (currentStatus !== "RUNNING") {
@@ -583,12 +642,20 @@ export const handler: Handler = async (event: any) => {
 
     // ── 2. Update the meta in DynamoDB ───────────────────────────────────
     const setExpressions = ["#st = :new"];
-    const exprVals: Record<string, { S: string }> = { ":new": { S: newStatus } };
+    const exprVals: Record<string, { S?: string; NULL?: boolean }> = {
+      ":new": { S: newStatus },
+    };
     const exprNames: Record<string, string> = { "#st": "status" };
 
     for (const [key, val] of Object.entries(extraSets)) {
+      // El valor SIEMPRE tiene que entrar en exprVals. Antes solo se copiaba
+      // cuando venía `S`, así que un `{ NULL: true }` armaba un SET que
+      // referenciaba un placeholder inexistente y DynamoDB rechazaba el update
+      // entero con ValidationException. Nadie lo veía porque hasta ahora ningún
+      // caso del switch limpiaba un campo; "unschedule" y "start" desde
+      // SCHEDULED sí lo hacen.
       setExpressions.push(`${key} = :${key}`);
-      if (val.S) exprVals[`:${key}`] = { S: val.S };
+      exprVals[`:${key}`] = val.NULL ? { NULL: true } : { S: val.S ?? "" };
     }
 
     await dynamo.send(
@@ -639,6 +706,7 @@ export const handler: Handler = async (event: any) => {
         campaignId,
         status: newStatus,
         previousStatus: currentStatus,
+        scheduledStartAt: extraSets.scheduledStartAt?.S ?? null,
         useNative,
         awsCampaignId: awsCampaignId || null,
         contactsQueued: queuedCount,

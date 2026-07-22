@@ -3,6 +3,7 @@ import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from "@aws-sdk/clie
 import { resolveDynamo, readTenantConfig } from "../_shared/tenantConnect";
 import { resolveTenantId, isLegacyTenant } from "../_shared/cognitoAuth";
 import { requireCapability } from "../_shared/rbac";
+import { validateScheduledAt } from "../_shared/callWindow";
 
 // BYO Data Plane (#46): tenant primero, fallback Vox pooled.
 const legacyDynamo = new DynamoDBClient({});
@@ -38,6 +39,9 @@ interface UpdateBody {
   agentRouting?: "shared" | "exclusive";
   directConnect?: boolean;
   autoAccept?: boolean;
+  /** Reprogramar arranque / vigencia. ISO 8601; string vacío borra el valor. */
+  scheduledStartAt?: string;
+  scheduledEndAt?: string;
 }
 
 // Each editable field → a builder that knows its DynamoDB value type.
@@ -47,7 +51,7 @@ const FIELD_MAP: Record<
   string,
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    toAttrValue: (v: any) => { S?: string; N?: string; BOOL?: boolean };
+    toAttrValue: (v: any) => { S?: string; N?: string; BOOL?: boolean; NULL?: boolean };
   }
 > = {
   name: { toAttrValue: (v: string) => ({ S: v }) },
@@ -79,6 +83,15 @@ const FIELD_MAP: Record<
   },
   directConnect: { toAttrValue: (v: boolean) => ({ BOOL: !!v }) },
   autoAccept: { toAttrValue: (v: boolean) => ({ BOOL: !!v }) },
+  // Programación. El string vacío borra la fecha (el bucle de abajo salta
+  // undefined/null, así que "" es la única forma de limpiar vía PATCH).
+  // Las fechas ya vienen validadas y normalizadas a UTC más arriba.
+  scheduledStartAt: {
+    toAttrValue: (v: string) => (v ? { S: v } : { NULL: true }),
+  },
+  scheduledEndAt: {
+    toAttrValue: (v: string) => (v ? { S: v } : { NULL: true }),
+  },
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -155,6 +168,54 @@ export const handler: Handler = async (event: any) => {
       body.contactFlowName = "ARIA-Outbound-Direct";
     }
 
+    // ── Reprogramación ────────────────────────────────────────────────────
+    // Validar y normalizar a UTC ANTES de pasar por FIELD_MAP: el mapa solo
+    // sabe de tipos DynamoDB, no de fechas. El string vacío es "borrar" y pasa
+    // derecho. Una campaña ya RUNNING no se reprograma — el arranque ya pasó;
+    // para eso está pausar y volver a programar.
+    for (const field of ["scheduledStartAt", "scheduledEndAt"] as const) {
+      const raw = body[field];
+      if (raw === undefined || raw === null || raw === "") continue;
+      if (field === "scheduledStartAt" && currentStatus === "RUNNING") {
+        return {
+          statusCode: 409,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            error: "La campaña ya está corriendo. Pausala antes de reprogramar su inicio.",
+          }),
+        };
+      }
+      const v = validateScheduledAt(raw);
+      if (!v.ok) {
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: v.error }),
+        };
+      }
+      body[field] = v.iso!;
+    }
+    // El fin de vigencia tiene que ser posterior al inicio — comparado contra el
+    // inicio efectivo (el del PATCH si vino, si no el que ya está guardado).
+    if (body.scheduledEndAt) {
+      const effectiveStart = body.scheduledStartAt || current.Item.scheduledStartAt?.S;
+      if (effectiveStart && Date.parse(body.scheduledEndAt) <= Date.parse(effectiveStart)) {
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "El fin de vigencia debe ser posterior al inicio" }),
+        };
+      }
+    }
+    // Programar una campaña en DRAFT la pone en espera; despro­gramarla (string
+    // vacío) la devuelve a DRAFT para que no quede SCHEDULED sin fecha.
+    let statusOverride: string | null = null;
+    if (body.scheduledStartAt && (currentStatus === "DRAFT" || currentStatus === "SCHEDULED")) {
+      statusOverride = "SCHEDULED";
+    } else if (body.scheduledStartAt === "" && currentStatus === "SCHEDULED") {
+      statusOverride = "DRAFT";
+    }
+
     const setExpressions: string[] = [];
     const exprVals: Record<string, { S?: string; N?: string; BOOL?: boolean }> = {};
     const exprNames: Record<string, string> = {};
@@ -185,6 +246,13 @@ export const handler: Handler = async (event: any) => {
     setExpressions.push("#updatedAt = :updatedAt");
     exprNames["#updatedAt"] = "updatedAt";
     exprVals[":updatedAt"] = { S: new Date().toISOString() };
+
+    // DRAFT ⇄ SCHEDULED según haya o no fecha de arranque.
+    if (statusOverride) {
+      setExpressions.push("#status = :status");
+      exprNames["#status"] = "status";
+      exprVals[":status"] = { S: statusOverride };
+    }
 
     await dynamo.send(
       new UpdateItemCommand({

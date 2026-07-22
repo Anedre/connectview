@@ -12,6 +12,7 @@ import { kickDialer } from "../_shared/invokeDialer";
 import { resolveTenantId, isLegacyTenant } from "../_shared/cognitoAuth";
 import { resolveDynamo, resolveCustomerProfiles, readTenantConfig } from "../_shared/tenantConnect";
 import { requireCapability } from "../_shared/rbac";
+import { validateScheduledAt } from "../_shared/callWindow";
 
 // BYO Data Plane (#46): DynamoDB del tenant para campaigns + campaign-contacts
 // + bulkUpsertVoxLeads (vía setActiveDynamo). ConnectCampaignsV2 queda legacy
@@ -61,6 +62,14 @@ interface CreateCampaignBody {
   contacts: Contact[];
   createdBy?: string;
   startNow?: boolean;
+  /** Arranque programado (ISO 8601, idealmente con offset del huso de la
+   *  campaña: "2026-08-01T09:00:00-05:00"). Si viene con fecha futura la
+   *  campaña nace en SCHEDULED y el dialer la promueve a RUNNING sola cuando
+   *  llega el momento. Manda por encima de `startNow`. */
+  scheduledStartAt?: string;
+  /** Fin de vigencia (ISO 8601). Al pasar esa fecha el dialer completa la
+   *  campaña aunque queden contactos pendientes. Opcional. */
+  scheduledEndAt?: string;
   /** Programa (Pilar 1) al que pertenece la campaña → auto-tag de sus leads
    *  a la membership N:N (connectview-lead-programs). */
   programId?: string;
@@ -234,8 +243,45 @@ export const handler: Handler = async (event: any, context: any) => {
 
     const campaignId = randomUUID();
     const now = new Date().toISOString();
-    const startNow = body.startNow !== false;
-    const status = startNow ? "RUNNING" : "DRAFT";
+    // Programación con fecha y hora. Manda por encima de startNow: si el admin
+    // eligió una fecha futura la campaña nace SCHEDULED y el dialer la arranca
+    // sola. Una fecha inválida se rechaza en vez de degradar a "arranca ya" —
+    // arrancar una campaña de miles de contactos por un typo es peor que un 400.
+    let scheduledStartAt: string | null = null;
+    let scheduledEndAt: string | null = null;
+    if (body.scheduledStartAt) {
+      const v = validateScheduledAt(body.scheduledStartAt);
+      if (!v.ok) {
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: v.error }),
+        };
+      }
+      scheduledStartAt = v.iso!;
+    }
+    if (body.scheduledEndAt) {
+      const v = validateScheduledAt(body.scheduledEndAt);
+      if (!v.ok) {
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: `Fin de vigencia: ${v.error}` }),
+        };
+      }
+      if (scheduledStartAt && Date.parse(v.iso!) <= Date.parse(scheduledStartAt)) {
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "El fin de vigencia debe ser posterior al inicio" }),
+        };
+      }
+      scheduledEndAt = v.iso!;
+    }
+    // validateScheduledAt ya descartó el pasado (con 2 min de gracia), así que
+    // si quedó un scheduledStartAt es futuro y la campaña espera.
+    const startNow = !scheduledStartAt && body.startNow !== false;
+    const status = scheduledStartAt ? "SCHEDULED" : startNow ? "RUNNING" : "DRAFT";
     // Default to our own Lambda dialer (custom). AWS Outbound Campaigns v2 is
     // only supported for US/MX/BR destinations from us-east-1 (not Peru), so
     // we keep useNativeCampaign=false. The v2 integration stays intact and
@@ -319,6 +365,10 @@ export const handler: Handler = async (event: any, context: any) => {
           createdAt: { S: now },
           createdBy: { S: body.createdBy || "system" },
           startedAt: startNow ? { S: now } : { NULL: true },
+          // Programación: el dialer barre SCHEDULED en cada tick y promueve las
+          // que ya vencieron. scheduledEndAt cierra la campaña por vigencia.
+          scheduledStartAt: scheduledStartAt ? { S: scheduledStartAt } : { NULL: true },
+          scheduledEndAt: scheduledEndAt ? { S: scheduledEndAt } : { NULL: true },
           completedAt: { NULL: true },
           totalContacts: { N: String(validContacts.length) },
           pendingCount: { N: String(validContacts.length) },
@@ -430,6 +480,8 @@ export const handler: Handler = async (event: any, context: any) => {
       body: JSON.stringify({
         campaignId,
         status,
+        scheduledStartAt,
+        scheduledEndAt,
         totalContacts: validContacts.length,
         skipped: skippedCount,
         awsCampaignId,

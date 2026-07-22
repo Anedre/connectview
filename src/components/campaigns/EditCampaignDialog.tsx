@@ -10,6 +10,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BusinessHoursPreview } from "@/components/campaigns/BusinessHoursPreview";
+import {
+  formatInZone,
+  parseDays,
+  utcIsoToZonedInputs,
+  zonedInputsToUtcIso,
+} from "@/lib/callWindow";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -80,6 +87,11 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
   const [timezone, setTimezone] = useState("America/Lima");
   const [windowStartHour, setWindowStartHour] = useState(9);
   const [windowEndHour, setWindowEndHour] = useState(18);
+  const [windowDaysOfWeek, setWindowDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
+  // Reprogramar el arranque. Solo se ofrece mientras la campaña no arrancó
+  // (DRAFT / SCHEDULED / PAUSED); el backend rechaza reprogramar una RUNNING.
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("09:00");
   const [retryNoAnswerMinutes, setRetryNoAnswerMinutes] = useState(30);
   const [retryMaxAttempts, setRetryMaxAttempts] = useState(3);
   // Control total — editable en caliente (el dialer re-lee cada tick).
@@ -117,6 +129,13 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
       setTimezone(campaign.timezone || "America/Lima");
       setWindowStartHour(Number(campaign.windowStartHour ?? 9));
       setWindowEndHour(Number(campaign.windowEndHour ?? 18));
+      setWindowDaysOfWeek(parseDays(campaign.windowDaysOfWeek));
+      const sched = utcIsoToZonedInputs(
+        campaign.scheduledStartAt,
+        campaign.timezone || "America/Lima",
+      );
+      setScheduledDate(sched?.date || "");
+      setScheduledTime(sched?.time || "09:00");
       setRetryNoAnswerMinutes(Number(campaign.retryNoAnswerMinutes ?? 30));
       setRetryMaxAttempts(Number(campaign.retryMaxAttempts ?? 3));
       setAgentRouting(campaign.agentRouting === "exclusive" ? "exclusive" : "shared");
@@ -134,8 +153,26 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
 
   const isVoice = (campaign?.campaignType || "voice") !== "whatsapp";
   const usesDirectFlow = isVoice && (directConnect || agentRouting === "exclusive");
+  // El arranque solo se puede mover si todavía no ocurrió.
+  const canReschedule =
+    campaign.status === "DRAFT" || campaign.status === "SCHEDULED" || campaign.status === "PAUSED";
+  const scheduledIso = canReschedule
+    ? zonedInputsToUtcIso(scheduledDate, scheduledTime, timezone)
+    : null;
 
   const handleSave = async () => {
+    if (windowDaysOfWeek.length === 0) {
+      toast.error("Marca al menos un día de atención o la campaña no volverá a marcar.");
+      return;
+    }
+    if (canReschedule && scheduledDate && !scheduledIso) {
+      toast.error("La fecha de inicio no es válida.");
+      return;
+    }
+    if (scheduledIso && Date.parse(scheduledIso) <= Date.now()) {
+      toast.error("La fecha de inicio ya pasó. Elige un momento futuro o quítala.");
+      return;
+    }
     try {
       const flow = flows.find((f) => f.id === contactFlowId);
       const queue = queues.find((q) => q.id === campaignQueueId);
@@ -156,10 +193,14 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
         timezone,
         windowStartHour,
         windowEndHour,
+        windowDaysOfWeek,
+        // "" borra la programación (update-campaign lo traduce a NULL y devuelve
+        // la campaña a borrador). undefined = no tocar.
+        ...(canReschedule ? { scheduledStartAt: scheduledIso || "" } : {}),
         retryNoAnswerMinutes,
         retryMaxAttempts,
       });
-      toast.success("Campaña actualizada");
+      toast.success(scheduledIso ? "Campaña actualizada y reprogramada" : "Campaña actualizada");
       onSaved();
       onClose();
     } catch (e) {
@@ -439,12 +480,56 @@ export function EditCampaignDialog({ campaign, open, onClose, onSaved }: Props) 
               <Input
                 type="number"
                 min={0}
-                max={23}
+                max={24}
                 value={windowEndHour}
                 onChange={(e) => setWindowEndHour(parseInt(e.target.value) || 0)}
               />
             </div>
           </div>
+
+          <div className="space-y-2">
+            <Label>Días de atención</Label>
+            <BusinessHoursPreview
+              timezone={timezone}
+              windowStartHour={windowStartHour}
+              windowEndHour={windowEndHour}
+              windowDaysOfWeek={windowDaysOfWeek}
+              onDaysChange={setWindowDaysOfWeek}
+              scheduledStartAt={scheduledIso}
+              compact
+            />
+          </div>
+
+          {canReschedule && (
+            <div className="space-y-2">
+              <Label>
+                {campaign.status === "SCHEDULED" ? "Reprogramar inicio" : "Programar inicio"}
+              </Label>
+              <div className="grid grid-cols-[1fr_110px] gap-3">
+                <Input
+                  type="date"
+                  value={scheduledDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                />
+                <Input
+                  type="time"
+                  value={scheduledTime}
+                  onChange={(e) => setScheduledTime(e.target.value)}
+                />
+              </div>
+              <p style={{ fontSize: 11, color: "var(--text-3)", lineHeight: 1.45 }}>
+                {scheduledIso ? (
+                  <>
+                    Arranca sola el <strong>{formatInZone(scheduledIso, timezone)}</strong>. Vacía
+                    la fecha para volver la campaña a borrador.
+                  </>
+                ) : (
+                  "Sin fecha: la campaña queda en borrador hasta que la inicies a mano."
+                )}
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">

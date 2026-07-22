@@ -15,6 +15,7 @@ import { Btn, Card, Stat, Pill, Av, HeroBand, Num, Icon } from "@/components/ari
 
 const STATUS_TONE: Record<string, "green" | "gold" | "cyan" | "red" | "outline"> = {
   DRAFT: "outline",
+  SCHEDULED: "cyan",
   RUNNING: "green",
   PAUSED: "gold",
   COMPLETED: "cyan",
@@ -23,20 +24,39 @@ const STATUS_TONE: Record<string, "green" | "gold" | "cyan" | "red" | "outline">
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: "Borrador",
+  SCHEDULED: "Programada",
   RUNNING: "En curso",
   PAUSED: "Pausada",
   COMPLETED: "Terminada",
   CANCELLED: "Cancelada",
 };
 
-type TabId = "active" | "drafts" | "finished" | "all";
+type TabId = "active" | "scheduled" | "drafts" | "finished" | "all";
 
 const TABS: Array<{ id: TabId; label: string; statuses: string[] }> = [
   { id: "active", label: "Activas", statuses: ["RUNNING", "PAUSED"] },
+  { id: "scheduled", label: "Programadas", statuses: ["SCHEDULED"] },
   { id: "drafts", label: "Borradores", statuses: ["DRAFT"] },
   { id: "finished", label: "Terminadas", statuses: ["COMPLETED", "CANCELLED"] },
   { id: "all", label: "Todas", statuses: [] },
 ];
+
+/** "el lun 4 ago, 09:00" — fecha de arranque en el huso de la campaña. */
+function formatScheduled(iso: string, timezone?: string): string {
+  try {
+    return new Intl.DateTimeFormat("es-PE", {
+      timeZone: timezone || "America/Lima",
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
 
 function progressPct(c: Campaign): number {
   const total = Number(c.totalContacts || 0);
@@ -160,7 +180,18 @@ export function CampaignsPage() {
 
   // Pausar / reanudar / cancelar desde el menú ⋯ de la tarjeta (mismo endpoint
   // controlCampaign que usa el detalle). Cancelar pide confirmación.
-  const handleControl = async (campaign: Campaign, action: "pause" | "resume" | "cancel") => {
+  const CONTROL_TOAST: Record<string, string> = {
+    pause: "Campaña pausada",
+    resume: "Campaña reanudada",
+    cancel: "Campaña cancelada",
+    start: "Campaña iniciada",
+    unschedule: "Programación cancelada — la campaña volvió a borrador",
+  };
+
+  const handleControl = async (
+    campaign: Campaign,
+    action: "pause" | "resume" | "cancel" | "start" | "unschedule",
+  ) => {
     const ep = getApiEndpoints();
     if (!ep?.controlCampaign) {
       toast.error("Endpoint no configurado");
@@ -176,20 +207,30 @@ export function CampaignsPage() {
       }))
     )
       return;
+    // Adelantar el arranque de una campaña programada es un disparo real: no
+    // debe pasar por un click accidental en el menú.
+    if (
+      action === "start" &&
+      campaign.status === "SCHEDULED" &&
+      !(await confirm({
+        title: `¿Iniciar "${campaign.name}" ahora?`,
+        description:
+          "La campaña estaba programada para más adelante. Si la inicias ahora empezará a marcar en cuanto entre en su horario de atención.",
+        confirmLabel: "Iniciar ahora",
+      }))
+    )
+      return;
     try {
       const r = await fetch(ep.controlCampaign, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaignId: campaign.campaignId, action }),
       });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      toast.success(
-        action === "pause"
-          ? "Campaña pausada"
-          : action === "resume"
-            ? "Campaña reanudada"
-            : "Campaña cancelada",
-      );
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j?.error || `HTTP ${r.status}`);
+      }
+      toast.success(CONTROL_TOAST[action] || "Acción aplicada");
       refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo aplicar la acción");
@@ -206,10 +247,19 @@ export function CampaignsPage() {
       items.push({ label: "Pausar", onSelect: () => handleControl(c, "pause") });
     if (c.status === "PAUSED")
       items.push({ label: "Reanudar", onSelect: () => handleControl(c, "resume") });
+    if (c.status === "SCHEDULED") {
+      items.push({ label: "Iniciar ahora", onSelect: () => handleControl(c, "start") });
+      items.push({
+        label: "Cancelar programación",
+        onSelect: () => handleControl(c, "unschedule"),
+      });
+    }
+    if (c.status === "DRAFT")
+      items.push({ label: "Iniciar ahora", onSelect: () => handleControl(c, "start") });
     items.push({ label: "Clonar", onSelect: () => handleClone(c) });
     if (c.status === "COMPLETED" || c.status === "CANCELLED")
       items.push({ label: "Relanzar (todos)", onSelect: () => handleRelaunch(c) });
-    if (c.status === "RUNNING" || c.status === "PAUSED")
+    if (c.status === "RUNNING" || c.status === "PAUSED" || c.status === "SCHEDULED")
       items.push({
         label: "Cancelar campaña",
         destructive: true,
@@ -466,10 +516,16 @@ export function CampaignsPage() {
                             {completed + failed} / {c.totalContacts}
                           </span>
                           {c.sourcePhoneNumber && <span>{c.sourcePhoneNumber}</span>}
-                          {c.createdAt && (
-                            <span>
-                              {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
+                          {c.status === "SCHEDULED" && c.scheduledStartAt ? (
+                            <span style={{ color: "var(--accent-cyan)", fontWeight: 600 }}>
+                              Inicia {formatScheduled(c.scheduledStartAt, c.timezone)}
                             </span>
+                          ) : (
+                            c.createdAt && (
+                              <span>
+                                {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
+                              </span>
+                            )
                           )}
                         </div>
                       </div>
