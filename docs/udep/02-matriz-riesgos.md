@@ -145,7 +145,7 @@ _Por qué es especialmente relevante para UDEP:_ la operación se basa en cargar
 
 Identificado como P1 de cumplimiento en la auditoría. Si el cliente escribe STOP, recibe "no volverás a recibir mensajes" y aun así se le sigue enviando, el problema no es sólo de experiencia: es una causal de sanción por parte de Meta y afecta la calidad del número.
 
-**Mitigación:** confirmar la baja únicamente después de verificar la escritura; prueba explícita de extremo a extremo en el plan de UAT (caso P-14); número de prueba dedicado en la lista de no contactar.
+**Mitigación:** confirmar la baja únicamente después de verificar la escritura; prueba explícita de extremo a extremo en el plan de UAT (caso F-04); número de prueba dedicado en la lista de no contactar.
 
 ---
 

@@ -14,7 +14,7 @@ Estos documentos cubren la **activación**, no el desarrollo: los 10 pilares del
 | 01  | [Plan de implementación](01-plan-implementacion.md)    | ¿Cuándo estará listo y de qué depende? Gantt, fases, ruta crítica y alcance diferido      |
 | 02  | [Matriz de riesgos](02-matriz-riesgos.md)              | ¿Qué puede salir mal, cuánto duele y quién lo gestiona? 17 riesgos con dueño y mitigación |
 | 03  | [Análisis de brechas](03-analisis-brechas.md)          | ¿Qué distancia hay entre lo que existe y lo que UDEP necesita?                            |
-| 04  | [Plan de pruebas y aceptación](04-plan-pruebas-uat.md) | ¿Cómo se verifica que funciona? 37 casos con criterios de aceptación                      |
+| 04  | [Plan de pruebas y aceptación](04-plan-pruebas-uat.md) | ¿Cómo se verifica que funciona? 56 casos paso a paso, con criterios de aceptación         |
 | 05  | [Acta de compromisos](05-acta-compromisos.md)          | ¿Quién entrega qué y cuándo? **Es el documento que gobierna la fecha**                    |
 
 ---

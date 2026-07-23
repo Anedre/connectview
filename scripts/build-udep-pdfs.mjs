@@ -51,7 +51,7 @@ const DOCS = [
     file: "04-plan-pruebas-uat.md",
     out: "ARIA-UDEP-04-Plan-de-pruebas.pdf",
     titulo: "Plan de pruebas y aceptación",
-    bajada: "Treinta y ocho casos de prueba con criterios de aceptación y acta de conformidad",
+    bajada: "Cincuenta y seis casos paso a paso, con criterios de aceptación y acta de conformidad",
   },
   {
     id: "05",
@@ -224,7 +224,42 @@ function render(markdown, docId) {
     (_, s) => `<td class="sev" data-s="${s.toLowerCase()}">${s}</td>`,
   );
 
+  // La línea donde se anota el resultado es un formulario, no una nota al
+  // margen: se distingue de las advertencias para que no se confundan al
+  // ejecutar el plan con el papel en la mano.
+  out = out.replace(
+    /<blockquote>\s*<p><strong>Resultado:<\/strong>/g,
+    '<blockquote class="resultado"><p><strong>Resultado:</strong>',
+  );
+
+  // Cada caso (H3 y todo lo que lo sigue hasta el próximo título) se envuelve
+  // para que no se parta entre páginas. Un caso partido a la mitad obliga a dar
+  // vuelta la hoja en medio de los pasos.
+  out = agruparCasos(out);
+
   return { html: `<div class="doc" data-id="${docId}">${out}</div>`, secciones: seccionesDe(src) };
+}
+
+/**
+ * Envuelve cada bloque `<h3>…</h3>` + su contenido en un contenedor que evita
+ * el salto de página en medio.
+ *
+ * El corte es por título: desde un `<h3>` hasta el siguiente `<h3>` o `<h2>`.
+ * Si un caso no cabe entero en una página, el navegador ignora la regla y lo
+ * parte igual — que es el comportamiento correcto, no deja huecos.
+ */
+function agruparCasos(html) {
+  const partes = html.split(/(?=<h3>)/);
+  return partes
+    .map((p, i) => {
+      if (i === 0 || !p.startsWith("<h3>")) return p;
+      // Un <h2> dentro del bloque significa que empezó una sección nueva: el
+      // caso termina ahí y el resto queda fuera del contenedor.
+      const corte = p.indexOf("<h2>");
+      if (corte === -1) return `<section class="caso">${p}</section>`;
+      return `<section class="caso">${p.slice(0, corte)}</section>${p.slice(corte)}`;
+    })
+    .join("");
 }
 
 /** Títulos de nivel 2, para el índice de la portada. */
@@ -284,13 +319,20 @@ const CSS = `
   blockquote{ border-left:3px solid #D98A2B; margin:11px 0; padding:8px 14px; color:#4F5C75;
               background:#FDF8F1; border-radius:0 6px 6px 0; page-break-inside:avoid; }
   blockquote p{ margin:0; }
+  /* La línea de registro del resultado: es un formulario para completar a mano,
+     no una nota. Se distingue de las advertencias en ámbar. */
+  blockquote.resultado{ border-left:none; border:1px dashed #C2C9D6; background:#FBFCFE;
+                        border-radius:4px; color:#141C2B; padding:9px 14px; margin:12px 0 4px; }
+
+  /* Cada caso de prueba entero en la misma página, si cabe. */
+  .caso{ page-break-inside:avoid; }
 
   /* Tablas */
   table{ border-collapse:collapse; width:100%; margin:10px 0; font-size:9.8px;
          page-break-inside:avoid; }
   th,td{ border:1px solid #E7EAF0; padding:5px 7px; text-align:left; vertical-align:top; }
   th{ background:#FBF1F5; color:#7A1E52; font-weight:650; white-space:nowrap; }
-  /* La primera columna suele ser un identificador corto (C-01, R-07, P-12): sin
+  /* La primera columna suele ser un identificador corto (C-01, R-07, E-05): sin
      esto se parte en dos líneas y deja de leerse como una unidad. */
   td:first-child{ white-space:nowrap; }
   td.sev{ font-weight:650; white-space:nowrap; }
