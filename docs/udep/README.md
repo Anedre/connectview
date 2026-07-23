@@ -39,3 +39,20 @@ Estos documentos cubren la **activación**, no el desarrollo: los 10 pilares del
 | `docs/tecnico/`                    | Arquitectura de aplicación, arquitectura física, flujo de procesos |
 | `docs/comercial/casos-uso-udep.md` | Los 7 casos de uso de admisión de posgrado                         |
 | `docs/costos/udep-comparativa.md`  | Comparativa de costos sobre factura real de AWS                    |
+
+---
+
+## Versión PDF
+
+Los cinco documentos están también en `pdf/`, listos para enviar al cliente:
+portada con índice, paginación y la identidad visual del resto de los
+documentos de ARIA.
+
+```bash
+node scripts/build-udep-pdfs.mjs
+```
+
+Se regeneran desde los `.md`, así que el markdown es la fuente: editar el PDF a
+mano garantiza que el próximo build lo pise. El generador dibuja el Gantt y la
+ruta crítica en HTML/CSS en vez de Mermaid — no hay `mermaid-cli` en el entorno
+y una grilla imprime mejor que un SVG generado por JavaScript.
